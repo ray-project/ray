@@ -12,9 +12,9 @@ Using ``RAY_FAKE_CLUSTER=1 ray start``
 
 Instructions:
 
-1. Navigate to the root directory of the Ray repo you have cloned locally.
+1. Navigate to the root directory of the Ray repository you have cloned locally.
 
-2. Locate the `fake_multi_node/example.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config. The YAML follows the same format as cluster autoscaler configurations, but some fields are not supported.
+2. Locate the `fake_multi_node/example.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config. The YAML follows the same format as cluster autoscaler configurations, but some fields aren't supported.
 
 3. Configure worker types and other autoscaling configs as desired in the YAML file.
 
@@ -74,13 +74,13 @@ Python documentation:
 Features and Limitations of ``fake_multinode``
 ----------------------------------------------
 
-Most of the features of the autoscaler are supported in fake multi-node mode. For example, if you update the contents of the YAML file, the autoscaler will pick up the new configuration and apply changes, as it does in a real cluster. Node selection, launch, and termination are governed by the same bin-packing and idle timeout algorithms as in a real cluster.
+Most of the features of the autoscaler are supported in fake multi-node mode. For example, if you update the contents of the YAML file, the autoscaler picks up the new configuration and applies changes, as it does in a real cluster. Node selection, launch, and termination are governed by the same bin-packing and idle timeout algorithms as in a real cluster.
 
 However, there are a few limitations:
 
 1. All node raylets run uncontainerized on the local machine, and hence they share the same IP address. See the :ref:`fake_multinode_docker <fake-multinode-docker>` section for an alternative local multi node setup.
 
-2. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported.
+2. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific aren't supported.
 
 3. It's necessary to limit the number of nodes / node CPU / object store memory to avoid overloading your local machine.
 
@@ -104,9 +104,9 @@ Using ``RAY_FAKE_CLUSTER=1 ray up``
 -----------------------------------
 Instructions:
 
-1. Navigate to the root directory of the Ray repo you have cloned locally.
+1. Navigate to the root directory of the Ray repository you have cloned locally.
 
-2. Locate the `fake_multi_node/example_docker.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example_docker.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config. The YAML follows the same format as cluster autoscaler configurations, but some fields are not supported.
+2. Locate the `fake_multi_node/example_docker.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example_docker.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config. The YAML follows the same format as cluster autoscaler configurations, but some fields aren't supported.
 
 3. Configure worker types and other autoscaling configs as desired in the YAML file.
 
@@ -139,7 +139,7 @@ This utility is used to write tests that use multi node behavior. The ``DockerCl
 be used to setup a Docker-compose cluster in a temporary directory, start the monitoring process,
 wait for the cluster to come up, connect to it, and update the configuration.
 
-Please see the API documentation and example test cases on how to use this utility.
+See the API documentation and example test cases on how to use this utility.
 
 .. autoclass:: ray.autoscaler._private.fake_multi_node.test_utils.DockerCluster
     :members:
@@ -148,40 +148,40 @@ Please see the API documentation and example test cases on how to use this utili
 Features and Limitations of ``fake_multinode_docker``
 -----------------------------------------------------
 
-The fake multinode docker node provider provides fully fledged nodes in their own containers. However,
+The fake multi-node docker node provider provides fully fledged nodes in their own containers. However,
 some limitations still remain:
 
-1. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported
+1. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific aren't supported
    (but might be in the future).
 
 2. It's necessary to limit the number of nodes / node CPU / object store memory to avoid overloading your local machine.
 
-3. In docker-in-docker setups, a careful setup has to be followed to make the fake multinode docker provider work (see below).
+3. In docker-in-docker setups, a careful setup has to be followed to make the fake multi-node docker provider work (see below).
 
 Shared directories within the docker environment
 ------------------------------------------------
-The containers will mount two locations to host storage:
+The containers mount two locations to host storage:
 
-- ``/cluster/node``: This location (in the container) will point to ``cluster_dir/nodes/<node_id>`` (on the host).
+- ``/cluster/node``: This location (in the container) points to ``cluster_dir/nodes/<node_id>`` (on the host).
   This location is individual per node, but it can be used so that the host can examine contents stored in this directory.
-- ``/cluster/shared``: This location (in the container) will point to ``cluster_dir/shared`` (on the host). This location
+- ``/cluster/shared``: This location (in the container) points to ``cluster_dir/shared`` (on the host). This location
   is shared across nodes and effectively acts as a shared filesystem (comparable to NFS).
 
 
 Setting up in a Docker-in-Docker (dind) environment
 ---------------------------------------------------
-When setting up in a Docker-in-Docker (dind) environment (e.g. the Ray OSS Buildkite environment), some
+When setting up in a Docker-in-Docker (dind) environment (for example, the Ray OSS Buildkite environment), some
 things have to be kept in mind. To make this clear, consider these concepts:
 
-* The **host** is the not-containerized machine on which the code is executed (e.g. Buildkite runner)
+* The **host** is the not-containerized machine on which the code is executed (for example, Buildkite runner)
 * The **outer container** is the container running directly on the **host**. In the Ray OSS Buildkite environment,
   two containers are started - a *dind* network host and a container with the Ray source code and wheel in it.
-* The **inner container** is a container started by the fake multinode docker node provider.
+* The **inner container** is a container started by the fake multi-node docker node provider.
 
-The control plane for the multinode docker node provider lives in the outer container. However, ``docker compose``
+The control plane for the multi-node docker node provider lives in the outer container. However, ``docker compose``
 commands are executed from the connected docker-in-docker network. In the Ray OSS Buildkite environment, this is
-the ``dind-daemon`` container running on the host docker. If you e.g. mounted ``/var/run/docker.sock`` from the
-host instead, it would be the host docker daemon. We will refer to both as the **host daemon** from now on.
+the ``dind-daemon`` container running on the host docker. If you, for example, mounted ``/var/run/docker.sock`` from the
+host instead, it would be the host docker daemon. Both are referred to as the **host daemon** from now on.
 
 The outer container modifies files that have to be mounted in the inner containers (and modified from there
 as well). This means that the host daemon also has to have access to these files.
@@ -189,32 +189,32 @@ as well). This means that the host daemon also has to have access to these files
 Similarly, the inner containers expose ports - but because the containers are actually started by the host daemon,
 the ports are also only accessible on the host (or the dind container).
 
-For the Ray OSS Buildkite environment, we thus set some environment variables:
+For the Ray OSS Buildkite environment, some environment variables are set:
 
 * ``RAY_TEMPDIR="/ray-mount"``. This environment variable defines where the temporary directory for the
   cluster files should be created. This directory has to be accessible by the host, the outer container,
-  and the inner container. In the inner container, we can control the directory name.
+  and the inner container. In the inner container, the directory name can be controlled.
 
-* ``RAY_HOSTDIR="/ray"``. In the case where the shared directory has a different name on the host, we can
-  rewrite the mount points dynamically. In this example, the outer container is started with ``-v /ray:/ray-mount``
+* ``RAY_HOSTDIR="/ray"``. In the case where the shared directory has a different name on the host, the
+  mount points can be rewritten dynamically. In this example, the outer container is started with ``-v /ray:/ray-mount``
   or similar, so the directory on the host is ``/ray`` and in the outer container ``/ray-mount`` (see ``RAY_TEMPDIR``).
 
-* ``RAY_TESTHOST="dind-daemon"`` As the containers are started by the host daemon, we can't just connect to
-  ``localhost``, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment
+* ``RAY_TESTHOST="dind-daemon"`` As the containers are started by the host daemon, you can't just connect to
+  ``localhost``, as the ports aren't exposed to the outer container. Thus, the Ray host can be set with this environment
   variable.
 
 Lastly, docker-compose obviously requires a docker image. The default docker image is ``rayproject/ray:nightly``.
-The docker image requires ``openssh-server`` to be installed and enabled. In Buildkite we build a new image from
+The docker image requires ``openssh-server`` to be installed and enabled. In Buildkite, a new image is built from
 ``rayproject/ray:nightly-py38-cpu`` to avoid installing this on the fly for every node (which is the default way).
 This base image is built in one of the previous build steps.
 
-Thus, we set
+Thus, set
 
 * ``RAY_DOCKER_IMAGE="rayproject/ray:multinode-py38"``
 
 * ``RAY_HAS_SSH=1``
 
-to use this docker image and inform our multinode infrastructure that SSH is already installed.
+to use this docker image and inform the multi-node infrastructure that SSH is already installed.
 
 Local development
 -----------------
@@ -223,12 +223,12 @@ If you're doing local development on the fake multi node docker module, you can 
 
 * ``FAKE_CLUSTER_DEV="auto"``
 
-this will mount the ``ray/python/ray/autoscaler`` directory to the started nodes. Please note that
-this is will probably not work in your docker-in-docker setup.
+this mounts the ``ray/python/ray/autoscaler`` directory to the started nodes. Note that
+this probably won't work in your docker-in-docker setup.
 
 If you want to specify which top-level Ray directories to mount, you can use:
 
 * ``FAKE_CLUSTER_DEV_MODULES="autoscaler,tune"``
 
-This will mount both ``ray/python/ray/autoscaler`` and ``ray/python/ray/tune`` within the node containers. The
+This mounts both ``ray/python/ray/autoscaler`` and ``ray/python/ray/tune`` within the node containers. The
 list of modules should be comma separated and without spaces.

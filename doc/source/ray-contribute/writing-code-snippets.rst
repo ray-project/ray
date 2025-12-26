@@ -185,7 +185,7 @@ If you're writing an end-to-end examples and your examples doesn't contain outpu
 How to handle hard-to-test examples
 -----------------------------------
 
-When is it okay to not test an example?
+When's it okay to not test an example?
 =======================================
 
 You don't need to test examples that depend on external systems like Weights and Biases.

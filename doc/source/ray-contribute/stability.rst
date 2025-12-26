@@ -20,7 +20,7 @@ Alpha
 
 An *alpha* component undergoes rapid iteration with a known set of users who
 **must** be tolerant of change. The number of users **should** be a
-curated, manageable set, such that it is feasible to communicate with all
+curated, manageable set, such that it's feasible to communicate with all
 of them individually.
 
 Breaking changes **must** be both allowed and expected in alpha components, and
@@ -47,7 +47,7 @@ deprecation period to provide users with an opportunity to migrate their code.
 Stable
 ~~~~~~
 
-A *stable* component **must** be fully-supported over the lifetime of the major
+A *stable* component **must** be fully supported over the lifetime of the major
 API version. Because users expect such stability from components marked stable,
 there **must** be no breaking changes to these components within a major version
 (excluding extraordinary circumstances).

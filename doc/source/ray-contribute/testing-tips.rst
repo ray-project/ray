@@ -2,7 +2,7 @@ Tips for testing Ray programs
 =============================
 
 Ray programs can be a little tricky to test due to the nature of parallel programs.
-We've put together a list of tips and tricks for common testing practices for Ray programs.
+This is a list of tips and tricks for common testing practices for Ray programs.
 
 .. contents::
   :local:
@@ -16,14 +16,14 @@ However, your testing environment may have a significantly lower number of resou
 
 If tests are written to depend on ``ray.init()``, they may be implicitly written in a way that relies on a larger multi-core machine.
 
-This may easily result in tests exhibiting unexpected, flaky, or faulty behavior that is hard to reproduce.
+This may easily result in tests exhibiting unexpected, flaky, or faulty behavior that's hard to reproduce.
 
 To overcome this, you should override the detected resources by setting them in ``ray.init`` like: ``ray.init(num_cpus=2)``
 
 Tip 2: Sharing the ray cluster across tests if possible
 --------------------------------------------------------
 
-It is safest to start a new ray cluster for each test.
+It's safest to start a new ray cluster for each test.
 
 .. testcode::
 
@@ -36,7 +36,7 @@ It is safest to start a new ray cluster for each test.
         def tearDown(self):
             ray.shutdown()
 
-However, starting and stopping a Ray cluster can actually incur a non-trivial amount of latency. For example, on a typical Macbook Pro laptop, starting and stopping can take nearly 5 seconds:
+However, the process of starting and stopping a Ray cluster can actually incur a non-trivial amount of latency. For example, on a typical MacBook Pro laptop, this process can take nearly 5 seconds:
 
 .. code-block:: bash
 
@@ -72,7 +72,7 @@ If writing an application for a cluster setting, you may want to mock a multi-no
 .. note::
 
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
-  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
+  If you run into issues, file a report at https://github.com/ray-project/ray/issues.
 
 .. testcode::
 
@@ -132,4 +132,4 @@ See the `Cluster Util for more details <https://github.com/ray-project/ray/blob/
 Tip 4: Be careful when running tests in parallel
 ------------------------------------------------
 
-Since Ray starts a variety of services, it is easy to trigger timeouts if too many services are started at once. Therefore, when using tools such as `pytest xdist <https://pypi.org/project/pytest-xdist/>`_ that run multiple tests in parallel, one should keep in mind that this may introduce flakiness into the test environment.
+Since Ray starts a variety of services, it's easy to trigger timeouts if too many services are started at once. Therefore, when using tools such as `pytest xdist <https://pypi.org/project/pytest-xdist/>`_ that run multiple tests in parallel, one should keep in mind that this may introduce flakiness into the test environment.

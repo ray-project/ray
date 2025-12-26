@@ -8,8 +8,8 @@ This guide helps contributors to the Ray project analyze Ray performance.
 Getting a stack trace of Ray C++ processes
 ------------------------------------------
 
-You can use the following GDB command to view the current stack trace of any
-running Ray process (e.g., raylet). This can be useful for debugging 100% CPU
+You can use the following gdb command to view the current stack trace of any
+running Ray process (for example, raylet). This can be useful for debugging 100% CPU
 utilization or infinite loops (simply run the command a few times to see what
 the process is stuck on).
 
@@ -48,7 +48,7 @@ To launch Ray in profiling mode and profile Raylet, define the following variabl
 
 
 The file ``/tmp/pprof.out`` is empty until you let the binary run the
-target workload for a while and then ``kill`` it via ``ray stop`` or by
+target workload for a while and then ``kill`` it through ``ray stop`` or by
 letting the driver exit. 
 
 Note: Enabling `RAY_RAYLET_PERFTOOLS_PROFILER` allows profiling of the Raylet component. 
@@ -90,10 +90,10 @@ search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is
 
 Users are supposed to provide 4 env vars for memory profiling.
 
-* `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
-* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values. Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
-* `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
-* `RAY_LD_PRELOAD_ON_WORKERS`: Default value is `0`, which means Ray doesn't preload Jemalloc for workers if a library is incompatible with Jemalloc. Set to `1` to instruct Ray to preload Jemalloc for a worker using values configured by `RAY_JEMALLOC_LIB_PATH` and `RAY_JEMALLOC_PROFILE`.
+* `RAY_JEMALLOC_LIB_PATH`: The path to the ``jemalloc`` shared library `libjemalloc.so`
+* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for ``jemalloc``, using comma-separated values. Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
+* `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run ``jemalloc`` `.so`. For example, ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
+* `RAY_LD_PRELOAD_ON_WORKERS`: Default value is `0`, which means Ray doesn't preload ``jemalloc`` for workers if a library is incompatible with ``jemalloc``. Set to `1` to instruct Ray to preload ``jemalloc`` for a worker using values configured by `RAY_JEMALLOC_LIB_PATH` and `RAY_JEMALLOC_PROFILE`.
 
 .. code-block:: bash
 
@@ -161,4 +161,4 @@ References
 
 - The `pprof documentation <http://goog-perftools.sourceforge.net/doc/cpu_profiler.html>`_.
 - A `Go version of pprof <https://github.com/google/pprof>`_.
-- The `gperftools <https://github.com/gperftools/gperftools>`_, including libprofiler, tcmalloc, and other useful tools.
+- The `gperftools <https://github.com/gperftools/gperftools>`_, including `libprofiler`, `tcmalloc`, and other useful tools.
