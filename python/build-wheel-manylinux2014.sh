@@ -33,6 +33,7 @@ PYTHON_VERSIONS=(
   "py311 cp311-cp311"
   "py312 cp312-cp312"
   "py313 cp313-cp313"
+  "py314 cp314-cp314"
 )
 
 # Setup runtime environment

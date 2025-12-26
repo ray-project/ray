@@ -1,0 +1,29 @@
+name: "ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"
+froms: ["quay.io/pypa/manylinux2014_$HOSTTYPE:2025.12.19-1"]
+dockerfile: ci/docker/ray-core-py314.Dockerfile
+srcs:
+  - .bazelversion
+  - .bazelrc
+  - WORKSPACE
+  - BUILD.bazel
+  - bazel/
+  - thirdparty/
+  - src/
+  - gen_ray_pkg.py
+  - python/ray/__init__.py
+  - python/ray/_raylet.pxd
+  - python/ray/_raylet.pyi
+  - python/ray/_raylet.pyx
+  - python/ray/includes/
+  - java/BUILD.bazel
+  - java/dependencies.bzl
+  - release/BUILD.bazel
+  - release/requirements_py310.txt
+  - ci/build/build-manylinux-forge.sh
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BUILDKITE_BAZEL_CACHE_URL
+  - HOSTTYPE
+build_hint_args:
+  - BUILDKITE_CACHE_READONLY

@@ -9,3 +9,9 @@ steps:
     env:
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "251216.3835fc5"
+
+  # Python 3.14 uses a fresh build from PyPA base image (until rayproject/manylinux2014 is updated)
+  - name: manylinux-py314-x86_64
+    wanda: ci/docker/manylinux-py314.wanda.yaml
+    env:
+      HOSTTYPE: "x86_64"

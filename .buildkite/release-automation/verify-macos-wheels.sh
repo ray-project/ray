@@ -6,6 +6,7 @@ set -x
 
 # TODO(#54047): Python 3.13 is skipped due to the bug
 # we should re-enable it when the bug is fixed.
+# Python 3.14 is also skipped until the bug is fixed and 3.14 is stable.
 
 PYTHON_VERSIONS=("3.10" "3.11" "3.12")
 BAZELISK_VERSION="v1.16.0"
