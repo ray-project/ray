@@ -304,5 +304,69 @@ def test_except_star_exceptiongroup(ray_start_regular_shared):
     exec(python_code)
 
 
+def test_exception_with_readonly_args(ray_start_regular_shared):
+    """Test that exceptions with read-only args property can be propagated.
+
+    This tests the fix for https://github.com/ray-project/ray/issues/59437
+    Some exception types (e.g., rasterio's CPLE_AppDefinedError) define args
+    as a read-only property, which would cause RayTaskError to fail when
+    trying to set self.args in the dual exception class.
+    """
+
+    class ReadOnlyArgsException(Exception):
+        """An exception where args is a read-only property."""
+
+        def __init__(self, message):
+            self._message = message
+            # Don't call super().__init__() to avoid setting args
+
+        @property
+        def args(self):
+            return (self._message,)
+
+        # Note: no setter for args, making it read-only
+
+    @ray.remote
+    def task():
+        raise ReadOnlyArgsException("test error")
+
+    # The exception should be properly caught and propagated
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(task.remote())
+
+    # Verify the exception is a dual exception (inherits from both types)
+    assert isinstance(exc_info.value, ReadOnlyArgsException)
+    assert "test error" in str(exc_info.value)
+
+
+def test_exception_with_readonly_args_serialization(ray_start_regular_shared):
+    """Test that exceptions with read-only args can be serialized across workers."""
+
+    class ReadOnlyArgsException(Exception):
+        """An exception where args is a read-only property."""
+
+        def __init__(self, message):
+            self._message = message
+
+        @property
+        def args(self):
+            return (self._message,)
+
+    @ray.remote
+    def task():
+        raise ReadOnlyArgsException("serialization test")
+
+    @ray.remote
+    def caller():
+        # This forces the exception to be serialized and sent between workers
+        return ray.get(task.remote())
+
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(caller.remote())
+
+    # The nested exception should still work
+    assert "serialization test" in str(exc_info.value)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
