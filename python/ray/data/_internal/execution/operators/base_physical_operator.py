@@ -228,9 +228,6 @@ class AllToAllOperator(
     def supports_fusion(self):
         return True
 
-    def implements_accurate_memory_accounting(self):
-        return True
-
 
 class NAryOperator(PhysicalOperator):
     """An operator that has multiple input dependencies and one output.
