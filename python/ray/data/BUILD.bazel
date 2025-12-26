@@ -1399,6 +1399,20 @@ py_test(
 )
 
 py_test(
+    name = "test_reservation_based_resource_allocator",
+    size = "medium",
+    srcs = ["tests/test_reservation_based_resource_allocator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_resource_manager",
     size = "medium",
     srcs = ["tests/test_resource_manager.py"],
