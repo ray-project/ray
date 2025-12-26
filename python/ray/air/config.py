@@ -423,8 +423,8 @@ class CheckpointConfig:
 
     def __post_init__(self):
         if self._checkpoint_keep_all_ranks != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                "The experimental `_checkpoint_keep_all_ranks` config is deprecated. "
+            raise ValueError(
+                "The experimental `_checkpoint_keep_all_ranks` config has been removed. "
                 "This behavior is now controlled by reporting `checkpoint=None` "
                 "in the workers that shouldn't persist a checkpoint. "
                 "For example, if you only want the rank 0 worker to persist a "
@@ -435,9 +435,9 @@ class CheckpointConfig:
             )
 
         if self._checkpoint_upload_from_workers != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                "The experimental `_checkpoint_upload_from_workers` config is "
-                "deprecated. Uploading checkpoint directly from the worker is "
+            raise ValueError(
+                "The experimental `_checkpoint_upload_from_workers` config has been "
+                "removed. Uploading checkpoint directly from the worker is "
                 "now the default behavior."
             )
 
@@ -588,9 +588,9 @@ class RunConfig:
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if self.local_dir is not None:
-            raise DeprecationWarning(
-                "The `RunConfig(local_dir)` argument is deprecated. "
-                "You should set the `RunConfig(storage_path)` instead."
+            raise ValueError(
+                "The `RunConfig(local_dir)` argument has been removed. "
+                "You should set the `RunConfig(storage_path)` instead. "
                 "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
                 "persistent-storage.html#setting-the-local-staging-directory"
             )
