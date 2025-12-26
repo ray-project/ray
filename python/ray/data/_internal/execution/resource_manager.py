@@ -53,14 +53,14 @@ class ResourceManager:
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is enabled.
+    # when `OpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
         "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
     )
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is not enabled.
+    # when `OpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION = 0.25
 
     def __init__(
