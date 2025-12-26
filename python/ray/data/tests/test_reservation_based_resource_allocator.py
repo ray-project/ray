@@ -30,15 +30,6 @@ from ray.data.tests.test_resource_manager import (
 class TestReservationOpResourceAllocator:
     """Tests for ReservationOpResourceAllocator."""
 
-    @pytest.fixture(scope="class", autouse=True)
-    def enable_reservation_based_resource_allocator(self):
-        # Switch to V1
-        with patch(
-            "ray.data._internal.execution.DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION",
-            new="V1",
-        ):
-            yield
-
     def test_basic(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
