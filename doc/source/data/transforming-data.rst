@@ -112,7 +112,7 @@ dictionaries that have the same type as the input, for example:
 Transforming batches
 ====================
 
-If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming
+If your transformation can be vectorized using NumPy, PyArrow, or Pandas operations, transforming
 batches is considerably more performant than transforming individual rows.
 
 This transformation is automatically parallelized across your Ray cluster.
