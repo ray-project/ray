@@ -61,8 +61,8 @@ When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-clust
 
 .. note::
 
-  When using the Ray Dashboard, it is highly recommended to also set up Prometheus and Grafana.
-  They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
+  When using the Ray Dashboard, it's highly recommended to also set up Prometheus and Grafana.
+  They're necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` for how to integrate Prometheus and Grafana with Ray Dashboard.
 
 
@@ -89,7 +89,7 @@ Jobs view
     </div>
 
 The Jobs view lets you monitor the different Jobs that ran on your Ray Cluster.
-A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``ray.init``). It is recommended to submit your Job to Clusters via :ref:`Ray Job API <jobs-quickstart>`. You can also interactively run Ray jobs (e.g., by executing a Python script within a Head Node).
+A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (for example, ``ray.init``). It is recommended to submit your Job to Clusters via :ref:`Ray Job API <jobs-quickstart>`. You can also interactively run Ray jobs (for example, by executing a Python script within a Head Node).
 
 The Job view displays a list of active, finished, and failed Jobs, and clicking on an ID allows users to view detailed information about that Job.
 For more information on Ray Jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
@@ -112,7 +112,7 @@ Tasks and Actors are grouped and nested by default. You can see the nested entri
 Tasks and Actors are grouped and nested using the following criteria:
 
 - All Tasks and Actors are grouped together. View individual entries by expanding the corresponding row.
-- Tasks are grouped by their ``name`` attribute (e.g., ``task.options(name="<name_here>").remote()``).
+- Tasks are grouped by their ``name`` attribute (for example, ``task.options(name="<name_here>").remote()``).
 - Child Tasks (nested Tasks) are nested under their parent Task's row.
 - Actors are grouped by their class name.
 - Child Actors (Actors created within an Actor) are nested under their parent Actor's row.
@@ -130,10 +130,10 @@ Task Timeline
 
 First, download the chrome tracing file by clicking the download button. Alternatively, you can :ref:`use CLI or SDK to export the tracing file <ray-core-timeline>`.
 
-Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use Perfetto as it is the recommended way to visualize chrome tracing files.
+Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. Use Perfetto as it's the recommended way to visualize chrome tracing files.
 
 In the timeline visualization of Ray Tasks and Actors, there are Node rows (hardware) and Worker rows (processes).
-Each Worker rows display a list of Task events (e.g., Task scheduled, Task running, input/output deserialization, etc.) happening from that Worker over time.
+Each Worker rows display a list of Task events (for example, Task scheduled, Task running, input/output deserialization, etc.) happening from that Worker over time.
 
 
 
@@ -143,7 +143,7 @@ Ray Status
 The Jobs view displays the status of the Ray Cluster. This information is the output of the ``ray status`` CLI command.
 
 The left panel shows the autoscaling status, including pending, active, and failed nodes.
-The right panel displays the resource demands, which are resources that cannot be scheduled to the Cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
+The right panel displays the resource demands, which are resources that can't be scheduled to the Cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
 
 .. note::
 
@@ -199,7 +199,7 @@ Serve metrics
 Ray Serve exports various time-series metrics to help you understand the status of your Serve application over time. Find more details about these metrics :ref:`here <serve-production-monitoring-metrics>`.
 To store and visualize these metrics, set up Prometheus and Grafana by following the instructions :ref:`here <observability-visualization-setup>`.
 
-These metrics are available in the Ray Dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
+These metrics are available in the Ray Dashboard in the Serve page and the Serve Replica Detail page. They're also accessible as Grafana dashboards.
 Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
 of each graph are available by hovering over the "info" icon on the top left of each graph.
 
@@ -237,7 +237,7 @@ Use the Actors view to see the logs for an Actor and which Job created the Actor
     </div>
 
 The information for up to 100000 dead Actors is stored.
-Override this value with the `RAY_maximum_gcs_destroyed_actor_cached_count` environment variable
+Override this value with the ``RAY_maximum_gcs_destroyed_actor_cached_count`` environment variable
 when starting Ray.
 
 Actor profiling
@@ -338,12 +338,12 @@ Logs view
         <iframe width="560" height="315" src="https://www.youtube.com/embed/8V187F2DsN0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-The Logs view lists the Ray logs in your Cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
+The Logs view lists the Ray logs in your Cluster. It's organized by node and log filename. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
 
 To understand the logging structure of Ray, see :ref:`logging directory and file structure <logging-directory-structure>`.
 
 
-The Logs view provides search functionality to help you find specific log messages.
+The Logs view provides search capability to help you find specific log messages.
 
 
 **Driver logs**
@@ -352,7 +352,7 @@ If the Ray Job is submitted by the :ref:`Job API <jobs-quickstart>`, the Job log
 
 .. note::
 
-  If you execute the Driver directly on the Head Node of the Ray Cluster (without using the Job API) or run with :ref:`Ray Client <ray-client-ref>`, the Driver logs are not accessible from the Dashboard. In this case, see the terminal or Jupyter Notebook output to view the Driver logs.
+  If you execute the Driver directly on the Head Node of the Ray Cluster (without using the Job API) or run with :ref:`Ray Client <ray-client-ref>`, the Driver logs aren't accessible from the Dashboard. In this case, see the terminal or Jupyter Notebook output to view the Driver logs.
 
 **Task and Actor Logs (Worker logs)**
 
@@ -399,7 +399,7 @@ The Serve Applications pane provides a list of recently deployed Serve applicati
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/event-page.png
     :align: center
 
-The Events view displays a list of events associated with a specific type (e.g., Autoscaler or Job) in chronological order. The same information is accessible with the ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>` CLI commands.
+The Events view displays a list of events associated with a specific type (for example, Autoscaler or Job) in chronological order. The same information is accessible with the ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>` CLI commands.
 
 Two types of events are available:
 

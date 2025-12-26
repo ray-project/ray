@@ -19,10 +19,10 @@ Profile the CPU usage for Driver and Worker processes. This helps you understand
 
 (profiling-pyspy)=
 ### py-spy
-[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. Ray Dashboard has native integration with pyspy:
+[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. Ray Dashboard has native integration with py-spy:
 
 - It lets you visualize what your Python program is spending time on without restarting the program or modifying the code in any way.
-- It dumps the stacktrace of the running process so that you can see what the process is doing at a certain time. It is useful when programs hangs.
+- It dumps the ``stacktrace`` of the running process so that you can see what the process is doing at a certain time. It's useful when programs hangs.
 
 :::{note}
 You may run into permission errors when using py-spy in the docker containers. To fix the issue:
@@ -54,12 +54,12 @@ You can now do memory profiling for Ray Driver or Worker processes in the Ray Da
 
 ![memory profiling action](../images/memory-profiling-dashboard-view.png)
 
-Additionally, you can specify the following profiling Memray parameters from the dashboard view:
-- **Format:** Format of the profiling result. The value is either "flamegraph" or "table"
+Additionally, you can specify the following profiling memray parameters from the dashboard view:
+- **Format:** Format of the profiling result. The value is either `"flamegraph"` or `"table"`
 - **Duration:** Duration to track for (in seconds)
-- **Leaks:** Enables the Memory Leaks View, which displays memory that Ray didn't deallocate, instead of peak memory usage
+- **Leaks:** Enables the Memory Leaks View, which displays unreleased memory in use by Ray, instead of showing peak memory usage.
 - **Natives:** Track native (C/C++) stack frames (only supported in Linux)
-- **Python Allocator Tracing:** Record allocations made by the pymalloc allocator
+- **Python Allocator Tracing:** Record allocations made by the ``pymalloc`` allocator
 
 
 (profiling-gpu)=
@@ -160,7 +160,7 @@ Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` direc
 
 To visualize the results, install the [Nsight System GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop, which becomes the host. Transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info.
 
-**Note**: The Nsight System Profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
+**Note**: The Nsight System Profiler output (`-o`, `--output`) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
 ```
 --output job_name/ray_worker -> /tmp/ray/session_*/logs/nsight/job_name/ray_worker
 

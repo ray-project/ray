@@ -1,12 +1,10 @@
 assess_quality
-autoscaler
 [Aa]vro
 [Bb]ackpressure
-Dask
+[Dd]ask
 [Dd]ata('s)?
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
-docstrings
 dtype
 FLAC
 [Gg]roup[bB]y
@@ -35,12 +33,12 @@ process_file
 queryable
 RGB
 runai
+RunAI
 [Ss]calers
 Spotify('s)?
 TFRecord(s)?
 UDF(s)?
 VLM(s)?
-XGBoost
 YOLO
 [Ss]harding
 [Ss]harded

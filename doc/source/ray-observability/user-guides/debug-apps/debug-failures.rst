@@ -9,7 +9,7 @@ What Kind of Failures Exist in Ray?
 Ray consists of two major APIs. ``.remote()`` to create a Task or Actor, and :func:`ray.get <ray.get>` to get the result.
 Debugging Ray means identifying and fixing failures from remote processes that run functions and classes (Tasks and Actors) created by the ``.remote`` API.
 
-Ray APIs are future APIs (indeed, it is :ref:`possible to convert Ray object references to standard Python future APIs <async-ref-to-futures>`),
+Ray APIs are future APIs (indeed, it's :ref:`possible to convert Ray object references to standard Python future APIs <async-ref-to-futures>`),
 and the error handling model is the same. When any remote Tasks or Actors fail, the returned object ref contains an exception.
 When you call ``get`` API to the object ref, it raises an exception.
 
@@ -33,12 +33,12 @@ When you call ``get`` API to the object ref, it raises an exception.
 
 In Ray, there are three types of failures. See exception APIs for more details.
 
-- **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API will raise the :func:`RayTaskError <ray.exceptions.RayTaskError>` which includes the exception raised from the remote process.
-- **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it is intentional.
+- **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API raises the :func:`RayTaskError <ray.exceptions.RayTaskError>` which includes the exception raised from the remote process.
+- **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it's intentional.
 - **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing.
 
   1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray Memory Monitor <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
-  2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` crashed (e.g., by an unexpected failure).
+  2. The machine shuts down (for example, spot instance termination) or a :term:`raylet <raylet>` crashed (for example, by an unexpected failure).
   3. System is highly overloaded or stressed (either machine or system components like Raylet or :term:`GCS <GCS / Global Control Service>`), which makes the system unstable and fail.
 
 Debugging Application Failures
@@ -68,7 +68,7 @@ In a Ray cluster, arbitrary two system components can communicate with each othe
 For example, some workers may need to communicate with GCS to schedule Actors (worker <-> GCS connection).
 Your Driver can invoke Actor methods (worker <-> worker connection).
 
-Ray can support 1000s of raylets and 10000s of worker processes. When a Ray cluster gets larger,
+Ray can support 1000 s of raylets and 10000 s of worker processes. When a Ray cluster gets larger,
 each component can have an increasing number of network connections, which requires file descriptors.
 
 Linux typically limits the default file descriptors per process to 1024. When there are
@@ -78,11 +78,11 @@ more than 1024 connections to the component, it can raise error messages below.
 
   Too many open files
 
-It is especially common for the head node GCS process because it is a centralized
+It's especially common for the head node GCS process because it's a centralized
 component that many other components in Ray communicate with. When you see this error message,
-we recommend you adjust the max file descriptors limit per process via the ``ulimit`` command.
+adjust the max file descriptors limit per process using the ``ulimit`` command.
 
-We recommend you apply ``ulimit -n 65536`` to your host configuration. However, you can also selectively apply it for
+Apply ``ulimit -n 65536`` to your host configuration. However, you can also selectively apply it for
 Ray components (view below example). Normally, each worker has 2~3 connections to GCS. Each raylet has 1~2 connections to GCS.
 65536 file descriptors can handle 10000~15000 of workers and 1000~2000 of nodes.
 If you have more workers, you should consider using a higher number than 65536.
@@ -99,9 +99,9 @@ If you have more workers, you should consider using a higher number than 65536.
   ulimit -n 65536 <python script>
 
 If that fails, double-check that the hard limit is sufficiently large by running ``ulimit -Hn``.
-If it is too small, you can increase the hard limit as follows (these instructions work on EC2).
+If it's too small, you can increase the hard limit as follows (these instructions work on EC2).
 
-* Increase the hard ulimit for open file descriptors system-wide by running
+* Increase the hard `ulimit` for open file descriptors system-wide by running
   the following.
 
   .. code-block:: bash

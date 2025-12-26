@@ -10,9 +10,9 @@ You just ran an application using Ray, but it wasn't as fast as you expected it
 to be. Or worse, perhaps it was slower than the serial version of the
 application! The most common reasons are the following.
 
-- **Number of cores:** How many cores is Ray using? When you start Ray, it will
-  determine the number of CPUs on each machine with ``psutil.cpu_count()``. Ray
-  usually will not schedule more tasks in parallel than the number of CPUs. So
+- **Number of cores:** How many cores is Ray using? When you start Ray, it
+  determines the number of CPUs on each machine with ``psutil.cpu_count()``. Ray
+  usually doesn't schedule more tasks in parallel than the number of CPUs. So
   if the number of CPUs is 4, the most you should expect is a 4x speedup.
 
 - **Physical versus logical CPUs:** Do the machines you're running on have fewer
@@ -20,21 +20,21 @@ application! The most common reasons are the following.
   cores with ``psutil.cpu_count()`` and the number of physical cores with
   ``psutil.cpu_count(logical=False)``. This is common on a lot of machines and
   especially on EC2. For many workloads (especially numerical workloads), you
-  often cannot expect a greater speedup than the number of physical CPUs.
+  often can't expect a greater speedup than the number of physical CPUs.
 
 - **Small tasks:** Are your tasks very small? Ray introduces some overhead for
   each task (the amount of overhead depends on the arguments that are passed
-  in). You will be unlikely to see speedups if your tasks take less than ten
+  in). You're unlikely to see speedups if your tasks take less than ten
   milliseconds. For many workloads, you can easily increase the sizes of your
   tasks by batching them together.
 
 - **Variable durations:** Do your tasks have variable duration? If you run 10
   tasks with variable duration in parallel, you shouldn't expect an N-fold
-  speedup (because you'll end up waiting for the slowest task). In this case,
+  speedup (because you end up waiting for the slowest task). In this case,
   consider using ``ray.wait`` to begin processing tasks that finish first.
 
 - **Multi-threaded libraries:** Are all of your tasks attempting to use all of
-  the cores on the machine? If so, they are likely to experience contention and
+  the cores on the machine? If so, they're likely to experience contention and
   prevent your application from achieving a speedup.
   This is common with some versions of ``numpy``. To avoid contention, set an
   environment variable like ``MKL_NUM_THREADS`` (or the equivalent depending on
@@ -43,18 +43,18 @@ application! The most common reasons are the following.
   For many - but not all - libraries, you can diagnose this by opening ``top``
   while your application is running. If one process is using most of the CPUs,
   and the others are using a small amount, this may be the problem. The most
-  common exception is PyTorch, which will appear to be using all the cores
+  common exception is PyTorch, which appears to be using all the cores
   despite needing ``torch.set_num_threads(1)`` to be called to avoid contention.
 
-If you are still experiencing a slowdown, but none of the above problems apply,
-we'd really like to know! Create a `GitHub issue`_ and Submit a minimal code example that demonstrates the problem.
+If you're still experiencing a slowdown, but none of the preceding problems apply,
+create a `GitHub issue`_ and submit a minimal code example that demonstrates the problem.
 
 .. _`Github issue`: https://github.com/ray-project/ray/issues
 
 This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, `let us know`_.
+as well as some known problems. If you encounter other problems, `report them`_.
 
-.. _`let us know`: https://github.com/ray-project/ray/issues
+.. _`report them`: https://github.com/ray-project/ray/issues
 
 .. _ray-core-timeline:
 
@@ -101,7 +101,7 @@ parameter to enable native profiling.
    :align: center
    :width: 80%
 
-The profiling feature requires ``py-spy`` to be installed. If it is not installed, or if the ``py-spy`` binary does
+The profiling feature requires ``py-spy`` to be installed. If it's not installed, or if the ``py-spy`` binary does
 not have root permissions, the Dashboard prompts with instructions on how to setup ``py-spy`` correctly:
 
 .. code-block::
@@ -136,7 +136,7 @@ execution time of all function calls made within the profiled code.
 
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
-Unlike ``line_profiler`` above, this detailed list of profiled function calls
+Unlike ``line_profiler`` in the preceding section, this detailed list of profiled function calls
 **includes** internal function calls and function calls made within Ray.
 
 However, similar to ``line_profiler``, cProfile can be enabled with minimal
@@ -195,7 +195,7 @@ interest are the ones with non-zero execution times:
 The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call,
 can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the
 remote function itself at ``remote_function.py:103(remote)`` only takes 0.001
-seconds over 5 calls, and thus is not the source of the slow performance of
+seconds over 5 calls, and thus isn't the source of the slow performance of
 ``ex1()``.
 
 
@@ -203,13 +203,13 @@ Profiling Ray Actors with cProfile
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Considering that the detailed output of cProfile can be quite different depending
-on what Ray functionalities we use, let us see what cProfile's output might look
-like if our example involved Actors (for an introduction to Ray actors, see our
+on what Ray functionalities are used, see what cProfile's output might look
+like if the example involved Actors (for an introduction to Ray actors, see the
 :ref:`Actor documentation <actor-guide>`).
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
-let's create a new example and loop over five calls to a remote function
-**inside an actor**. Our actor's remote function again just sleeps for 0.5
+create a new example and loop over five calls to a remote function
+**inside an actor**. The actor's remote function again just sleeps for 0.5
 seconds:
 
 .. testcode::
@@ -224,7 +224,7 @@ seconds:
       def actor_func(self):
           time.sleep(self.sleepValue)
 
-Recalling the suboptimality of ``ex1``, let's first see what happens if we
+Recalling the suboptimal performance of ``ex1``, let's first see what happens if we
 attempt to perform all five ``actor_func()`` calls within a single actor:
 
 .. testcode::
@@ -240,7 +240,7 @@ attempt to perform all five ``actor_func()`` calls within a single actor:
       # Wait until the end to call ray.get()
       ray.get(five_results)
 
-We enable cProfile on this example as follows:
+Enable cProfile on this example as follows:
 
 .. testcode::
   :skipif: True
@@ -252,7 +252,7 @@ We enable cProfile on this example as follows:
   if __name__ == "__main__":
       main()
 
-Running our new Actor example, cProfile's abbreviated output is as follows:
+Running the new Actor example, cProfile's abbreviated output is as follows:
 
 .. code-block:: bash
 
@@ -276,19 +276,19 @@ Running our new Actor example, cProfile's abbreviated output is as follows:
 
 It turns out that the entire example still took 2.5 seconds to execute, or the
 time for five calls to ``actor_func()`` to run in serial. If you recall ``ex1``,
-this behavior was because we did not wait until after submitting all five
-remote function tasks to call ``ray.get()``, but we can verify on cProfile's
+this behavior was because the code didn't wait until after submitting all five
+remote function tasks to call ``ray.get()``, but you can verify on cProfile's
 output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at
 the end, for 2.509 seconds. What happened?
 
-It turns out Ray cannot parallelize this example, because we have only
-initialized a single ``Sleeper`` actor. Because each actor is a single,
-stateful worker, our entire code is submitted and ran on a single worker the
+It turns out Ray can't parallelize this example, because there's only
+a single initialized ``Sleeper`` actor. Because each actor is a single,
+stateful worker, the entire code is submitted and ran on a single worker the
 whole time.
 
-To better parallelize the actors in ``ex4``, we can take advantage
+To better parallelize the actors in ``ex4``, you can take advantage
 that each call to ``actor_func()`` is independent, and instead
-create five ``Sleeper`` actors. That way, we are creating five workers
+create five ``Sleeper`` actors. That way, you're creating five workers
 that can run in parallel, instead of creating a single worker that
 can only handle one call to ``actor_func()`` at a time.
 
@@ -305,7 +305,7 @@ can only handle one call to ``actor_func()`` at a time.
 
       ray.get(five_results)
 
-Our example in total now takes only 1.5 seconds to run:
+The example in total now takes only 1.5 seconds to run:
 
 .. code-block:: bash
 
@@ -344,7 +344,7 @@ Here are the steps to use PyTorch Profiler during training with Ray Train or bat
 
   * You may want to upload results on each Node to NFS or object storage like S3 so that you don't have to fetch results from each Node respectively.
 
-* Visualize the results with tools like Tensorboard.
+* Visualize the results with tools like TensorBoard.
 
 GPU Profiling with Nsight System Profiler
 ------------------------------------------

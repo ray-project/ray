@@ -15,7 +15,7 @@ drop into a PDB session that you can then use to:
 
     The Ray Debugger is deprecated. Use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
     Starting with Ray 2.39, the new debugger is the default and you need to set the environment variable `RAY_DEBUG=legacy` to
-    use the old debugger (e.g. by using a runtime environment).
+    use the old debugger (for example, by using a runtime environment).
 
 Getting Started
 ---------------
@@ -44,7 +44,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
     python debugging.py
 
 
-Each of the 2 executed tasks will drop into a breakpoint when the line
+Each of the 2 executed tasks drops into a breakpoint when the line
 ``breakpoint()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
@@ -52,7 +52,7 @@ the following command on the head node of the cluster:
 
     ray debug
 
-The ``ray debug`` command will print an output like this:
+The ``ray debug`` command prints an output like this:
 
 .. code-block:: text
 
@@ -65,8 +65,8 @@ The ``ray debug`` command will print an output like this:
     Enter breakpoint index or press enter to refresh:
 
 
-You can now enter ``0`` and hit Enter to jump to the first breakpoint. You will be dropped into PDB
-at the break point and can use the ``help`` to see the available actions. Run ``bt`` to see a backtrace
+You can now enter ``0`` and hit Enter to jump to the first breakpoint. You're dropped into PDB
+at the break point and can use the ``help`` to see the available actions. Run ``bt`` to see a ``backtrace``
 of the execution:
 
 .. code-block:: text
@@ -85,8 +85,8 @@ and change stack frames with ``up`` and ``down``. For now let us continue the ex
 After the execution is continued, hit ``Control + D`` to get back to the list of break points. Select
 the other break point and hit ``c`` again to continue the execution.
 
-The Ray program ``debugging.py`` now finished and should have printed ``[0, 1]``. Congratulations, you
-have finished your first Ray debugging session!
+The Ray program ``debugging.py`` now finished and should have printed ``[0, 1]``. You
+have finished your first Ray debugging session.
 
 Running on a Cluster
 --------------------
@@ -94,10 +94,10 @@ Running on a Cluster
 The Ray debugger supports setting breakpoints inside of tasks and actors that are running across your
 Ray cluster. In order to attach to these from the head node of the cluster using ``ray debug``, you'll
 need to make sure to pass in the ``--ray-debugger-external`` flag to ``ray start`` when starting the
-cluster (likely in your ``cluster.yaml`` file or k8s Ray cluster spec).
+cluster (likely in your ``cluster.yaml`` file or Kubernetes Ray cluster spec).
 
-Note that this flag will cause the workers to listen for PDB commands on an external-facing IP address,
-so this should *only* be used if your cluster is behind a firewall.
+Note that this flag causes the workers to listen for PDB commands on an external-facing IP address,
+so use this *only* if your cluster is behind a firewall.
 
 Debugger Commands
 -----------------
@@ -109,7 +109,7 @@ The Ray debugger supports the
 Stepping between Ray tasks
 --------------------------
 
-You can use the debugger to step between Ray tasks. Let's take the
+You can use the debugger to step between Ray tasks. Take the
 following recursive function as an example:
 
 .. testcode::
@@ -138,7 +138,7 @@ following recursive function as an example:
 
 After running the program by executing the Python file and calling
 ``ray debug``, you can select the breakpoint by pressing ``0`` and
-enter. This will result in the following output:
+enter. This results in the following output:
 
 .. code-block:: shell
 
@@ -217,14 +217,14 @@ call site and use ``p(result)`` to print the result:
     (Pdb)
 
 
-Post Mortem Debugging
+Post-mortem debugging
 ---------------------
 
-Often we do not know in advance where an error happens, so we cannot set a breakpoint. In these cases,
-we can automatically drop into the debugger when an error occurs or an exception is thrown. This is called *post-mortem debugging*.
+Often you don't know in advance where an error happens, so you can't set a breakpoint. In these cases,
+you can automatically drop into the debugger when an error occurs or an exception is thrown. This is called *post-mortem debugging*.
 
-Copy the following code into a file called ``post_mortem_debugging.py``. The flag ``RAY_DEBUG_POST_MORTEM=1`` will have the effect
-that if an exception happens, Ray will drop into the debugger instead of propagating it further.
+Copy the following code into a file called ``post_mortem_debugging.py``. The flag ``RAY_DEBUG_POST_MORTEM=1`` has the effect
+that if an exception happens, Ray drops into the debugger instead of propagating it further.
 
 .. testcode::
     :skipif: True
@@ -241,13 +241,13 @@ that if an exception happens, Ray will drop into the debugger instead of propaga
 
     ray.get(post_mortem.remote(10))
 
-Let's start the program:
+Start the program:
 
 .. code-block:: bash
 
     python post_mortem_debugging.py
 
-Now run ``ray debug``. After we do that, we see an output like the following:
+Now run ``ray debug``. After that, you see an output like the following:
 
 .. code-block:: text
 
@@ -269,10 +269,10 @@ Now run ``ray debug``. After we do that, we see an output like the following:
 
     Enter breakpoint index or press enter to refresh:
 
-We now press ``0`` and then Enter to enter the debugger. With ``ll`` we can see the context and with
-``print(x)`` we an print the value of ``x``.
+Now press ``0`` and then Enter to enter the debugger. With ``ll`` you can see the context and with
+``print(x)`` you can print the value of ``x``.
 
-In a similar manner as above, you can also debug Ray actors. Happy debugging!
+In a similar manner as described in the preceding section, you can also debug Ray actors.
 
 Debugging APIs
 --------------

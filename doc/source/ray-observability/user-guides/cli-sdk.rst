@@ -47,7 +47,7 @@ When you need more verbose info about each node, run ``ray status -v``. This is 
 Ray State CLI and SDK
 ----------------------------
 
-.. tip:: Provide feedback on using Ray state APIs - `feedback form <https://forms.gle/gh77mwjEskjhN8G46>`_!
+.. tip:: Provide feedback on using Ray state APIs - `feedback form <https://forms.gle/gh77mwjEskjhN8G46>`_.
 
 Use Ray State APIs to access the current state (snapshot) of Ray through the CLI or Python SDK (developer APIs).
 
@@ -124,8 +124,8 @@ See the summarized states of tasks. If it doesn't return the output immediately,
             Table (group by func_name):
             ------------------------------------
                 FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-            0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-            1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
+            0   task_running_300_seconds  `RUNNING`: 2      `NORMAL_TASK`
+            1   Actor.__init__            `FINISHED`: 2     `ACTOR_CREATION_TASK`
 
     .. tab-item:: Python SDK (Internal Developer API)
         :sync: Python SDK (Internal Developer API)
@@ -247,8 +247,8 @@ Key Concepts
 ~~~~~~~~~~~~~
 Ray State APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
 
-- **states**: The state of the cluster of corresponding resources. States consist of immutable metadata (e.g., Actor's name) and mutable states (e.g., Actor's scheduling state or pid).
-- **resources**: Resources created by Ray. E.g., actors, tasks, objects, placement groups, and etc.
+- **states**: The state of the cluster of corresponding resources. States consist of immutable metadata (for example, Actor's name) and mutable states (for example, Actor's scheduling state or pid).
+- **resources**: Resources created by Ray. For example, actors, tasks, objects, placement groups, and etc.
 - **summary**: API to return the summarized view of resources.
 - **list**: API to return every individual entity of resources.
 - **get**: API to return a single entity of resources in detail.
@@ -262,8 +262,8 @@ User guides
 Getting a summary of states of entities by type
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Return the summarized information of the given Ray entity (Objects, Actors, Tasks).
-It is recommended to start monitoring states through summary APIs first. When you find anomalies
-(e.g., Actors running for a long time, Tasks that are not scheduled for a long time),
+It's recommended to start monitoring states through summary APIs first. When you find anomalies
+(for example, Actors running for a long time, Tasks that aren't scheduled for a long time),
 you can use ``list`` or ``get`` APIs to get more details for an individual abnormal entity.
 
 **Summarize all actors**
@@ -316,8 +316,8 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
 .. note::
 
-    By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default.
-    To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
+    By default, objects are summarized by ``callsite``. However, ``callsite`` isn't recorded by Ray by default.
+    To get ``callsite`` info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
 
     .. code-block:: bash
 
@@ -344,7 +344,7 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
             {'cluster': {'summary': {'disabled': {'total_objects': 6, 'total_size_mb': 0.0, 'total_num_workers': 3, 'total_num_nodes': 1, 'task_state_counts': {'SUBMITTED_TO_WORKER': 2, 'FINISHED': 2, 'NIL': 2}, 'ref_type_counts': {'LOCAL_REFERENCE': 2, 'ACTOR_HANDLE': 4}}}, 'total_objects': 6, 'total_size_mb': 0.0, 'callsite_enabled': False, 'summary_by': 'callsite'}}
 
-See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray summary`` command.
+See :ref:`state CLI reference <state-api-cli-ref>` for more details about the ``ray summary`` command.
 
 
 List the states of all entities of certain type
@@ -352,14 +352,14 @@ List the states of all entities of certain type
 
 Get a list of resources. Possible resources include:
 
-- :ref:`Actors <actor-guide>`, e.g., Actor ID, State, PID, death_cause (:class:`output schema <ray.util.state.common.ActorState>`)
-- :ref:`Tasks <ray-remote-functions>`, e.g., name, scheduling state, type, runtime env info (:class:`output schema <ray.util.state.common.TaskState>`)
-- :ref:`Objects <objects-in-ray>`, e.g., object ID, callsites, reference types (:class:`output schema <ray.util.state.common.ObjectState>`)
-- :ref:`Jobs <jobs-overview>`, e.g., start/end time, entrypoint, status (:class:`output schema <ray.util.state.common.JobState>`)
-- :ref:`Placement Groups <ray-placement-group-doc-ref>`, e.g., name, bundles, stats (:class:`output schema <ray.util.state.common.PlacementGroupState>`)
-- Nodes (Ray worker nodes), e.g., node ID, node IP, node state (:class:`output schema <ray.util.state.common.NodeState>`)
-- Workers (Ray worker processes), e.g., worker ID, type, exit type and details (:class:`output schema <ray.util.state.common.WorkerState>`)
-- :ref:`Runtime environments <runtime-environments>`, e.g., runtime envs, creation time, nodes (:class:`output schema <ray.util.state.common.RuntimeEnvState>`)
+- :ref:`Actors <actor-guide>`, for example, Actor ID, State, PID, ``death_cause`` (:class:`output schema <ray.util.state.common.ActorState>`)
+- :ref:`Tasks <ray-remote-functions>`, for example, name, scheduling state, type, runtime env info (:class:`output schema <ray.util.state.common.TaskState>`)
+- :ref:`Objects <objects-in-ray>`, for example, object ID, ``callsites``, reference types (:class:`output schema <ray.util.state.common.ObjectState>`)
+- :ref:`Jobs <jobs-overview>`, for example, start/end time, entrypoint, status (:class:`output schema <ray.util.state.common.JobState>`)
+- :ref:`Placement Groups <ray-placement-group-doc-ref>`, for example, name, bundles, stats (:class:`output schema <ray.util.state.common.PlacementGroupState>`)
+- Nodes (Ray worker nodes), for example, node ID, node IP, node state (:class:`output schema <ray.util.state.common.NodeState>`)
+- Workers (Ray worker processes), for example, worker ID, type, exit type and details (:class:`output schema <ray.util.state.common.WorkerState>`)
+- :ref:`Runtime environments <runtime-environments>`, for example, runtime envs, creation time, nodes (:class:`output schema <ray.util.state.common.RuntimeEnvState>`)
 
 **List all nodes**
 
@@ -478,7 +478,7 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(filters=[("state", "!=", "RUNNING")])
 
-**List running tasks that have a name func**
+**List running tasks by name**
 
 .. tab-set::
 
@@ -572,7 +572,7 @@ Fetch the logs of a particular entity (task, actor, etc.)
 
 .. _state-api-log-doc:
 
-State API also allows you to access Ray logs. Note that you cannot access the logs from a dead node.
+State API also allows you to access Ray logs. Note that you can't access the logs from a dead node.
 By default, the API prints logs from a head node.
 
 **Get all retrievable log file names from a head node in a cluster**
@@ -677,7 +677,7 @@ By default, the API prints logs from a head node.
             for line in get_log(actor_id=<ACTOR_ID>, follow=True):
                 print(line)
 
-**Stream log from a pid**
+**Stream log from a PID**
 
 .. tab-set::
 
@@ -703,7 +703,7 @@ By default, the API prints logs from a head node.
             for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
                 print(line)
 
-See :ref:`state CLI reference<state-api-cli-ref>` for more details about ``ray logs`` command.
+See :ref:`state CLI reference<state-api-cli-ref>` for more details about the ``ray logs`` command.
 
 
 Failure Semantics
@@ -715,26 +715,26 @@ and provides warning messages. Here are cases where there can be missing output 
 
 **Query Failures**
 
-State APIs query "data sources" (e.g., GCS, raylets, etc.) to obtain and build the snapshot of the Cluster.
-However, data sources are sometimes unavailable (e.g., the source is down or overloaded). In this case, APIs
+State APIs query "data sources" (for example, GCS, raylets, etc.) to obtain and build the snapshot of the Cluster.
+However, data sources are sometimes unavailable (for example, the source is down or overloaded). In this case, APIs
 return a partial (incomplete) snapshot of the Cluster, and users are informed that the output is incomplete through a warning message.
 All warnings are printed through Python's ``warnings`` library, and they can be suppressed.
 
 **Data Truncation**
 
 When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability
-(when this happens, there's no way to choose truncated data). When truncation happens it is informed through Python's
+(when this happens, there's no way to choose truncated data). When truncation happens it's informed through Python's
 ``warnings`` module.
 
 **Garbage Collected Resources**
 
-Depending on the lifecycle of the resources, some "finished" resources are not accessible
-through the APIs because they are already garbage collected.
+Depending on the lifecycle of the resources, some "finished" resources aren't accessible
+through the APIs because they're already garbage collected.
 
 .. note::
 
-    Do not to rely on this API to obtain correct information on finished resources.
-    For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
+    Don't rely on this API to obtain correct information on finished resources.
+    For example, Ray periodically garbage collects `DEAD` state Actor data to reduce memory usage.
     Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
 
 API Reference
