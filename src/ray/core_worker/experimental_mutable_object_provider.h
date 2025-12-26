@@ -15,12 +15,26 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/client_call.h"
+
+// Hash function for std::pair<uint64_t, int64_t> to use in unordered_set for chunk
+// tracking
+namespace std {
+template <>
+struct hash<std::pair<uint64_t, int64_t>> {
+  size_t operator()(const std::pair<uint64_t, int64_t> &p) const {
+    // Combine the two hash values using a standard hash combining technique
+    return std::hash<uint64_t>{}(p.first) ^ (std::hash<int64_t>{}(p.second) << 1);
+  }
+};
+}  // namespace std
 
 namespace ray {
 namespace core {
@@ -239,12 +253,30 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
 
-  // Protects the `written_so_far_` map.
+  // Protects the `written_so_far_` map and `received_chunks_` set.
   absl::Mutex written_so_far_lock_;
   // For objects larger than the gRPC max payload size *that this node receives from a
   // writer node*, this map tracks how many bytes have been received so far for a single
   // object write.
   std::unordered_map<ObjectID, uint64_t> written_so_far_
+      ABSL_GUARDED_BY(written_so_far_lock_);
+  // Tracks which chunks (by offset and version) have been received for each object to
+  // handle retries idempotently. The version comes from PlasmaObjectHeader.version on the
+  // sender side. The pair (offset, version) uniquely identifies a chunk across different
+  // write epochs, preventing stale retries from interfering with new writes.
+  std::unordered_map<ObjectID, std::unordered_set<std::pair<uint64_t, int64_t>>>
+      received_chunks_ ABSL_GUARDED_BY(written_so_far_lock_);
+  // Tracks whether WriteAcquire has been called AND completed for each object to handle
+  // out-of-order chunks. This ensures WriteAcquire is called exactly once, even if chunks
+  // arrive concurrently or out of order. Other threads must wait until this is true
+  // before calling GetObjectBackingStore().
+  std::unordered_map<ObjectID, bool> write_acquired_
+      ABSL_GUARDED_BY(written_so_far_lock_);
+  // Maps writer_object_id to the highest version that has completed WriteRelease.
+  // Only version == highest_completed + 1 can actively write to backing store.
+  // Versions <= highest_completed are stale retries and are discarded.
+  // Versions > highest_completed + 1 are buffered for future processing.
+  std::unordered_map<ObjectID, int64_t> highest_completed_version_
       ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
