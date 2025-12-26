@@ -670,37 +670,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._idle_detector = self.IdleDetector()
 
-    def _get_ineligible_ops_with_usage(self) -> List[PhysicalOperator]:
-        """
-        Resource reservation is based on the number of eligible operators.
-        However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
-        And we also need to exclude the downstream ineligible operators.
-
-        E.g., for the following pipeline:
-        ```
-        map1 (completed, but still has blocks in its output queue) -> limit1 (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
-        ```
-
-        The reservation is based on the number of eligible operators (map2 and map3), but we need to exclude map1 and limit1 from the reservation.
-        """
-        last_completed_ops = []
-        ops_to_exclude_from_reservation = []
-        # Traverse operator tree collecting all operators that have already finished
-        for op in self._topology:
-            if not op.has_execution_finished():
-                for dep in op.input_dependencies:
-                    if dep.has_execution_finished():
-                        last_completed_ops.append(dep)
-
-        # In addition to completed operators,
-        # filter out downstream ineligible operators since they are omitted from reservation calculations.
-        for op in last_completed_ops:
-            ops_to_exclude_from_reservation.extend(
-                list(self._resource_manager.get_downstream_ineligible_ops(op))
-            )
-            ops_to_exclude_from_reservation.append(op)
-        return list(set(ops_to_exclude_from_reservation))
-
     def _update_reservation(self, limits: ExecutionResources):
         eligible_ops = self._resource_manager.get_eligible_ops()
 
@@ -829,12 +798,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        op_to_exclude_from_reservation = self._get_ineligible_ops_with_usage()
-        for completed_op in op_to_exclude_from_reservation:
-            completed_op_usage = self._resource_manager.get_op_usage(completed_op)
-
-            limits = limits.subtract(completed_op_usage)
-            limits = limits.max(ExecutionResources.zero())
+        ineligible_op_usage = get_ineligible_op_usage(
+            self._topology, self._resource_manager
+        )
+        limits = limits.subtract(ineligible_op_usage).max(ExecutionResources.zero())
 
         # Remaining resources to be distributed across operators
         remaining_shared = self._update_reservation(limits)
@@ -963,3 +930,42 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._op_budgets[op] = self._op_budgets[op].copy(
                     object_store_memory=float("inf")
                 )
+
+
+def get_ineligible_op_usage(
+    topology: "Topology", resource_manager: "ResourceManager"
+) -> ExecutionResources:
+    """
+    Resource reservation is based on the number of eligible operators.
+    However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
+    And we also need to exclude the downstream ineligible operators.
+
+    E.g., for the following pipeline:
+    ```
+    map1 (completed, but still has blocks in its output queue) -> limit1 (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
+    ```
+
+    The reservation is based on the number of eligible operators (map2 and map3), but we need to exclude map1 and limit1 from the reservation.
+    """
+    last_completed_ops = []
+    ops_to_exclude_from_reservation = []
+    # Traverse operator tree collecting all operators that have already finished
+    for op in topology:
+        if not op.has_execution_finished():
+            for dep in op.input_dependencies:
+                if dep.has_execution_finished():
+                    last_completed_ops.append(dep)
+
+    # In addition to completed operators,
+    # filter out downstream ineligible operators since they are omitted from reservation calculations.
+    for op in last_completed_ops:
+        ops_to_exclude_from_reservation.extend(
+            resource_manager.get_downstream_ineligible_ops(op)
+        )
+        ops_to_exclude_from_reservation.append(op)
+
+    ineligible_op_usage = ExecutionResources.zero()
+    for op in set(ops_to_exclude_from_reservation):
+        ineligible_op_usage = ineligible_op_usage.add(resource_manager.get_op_usage(op))
+
+    return ineligible_op_usage
