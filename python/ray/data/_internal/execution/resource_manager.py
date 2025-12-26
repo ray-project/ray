@@ -91,15 +91,9 @@ class ResourceManager:
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
 
         if data_context.op_resource_reservation_enabled:
-            # We'll enable memory reservation if all operators have
-            # implemented accurate memory accounting.
-            should_enable = all(
-                op.implements_accurate_memory_accounting() for op in topology
+            self._op_resource_allocator = ReservationOpResourceAllocator(
+                self, data_context.op_resource_reservation_ratio
             )
-            if should_enable:
-                self._op_resource_allocator = ReservationOpResourceAllocator(
-                    self, data_context.op_resource_reservation_ratio
-                )
 
         self._object_store_memory_limit_fraction = (
             data_context.override_object_store_memory_limit_fraction

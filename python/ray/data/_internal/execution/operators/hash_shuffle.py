@@ -1004,9 +1004,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # TODO separate marking as completed from the check
         return self._is_finalized() and super().completed()
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
     def _is_finalized(self):
         return len(self._pending_finalization_partition_ids) == 0
 
