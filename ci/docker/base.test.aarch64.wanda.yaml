@@ -6,6 +6,7 @@ srcs:
   - ci/env/install-miniforge.sh
   - ci/suppress_output
   - .bazelversion
+  - .bazeliskrc
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON=3.10
