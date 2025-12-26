@@ -934,7 +934,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
 def get_ineligible_op_usage(
     topology: "Topology", resource_manager: "ResourceManager"
-) -> List[PhysicalOperator]:
+) -> ExecutionResources:
     """
     Resource reservation is based on the number of eligible operators.
     However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
