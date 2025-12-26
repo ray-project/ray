@@ -4,6 +4,7 @@ dockerfile: ci/docker/ray-core.Dockerfile
 srcs:
   - .bazelversion
   - .bazelrc
+  - .bazeliskrc
   - WORKSPACE
   - BUILD.bazel
   - bazel/

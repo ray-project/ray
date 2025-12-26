@@ -1,0 +1,3 @@
+# Using GitHub mirror for BCR to work around bcr.bazel.build outages
+# Fix for https://github.com/bazelbuild/bazel/issues/28101
+BAZELISK_BASE_URL=https://github.com/bazelbuild/bazel/releases/download

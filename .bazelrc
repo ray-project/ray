@@ -240,3 +240,7 @@ build:macos --sandbox_block_path=/usr/local/
 build:macos --copt="-Wno-error=deprecated-declarations"
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+
+# Using GitHub mirror for BCR to work around bcr.bazel.build outages
+# Fix for https://github.com/bazelbuild/bazel/issues/28101
+common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main/
