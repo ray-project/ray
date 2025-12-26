@@ -3,7 +3,7 @@
 Running Distributed Experiments with Ray Tune
 ==============================================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
+Tune is commonly used for large-scale distributed hyperparameter optimization. This page overviews how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
 
 .. contents::
     :local:
@@ -14,7 +14,7 @@ Summary
 
 To run a distributed experiment with Tune, you need to:
 
-1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
+1. First, :ref:`start a Ray cluster <cluster-index>` if you haven't already.
 2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>`.
 
 .. tune-distributed-cloud:
@@ -61,7 +61,7 @@ Running a Distributed Tune Experiment
 Running a distributed (multi-node) experiment requires Ray to be started already.
 You can do this on local machines or on the cloud.
 
-Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
+Across your machines, Tune automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
 To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``Tuner.fit()``, where ``XXX`` is the Ray address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
 
@@ -94,7 +94,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 .. tip::
 
     1. In the examples, the Ray address commonly used is ``localhost:6379``.
-    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
+    2. If the Ray cluster is already started, you shouldn't need to run anything on the worker nodes.
 
 
 Storage Options in a Distributed Tune Run
@@ -120,7 +120,7 @@ reduce synchronization overhead. For this, you just have to specify a remote ``s
     )
     tuner.fit()
 
-For more details or customization, see our
+For more details or customization, see the
 :ref:`guide on configuring storage in a distributed Tune experiment <tune-storage-options>`.
 
 
@@ -130,11 +130,11 @@ Tune Runs on preemptible instances
 -----------------------------------
 
 Running on spot instances (or preemptible instances) can reduce the cost of your experiment.
-You can enable spot instances in AWS via the following configuration modification:
+You can enable spot instances in AWS by modifying the configuration as follows:
 
 .. code-block:: yaml
 
-    # Provider-specific config for worker nodes, e.g. instance type.
+    # Provider-specific config for worker nodes, for example instance type.
     worker_nodes:
         InstanceType: m5.large
         ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
@@ -179,14 +179,14 @@ Example for Using Tune with Spot instances (AWS)
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
-1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py </../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
+1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py </../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you needs to install the following:
 
 .. code-block:: bash
 
     $ pip install ray torch torchvision filelock
 
 2. Download an example cluster yaml here: :download:`tune-default.yaml </../../python/ray/tune/examples/tune-default.yaml>`
-3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
+3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster isn't up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
 
 .. code-block:: bash
 
@@ -222,11 +222,11 @@ Fault Tolerance of Tune Runs
 Tune automatically restarts trials in the case of trial failures (if ``max_failures != 0``),
 both in the single node and distributed setting.
 
-For example, let's say a node is pre-empted or crashes while a trial is still executing on that node.
+For example, say a node is pre-empted or crashes while a trial is still executing on that node.
 Assuming that a checkpoint for this trial exists (and in the distributed setting,
 :ref:`some form of persistent storage is configured to access the trial's checkpoint <tune-storage-options>`),
 Tune waits until available resources are available to begin executing the trial again from where it left off.
-If no checkpoint is found, the trial will restart from scratch.
+If no checkpoint is found, the trial restarts from scratch.
 See :ref:`here for information on checkpointing <tune-trial-checkpoint>`.
 
 
@@ -244,7 +244,7 @@ Tune automatically persists the progress of your entire experiment (a ``Tuner.fi
 Common Tune Commands
 --------------------
 
-Below are some commonly used commands for submitting experiments. Please see the :ref:`Clusters page <cluster-index>` to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. See the :ref:`Clusters page <cluster-index>` to find more comprehensive documentation of commands.
 
 .. code-block:: bash
 

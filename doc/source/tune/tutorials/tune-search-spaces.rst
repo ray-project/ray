@@ -4,7 +4,7 @@ Working with Tune Search Spaces
 ===============================
 
 Tune has a native interface for specifying search spaces.
-You can specify the search space via ``Tuner(param_space=...)``.
+You can specify the search space through ``Tuner(param_space=...)``.
 
 Thereby, you can either use the ``tune.grid_search`` primitive to use grid search:
 
@@ -26,7 +26,7 @@ Or you can use one of the random sampling primitives to specify distributions (:
             "param1": tune.choice([True, False]),
             "bar": tune.uniform(0, 10),
             "alpha": tune.sample_from(lambda _: np.random.uniform(100) ** 2),
-            "const": "hello"  # It is also ok to specify constant values.
+            "const": "hello"  # It's also ok to specify constant values.
         })
     results = tuner.fit()
 
@@ -35,7 +35,7 @@ Or you can use one of the random sampling primitives to specify distributions (:
 
 
 To sample multiple times/run multiple trials, specify ``tune.RunConfig(num_samples=N``.
-If ``grid_search`` is provided as an argument, the *same* grid will be repeated ``N`` times.
+If ``grid_search`` is provided as an argument, the *same* grid is repeated ``N`` times.
 
 .. code-block:: python
 
@@ -111,7 +111,7 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
     tuner = tune.Tuner(
         my_trainable,
         run_config=tune.RunConfig(name="my_trainable"),
-        # num_samples will repeat the entire config 10 times.
+        # num_samples repeats the entire config 10 times.
         tune_config=tune.TuneConfig(num_samples=10),
         param_space={
             # ``sample_from`` creates a generator to call the lambda once per trial.
@@ -119,7 +119,7 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
             # ``sample_from`` also supports "conditional search spaces"
             "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
             "nn_layers": [
-                # tune.grid_search will make it so that all values are evaluated.
+                # tune.grid_search ensures that all values are evaluated.
                 tune.grid_search([16, 64, 256]),
                 tune.grid_search([16, 64, 256]),
             ],
@@ -139,7 +139,7 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
 How to use Custom and Conditional Search Spaces in Tune?
 --------------------------------------------------------
 
-You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
+You can often run into awkward search spaces (meaning when one hyperparameter depends on another).
 Use ``tune.sample_from(func)`` to provide a **custom** callable function for generating a search space.
 
 The parameter ``func`` should take in a ``spec`` object, which has a ``config`` namespace
@@ -183,7 +183,7 @@ This lets you specify conditional parameter distributions.
 
 .. note::
 
-    This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like :ref:`HyperOpt <tune-hyperopt>`
+    This format isn't supported by every SearchAlgorithm, and only some SearchAlgorithms, like :ref:`HyperOpt <tune-hyperopt>`
     and :ref:`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
     In order to use conditional search spaces with :ref:`HyperOpt <tune-hyperopt>`,

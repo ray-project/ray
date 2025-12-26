@@ -10,9 +10,9 @@ How to Configure Persistent Storage in Ray Tune
 
 Tune allows you to configure persistent storage options to enable following use cases in a distributed Ray cluster:
 
-- **Trial-level fault tolerance**: When trials are restored (e.g. after a node failure or when the experiment was paused),
+- **Trial-level fault tolerance**: When trials are restored (for example after a node failure or when the experiment was paused),
   they may be scheduled on different nodes, but still would need access to their latest checkpoint.
-- **Experiment-level fault tolerance**: For an entire experiment to be restored (e.g. if the cluster crashes unexpectedly),
+- **Experiment-level fault tolerance**: For an entire experiment to be restored (for example if the cluster crashes unexpectedly),
   Tune needs to be able to access the latest experiment state, along with all trial
   checkpoints to start from where the experiment left off.
 - **Post-experiment analysis**: A consolidated location storing data from all trials is useful for post-experiment analysis
@@ -26,7 +26,7 @@ Storage Options in Tune
 
 Tune provides support for three scenarios:
 
-1. When using cloud storage (e.g. AWS S3 or Google Cloud Storage) accessible by all machines in the cluster.
+1. When using cloud storage (for example AWS S3 or Google Cloud Storage) accessible by all machines in the cluster.
 2. When using a network filesystem (NFS) mounted to all machines in the cluster.
 3. When running Tune on a single node and using the local filesystem as the persistent storage location.
 
@@ -47,10 +47,10 @@ Tune provides support for three scenarios:
 Configuring Tune with cloud storage (AWS S3, Google Cloud Storage)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If all nodes in a Ray cluster have access to cloud storage, e.g. AWS S3 or Google Cloud Storage (GCS),
+If all nodes in a Ray cluster have access to cloud storage, for example AWS S3 or Google Cloud Storage (GCS),
 then all experiment outputs can be saved in a shared cloud bucket.
 
-We can configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
+Configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
 
 .. code-block:: python
 
@@ -69,8 +69,8 @@ In this example, all experiment results can be found in the shared storage at ``
 
 .. note::
 
-    The head node will not have access to all experiment results locally. If you want to process
-    e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+    The head node won't have access to all experiment results locally. If you want to process
+    for example the best checkpoint further, you first have to fetch it from the cloud storage.
 
     Experiment restoration should also be done using the experiment directory at the cloud storage
     URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
@@ -80,10 +80,10 @@ In this example, all experiment results can be found in the shared storage at ``
 Configuring Tune with a network filesystem (NFS)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If all Ray nodes have access to a network filesystem, e.g. AWS EFS or Google Cloud Filestore,
+If all Ray nodes have access to a network filesystem, for example AWS EFS or Google Cloud Filestore,
 they can all write experiment outputs to this directory.
 
-All we need to do is **set the shared network filesystem as the path to save results**.
+All that's needed is to **set the shared network filesystem as the path to save results**.
 
 .. code-block:: python
 
@@ -109,7 +109,7 @@ Configure Tune without external persistent storage
 On a single-node cluster
 ************************
 
-If you're just running an experiment on a single node (e.g., on a laptop), Tune will use the
+If you're just running an experiment on a single node (for example, on a laptop), Tune uses the
 local filesystem as the default storage location for checkpoints and other artifacts.
 Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
 unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tune.RunConfig`.
@@ -136,18 +136,18 @@ On a multi-node cluster (Deprecated)
 .. warning::
 
     When running on multiple nodes, using the local filesystem of the head node as the persistent storage location is *deprecated*.
-    If you save trial checkpoints and run on a multi-node cluster, Tune will raise an error by default, if NFS or cloud storage is not setup.
+    If you save trial checkpoints and run on a multi-node cluster, Tune raises an error by default, if NFS or cloud storage isn't setup.
     See `this issue <https://github.com/ray-project/ray/issues/37177>`_ for more information.
 
 
 Examples
 --------
 
-Let's show some examples of configuring storage location and synchronization options.
-We'll also show how to resume the experiment for each of the examples, in the case that your experiment gets interrupted.
+To show some examples of configuring storage location and synchronization options.
+This also shows how to resume the experiment for each of the examples, in the case that your experiment gets interrupted.
 See :ref:`tune-fault-tolerance-ref` for more information on resuming experiments.
 
-In each example, we'll give a practical explanation of how *trial checkpoints* are saved
+In each example, a practical explanation is given of how *trial checkpoints* are saved
 across the cluster and the external storage location (if one is provided).
 See :ref:`tune-persisted-experiment-data` for an overview of other experiment data that Tune needs to persist.
 
@@ -155,7 +155,7 @@ See :ref:`tune-persisted-experiment-data` for an overview of other experiment da
 Example: Running Tune with cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's assume that you're running this example script from your Ray cluster's head node.
+Assume that you're running this example script from your Ray cluster's head node.
 
 In the example below, ``my_trainable`` is a Tune :ref:`trainable <trainable-docs>`
 that implements saving and loading checkpoints.
@@ -178,7 +178,7 @@ that implements saving and loading checkpoints.
             # instances are terminated and has better performance.
             storage_path="s3://my-checkpoints-bucket/path/",
             checkpoint_config=tune.CheckpointConfig(
-                # We'll keep the best five checkpoints at all times
+                # Keep the best five checkpoints at all times
                 # (with the highest AUC scores, a metric reported by the trainable)
                 checkpoint_score_attribute="max-auc",
                 checkpoint_score_order="max",
@@ -189,7 +189,7 @@ that implements saving and loading checkpoints.
     # This starts the run!
     results = tuner.fit()
 
-In this example, trial checkpoints will be saved to: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
+In this example, trial checkpoints are saved to: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
 
 .. _tune-syncing-restore-from-uri:
 
@@ -208,8 +208,8 @@ you can resume it any time starting from the experiment state saved in the cloud
 
 
 There are a few options for restoring an experiment:
-``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
-Please see the documentation of
+``resume_unfinished``, ``resume_errored``, and ``restart_errored``.
+See the documentation of
 :meth:`~ray.tune.Tuner.restore` for more details.
 
 

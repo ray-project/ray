@@ -7,7 +7,7 @@ How to work with Callbacks in Ray Tune?
 ---------------------------------------
 
 Ray Tune supports callbacks that are called during various times of the training process.
-Callbacks can be passed as a parameter to ``RunConfig``, taken in by ``Tuner``, and the sub-method you provide will be invoked automatically.
+Callbacks can be passed as a parameter to ``RunConfig``, taken in by ``Tuner``, and the sub-method you provide is invoked automatically.
 
 This simple callback just prints a metric each time a result is received:
 
@@ -32,7 +32,7 @@ This simple callback just prints a metric each time a result is received:
         run_config=tune.RunConfig(callbacks=[MyCallback()]))
     tuner.fit()
 
-For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
+For more details and available hooks, :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
 
 
 .. _tune-autofilled-metrics:
@@ -57,14 +57,14 @@ You can log arbitrary values and metrics in both Function and Class training API
 
 
 .. tip::
-    Note that ``tune.report()`` is not meant to transfer large amounts of data, like models or datasets.
+    Note that ``tune.report()`` isn't meant to transfer large amounts of data, like models or datasets.
     Doing so can incur large overheads and slow down your Tune run significantly.
 
 Which Tune metrics get automatically filled in?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune has the concept of auto-filled metrics.
-During training, Tune will automatically log the below metrics in addition to any user-provided values.
+During training, Tune automatically logs the metrics below in addition to any user-provided values.
 All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
 * ``config``: The hyperparameter configuration

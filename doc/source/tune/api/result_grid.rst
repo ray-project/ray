@@ -3,8 +3,8 @@
 
 .. _result-grid-docstring:
 
-Tune Experiment Results (tune.ResultGrid)
-=========================================
+Tune Experiment Results (``tune.ResultGrid``)
+=============================================
 
 ResultGrid (tune.ResultGrid)
 ----------------------------
