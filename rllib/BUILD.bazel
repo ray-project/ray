@@ -2909,7 +2909,7 @@ py_test(
 py_test(
     # TODO(#50340): test is flaky.
     name = "test_offline_prelearner",
-    size = "medium",
+    size = "large",
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
@@ -2921,6 +2921,16 @@ py_test(
         "team:rllib",
     ],
     deps = [":conftest"],
+)
+
+py_test(
+    name = "test_offline_rl_stateful",
+    size = "large",
+    srcs = ["offline/tests/test_offline_rl_stateful.py"],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
 )
 
 # --------------------------------------------------------------------
