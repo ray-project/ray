@@ -148,7 +148,14 @@ class UvProcessor:
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
+
+        # Expand environment variables in package specifications.
+        # Unlike pip, uv doesn't expand ${VAR} in requirements files,
+        # so we need to do it here. This supports RAY_RUNTIME_ENV_CREATE_WORKING_DIR
+        # for referencing files in the working_dir (e.g., requirements.txt).
+        # See https://github.com/ray-project/ray/issues/59343
+        expanded_packages = [os.path.expandvars(pkg) for pkg in uv_packages]
+        requirements_file = dependency_utils.get_requirements_file(path, expanded_packages)
 
         # Check existence for `uv` and see if we could skip `uv` installation.
         uv_exists = await self._check_uv_existence(path, cwd, pip_env, logger)
@@ -160,7 +167,7 @@ class UvProcessor:
         # Avoid blocking the event loop.
         loop = get_running_loop()
         await loop.run_in_executor(
-            None, dependency_utils.gen_requirements_txt, requirements_file, uv_packages
+            None, dependency_utils.gen_requirements_txt, requirements_file, expanded_packages
         )
 
         # Install all dependencies.

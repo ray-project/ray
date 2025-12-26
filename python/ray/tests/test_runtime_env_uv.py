@@ -188,5 +188,72 @@ def test_package_install_with_multiple_options(shutdown_only):
     ray.get(g.remote())
 
 
+@pytest.fixture(scope="function")
+def tmp_working_dir_for_env_var():
+    """A test fixture which creates a working directory with nested requirements."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        yield str(path)
+
+
+def test_working_dir_applies_for_uv_creation(shutdown_only, tmp_working_dir_for_env_var):
+    """Test that RAY_RUNTIME_ENV_CREATE_WORKING_DIR is expanded in uv package specs.
+
+    This tests the fix for https://github.com/ray-project/ray/issues/59343
+    """
+    tmp_dir = tmp_working_dir_for_env_var
+
+    # Create a requirements.txt that references another file using the env var
+    with open(Path(tmp_dir) / "requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    ray.init(
+        runtime_env={
+            "working_dir": tmp_dir,
+            "uv": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_working_dir_applies_for_uv_creation_nested(
+    shutdown_only, tmp_working_dir_for_env_var
+):
+    """Test nested requirements file references with RAY_RUNTIME_ENV_CREATE_WORKING_DIR.
+
+    This tests that files referenced within requirements.txt also work.
+    """
+    tmp_dir = tmp_working_dir_for_env_var
+
+    # Create a requirements.txt that references another file
+    with open(Path(tmp_dir) / "requirements.txt", "w") as f:
+        f.write("-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/more_requirements.txt")
+
+    with open(Path(tmp_dir) / "more_requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    ray.init(
+        runtime_env={
+            "working_dir": tmp_dir,
+            "uv": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
