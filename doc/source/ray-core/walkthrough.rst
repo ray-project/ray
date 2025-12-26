@@ -80,7 +80,7 @@ Passing Objects
 
 Ray's distributed object store efficiently manages data across your cluster. There are three main ways to work with objects in Ray:
 
-1. **Implicit creation**: When tasks and actors return values, they are automatically stored in Ray's :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved.
+1. **Implicit creation**: When tasks and actors return values, they're automatically stored in Ray's :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved.
 2. **Explicit creation**: Use ``ray.put()`` to directly place objects in the store.
 3. **Passing references**: You can pass object references to other tasks and actors, avoiding unnecessary data copying and enabling lazy execution.
 

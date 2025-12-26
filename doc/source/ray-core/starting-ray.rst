@@ -8,19 +8,19 @@ This page covers how to start Ray on your single machine or cluster of machines.
 .. tip:: Be sure to have :ref:`installed Ray <installation>` before following the instructions on this page.
 
 
-What is the Ray runtime?
-------------------------
+The Ray runtime
+---------------
 
 Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*.
 The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
 
 There are three ways of starting the Ray runtime:
 
-* Implicitly via ``ray.init()`` (:ref:`start-ray-init`)
-* Explicitly via CLI (:ref:`start-ray-cli`)
-* Explicitly via the cluster launcher (:ref:`start-ray-up`)
+* Implicitly using ``ray.init()`` (:ref:`start-ray-init`)
+* Explicitly using CLI (:ref:`start-ray-cli`)
+* Explicitly using the cluster launcher (:ref:`start-ray-up`)
 
-In all cases, ``ray.init()`` will try to automatically find a Ray instance to
+In all cases, ``ray.init()`` tries to automatically find a Ray instance to
 connect to. It checks, in order:
 1. The ``RAY_ADDRESS`` OS environment variable.
 2. The concrete address passed to ``ray.init(address=<address>)``.
@@ -31,11 +31,11 @@ connect to. It checks, in order:
 Starting Ray on a single machine
 --------------------------------
 
-Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This laptop/machine becomes the  "head node".
+Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This laptop/machine becomes the "head node."
 
 .. note::
 
-  In recent versions of Ray (>=1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
+  In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
 
 .. tab-set::
 
@@ -50,7 +50,7 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
         .. testcode::
 
           import ray
-          # Other Ray APIs will not work until `ray.init()` is called.
+          # Other Ray APIs don't work until `ray.init()` is called.
           ray.init()
 
     .. tab-item:: Java
@@ -62,7 +62,7 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
             public class MyRayApp {
 
               public static void main(String[] args) {
-                // Other Ray APIs will not work until `Ray.init()` is called.
+                // Other Ray APIs don't work until `Ray.init()` is called.
                 Ray.init();
                 ...
               }
@@ -73,10 +73,10 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
         .. code-block:: c++
 
             #include <ray/api.h>
-            // Other Ray APIs will not work until `ray::Init()` is called.
+            // Other Ray APIs don't work until `ray::Init()` is called.
             ray::Init()
 
-When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
+When the process calling ``ray.init()`` terminates, the Ray runtime also terminates. To explicitly stop or restart Ray, use the shutdown API.
 
 .. tab-set::
 
@@ -167,10 +167,10 @@ See the `Configuration <configure.html>`__ documentation for the various ways to
 
 .. _start-ray-cli:
 
-Starting Ray via the CLI (``ray start``)
-----------------------------------------
+Starting Ray using the CLI (``ray start``)
+-------------------------------------------
 
-Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This machine becomes the "head node".
+Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This machine becomes the "head node."
 
 .. code-block:: bash
 
@@ -187,7 +187,7 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
 
 
 You can connect to this Ray instance by starting a driver process on the same node as where you ran ``ray start``.
-``ray.init()`` will now automatically connect to the latest Ray instance.
+``ray.init()`` now automatically connects to the latest Ray instance.
 
 .. tab-set::
 
@@ -234,7 +234,7 @@ You can connect to this Ray instance by starting a driver process on the same no
           RAY_ADDRESS=<address> ./<binary> <args>
 
 
-You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`on-prem` for more details. Calling ``ray.init()`` on any of the cluster machines will connect to the same Ray cluster.
+You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`on-prem` for more details. Calling ``ray.init()`` on any of the cluster machines connects to the same Ray cluster.
 
 .. _start-ray-up:
 
@@ -246,7 +246,7 @@ The ``ray up`` command uses the Ray cluster launcher to start a cluster on the c
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <cluster-index>`.
 
-To connect to the Ray cluster, call ``ray.init`` from one of the machines in the cluster. This will connect to the latest Ray cluster:
+To connect to the Ray cluster, call ``ray.init`` from one of the machines in the cluster. This connects to the latest Ray cluster:
 
 .. testcode::
   :hide:
@@ -257,9 +257,9 @@ To connect to the Ray cluster, call ``ray.init`` from one of the machines in the
 
   ray.init()
 
-Note that the machine calling ``ray up`` will not be considered as part of the Ray cluster, and therefore calling ``ray.init`` on that same machine will not attach to the cluster.
+Note that the machine calling ``ray up`` isn't considered as part of the Ray cluster, and therefore calling ``ray.init`` on that same machine doesn't attach to the cluster.
 
 What's next?
 ------------
 
-Check out our `Deployment section <../cluster/getting-started.html>`_ for more information on deploying Ray in different settings, including `Kubernetes <../cluster/kubernetes/index.html>`_, `YARN <../cluster/vms/user-guides/community/yarn.html>`_, and `SLURM <../cluster/vms/user-guides/community/slurm.html>`_.
+Check out the `Deployment section <../cluster/getting-started.html>`_ for more information on deploying Ray in different settings, including `Kubernetes <../cluster/kubernetes/index.html>`_, `YARN <../cluster/vms/user-guides/community/yarn.html>`_, and `SLURM <../cluster/vms/user-guides/community/slurm.html>`_.

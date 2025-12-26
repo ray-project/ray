@@ -20,7 +20,7 @@ Labels are a beta feature. As this feature becomes stable, the Ray team recommen
 
 .. note:: 
 
-  A legacy pattern recommended using custom resources for label-based scheduling. We now recommend only using custom resources when you need to manage scheduling using numeric values. 
+  A legacy pattern recommended using custom resources for label-based scheduling. The recommendation now is to only use custom resources when you need to manage scheduling using numeric values. 
 
 .. _ray-scheduling-resources:
 
@@ -33,15 +33,15 @@ Given that, a node can be in one of the following states:
 - Feasible: the node has the required resources to run the task or actor.
   Depending on the current availability of these resources, there are two sub-states:
 
-  - Available: the node has the required resources and they are free now.
-  - Unavailable: the node has the required resources but they are currently being used by other tasks or actors.
+  - Available: the node has the required resources and they're free now.
+  - Unavailable: the node has the required resources but they're currently being used by other tasks or actors.
 
 - Infeasible: the node doesn't have the required resources. For example a CPU-only node is infeasible for a GPU task.
 
 Resource requirements are **hard** requirements meaning that only feasible nodes are eligible to run the task or actor.
-If there are feasible nodes, Ray will either choose an available node or wait until an unavailable node to become available
+If there are feasible nodes, Ray either chooses an available node or waits until an unavailable node to become available
 depending on other factors discussed below.
-If all nodes are infeasible, the task or actor cannot be scheduled until feasible nodes are added to the cluster.
+If all nodes are infeasible, the task or actor can't be scheduled until feasible nodes are added to the cluster.
 
 .. _ray-scheduling-strategies:
 
@@ -62,12 +62,12 @@ Within the top k group, nodes are chosen randomly to further improve load-balanc
 
 Implementation-wise, Ray calculates a score for each node in a cluster based on the utilization of its logical resources.
 If the utilization is below a threshold (controlled by the OS environment variable ``RAY_scheduler_spread_threshold``, default is 0.5), the score is 0,
-otherwise it is the resource utilization itself (score 1 means the node is fully utilized).
+otherwise it's the resource utilization itself (a score of 1 means the node is fully utilized).
 Ray selects the best node for scheduling by randomly picking from the top k nodes with the lowest scores.
 The value of ``k`` is the max of (number of nodes in the cluster * ``RAY_scheduler_top_k_fraction`` environment variable) and ``RAY_scheduler_top_k_absolute`` environment variable.
 By default, it's 20% of the total number of nodes.
 
-Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
+Currently Ray handles actors that don't require any resources (``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
 
 .. literalinclude:: ../doc_code/scheduling.py
@@ -78,7 +78,7 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 "SPREAD"
 ~~~~~~~~
 
-``"SPREAD"`` strategy will try to spread the tasks or actors among available nodes.
+``"SPREAD"`` strategy tries to spread the tasks or actors among available nodes.
 
 .. literalinclude:: ../doc_code/scheduling.py
     :language: python
@@ -88,25 +88,25 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 PlacementGroupSchedulingStrategy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:py:class:`~ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy` will schedule the task or actor to where the placement group is located.
+:py:class:`~ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy` schedules the task or actor to where the placement group is located.
 This is useful for actor gang scheduling. See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 NodeAffinitySchedulingStrategy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :py:class:`~ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy` is a low-level strategy that allows a task or actor to be scheduled onto a particular node specified by its node id.
-The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
-or is infeasible because it does not have the resources required to run the task or actor.
-In these cases, if ``soft`` is True, the task or actor will be scheduled onto a different feasible node.
-Otherwise, the task or actor will fail with :py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
-As long as the specified node is alive and feasible, the task or actor will only run there
-regardless of the ``soft`` flag. This means if the node currently has no available resources, the task or actor will wait until resources
+The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else if the specified node doesn't exist (for example, if the node dies)
+or is infeasible because it doesn't have the resources required to run the task or actor.
+In these cases, if ``soft`` is True, the task or actor is scheduled onto a different feasible node.
+Otherwise, the task or actor fails with :py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
+As long as the specified node is alive and feasible, the task or actor only runs there
+regardless of the ``soft`` flag. This means if the node currently has no available resources, the task or actor waits until resources
 become available.
-This strategy should *only* be used if other high level scheduling strategies (e.g. :ref:`placement group <ray-placement-group-doc-ref>`) cannot give the
+This strategy should *only* be used if other high level scheduling strategies (for example, :ref:`placement group <ray-placement-group-doc-ref>`) can't give the
 desired task or actor placements. It has the following known limitations:
 
 - It's a low-level strategy which prevents optimizations by a smart scheduler.
-- It cannot fully utilize an autoscaling cluster since node ids must be known when the tasks or actors are created.
+- It can't fully utilize an autoscaling cluster since node ids must be known when the tasks or actors are created.
 - It can be difficult to make the best static placement decision
   especially in a multi-tenant cluster: for example, an application won't know what else is being scheduled onto the same nodes.
 
@@ -124,8 +124,8 @@ By default, Ray prefers available nodes that have large task arguments local
 to avoid transferring data over the network. If there are multiple large task arguments,
 the node with most object bytes local is preferred.
 This takes precedence over the ``"DEFAULT"`` scheduling strategy,
-which means Ray will try to run the task on the locality preferred node regardless of the node resource utilization.
-However, if the locality preferred node is not available, Ray may run the task somewhere else.
+which means Ray tries to run the task on the locality preferred node regardless of the node resource utilization.
+However, if the locality preferred node isn't available, Ray may run the task somewhere else.
 When other scheduling strategies are specified,
 they have higher precedence and data locality is no longer considered.
 

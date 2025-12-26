@@ -33,7 +33,7 @@ first connect to the cluster.
           config.ray_namespace = "hello";
           ray::Init(config);
 
-Please refer to `Driver Options <configure.html#driver-options>`__ for ways of configuring a Java application.
+Refer to `Driver Options <configure.html#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
 
@@ -152,7 +152,7 @@ the specified namespace, no matter what namespace of the current job is.
                 Ray.init();
                 // Create an actor with specified namespace.
                 Ray.actor(Actor::new).setName("my_actor", "actor_namespace").remote();
-                // It is accessible in its namespace.
+                // It's accessible in its namespace.
                 Ray.getActor("my_actor", "actor_namespace").isPresent(); // return true
 
             } finally {
@@ -168,7 +168,7 @@ the specified namespace, no matter what namespace of the current job is.
             ray::Init(config);
             // Create an actor with specified namespace.
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
-            // It is accessible in its namespace.
+            // It's accessible in its namespace.
             ray::GetActor<Counter>("my_actor", "actor_namespace");
             ray::Shutdown();
 
@@ -176,9 +176,9 @@ the specified namespace, no matter what namespace of the current job is.
 Anonymous namespaces
 --------------------
 
-When a namespace is not specified, Ray will place your job in an anonymous
-namespace. In an anonymous namespace, your job will have its own namespace and
-will not have access to actors in other namespaces.
+When a namespace isn't specified, Ray places your job in an anonymous
+namespace. In an anonymous namespace, your job has its own namespace and
+doesn't have access to actors in other namespaces.
 
 .. tab-set::
 
@@ -237,7 +237,7 @@ will not have access to actors in other namespaces.
 
      Anonymous namespaces are implemented as UUID's. This makes it possible for
      a future job to manually connect to an existing anonymous namespace, but
-     it is not recommended.
+     it isn't recommended.
 
 
 Getting the current namespace

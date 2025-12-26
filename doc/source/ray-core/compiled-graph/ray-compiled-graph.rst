@@ -59,7 +59,7 @@ Ray Compiled Graph APIs simplify development of high-performance multi-GPU workl
 
 - Sub-millisecond level task orchestration.
 - Direct GPU-GPU peer-to-peer or collective communication.
-- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ or MPMD (Multiple Program Multiple Data) execution.
+- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ or Multiple Program Multiple Data (MPMD) execution.
 
 More Resources
 --------------

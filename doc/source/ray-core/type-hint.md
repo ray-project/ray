@@ -24,7 +24,7 @@ However, certain patterns, especially when working with actors, require specific
 
 ## Pattern 1: Use `ray.remote` as a function to build an actor
 
-Use the `ray.remote` function directly to create an actor class, instead of using the `@ray.remote` decorator. This will preserve the original class type and allow type inference to work correctly. For example, in this case, the original class type is `DemoRay`, and the actor class type is `ActorClass[DemoRay]`.
+Use the `ray.remote` function directly to create an actor class, instead of using the `@ray.remote` decorator. This preserves the original class type and allows type inference to work correctly. For example, in this case, the original class type is `DemoRay`, and the actor class type is `ActorClass[DemoRay]`.
 
 ```python
 import ray
@@ -42,9 +42,9 @@ ActorDemoRay: ActorClass[DemoRay] = ray.remote(DemoRay)
 # DemoRay is the original class type, ActorDemoRay is the ActorClass[DemoRay] type
 ```
 
-After creating the `ActorClass[DemoRay]` type, we can use it to instantiate an actor by calling `ActorDemoRay.remote(1)`. It returns an `ActorProxy[DemoRay]` type, which represents an actor handle.
+After creating the `ActorClass[DemoRay]` type, you can use it to instantiate an actor by calling `ActorDemoRay.remote(1)`. It returns an `ActorProxy[DemoRay]` type, which represents an actor handle.
 
-This handle will provide type hints for the actor methods, including their arguments and return types.
+This handle provides type hints for the actor methods, including their arguments and return types.
 
 ```python
 
@@ -58,15 +58,15 @@ a = func.remote()
 print(ray.get(a))
 ```
 
-**Why do we need to do this?**
+**Why is this necessary?**
 
-In Ray, the `@ray.remote` decorator indicates that instances of the class `T` are actors, with each actor running in its own Python process. However, the `@ray.remote` decorator will transform the class `T` into a `ActorClass[T]` type, which is not the original class type.
+In Ray, the `@ray.remote` decorator indicates that instances of the class `T` are actors, with each actor running in its own Python process. However, the `@ray.remote` decorator transforms the class `T` into a `ActorClass[T]` type, which isn't the original class type.
 
-Unfortunately, IDE and static type checkers will not be able to infer the original type `T` of the `ActorClass[T]`. To solve this problem, using `ray.remote(T)` will explicitly return a new generic class `ActorClass[T]` type while preserving the original class type.
+Unfortunately, IDE, and static type checkers are unable to infer the original type `T` of the `ActorClass[T]`. To solve this problem, using `ray.remote(T)` explicitly returns a new generic class `ActorClass[T]` type while preserving the original class type.
 
 ## Pattern 2: Use `@ray.method` decorator for remote methods
 
-Add the `@ray.method` decorator to the actor methods in order to obtain type hints for the remote methods of the actor through `ActorProxy[T]` type, including their arguments and return types.
+Add the `@ray.method` decorator to the actor methods to obtain type hints for the remote methods of the actor through `ActorProxy[T]` type, including their arguments and return types.
 
 ```python
 from ray.actor import ActorClass, ActorProxy
@@ -88,5 +88,5 @@ print(ray.get(a))
 ```
 
 :::{note}
-We would love to make the typing of remote methods work without `@ray.method` decorator. If any community member has an idea, we welcome PRs.
+The Ray team would love to make the typing of remote methods work without `@ray.method` decorator. If any community member has an idea, the team welcomes PRs.
 :::

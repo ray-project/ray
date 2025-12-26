@@ -48,7 +48,7 @@ In the preceding example, object ``x`` outlives its owner task ``a``.
 If the worker process running task ``a`` fails, calling ``ray.get`` on ``x_ref`` afterwards results in an ``OwnerDiedError`` exception.
 
 The following example is a fault tolerant version which returns ``x`` directly. In this example, the driver owns ``x`` and you only access it within the lifetime of the driver.
-If ``x`` is lost, Ray can automatically recover it via :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`.
+If ``x`` is lost, Ray can automatically recover it through :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`.
 See :doc:`/ray-core/patterns/return-ray-put` for more details.
 
 .. literalinclude:: doc_code/fault_tolerance_tips.py

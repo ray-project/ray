@@ -28,8 +28,8 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
           }
 
           // Invoke the above method as a Ray task.
-          // This will immediately return an object ref (a future) and then create
-          // a task that will be executed on a worker process.
+          // This immediately returns an object ref (a future) and then creates
+          // a task that's executed on a worker process.
           ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
 
           // The result can be retrieved with ``ObjectRef::get``.
@@ -61,8 +61,8 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
           RAY_REMOTE(MyFunction);
 
           // Invoke the above method as a Ray task.
-          // This will immediately return an object ref (a future) and then create
-          // a task that will be executed on a worker process.
+          // This immediately returns an object ref (a future) and then creates
+          // a task that's executed on a worker process.
           auto res = ray::Task(MyFunction).Remote();
 
           // The result can be retrieved with ``ray::ObjectRef::Get``.
@@ -138,7 +138,7 @@ You can specify resource requirements in tasks (see :ref:`resource-requirements`
 Passing object refs to Ray tasks
 ---------------------------------------
 
-In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
+In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the task gets executed, inside the function body **the argument is the underlying value**. For example, take this function:
 
 .. tab-set::
 
@@ -184,15 +184,15 @@ In addition to values, `Object refs <objects.html>`__ can also be passed into re
 
 Note the following behaviors:
 
-  -  As the second task depends on the output of the first task, Ray will not execute the second task until the first task has finished.
+  -  As the second task depends on the output of the first task, Ray doesn't execute the second task until the first task has finished.
   -  If the two tasks are scheduled on different machines, the output of the
-     first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
+     first task (the value corresponding to ``obj_ref1/objRef1``) is sent over the
      network to the machine where the second task is scheduled.
 
 Waiting for Partial Results
 ---------------------------
 
-Calling **ray.get** on Ray task results will block until the task finished execution. After launching a number of tasks, you may want to know which ones have
+Calling **ray.get** on Ray task results blocks until the task finished execution. After launching a number of tasks, you may want to know which ones have
 finished executing without blocking on all of them. This could be achieved by :func:`ray.wait() <ray.wait>`. The function
 works as follows.
 
@@ -239,7 +239,7 @@ By default, a Ray task only returns a single Object Ref. However, you can config
             :start-after: __multiple_returns_start__
             :end-before: __multiple_returns_end__
 
-For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. Ray also supports an option to set the number of return values dynamically, which can be useful when the task caller does not know how many return values to expect. See the :ref:`user guide <generators>` for more details on use cases.
+For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. Ray also supports an option to set the number of return values dynamically, which can be useful when the task caller doesn't know how many return values to expect. See the :ref:`user guide <generators>` for more details on use cases.
 
 .. tab-set::
 
@@ -270,7 +270,7 @@ Ray tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the re
 Scheduling
 ----------
 
-For each task, Ray will choose a node to run it
+For each task, Ray chooses a node to run it
 and the scheduling decision is based on a few factors like
 :ref:`the task's resource requirements <ray-scheduling-resources>`,
 :ref:`the specified scheduling strategy <ray-scheduling-strategies>`
@@ -280,7 +280,7 @@ See :ref:`Ray scheduling <ray-scheduling>` for more details.
 Fault Tolerance
 ---------------
 
-By default, Ray will :ref:`retry <task-retries>` failed tasks
+By default, Ray :ref:`retries <task-retries>` failed tasks
 due to system failures and specified application-level failures.
 You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options

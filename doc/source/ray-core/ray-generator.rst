@@ -28,7 +28,7 @@ Generator tasks stream outputs back to the caller before the task finishes.
     +    print(ray.get(obj_ref))
 
 
-The above Ray generator yields the output every 5 seconds 5 times.
+The preceding Ray generator yields the output every 5 seconds 5 times.
 With a normal Ray task, you have to wait 25 seconds to access the output.
 With a Ray generator, the caller can access the object reference
 before the task ``f`` finishes.
@@ -97,10 +97,10 @@ Ray raises the exception.
     :start-after: __streaming_generator_exception_start__
     :end-before: __streaming_generator_exception_end__
 
-In the above example, if an application fails the task, Ray returns the object reference with an exception
+In the preceding example, if an application fails the task, Ray returns the object reference with an exception
 in a correct order. For example, if Ray raises the exception after the second yield, the third
 ``next(gen)`` returns an object reference with an exception all the time. If a system error fails the task,
-(e.g., a node failure or worker process failure), ``next(gen)`` returns the object reference that contains the system level exception
+(for example,, a node failure or worker process failure), ``next(gen)`` returns the object reference that contains the system level exception
 at any time without an ordering guarantee.
 It means when you have N yields, the generator can create from 1 to N + 1 object references
 (N output + ref with a system-level exception) when there failures occur.
@@ -128,7 +128,7 @@ use ``__anext__`` or ``async for`` loops.
 Garbage collection of object references
 ---------------------------------------
 The returned ref from ``next(generator)`` is just a regular Ray object reference and is distributed ref counted in the same way.
-If references are not consumed from a generator by the ``next`` API, references are garbage collected (GC’ed) when the generator is GC’ed.
+If references aren't consumed from a generator by the ``next`` API, references are garbage collected (GC’ed) when the generator is GC’ed.
 
 .. literalinclude:: doc_code/streaming_generator.py
     :language: python
@@ -165,7 +165,7 @@ Unblocking wait is possible with the Ray generator in the following ways:
 
 **Wait until a generator task completes**
 
-``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that is available when a generator task finishes or errors.
+``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that's available when a generator task finishes or errors.
 For example, you can do ``ray.get(<generator_instance>.completed())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
 
 **Use asyncio and await**
@@ -200,7 +200,7 @@ all input arguments (such as ``timeout``, ``num_returns``, and ``fetch_local``) 
 
 Thread safety
 -------------
-``ObjectRefGenerator`` object is not thread-safe.
+``ObjectRefGenerator`` object isn't thread-safe.
 
 Limitation
 ----------
