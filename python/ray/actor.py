@@ -95,6 +95,29 @@ class _RemoteMethodNoArgs(Generic[_Ret]):
         ...
 
 
+class _RemoteMethodP(Generic[_P, _Ret]):
+    """Remote method wrapper that preserves parameter specification including defaults.
+
+    This uses ParamSpec to preserve the full method signature, including
+    default parameter values. This fixes type checking for methods like:
+
+        @ray.method(num_returns=1)
+        def f(self, b: int = 1) -> int:
+            return b
+
+    Where the type checker should know that `.remote()` can be called with
+    0 or 1 arguments.
+
+    See https://github.com/ray-project/ray/issues/59303
+    """
+
+    def remote(self, *args: _P.args, **kwargs: _P.kwargs) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, *args: _P.args, **kwargs: _P.kwargs) -> Any:
+        ...
+
+
 class _RemoteMethod0(Generic[_Ret, _T0]):
     def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
         ...
@@ -297,6 +320,18 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
         ...
 
 
+# ParamSpec-based overload that preserves default parameters.
+# This is the preferred overload for methods with optional parameters.
+# See https://github.com/ray-project/ray/issues/59303
+@overload
+def method(
+    __method: Callable[Concatenate[Any, _P], _Ret],
+) -> _RemoteMethodP[_P, _Ret]:
+    ...
+
+
+# The following overloads are kept for backward compatibility with existing
+# code that may rely on the specific _RemoteMethodN types.
 @overload
 def method(
     __method: Callable[[Any, _T0], _Ret],
