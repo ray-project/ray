@@ -879,27 +879,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 to_borrow,
             )
 
-            if (
-                max_resource_usage != ExecutionResources.inf()
-                and max_resource_usage.gpu > 0
-            ):
-                # If an operator needs GPU, we just allocate all GPUs to it.
-                # TODO(hchen): allocate resources across multiple GPU operators.
-
-                # The op_usage can be more than the global limit in the following cases:
-                # 1. The op is setting a minimum concurrency that is larger than
-                #    available num of GPUs.
-                # 2. The cluster scales down, and the global limit decreases.
-                target_num_gpu = max(
-                    limits.gpu - self._resource_manager.get_op_usage(op).gpu,
-                    0,
-                )
-            else:
-                target_num_gpu = 0
-
-            self._op_budgets[op] = (
-                self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
-            )
+            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
         # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
@@ -907,9 +887,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             for op in reversed(eligible_ops):
                 _, max_resource_usage = op.min_max_resource_requirements()
                 if max_resource_usage == ExecutionResources.inf():
-                    self._op_budgets[op] = self._op_budgets[op].add(
-                        remaining_shared.copy(gpu=0)
-                    )
+                    self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
                     break
 
         # A materializing operator like `AllToAllOperator` waits for all its input
