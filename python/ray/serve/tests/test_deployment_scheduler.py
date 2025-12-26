@@ -11,6 +11,7 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
 from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
+    Resources,
     SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.test_utils import check_apps_running, get_node_id
@@ -284,6 +285,89 @@ class TestPackScheduling:
         assert all(ref.result() == worker1_node_id for ref in refs)
 
         serve.shutdown()
+
+    def test_e2e_labels_and_fallback_strategy(self):
+        """Test that scheduler respects labels and tries fallback strategies
+        when selecting the best node for bin-packing."""
+
+        N1_ID = "1" * 56
+        N2_ID = "2" * 56
+        N3_ID = "3" * 56
+
+        # Mock some active nodes with varying resources and labels.
+        class MockActor:
+            def options(self, **kwargs):
+                return self
+
+            def remote(self, *args, **kwargs):
+                return "mock_handle"
+
+        class MockCache:
+            def get_active_node_ids(self):
+                return {N1_ID, N2_ID, N3_ID}
+
+            def get_node_labels(self, node_id):
+                return {
+                    N1_ID: {"region": "us-west"},
+                    N2_ID: {"region": "us-east"},
+                    N3_ID: {"region": "eu-central"},
+                }[node_id]
+
+            def get_available_resources_per_node(self):
+                return {
+                    N1_ID: {"CPU": 2},
+                    N2_ID: {"CPU": 10},
+                    N3_ID: {"CPU": 4},
+                }
+
+            def get_total_resources_per_node(self):
+                return self.get_available_resources_per_node()
+
+        scheduler = default_impl.create_deployment_scheduler(
+            MockCache(), "head_node_id"
+        )
+
+        # Validate the label_selector constraint is respected.
+        # For a request of 1 CPU and "us-west", we pick the node that matches the label
+        # (n2) even though a better fit exists (n1).
+        dep_id = DeploymentID(name="test_labels")
+        scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+        scheduler._deployments[dep_id].actor_resources = Resources({"CPU": 1})
+
+        req = ReplicaSchedulingRequest(
+            replica_id=ReplicaID("r1", dep_id),
+            actor_def=Replica,
+            actor_resources={"CPU": 1},
+            actor_options={"label_selector": {"region": "us-west"}, "name": "r1"},
+            actor_init_args=(),
+            on_scheduled=lambda *args, **kwargs: None,
+        )
+
+        scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+        launch_info = scheduler._launching_replicas[dep_id][req.replica_id]
+        assert launch_info.target_node_id == N1_ID
+
+        # Validate fallback strategy is used when selecting a node. If the
+        # label constraints and resources of the primary strategy are infeasible,
+        # we try each fallback strategy in-order.
+        req_fallback = ReplicaSchedulingRequest(
+            replica_id=ReplicaID("r2", dep_id),
+            actor_def=Replica,
+            actor_resources={"CPU": 1},
+            actor_options={
+                "label_selector": {"region": "us-north"},  # Invalid
+                "fallback_strategy": [
+                    {"label_selector": {"region": "eu-central"}}
+                ],  # Valid (n3)
+                "name": "r2",
+            },
+            actor_init_args=(),
+            on_scheduled=lambda *args, **kwargs: None,
+        )
+
+        scheduler.schedule(upscales={dep_id: [req_fallback]}, downscales={})
+        launch_info = scheduler._launching_replicas[dep_id][req_fallback.replica_id]
+        assert launch_info.target_node_id == N3_ID
 
 
 if __name__ == "__main__":

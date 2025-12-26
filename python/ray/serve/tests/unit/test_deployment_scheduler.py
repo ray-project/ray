@@ -867,6 +867,113 @@ def test_downscale_single_deployment():
     scheduler.on_deployment_deleted(dep_id)
 
 
+def test_schedule_passes_placement_group_options():
+    """Test that bundle_label_selector is passed to CreatePlacementGroupRequest."""
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    captured_requests = []
+
+    def mock_create_pg(request):
+        captured_requests.append(request)
+
+        class MockPG:
+            def wait(self, *args):
+                return True
+
+        return MockPG()
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=mock_create_pg,
+    )
+
+    dep_id = DeploymentID(name="pg_options_test")
+    # Use Spread policy here, but the logic is shared across policies.
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    test_labels = [{"region": "us-west"}]
+    # Create a request with the new options
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_bundle_label_selector=test_labels,
+    )
+
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    # Verify the PlacementGroupSchedulingRequest is created.
+    assert len(captured_requests) == 1
+    pg_request = captured_requests[0]
+
+    # bundle_label_selector should be passed to request.
+    assert pg_request.bundle_label_selector == test_labels
+
+
+def test_filter_nodes_by_labels():
+    """Test _filter_nodes_by_labels logic used by _find_best_available_node
+    when bin-packing, such that label constraints are enforced for the preferred node."""
+
+    class MockScheduler(default_impl.DefaultDeploymentScheduler):
+        def __init__(self):
+            pass
+
+    scheduler = MockScheduler()
+
+    nodes = {
+        "n1": Resources(),
+        "n2": Resources(),
+        "n3": Resources(),
+    }
+    node_labels = {
+        "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
+        "n2": {"region": "us-east", "gpu": "A100", "env": "dev"},
+        "n3": {"region": "me-central", "env": "staging"},  # No GPU label
+    }
+
+    # equals operator
+    filtered = scheduler._filter_nodes_by_labels(
+        nodes, {"region": "us-west"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1"}
+
+    # not equals operator
+    filtered = scheduler._filter_nodes_by_labels(
+        nodes, {"region": "!us-west"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n2", "n3"}
+
+    # in operator
+    filtered = scheduler._filter_nodes_by_labels(
+        nodes, {"region": "in(us-west, us-east)"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1", "n2"}
+
+    # !in operator
+    filtered = scheduler._filter_nodes_by_labels(
+        nodes, {"env": "!in(dev, staging)"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1"}
+
+    # Missing labels treated as not a match for equality.
+    filtered = scheduler._filter_nodes_by_labels(nodes, {"gpu": "A100"}, node_labels)
+    assert set(filtered.keys()) == {"n2"}
+
+    # Not equal should match node with missing labels.
+    filtered = scheduler._filter_nodes_by_labels(nodes, {"gpu": "!T4"}, node_labels)
+    assert set(filtered.keys()) == {"n2", "n3"}
+
+    # Validate we handle whitespace.
+    filtered = scheduler._filter_nodes_by_labels(
+        nodes, {"region": "in(  us-west , us-east  )"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1", "n2"}
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
