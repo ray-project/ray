@@ -1,4 +1,4 @@
-.. admonition:: Check your version!
+.. admonition:: Check your version
 
     Things can change quickly, and so does this contributor guide.
     To make sure you've got the most cutting edge version of this guide,
