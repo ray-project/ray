@@ -193,6 +193,10 @@ class _RequestContext:
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False
+    # Ray tracing context for this request (if tracing is enabled)
+    # This is extracted from _ray_trace_ctx kwarg at the replica entry point
+    # Advanced users can access this to propagate tracing to external systems
+    _ray_trace_ctx: Optional[dict] = None
 
 
 _serve_request_context = contextvars.ContextVar(
