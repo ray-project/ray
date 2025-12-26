@@ -461,10 +461,10 @@ class Expr(ABC):
     # arithmetic helpers
     def negate(self) -> "UDFExpr":
         """Compute the negation of the expression.
-        
+
         Returns:
             A UDFExpr that computes the negation (multiplies values by -1).
-            
+
         Example:
             >>> from ray.data.expressions import col
             >>> import ray
@@ -476,10 +476,10 @@ class Expr(ABC):
 
     def sign(self) -> "UDFExpr":
         """Compute the sign of the expression.
-        
+
         Returns:
             A UDFExpr that returns -1 for negative values, 0 for zero, and 1 for positive values.
-            
+
         Example:
             >>> from ray.data.expressions import col
             >>> import ray
@@ -491,13 +491,13 @@ class Expr(ABC):
 
     def power(self, exponent: Any) -> "UDFExpr":
         """Raise the expression to the given power.
-        
+
         Args:
             exponent: The exponent to raise the expression to.
-            
+
         Returns:
             A UDFExpr that computes the power operation.
-            
+
         Example:
             >>> from ray.data.expressions import col, lit
             >>> import ray
@@ -511,10 +511,10 @@ class Expr(ABC):
 
     def abs(self) -> "UDFExpr":
         """Compute the absolute value of the expression.
-        
+
         Returns:
             A UDFExpr that computes the absolute value.
-            
+
         Example:
             >>> from ray.data.expressions import col
             >>> import ray
