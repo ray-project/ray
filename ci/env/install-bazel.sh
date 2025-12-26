@@ -96,7 +96,9 @@ fi
 # Using GitHub mirror for BCR to work around bcr.bazel.build outages
 # Fix for https://github.com/bazelbuild/bazel/issues/28101
 # TODO: Check to see why ~/.bazeliskrc is not working.
-export BAZELISK_BASE_URL=https://github.com/bazelbuild/bazel/releases/download
+# Download Bazel itself from GitHub releases (avoids releases.bazel.build TLS outages)
+export BAZELISK_FORMAT_URL='https://github.com/bazelbuild/bazel/releases/download/%v/bazel-%v-%o-%m%e'
+export BAZELISK_BASE_URL="https://github.com/bazelbuild/bazel/releases/download"
 bazel --version
 
 if [[ "${CI-}" == "true" && "${BUILDKITE-}" != "" ]]; then
