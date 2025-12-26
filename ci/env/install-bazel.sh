@@ -100,12 +100,10 @@ fi
 export BAZELISK_FORMAT_URL='https://github.com/bazelbuild/bazel/releases/download/%v/bazel-%v-%o-%m%e'
 export BAZELISK_BASE_URL="https://github.com/bazelbuild/bazel/releases/download"
 
-# Recreate ~/.bazeliskrc to ensure it is up to date.
-touch ~/.bazeliskrc
-{
-  echo "BAZELISK_FORMAT_URL=${BAZELISK_FORMAT_URL}"
-  echo "BAZELISK_BASE_URL=${BAZELISK_BASE_URL}"
-} >> ~/.bazeliskrc
+cat > ~/.bazeliskrc <<EOF
+BAZELISK_FORMAT_URL=${BAZELISK_FORMAT_URL}
+BAZELISK_BASE_URL=${BAZELISK_BASE_URL}
+EOF
 
 bazel --version
 
