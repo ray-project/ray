@@ -1418,6 +1418,16 @@ def stop(force: bool, grace_period: int):
     ),
 )
 @click.option(
+    "--force-setup-commands",
+    is_flag=True,
+    default=False,
+    help=(
+        "Whether to force re-running setup commands even if the cluster "
+        "configuration has not changed. Useful when installing packages "
+        "from external sources (e.g., GitHub) that may have been updated."
+    ),
+)
+@click.option(
     "--yes", "-y", is_flag=True, default=False, help="Don't ask for confirmation."
 )
 @click.option(
@@ -1463,6 +1473,7 @@ def up(
     max_workers,
     no_restart,
     restart_only,
+    force_setup_commands,
     yes,
     cluster_name,
     no_config_cache,
@@ -1485,6 +1496,17 @@ def up(
             restart_only != no_restart
         ), "Cannot set both 'restart_only' and 'no_restart' at the same time!"
 
+    if force_setup_commands and restart_only:
+        cli_logger.doassert(
+            False,
+            "`{}` is incompatible with `{}`.",
+            cf.bold("--force-setup-commands"),
+            cf.bold("--restart-only"),
+        )
+        assert False, (
+            "Cannot set both 'force_setup_commands' and 'restart_only' at the same time!"
+        )
+
     if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
         try:
             response = urllib.request.urlopen(cluster_config_file, timeout=5)
@@ -1502,6 +1524,7 @@ def up(
         override_max_workers=max_workers,
         no_restart=no_restart,
         restart_only=restart_only,
+        force_setup_commands=force_setup_commands,
         yes=yes,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,

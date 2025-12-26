@@ -62,6 +62,8 @@ class NodeUpdater:
         restart_only: Whether to skip setup commands & just restart ray
         for_recovery: True if updater is for a recovering node. Only used for
             metric tracking.
+        force_setup_commands: Whether to force re-running setup commands even if
+            the cluster configuration hash has not changed.
     """
 
     def __init__(
@@ -87,6 +89,7 @@ class NodeUpdater:
         docker_config=None,
         restart_only=False,
         for_recovery=False,
+        force_setup_commands=False,
     ):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         # Three cases:
@@ -141,6 +144,7 @@ class NodeUpdater:
         self.is_head_node = is_head_node
         self.docker_config = docker_config
         self.restart_only = restart_only
+        self.force_setup_commands = force_setup_commands
         self.update_time = None
         self.for_recovery = for_recovery
 
@@ -372,11 +376,17 @@ class NodeUpdater:
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
-            not self.file_mounts_contents_hash
-            or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS)
-            == self.file_mounts_contents_hash
-        ):
+        # If force_setup_commands is True, we always run setup commands
+        # regardless of the hash match.
+        config_up_to_date = (
+            node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash
+            and (
+                not self.file_mounts_contents_hash
+                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS)
+                == self.file_mounts_contents_hash
+            )
+        )
+        if config_up_to_date and not self.force_setup_commands:
             # todo: we lie in the confirmation message since
             # full setup might be cancelled here
             cli_logger.print(
@@ -386,9 +396,17 @@ class NodeUpdater:
             )
 
         else:
-            cli_logger.print(
-                "Updating cluster configuration.", _tags=dict(hash=self.runtime_hash)
-            )
+            if config_up_to_date and self.force_setup_commands:
+                cli_logger.print(
+                    "Configuration already up to date, but forcing re-run of "
+                    "setup commands due to --force-setup-commands.",
+                    _tags=dict(hash=self.runtime_hash),
+                )
+            else:
+                cli_logger.print(
+                    "Updating cluster configuration.",
+                    _tags=dict(hash=self.runtime_hash),
+                )
 
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES}
@@ -396,10 +414,14 @@ class NodeUpdater:
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
             self.sync_file_mounts(self.rsync_up, step_numbers=(1, NUM_SETUP_STEPS))
 
-            # Only run setup commands if runtime_hash has changed because
-            # we don't want to run setup_commands every time the head node
-            # file_mounts folders have changed.
-            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
+            # Only run setup commands if runtime_hash has changed OR if
+            # force_setup_commands is True. We don't want to run setup_commands
+            # every time the head node file_mounts folders have changed,
+            # but we should always run them when explicitly requested.
+            if (
+                node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash
+                or self.force_setup_commands
+            ):
                 # Run init commands
                 self.provider.set_node_tags(
                     self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP}
