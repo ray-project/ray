@@ -5,7 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
@@ -16,7 +16,6 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
@@ -26,6 +25,7 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
+    ValidationTaskConfig,
 )
 
 if TYPE_CHECKING:
@@ -117,6 +117,7 @@ class TrainContext:
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
+    has_validation_fn: Optional[bool] = None
 
     # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
@@ -229,7 +230,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation_spec: Optional[_ValidationSpec] = None,
+        validation: Optional["ValidationTaskConfig"] = None,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -241,16 +242,14 @@ class TrainContext:
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validation_spec: The validation specification.
+            validation: The validation configuration.
 
         Returns:
             The training result object containing the persisted checkpoint.
         """
 
         if not checkpoint:
-            return _TrainingReport(
-                checkpoint=None, metrics=metrics, validation_spec=None
-            )
+            return _TrainingReport(checkpoint=None, metrics=metrics, validation=None)
 
         # Persist the checkpoint to the remote storage path.
         try:
@@ -288,7 +287,7 @@ class TrainContext:
         return _TrainingReport(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
-            validation_spec=validation_spec,
+            validation=validation,
         )
 
     def _wait_then_report(
@@ -328,8 +327,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Optional[Union[bool, ValidationTaskConfig]] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -352,19 +350,23 @@ class TrainContext:
                     "or save tensors as part of the checkpoint files instead."
                 )
 
+        # Convert bool to ValidationTaskConfig if needed
+        if validation is True:
+            validation = ValidationTaskConfig()
+        elif validation is False:
+            validation = None
+
+        if validation and not self.has_validation_fn:
+            raise ValueError(
+                "`validation_config` was not set on the trainer, but a validation was requested."
+            )
+
         with invoke_context_managers(
             [
                 callback.on_report
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            if validate_fn:
-                validation_spec = _ValidationSpec(
-                    validate_fn=validate_fn,
-                    validate_config=validate_config,
-                )
-            else:
-                validation_spec = None
             self.report_call_index += 1
             report_call_index = self.report_call_index
 
@@ -381,7 +383,7 @@ class TrainContext:
                     checkpoint,
                     delete_local_checkpoint_after_upload,
                     checkpoint_upload_fn,
-                    validation_spec,
+                    validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -389,7 +391,7 @@ class TrainContext:
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
-                    validation_spec=validation_spec,
+                    validation=validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -408,7 +410,7 @@ class TrainContext:
                             checkpoint,
                             delete_local_checkpoint_after_upload,
                             checkpoint_upload_fn,
-                            validation_spec,
+                            validation,
                         )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
