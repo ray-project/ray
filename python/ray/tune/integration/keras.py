@@ -16,7 +16,7 @@ class TuneReportCallback:
     Use :class:`ray.train.tensorflow.keras.ReportCheckpointCallback` instead."""
 
     def __new__(cls, *args, **kwargs):
-        raise DeprecationWarning(_DEPRECATION_MESSAGE)
+        raise RuntimeError(_DEPRECATION_MESSAGE)
 
 
 class _TuneCheckpointCallback:
@@ -24,7 +24,7 @@ class _TuneCheckpointCallback:
     Use :class:`ray.train.tensorflow.keras.ReportCheckpointCallback` instead."""
 
     def __new__(cls, *args, **kwargs):
-        raise DeprecationWarning(_DEPRECATION_MESSAGE)
+        raise RuntimeError(_DEPRECATION_MESSAGE)
 
 
 @PublicAPI(stability="alpha")

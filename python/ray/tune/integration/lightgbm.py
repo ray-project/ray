@@ -78,7 +78,7 @@ class TuneReportCheckpointCallback(RayReportCallback):
 class TuneReportCallback:
     def __new__(cls: type, *args, **kwargs):
         # TODO(justinvyu): [code_removal] Remove in 2.11.
-        raise DeprecationWarning(
-            "`TuneReportCallback` is deprecated. "
+        raise RuntimeError(
+            "`TuneReportCallback` is deprecated and no longer supported. "
             "Use `ray.tune.integration.lightgbm.TuneReportCheckpointCallback` instead."
         )

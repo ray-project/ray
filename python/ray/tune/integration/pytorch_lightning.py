@@ -181,9 +181,9 @@ class TuneReportCheckpointCallback(TuneCallback):
 
 class _TuneCheckpointCallback(TuneCallback):
     def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`ray.tune.integration.pytorch_lightning._TuneCheckpointCallback` "
-            "is deprecated."
+            "is deprecated and no longer supported."
         )
 
 
