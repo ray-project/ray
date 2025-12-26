@@ -1,6 +1,6 @@
 .. _ray-joblib:
 
-Distributed Scikit-learn / Joblib
+Distributed Scikit-learn / joblib
 =================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
@@ -13,7 +13,7 @@ that use scikit-learn from a single node to a cluster.
 .. note::
 
   This API is new and may be revised in future Ray releases. If you encounter
-  any bugs, please file an `issue on GitHub`_.
+  any bugs, file an `issue on GitHub`_.
 
 .. _`joblib`: https://joblib.readthedocs.io
 .. _`scikit-learn`: https://scikit-learn.org
@@ -23,9 +23,9 @@ Quickstart
 
 To get started, first `install Ray <installation.html>`__, then use
 ``from ray.util.joblib import register_ray`` and run ``register_ray()``.
-This will register Ray as a joblib backend for scikit-learn to use.
+This registers Ray as a joblib backend for scikit-learn to use.
 Then run your original scikit-learn code inside
-``with joblib.parallel_backend('ray')``. This will start a local Ray cluster.
+``with joblib.parallel_backend('ray')``. This starts a local Ray cluster.
 See the `Run on a Cluster`_ section below for instructions to run on
 a multi-node Ray cluster instead.
 
@@ -52,7 +52,7 @@ a multi-node Ray cluster instead.
       search.fit(digits.data, digits.target)
 
 You can also set the ``ray_remote_args`` argument in ``parallel_backend`` to :func:`configure
-the Ray Actors <ray.remote>` making up the Pool. This can be used to e.g., :ref:`assign resources
+the Ray Actors <ray.remote>` making up the Pool. This can be used to, for example, :ref:`assign resources
 to Actors, such as GPUs <actor-resource-guide>`.
 
 .. code-block:: python
@@ -75,5 +75,5 @@ configuration options) before calling ``with joblib.parallel_backend('ray')``.
 
 .. warning::
 
-    If you do not set the ``RAY_ADDRESS`` environment variable and do not provide
-    ``address`` in ``ray.init(address=<address>)`` then scikit-learn will run on a SINGLE node!
+    If you don't set the ``RAY_ADDRESS`` environment variable and don't provide
+    ``address`` in ``ray.init(address=<address>)`` then scikit-learn runs on a SINGLE node.
