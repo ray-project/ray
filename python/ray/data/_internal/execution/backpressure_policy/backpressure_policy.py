@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional
 
 from ray.data.context import DataContext
@@ -13,6 +13,12 @@ if TYPE_CHECKING:
 
 class BackpressurePolicy(ABC):
     """Interface for back pressure policies."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable name for UX/progress bar display."""
+        pass
 
     def __init__(
         self,
