@@ -171,7 +171,11 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
       if (error.has_value()) {
         RAY_LOG(INFO).WithField(dep)
             << "Cannot recover dependency: " << rpc::ErrorType_Name(*error);
-        recovery_failure_callback_(dep, *error, /*pin_object=*/true);
+        // This case can happen if the dependency was borrowed from another
+        // worker, or if there was a bug in reconstruction that caused us to GC
+        // the dependency ref.
+        // We do not pin the dependency because we may not be the owner.
+        recovery_failure_callback_(dep, *error, /*pin_object=*/false);
       }
     }
   } else {
