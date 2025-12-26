@@ -169,6 +169,9 @@ class RayletClient : public RayletClientInterface {
   void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
+  /// Get agents pids from raylet, include dashboard and runtime env agent
+  void GetAgentPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+                    int64_t timeout_ms);
   void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;

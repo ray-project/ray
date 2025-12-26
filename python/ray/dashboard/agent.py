@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -497,6 +498,8 @@ if __name__ == "__main__":
             is_head=args.head,
             session_name=args.session_name,
         )
+
+        ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT)
 
         def sigterm_handler():
             logger.warning("Exiting with SIGTERM immediately...")
