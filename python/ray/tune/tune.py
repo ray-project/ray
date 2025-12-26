@@ -119,8 +119,8 @@ def _build_resume_config_from_legacy_config(
     resume_str = resume_settings[0]
 
     if resume_str in ("LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"):
-        raise DeprecationWarning(
-            f"'{resume_str}' is deprecated. "
+        raise ValueError(
+            f"'{resume_str}' is no longer supported. "
             "Please pass in one of (True, False, 'AUTO')."
         )
 
@@ -576,16 +576,16 @@ def run(
         "persistent-storage.html#setting-the-local-staging-directory"
     )
     if os.environ.get("TUNE_RESULT_DIR"):
-        raise DeprecationWarning(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+        raise ValueError(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
 
     if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
-        raise DeprecationWarning(
+        raise ValueError(
             ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR")
         )
 
     if local_dir is not None:
-        raise DeprecationWarning(
-            "The `local_dir` argument is deprecated. "
+        raise ValueError(
+            "The `local_dir` argument is no longer supported. "
             "You should set the `storage_path` instead. "
             "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
             "persistent-storage.html#setting-the-local-staging-directory"
@@ -688,12 +688,11 @@ def run(
 
     # TODO(justinvyu): [Deprecated] Remove in 2.11.
     if chdir_to_trial_dir != _DEPRECATED_VALUE:
-        raise DeprecationWarning(
-            "`chdir_to_trial_dir` is deprecated. "
+        raise ValueError(
+            "`chdir_to_trial_dir` is no longer supported. "
             f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
             "Set it to 0 to disable the default behavior of changing the "
-            "working directory.",
-            DeprecationWarning,
+            "working directory."
         )
 
     if num_samples == -1:
