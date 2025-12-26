@@ -18,6 +18,13 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_python",
+    sha256 = "5868e73107a8e85d8f323806e60cad7283f34b32163ea6ff1020cf27abef6036",
+    strip_prefix = "rules_python-0.25.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.25.0/rules_python-0.25.0.tar.gz",
+)
+
 load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
 
 rules_java_dependencies()
@@ -57,12 +64,14 @@ python_register_toolchains(
     name = "python3_9",
     python_version = "3.9",
     register_toolchains = False,
+    ignore_root_user_error = True,
 )
 
 python_register_toolchains(
     name = "python3_10",
     python_version = "3.10",
     register_toolchains = False,
+    ignore_root_user_error = True,
 )
 
 load("@python3_9//:defs.bzl", python39 = "interpreter")
