@@ -2,10 +2,11 @@ import logging
 from typing import Any, Dict, Optional
 
 from ray import cloudpickle
-from ray.serve._private.common import DeploymentID, EndpointInfo
+from ray.serve._private.common import EndpointInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve.common import DeploymentID
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 

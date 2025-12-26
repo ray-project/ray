@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve.common import DeploymentID
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
