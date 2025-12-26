@@ -38,6 +38,23 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool) {}
 
+raylet_scheduling_policy::SchedulingResult GcsPlacementGroupScheduler::TrySchedule(
+    const std::shared_ptr<GcsPlacementGroup> &placement_group,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
+  std::vector<const ResourceRequest *> resource_request_list;
+  resource_request_list.reserve(bundles.size());
+  for (const auto &bundle : bundles) {
+    resource_request_list.emplace_back(&bundle->GetRequiredResources());
+  }
+
+  auto scheduling_options =
+      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
+                              placement_group->GetStrategy(),
+                              placement_group->GetSoftTargetNodeID());
+
+  return cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+}
+
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const SchedulePgRequest &request) {
   const auto &placement_group = request.placement_group;
@@ -54,25 +71,46 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  const auto &bundles = placement_group->GetUnplacedBundles();
-  const auto &strategy = placement_group->GetStrategy();
-
+  auto bundles = placement_group->GetUnplacedBundles();
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
 
-  std::vector<const ResourceRequest *> resource_request_list;
-  resource_request_list.reserve(bundles.size());
-  for (const auto &bundle : bundles) {
-    resource_request_list.emplace_back(&bundle->GetRequiredResources());
-  }
+  auto scheduling_result = TrySchedule(placement_group, bundles);
 
-  auto scheduling_options =
-      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
-                              strategy,
-                              placement_group->GetSoftTargetNodeID());
-  auto scheduling_result =
-      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+  const rpc::PlacementGroupSchedulingOption *applied_fallback_option = nullptr;
+  std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
+
+  if (!scheduling_result.status.IsSuccess()) {
+    const auto &fallback_strategy = placement_group->GetFallbackStrategy();
+
+    bool is_scheduling_whole_pg =
+        (bundles.size() == placement_group->GetBundles().size());
+    if (!fallback_strategy.empty() && is_scheduling_whole_pg) {
+      RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
+                     << placement_group->GetPlacementGroupID() << ". Attempting "
+                     << fallback_strategy.size() << " fallback options.";
+
+      for (const auto &option : fallback_strategy) {
+        fallback_bundles.clear();
+        for (const auto &bundle_proto : option.bundles()) {
+          fallback_bundles.push_back(
+              std::make_shared<const BundleSpecification>(bundle_proto));
+        }
+
+        auto fallback_result = TrySchedule(placement_group, fallback_bundles);
+
+        if (fallback_result.status.IsSuccess()) {
+          RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
+                        << " primary scheduling failed, but fallback strategy succeeded.";
+          scheduling_result = fallback_result;
+          bundles = fallback_bundles;
+          applied_fallback_option = &option;
+          break;
+        }
+      }
+    }
+  }
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -96,6 +134,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ". Selected node size: " << selected_nodes.size();
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
+
+  // If a fallback option was selected, commit it to the placement group state.
+  if (applied_fallback_option) {
+    placement_group->UpdateBundlesFromFallback(*applied_fallback_option);
+  }
 
   // Covert to a map of bundle to node.
   ScheduleMap bundle_to_node;

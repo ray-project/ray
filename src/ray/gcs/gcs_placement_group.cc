@@ -144,5 +144,22 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
+const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+    &GcsPlacementGroup::GetFallbackStrategy() const {
+  return placement_group_table_data_.fallback_strategy();
+}
+
+void GcsPlacementGroup::UpdateBundlesFromFallback(
+    const rpc::PlacementGroupSchedulingOption &fallback_option) {
+  // Invalidate the cache because we are changing the bundles.
+  cached_bundle_specs_.clear();
+
+  // Replace the current bundles with the fallback bundles.
+  placement_group_table_data_.clear_bundles();
+  for (const auto &bundle : fallback_option.bundles()) {
+    *placement_group_table_data_.add_bundles() = bundle;
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -201,6 +201,7 @@ py_test_module_list(
         "test_placement_group_3.py",
         "test_placement_group_4.py",
         "test_placement_group_5.py",
+        "test_placement_group_fallback.py",
         "test_scheduling.py",
         # TODO(MengjinYan): https://github.com/anyscale/ray/issues/5
         # "test_scheduling_2.py",

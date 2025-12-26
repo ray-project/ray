@@ -103,6 +103,7 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
+    CPlacementGroupFallbackOptions,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -627,6 +628,45 @@ cdef int prepare_fallback_strategy(
         fallback_strategy_vector.push_back(
              CFallbackOption(c_label_selector)
         )
+
+    return 0
+
+cdef int prepare_placement_group_fallback_options(
+        list fallback_strategy,
+        c_vector[CPlacementGroupFallbackOptions] *fallback_options_vector) except -1:
+
+    cdef:
+        unordered_map[c_string, double] c_bundles
+        unordered_map[c_string, c_string] c_bundle_labels
+        c_vector[unordered_map[c_string, double]] c_bundles_vector
+        c_vector[unordered_map[c_string, c_string]] c_bundle_labels_vector
+        CPlacementGroupFallbackOptions c_option
+
+    if fallback_strategy is None:
+        return 0
+
+    for option_dict in fallback_strategy:
+        c_bundles_vector.clear()
+        c_bundle_labels_vector.clear()
+
+        bundles_list = option_dict.get("bundles")
+        if bundles_list:
+            for bundle in bundles_list:
+                c_bundles.clear()
+                prepare_resources(bundle, &c_bundles)
+                c_bundles_vector.push_back(c_bundles)
+
+        labels_list = option_dict.get("bundle_label_selector")
+        if labels_list:
+            for label_dict in labels_list:
+                c_bundle_labels.clear()
+                prepare_labels(label_dict, &c_bundle_labels)
+                c_bundle_labels_vector.push_back(c_bundle_labels)
+
+        c_option.bundles = c_bundles_vector
+        c_option.bundle_label_selectors = c_bundle_labels_vector
+
+        fallback_options_vector.push_back(c_option)
 
     return 0
 
@@ -3615,11 +3655,13 @@ cdef class CoreWorker:
                             c_string strategy,
                             c_bool is_detached,
                             soft_target_node_id,
-                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
+                            list fallback_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
+            c_vector[CPlacementGroupFallbackOptions] c_fallback_strategy
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
@@ -3636,6 +3678,9 @@ cdef class CoreWorker:
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
 
+        # Convert Python fallback options list to C++ vector.
+        prepare_placement_group_fallback_options(fallback_strategy, &c_fallback_strategy)
+
         with nogil:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
@@ -3646,7 +3691,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 c_soft_target_node_id,
-                                bundle_label_selector),
+                                bundle_label_selector,
+                                c_fallback_strategy),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())

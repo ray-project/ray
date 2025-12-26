@@ -78,6 +78,9 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
+
+    placement_group_table_data_.mutable_fallback_strategy()->CopyFrom(
+        placement_group_spec.fallback_options());
     SetupStates();
   }
 
@@ -155,6 +158,12 @@ class GcsPlacementGroup {
   const rpc::PlacementGroupStats &GetStats() const;
 
   rpc::PlacementGroupStats *GetMutableStats();
+
+  const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      &GetFallbackStrategy() const;
+
+  void UpdateBundlesFromFallback(
+      const rpc::PlacementGroupSchedulingOption &fallback_option);
 
  private:
   // XXX.

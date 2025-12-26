@@ -20,6 +20,8 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
+VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS = {"bundles", "bundle_label_selector"}
+
 
 # We need to import this method to use for ready API.
 # But ray.remote is only available in runtime, and
@@ -150,6 +152,7 @@ def placement_group(
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -177,6 +180,9 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
+        fallback_strategy: A list of scheduling option dicts that define the fallback
+            options to use when attempting to schedule this placement group. Supported
+            options are the bundles and bundle_label_selector to attempt to schedule.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -195,10 +201,14 @@ def placement_group(
         lifetime=lifetime,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
+        fallback_strategy=fallback_strategy,
     )
 
     if bundle_label_selector is None:
         bundle_label_selector = []
+
+    if fallback_strategy is None:
+        fallback_strategy = []
 
     if lifetime == "detached":
         detached = True
@@ -212,6 +222,7 @@ def placement_group(
         detached,
         _soft_target_node_id,
         bundle_label_selector,
+        fallback_strategy,
     )
 
     return PlacementGroup(placement_group_id)
@@ -344,6 +355,7 @@ def validate_placement_group(
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
@@ -369,6 +381,9 @@ def validate_placement_group(
                 f"The length of `bundle_label_selector` should equal the length of `bundles`."
             )
         _validate_bundle_label_selector(bundle_label_selector)
+
+    if fallback_strategy is not None:
+        _validate_fallback_strategy(fallback_strategy)
 
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
@@ -460,6 +475,45 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
             raise ValueError(
                 f"Invalid label selector provided in bundle_label_selector list."
                 f" Detailed error: '{error_message}'"
+            )
+
+
+def _validate_fallback_strategy(fallback_strategy: List[Dict]):
+    """Validates the placement group fallback strategy."""
+    if not isinstance(fallback_strategy, list):
+        raise ValueError(
+            f"fallback_strategy must be a list, got {type(fallback_strategy)}."
+        )
+
+    for i, option in enumerate(fallback_strategy):
+        if not isinstance(option, dict):
+            raise ValueError(
+                f"fallback_strategy[{i}] must be a dict, got {type(option)}."
+            )
+
+        # Validate placement group fallback options.
+        if "bundles" not in option:
+            raise ValueError(f"fallback_strategy[{i}] must contain 'bundles'.")
+
+        _validate_bundles(option["bundles"])
+
+        if "bundle_label_selector" in option:
+            fallback_labels = option["bundle_label_selector"]
+
+            if len(option["bundles"]) != len(fallback_labels):
+                raise ValueError(
+                    f"In fallback_strategy[{i}], length of `bundle_label_selector` "
+                    f"must equal length of `bundles`."
+                )
+
+            _validate_bundle_label_selector(fallback_labels)
+
+        # Check that fallback strategy only specifies supported options.
+        invalid_options = set(option.keys()) - VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS
+        if invalid_options:
+            raise ValueError(
+                f"fallback_strategy[{i}] contains invalid options: {invalid_options}. "
+                f"Supported options are: {VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS}"
             )
 
 
