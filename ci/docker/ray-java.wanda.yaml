@@ -5,6 +5,7 @@ srcs:
   - .bazelversion
   - .bazelrc
   - .bazeliskrc
+  - bazel/mirror_fallback.cfg
   - WORKSPACE
   - BUILD.bazel
   - bazel/
