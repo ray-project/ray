@@ -248,6 +248,7 @@ def create_or_update_cluster(
     redirect_command_output: Optional[bool] = False,
     use_login_shells: bool = True,
     no_monitor_on_head: bool = False,
+    force_setup_commands: bool = False,
 ) -> Dict[str, Any]:
     """Creates or updates an autoscaling Ray cluster from a config json."""
     # no_monitor_on_head is an internal flag used by the Ray K8s operator.
@@ -340,6 +341,7 @@ def create_or_update_cluster(
         yes,
         override_cluster_name,
         no_monitor_on_head,
+        force_setup_commands=force_setup_commands,
     )
     return config
 
@@ -703,6 +705,7 @@ def get_or_create_head_node(
     no_monitor_on_head: bool = False,
     _provider: Optional[NodeProvider] = None,
     _runner: ModuleType = subprocess,
+    force_setup_commands: bool = False,
 ) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     global_event_system.execute_callback(CreateClusterEvent.cluster_booting_started)
@@ -750,6 +753,11 @@ def get_or_create_head_node(
                 _abort=True,
             )
         else:
+            if force_setup_commands:
+                cli_logger.print(
+                    "Forcing re-run of setup commands due to `{}`.",
+                    cf.bold("--force-setup-commands"),
+                )
             cli_logger.print("Updating cluster configuration and running full setup.")
             cli_logger.confirm(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
@@ -900,6 +908,7 @@ def get_or_create_head_node(
             },
             docker_config=config.get("docker"),
             restart_only=restart_only,
+            force_setup_commands=force_setup_commands,
         )
         updater.start()
         updater.join()
