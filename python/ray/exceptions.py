@@ -178,10 +178,19 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                # Try to set self.args, but some exception types have a
+                # read-only args property (e.g., rasterio's CPLE_AppDefinedError).
+                # See https://github.com/ray-project/ray/issues/59437
+                try:
+                    self.args = (cause,)
+                except AttributeError:
+                    # If args is read-only, we can't set it.
+                    # The exception will still work, and __reduce__ uses
+                    # self.cause directly instead of self.args.
+                    pass
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, (self.cause,))
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -206,10 +215,16 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                # Try to set self.args, but some exception types have a
+                # read-only args property.
+                # See https://github.com/ray-project/ray/issues/59437
+                try:
+                    self.args = (cause,)
+                except AttributeError:
+                    pass
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, (self.cause,))
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
