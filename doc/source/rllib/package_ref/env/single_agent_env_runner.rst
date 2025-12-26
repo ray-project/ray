@@ -7,8 +7,8 @@ SingleAgentEnvRunner API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-rllib.env.single_agent_env_runner.SingleAgentEnvRunner
-------------------------------------------------------
+``rllib.env.single_agent_env_runner.SingleAgentEnvRunner``
+----------------------------------------------------------
 
 .. autoclass:: ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner
 

@@ -7,8 +7,8 @@ MultiAgentEnvRunner API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
-----------------------------------------------------
+``rllib.env.multi_agent_env_runner.MultiAgentEnvRunner``
+--------------------------------------------------------
 
 .. autoclass:: ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
 

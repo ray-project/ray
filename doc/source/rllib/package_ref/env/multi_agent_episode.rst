@@ -7,8 +7,8 @@ MultiAgentEpisode API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-rllib.env.multi_agent_episode.MultiAgentEpisode
------------------------------------------------
+``rllib.env.multi_agent_episode.MultiAgentEpisode``
+---------------------------------------------------
 
 .. currentmodule:: ray.rllib.env.multi_agent_episode
 

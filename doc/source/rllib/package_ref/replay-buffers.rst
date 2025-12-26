@@ -7,7 +7,7 @@ Replay Buffer API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-The following classes don't take into account the separation of experiences from different policies, multi-agent replay buffers will be explained further below.
+The following classes don't take into account the separation of experiences from different policies. Multi-agent replay buffers are explained further below.
 
 Replay Buffer Base Classes
 --------------------------
@@ -43,7 +43,7 @@ Public Methods
 Multi Agent Buffers
 -------------------
 
-The following classes use the above, "single-agent", buffers as underlying buffers to facilitate splitting up experiences between the different agents' policies.
+The following classes use the preceding "single-agent" buffers as underlying buffers to facilitate splitting up experiences between the different agents' policies.
 In multi-agent RL, more than one agent exists in the environment and not all of these agents may utilize the same policy (mapping M agents to N policies, where M <= N).
 This leads to the need for MultiAgentReplayBuffers that store the experiences of different policies separately.
 

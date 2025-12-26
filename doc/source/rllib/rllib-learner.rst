@@ -2,11 +2,11 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. |tensorflow| image:: images/tensorflow.png
+.. |TensorFlow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
 
-.. |pytorch| image:: images/pytorch.png
+.. |PyTorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16
 
@@ -16,9 +16,8 @@ Learner (Alpha)
 ===============
 
 :py:class:`~ray.rllib.core.learner.learner.Learner` allows you to abstract the training
-logic of RLModules. It supports both gradient-based and non-gradient-based updates (e.g.
-polyak averaging, etc.) The API enables you to distribute the Learner using data-
-distributed parallel (DDP). The Learner achieves the following:
+logic of RLModules. It supports both gradient-based and non-gradient-based updates (for example
+polyak averaging, etc.) The API enables you to distribute the Learner using distributed data parallel. The Learner achieves the following:
 
 
 (1) Facilitates gradient-based updates on :ref:`RLModule <rlmodule-guide>`.
@@ -73,8 +72,8 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
 .. note::
 
-    This features is in alpha. If you migrate to this algorithm, enable the feature by
-    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
+    This features is in alpha. If you migrate to this algorithm, enable the feature
+    through `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
     an algorithm with a custom :py:class:`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.
@@ -86,11 +85,11 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
        * - Algorithm
          - Supported Framework
        * - **PPO**
-         - |pytorch| |tensorflow|
+         - |PyTorch| |TensorFlow|
        * - **IMPALA**
-         - |pytorch| |tensorflow|
+         - |PyTorch| |TensorFlow|
        * - **APPO**
-         - |pytorch| |tensorflow|
+         - |PyTorch| |TensorFlow|
 
 
 Basic usage
@@ -102,7 +101,7 @@ Construction
 ------------
 
 If you enable the :ref:`RLModule <rlmodule-guide>`
-and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
+and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs through the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you're using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
 
 .. testcode::
     :hide:
@@ -376,9 +375,9 @@ Implementation
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.compute_loss_for_module()`
      - calculate the loss for gradient based update to a module.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.before_gradient_based_update()`
-     - do any non-gradient based updates to a RLModule before(!) the gradient based ones, e.g. add noise to your network.
+     - do any non-gradient based updates to a RLModule before(!) the gradient based ones, for example add noise to your network.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.after_gradient_based_update()`
-     - do any non-gradient based updates to a RLModule after(!) the gradient based ones, e.g. update a loss coefficient based on some schedule.
+     - do any non-gradient based updates to a RLModule after(!) the gradient based ones, for example update a loss coefficient based on some schedule.
 
 Starter Example
 ---------------

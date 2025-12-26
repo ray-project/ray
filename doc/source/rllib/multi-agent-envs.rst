@@ -10,13 +10,13 @@ Multi-Agent Environments
 In a multi-agent environment, multiple "agents" act simultaneously, in a turn-based
 sequence, or through an arbitrary combination of both.
 
-For instance, in a traffic simulation, there might be multiple "car" and
-"traffic light" agents interacting simultaneously, whereas in a board game,
-two or more agents may act in a turn-based sequence.
+For instance, in a traffic simulation, there might be multiple "car" agents,
+multiple "traffic light" agents, and they interact simultaneously. In a board game,
+two, or more, agents may act in a turn-based sequence.
 
 Several different policy networks may be used to control the various agents.
 Thereby, each of the agents in the environment maps to exactly one particular policy. This mapping is
-determined by a user-provided function, called the "mapping function". Note that if there
+determined by a user-provided function, called the "mapping function." Note that if there
 are ``N`` agents mapping to ``M`` policies, ``N`` is always larger or equal to ``M``,
 allowing for any policy to control more than one agent.
 
@@ -157,7 +157,7 @@ you have to return observations and infos from `reset()`, and return observation
 from `step()`, however, instead of individual values, these all have to be dictionaries mapping agent IDs to the respective
 individual agents' values.
 
-Let's take a look at an example `reset()` implementation first:
+The following example shows a `reset()` implementation:
 
 .. code-block::
 
@@ -172,7 +172,7 @@ Here, your episode starts with both agents in it, and both expected to compute a
 for the following `step()` call.
 
 In general, the returned observations dict must contain those agents (and only those agents)
-that should act next. Agent IDs that should NOT act in the next `step()` call must NOT have
+that should act next. Agent IDs that shouldn't act in the next `step()` call must **not** have
 their observations in the returned observations dict.
 
 .. figure:: images/envs/multi_agent_episode_simultaneous.svg
@@ -225,7 +225,7 @@ environments where all agents always act simultaneously, to any arbitrarily comp
     so forth.
 
 
-Let's take a look at two specific, complete :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` example implementations,
+The following examples show two specific, complete :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementations:
 one where agents always act simultaneously and one where agents act in a turn-based sequence.
 
 
@@ -234,7 +234,7 @@ Example: Environment with Simultaneously Stepping Agents
 
 A good and simple example for a multi-agent env, in which all agents always step simultaneously
 is the Rock-Paper-Scissors game, in which two agents have to play N moves altogether, each choosing between
-the actions "Rock", "Paper", or "Scissors". After each move, the action choices are compared.
+the actions "Rock," "Paper," or "Scissors." After each move, the action choices are compared.
 Rock beats Scissors, Paper beats Rock, and Scissors beats Paper. The player winning the move receives
 a +1 reward, the losing player -1.
 
@@ -257,12 +257,12 @@ Next, you can implement the constructor of your class:
    :start-after: __sphinx_doc_3_begin__
    :end-before: __sphinx_doc_3_end__
 
-Note that we specify `self.agents = self.possible_agents` in the constructor to indicate
+Note that the constructor specifies `self.agents = self.possible_agents` to indicate
 that the agents don't change over the course of an episode and stay fixed at `[player1, player2]`.
 
 The `reset` logic is to simply add both players in the returned observations dict (both players are
 expected to act simultaneously in the next `step()` call) and reset a `num_moves` counter
-that keeps track of the number of moves being played in order to terminate the episode after exactly
+that keeps track of the number of moves being played to terminate the episode after exactly
 10 timesteps (10 actions by either player):
 
 .. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
@@ -271,8 +271,8 @@ that keeps track of the number of moves being played in order to terminate the e
    :end-before: __sphinx_doc_4_end__
 
 Finally, your `step` method should handle the next observations (each player observes the action
-the opponent just chose), the rewards (+1 or -1 according to the winner/loser rules explained above),
-and the termination dict (you set the special `__all__` agent ID to `True` iff the number of moves
+the opponent just chose), the rewards (+1 or -1 according to the winner/loser rules explained previously),
+and the termination dict (you set the special `__all__` agent ID to `True` if and only if the number of moves
 has reached 10). The truncateds- and infos dicts always remain empty:
 
 
@@ -289,11 +289,11 @@ for a complete end-to-end example script showing how to run a multi-agent RLlib 
 Example: Turn-Based Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's now walk through another multi-agent env example implementation, but this time you
+The following example walks through another multi-agent env implementation, but this time you
 implement a turn-based game, in which you have two players (A and B), where A starts the game,
 then B makes a move, then again A, and so on and so forth.
 
-We implement the famous Tic-Tac-Toe game (with one slight aberration), played on a 3x3 field.
+This example implements the famous Tic-Tac-Toe game (with one slight aberration), played on a 3x3 field.
 Each player adds one of their pieces to the field at a time. Pieces can't be moved once placed.
 The player that first completes one row (horizontal, diagonal, or vertical) wins the game and
 receives +1 reward. The losing player receives a -1 reward.
@@ -318,7 +318,7 @@ possible agents), and each agent's observation- and action space.
    :start-after: __sphinx_doc_2_begin__
    :end-before: __sphinx_doc_2_end__
 
-Now let's implement your `reset()` method, in which you empty the board (set it to all 0s),
+Now implement your `reset()` method, in which you empty the board (set it to all zeros),
 pick a random start player, and return this start player's first observation.
 Note that you don't return the other player's observation as this player isn't
 acting next.
@@ -347,7 +347,7 @@ Is the game done because the board is full (both agents receive 0 reward)?
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL, where each group is treated
+It's common to have groups of agents in multi-agent RL, where each group is treated
 like a single agent with Tuple action- and observation spaces (one item in the tuple
 for each individual agent in the group).
 
@@ -503,7 +503,7 @@ This allows running in multi-agent environments with a mix of non-learning and l
     algo = config.build()
     print(algo.train())
 
-RLlib will create and route decisions to each policy based on the provided
+RLlib creates and routes decisions to each policy based on the provided
 ``policy_mapping_fn``. Training statistics for each policy are reported
 separately in the result-dict returned by ``train()``.
 
@@ -517,7 +517,7 @@ Scaling to Many MultiAgentEnvs per EnvRunner
 
 .. note::
 
-    Unlike for single-agent environments, multi-agent setups are not vectorizable yet.
+    Unlike for single-agent environments, multi-agent setups aren't vectorizable yet.
     The Ray team is working on a solution for this restriction by utilizing
     `gymnasium >= 1.x` custom vectorization feature.
 

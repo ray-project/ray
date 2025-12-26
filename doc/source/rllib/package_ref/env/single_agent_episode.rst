@@ -7,8 +7,8 @@ SingleAgentEpisode API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-rllib.env.single_agent_episode.SingleAgentEpisode
--------------------------------------------------
+``rllib.env.single_agent_episode.SingleAgentEpisode``
+-----------------------------------------------------
 
 .. currentmodule:: ray.rllib.env.single_agent_episode
 

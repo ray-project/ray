@@ -175,9 +175,8 @@ Outlook: More RLlib elements that should scale
 
 There are other components and aspects in RLlib that should be able to scale up.
 
-For example, the model size is limited to whatever fits on a single GPU, due to
-"distributed data parallel" (DDP) being the only way in which RLlib scales :py:class:`~ray.rllib.core.learner.learner.Learner`
-actors.
+For example, the model size is limited to whatever fits on a single GPU. RLlib scales :py:class:`~ray.rllib.core.learner.learner.Learner`
+actors through distributed data parallel training only.
 
 The Ray team is working on closing these gaps. In particular, future areas of improvements are:
 

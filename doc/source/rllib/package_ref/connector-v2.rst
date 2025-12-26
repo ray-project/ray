@@ -30,8 +30,8 @@ Observation preprocessors
 
 .. currentmodule:: ray.rllib.connectors.env_to_module.observation_preprocessor
 
-rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
-------------------------------------------------------------------------------------------
+``rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor``
+----------------------------------------------------------------------------------------------
 
 .. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
 
@@ -39,8 +39,8 @@ rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPr
     .. automethod:: preprocess
 
 
-rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor
------------------------------------------------------------------------------------------
+``rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor``
+---------------------------------------------------------------------------------------------
 
 .. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor
 

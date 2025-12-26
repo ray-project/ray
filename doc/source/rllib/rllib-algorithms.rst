@@ -101,7 +101,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 
     **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
-    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
+    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (first in, first out).
     This reuse of training data makes DQN very sample-efficient and off-policy.
     DQN scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
@@ -124,8 +124,8 @@ See also how to use `parametric-actions in DQN <rllib-models.html#variable-lengt
     "noisy": True,
     "num_atoms": [more than 1],
     "v_min": -10.0,
-    "v_max": 10.0``
-    (set ``v_min`` and ``v_max`` according to your expected range of returns).
+    "v_max": 10.0``.
+    Set ``v_min`` and ``v_max`` according to your expected range of returns.
 
 **DQN-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -147,7 +147,7 @@ Soft Actor Critic (SAC)
 
     **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
-    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
+    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (first in, first out).
     This reuse of training data makes DQN very sample-efficient and off-policy.
     SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
@@ -285,7 +285,7 @@ Also see `this README here for more details on how to run experiments <https://g
 
     Episode mean rewards for the Pong-v5 environment (with the "100k" setting, in which only 100k environment steps are allowed):
     Note that despite the stable sample efficiency - shown by the constant learning
-    performance per env step - the wall time improves almost linearly as we go from 1 to 4 GPUs.
+    performance per env step - the wall time improves almost linearly from 1 to 4 GPUs.
     **Left**: Episode reward over environment timesteps sampled. **Right**: Episode reward over wall-time.
 
 

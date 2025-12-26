@@ -194,7 +194,7 @@ be able to access data further in the past, change this setting in your
     config.env_runners(episode_lookback_horizon=10)
 
 
-Lookback Buffers and getters in more Detail
+Lookback buffers and getters in more detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following code demonstrates more options available to users of the
@@ -209,7 +209,7 @@ action computing forward pass:
     :end-before: rllib-sa-episode-05-end
 
 Another useful getter argument (besides `fill`) is the `neg_index_as_lookback` boolean argument.
-If set to True, negative indices are not interpreted as "from the end", but as
+If set to True, negative indices aren't interpreted as "from the end," but as
 "into the lookback buffer". This allows you to loop over a range of global timesteps
 while looking back a certain amount of timesteps from each of these global timesteps:
 

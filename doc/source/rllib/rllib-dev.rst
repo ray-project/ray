@@ -7,7 +7,7 @@ Install RLlib for Development
 
 You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__.
 This sets up symlinks between the ``ray/rllib`` dir in your local git clone and the respective directory bundled with the pip-installed ``ray`` package.
-This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
+This way, every change you make in the source files in your local git clone is immediately reflected in your installed ``ray`` as well.
 
 However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then don't use this,
 as these steps should have already created the necessary symlinks.
@@ -34,26 +34,26 @@ Contributing to RLlib
 Contributing Fixes and Enhancements
 -----------------------------------
 
-Feel free to file new RLlib-related PRs through `Ray's github repo <https://github.com/ray-project/ray/pulls>`__.
-The RLlib team is very grateful for any external help they can get from the open-source community. If you are unsure about how to structure your
-bug-fix or enhancement-PRs, create a small PR first, then ask us questions within its conversation section.
+Feel free to file new RLlib-related PRs through `Ray's GitHub repository <https://github.com/ray-project/ray/pulls>`__.
+The RLlib team is very grateful for any external help they can get from the open-source community. If you're unsure about how to structure your
+bug-fix or enhancement-PRs, create a small PR first, then ask questions within its conversation section.
 `See here for an example of a good first community PR <https://github.com/ray-project/ray/pull/46317>`__.
 
 Contributing Algorithms
 -----------------------
 
 These are the guidelines for merging new algorithms into RLlib.
-We distinguish between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
+RLlib distinguishes between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
 (possibly with additional classes in other files)
-or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
+or as a fully integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
 
 * Example Algorithms:
     - must subclass Algorithm and implement the ``training_step()`` method
     - must include the main example script, in which the algo is demoed, in a CI test, which proves that the algo is learning a certain task.
-    - should offer functionality not present in existing algorithms
+    - should offer capabilities not present in existing algorithms
 
 * Fully integrated Algorithms have the following additional requirements:
-    - must offer substantial new functionality not possible to add to other algorithms
+    - must offer substantial new capabilities not possible to add to other algorithms
     - should support custom RLModules
     - should use RLlib abstractions and support distributed execution
     - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
@@ -91,9 +91,9 @@ have the following API compatibility guarantees:
 Benchmarks
 ==========
 
-A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__,
+A number of training run results are available in the `rl-experiments repository <https://github.com/ray-project/rl-experiments>`__,
 and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, sorted by algorithm.
-Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
+Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repository.
 
 
 Debugging RLlib
@@ -106,7 +106,7 @@ Keeping the memory usage of long running workers stable can be challenging. The 
 
 .. autoclass:: ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks
 
-The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
+The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using TensorBoard or other metrics integrations like Weights & Biases:
 
 .. image:: images/MemoryTrackingCallbacks.png
 
