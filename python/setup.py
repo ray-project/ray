@@ -324,7 +324,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack==1.7.0",
+        "ormsgpack>=1.7.0,<2.0.0",
         "pyyaml",
         "scipy",
     ]
