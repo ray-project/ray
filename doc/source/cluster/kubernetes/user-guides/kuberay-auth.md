@@ -32,9 +32,9 @@ If you are using KubeRay v1.5.1 or newer, you can use the `authOptions` API in R
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth.yaml
 ```
 
-When enabled, the KubeRay operator will:
-* Create a Kubernetes Secret containing a randomly generated token.
-* Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
+When enabled, the KubeRay operator:
+* Creates a Kubernetes Secret containing a randomly generated token.
+* Automatically sets the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
 If you are using a KubeRay version older than v1.5.1, you can enable token authentication by creating a Kubernetes Secret containing
 your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
@@ -72,8 +72,8 @@ This error confirms that the Ray cluster requires authentication.
 
 To access your Ray cluster using the Ray CLI, you need to configure the following environment variables:
 * `RAY_AUTH_MODE`: this configures the Ray CLI to set the necessary authorization headers for token authentication
-* `RAY_AUTH_TOKEN`: this contains the token that will be used for authentication. 
-* `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` is not set, the Ray CLI will instead read the token from this path (defaults to `~/.ray/auth_token`).
+* `RAY_AUTH_TOKEN`: this contains the token that's used for authentication. 
+* `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` isn't set, the Ray CLI instead reads the token from this path (defaults to `~/.ray/auth_token`).
 
 Submit a job with an authenticated Ray CLI:
 
@@ -117,7 +117,7 @@ To view the Ray dashboard from your browser, first port forward to from your loc
 kubectl port-forward svc/ray-cluster-with-auth-head-svc 8265:8265 &
 ```
 
-Then open `localhost:8265` in your browser. You will be prompted to provide the auth token for the cluster, which can be retrieved with:
+Then open `localhost:8265` in your browser. You are prompted to provide the auth token for the cluster, which can be retrieved with:
 
 ```bash
 kubectl get secrets ray-cluster-with-auth --template={{.data.auth_token}} | base64 -d

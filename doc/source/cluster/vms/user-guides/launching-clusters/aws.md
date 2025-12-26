@@ -36,7 +36,7 @@ aws_session_token=baz" >> ~/.aws/credentials
 
 ## Start Ray with the Ray cluster launcher
 
-Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) will create a small cluster with an m5.large head node (on-demand) configured to autoscale to up to two m5.large [spot-instance](https://aws.amazon.com/ec2/spot/) workers.
+Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) creates a small cluster with an m5.large head node (on-demand) configured to autoscale to up to two m5.large [spot-instance](https://aws.amazon.com/ec2/spot/) workers.
 
 Test that it works by running the following commands from your local machine:
 
@@ -59,7 +59,7 @@ exit
 ray down example-full.yaml
 ```
 
-Congrats, you have started a Ray cluster on AWS!
+You have started a Ray cluster on AWS.
 
 
 If you want to learn more about the Ray cluster launcher, see this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1).
@@ -71,7 +71,7 @@ If you want to learn more about the Ray cluster launcher, see this blog post for
 
 ### Using Amazon EFS
 
-To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray cluster launcher on AWS.
+To utilize Amazon EFS in the Ray cluster, install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray cluster launcher on AWS.
 
 ```yaml
 # Note You need to replace the {{FileSystemId}} with your own EFS ID before using the config.
@@ -96,7 +96,7 @@ setup_commands:
 
 ### Configuring IAM Role and EC2 Instance Profile
 
-By default, Ray nodes in a Ray AWS cluster have full EC2 and S3 permissions (i.e. `arn:aws:iam::aws:policy/AmazonEC2FullAccess` and `arn:aws:iam::aws:policy/AmazonS3FullAccess`). This is a good default for trying out Ray clusters but you may want to change the permissions Ray nodes have for various reasons (e.g. to reduce the permissions for security reasons). You can do so by providing a custom `IamInstanceProfile` to the related `node_config`:
+By default, Ray nodes in a Ray AWS cluster have full EC2 and S3 permissions (specifically `arn:aws:iam::aws:policy/AmazonEC2FullAccess` and `arn:aws:iam::aws:policy/AmazonS3FullAccess`). This is a good default for trying out Ray clusters but you may want to change the permissions Ray nodes have for various reasons (for example, to reduce the permissions for security reasons). You can do so by providing a custom `IamInstanceProfile` to the related `node_config`:
 
 ```yaml
 available_node_types:
@@ -107,13 +107,13 @@ available_node_types:
         Arn: arn:aws:iam::YOUR_AWS_ACCOUNT:YOUR_INSTANCE_PROFILE
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on configuring IAM role and EC2 instance profile.
+Refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on configuring IAM role and EC2 instance profile.
 
 (aws-cluster-s3)=
 
 ### Accessing S3
 
-In various scenarios, worker nodes may need write access to an S3 bucket, e.g., Ray Tune has an option to write checkpoints to S3 instead of syncing them directly back to the driver.
+In various scenarios, worker nodes may need write access to an S3 bucket, for example, Ray Tune has an option to write checkpoints to S3 instead of syncing them directly back to the driver.
 
 If you see errors like “Unable to locate credentials”, make sure that the correct `IamInstanceProfile` is configured for worker nodes in your cluster config file. This may look like:
 
@@ -143,7 +143,7 @@ secret_key     ****************YYYY         iam-role
     region                <not set>             None    None
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.
+Refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.
 
 ## Monitor Ray using Amazon CloudWatch
 

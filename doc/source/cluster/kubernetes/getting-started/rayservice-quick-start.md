@@ -94,7 +94,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 
 - **`rayservice-sample-serve-svc`**  
   This service exposes the **HTTP interface** of Ray Serve, typically on port `8000`.  
-  Use this service to send HTTP requests to your deployed Serve applications (e.g., REST API, ML inference, etc.).
+  Use this service to send HTTP requests to your deployed Serve applications (for example, REST API, ML inference, etc.).
 
 
 ## Step 5: Verify the status of the Serve applications

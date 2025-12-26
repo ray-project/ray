@@ -44,7 +44,7 @@ workerGroupSpecs:
       ray.io/market-type: on-demand
 ```
 
-3. **The Kubernetes scheduler**: To ensure the Ray Pods land on the correct physical hardware, add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how Ray treats label selectors, the Kubernetes scheduler filters the underlying nodes in the Kubernetes cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the above `intel-cpu-group` to ensure both Ray and Kubernetes constrain scheduling:
+3. **The Kubernetes scheduler**: To ensure the Ray Pods land on the correct physical hardware, add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how Ray treats label selectors, the Kubernetes scheduler filters the underlying nodes in the Kubernetes cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the preceding `intel-cpu-group` to ensure both Ray and Kubernetes constrain scheduling:
 ```yaml
 nodeSelector:
     cloud.google.com/machine-family: "N4"
@@ -75,7 +75,7 @@ In a real-world scenario, you would use a cloud provider's Kubernetes service (l
 
 ### Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. The minimum KubeRay version for this guide is v1.5.1.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator through Helm repository. The minimum KubeRay version for this guide is v1.5.1.
 
 ### Step 3: Create a RayCluster CR with autoscaling enabled and labels specified
 
@@ -127,7 +127,7 @@ my_actor = Actor.remote()
 ray.get(my_actor.ready.remote())
 ```
 
-* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but NOT `ray.io/region: us-central2`. Since the strategy is "SPREAD", we expect two separate Ray nodes with the desired labels to scale up, one node for each placement group bundle.
+* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but **not** `ray.io/region: us-central2`. Since the strategy is "SPREAD," two separate Ray nodes with the desired labels should scale up, one node for each placement group bundle.
 ```py
 import ray
 from ray.util.placement_group import placement_group

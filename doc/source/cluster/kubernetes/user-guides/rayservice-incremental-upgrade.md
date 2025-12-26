@@ -5,7 +5,7 @@ This guide details how to configure and use the `NewClusterWithIncrementalUpgrad
 
 In previous versions of KubeRay, zero-downtime upgrades were supported only through the `NewCluster` strategy. This upgrade strategy involved scaling up a pending RayCluster with equal capacity as the active cluster, waiting until the updated Serve applications were healthy, and then switching traffic to the new RayCluster. While this upgrade strategy is reliable, it required users to scale 200% of their original cluster's compute resources which can be prohibitive when dealing with expensive accelerator resources.
 
-The `NewClusterWithIncrementalUpgrade` strategy is designed for large-scale deployments, such as LLM serving, where duplicating resources for a standard blue/green deployment is not feasible due to resource constraints. This feature minimizes resource usage during RayService CR upgrades while maintaining service availability. Below we explain the design and usage.
+The `NewClusterWithIncrementalUpgrade` strategy is designed for large-scale deployments, such as LLM serving, where duplicating resources for a standard blue/green deployment isn't feasible due to resource constraints. This feature minimizes resource usage during RayService CR upgrades while maintaining service availability. Below this guide explains the design and usage.
 
 Rather than creating a new `RayCluster` at 100% capacity, this strategy creates a new cluster and gradually scales its capacity up while simultaneously shifting user traffic from the old cluster to the new one. This gradual traffic migration enables users to safely scale their updated RayService while the old cluster auto-scales down, enabling users to save expensive compute resources and exert greater control over the pace of their upgrade. This process relies on the Kubernetes Gateway API for fine-grained traffic splitting.
 
@@ -23,7 +23,7 @@ Before you can use this feature, you **must** have the following set up in your 
     The RayService controller utilizes GA Gateway API resources such as a [Gateway](https://kubernetes.io/docs/concepts/services-networking/gateway/#api-kind-gateway) and [HTTPRoute](https://kubernetes.io/docs/concepts/services-networking/gateway/#api-kind-httproute) to safely split traffic during the upgrade.
 
 2.  **A Gateway Controller:** Users must install a Gateway controller that implements the Gateway API, such as Istio, Contour, or a cloud-native implementation like GKE's Gateway controller. This feature should support any controller that implements Gateway API with support for `Gateway` and `HTTPRoute` CRDs, but is an alpha feature that's primarily been tested utilizing [Istio](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/).
-3.  **A `GatewayClass` Resource:** Your cluster admin must create a `GatewayClass` resource that defines which controller to use. KubeRay will use this to create `Gateway` and `HTTPRoute` objects.
+3.  **A `GatewayClass` Resource:** Your cluster admin must create a `GatewayClass` resource that defines which controller to use. KubeRay uses this to create `Gateway` and `HTTPRoute` objects.
 
     **Example: Istio `GatewayClass`**
     ```yaml
@@ -34,7 +34,7 @@ Before you can use this feature, you **must** have the following set up in your 
     spec:
         controllerName: istio.io/gateway-controller
     ```
-    You will need to use the `metadata.name` (e.g. `istio`) in the `gatewayClassName` field of the `RayService` spec.
+    You need to use the `metadata.name` (for example, `istio`) in the `gatewayClassName` field of the `RayService` spec.
 
 4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html).
 
@@ -46,9 +46,9 @@ The following instructions detail the minimal steps to configure a cluster with 
 ```bash
 kind create cluster --image=kindest/node:v1.29.0
 ```
-We use `v1.29.0` which is known to be compatible with recent Istio versions.
+This example uses `v1.29.0` which is known to be compatible with recent Istio versions.
 
-2. Install istio
+2. Install Istio
 ```
 istioctl install --set profile=demo -y
 ```
@@ -101,7 +101,7 @@ spec:
   - kind-pool" | kubectl apply -f -
 ```
 
-6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
+6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the KubeRay operator, run the following command:
 ```bash
 helm install kuberay-operator kuberay/kuberay-operator --version v1.5.1 \
   --set featureGates\[0\].name=RayServiceIncrementalUpgrade \
@@ -125,7 +125,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
 4.  **The Upgrade Loop Begins:**
     The KubeRay controller now enters a loop that repeats three phases until the upgrade is complete. This loop ensures that the total cluster capacity only exceeds 100% by at most `maxSurgePercent`, preventing resource starvation.
 
-    Let's use an example: `maxSurgePercent: 20` and `stepSizePercent: 5`.
+    Consider this example: `maxSurgePercent: 20` and `stepSizePercent: 5`.
 
     * **Initial State:**
         * Active Cluster `target_capacity`: 100%
@@ -141,7 +141,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * Active `target_capacity`: 100%
         * Pending `target_capacity`: 0% $\rightarrow$ **20%**
         * **Total Capacity: 120%**
-        * If the Ray Serve autoscaler is enabled, the Serve application will scale its `num_replicas` from `min_replicas` based on the new `target_capacity`. Without the Ray Serve autoscaler enabled, the new `target_capacity` value will directly adjust `num_replicas` for each Serve deployment. Depending on the updated value of`num_replicas`, the Ray Autoscaler will begin provisioning pods for the pending cluster to handle the updated resource load.
+        * If the Ray Serve autoscaler is enabled, the Serve application scales its `num_replicas` from `min_replicas` based on the new `target_capacity`. Without the Ray Serve autoscaler enabled, the new `target_capacity` value directly adjusts `num_replicas` for each Serve deployment. Depending on the updated value of `num_replicas`, the Ray Autoscaler begins provisioning pods for the pending cluster to handle the updated resource load.
 
     * **Phase 2: Shift Traffic (HTTPRoute)**
         * KubeRay waits for the pending cluster's new pods to be ready. There may be a temporary drop in requests-per-second while worker Pods are being
@@ -187,7 +187,7 @@ spec:
       maxSurgePercent: 20
 
       # 4. Traffic shifting: Move 5% of traffic from old to new
-      #    cluster every intervalSeconds.
+      #    cluster every `intervalSeconds`.
       stepSizePercent: 5
 
       # 5. Interval seconds controls the pace of traffic migration during the upgrade.
@@ -238,18 +238,18 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
     ```bash
     kubectl describe rayservice rayservice-incremental-upgrade
     ```
-    Look at the `Status` section. You will see both `Active Service Status` and `Pending Service Status`, which show the state of both clusters. Pay close attention to these two new fields:
+    Look at the `Status` section. You see both `Active Service Status` and `Pending Service Status`, which show the state of both clusters. Pay close attention to these two new fields:
     * **`Target Capacity`:** The percentage of replicas KubeRay is *telling* this cluster to scale to.
-    * **`Traffic Routed Percent`:** The percentage of traffic KubeRay is *currently* sending to this cluster via the Gateway.
+    * **`Traffic Routed Percent`:** The percentage of traffic KubeRay is *currently* sending to this cluster through the Gateway.
 
-    During an upgrade, you will see `Target Capacity` on the pending cluster increase in steps (e.g., 20%, 40%) and `Traffic Routed Percent` gradually climb to meet it.
+    During an upgrade, you see `Target Capacity` on the pending cluster increase in steps (for example, 20%, 40%) and `Traffic Routed Percent` gradually climb to meet it.
 
 2.  **Check `HTTPRoute` Weights:**
     You can also see the traffic weights directly on the `HTTPRoute` resource KubeRay manages.
     ```bash
     kubectl get httproute rayservice-incremental-upgrade-httproute -o yaml
     ```
-    Look at the `spec.rules.backendRefs`. You will see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
+    Look at the `spec.rules.backendRefs`. You see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
 
 For example:
 ```yaml
@@ -318,7 +318,7 @@ status:
 
 ## How to upgrade safely?
 
-Since this feature is alpha and rollback is not yet supported, we recommend conservative parameter settings to minimize risk during upgrades.
+Since this feature is alpha and rollback isn't yet supported, Ray recommends conservative parameter settings to minimize risk during upgrades.
 
 ### Recommended Parameters
 
@@ -326,10 +326,10 @@ To upgrade safely, you should:
 1. Scale up 1 worker pod in the new cluster and scale down 1 worker pod in the old cluster at a time
 2. Make the upgrade process gradual to allow the Ray Serve autoscaler and Ray autoscaler to adapt
 
-Based on these principles, we recommend:
-- **maxSurgePercent**: Calculate based on the formula below
-- **stepSizePercent**: Set to a value less than `maxSurgePercent`
-- **intervalSeconds**: 60
+Based on these principles, Ray recommends:
+- **`maxSurgePercent`**: Calculate based on the formula below
+- **`stepSizePercent`**: Set to a value less than `maxSurgePercent`
+- **`intervalSeconds`**: 60
 
 ### Calculating maxSurgePercent
 
@@ -358,13 +358,13 @@ With `maxSurgePercent: 20`, the upgrade process ensures:
 
 This configuration guarantees you have sufficient resources to run at least one additional worker pod during the upgrade without resource contention.
 
-### Understanding intervalSeconds
+### Understanding `intervalSeconds`
 
 Set `intervalSeconds` to 60 seconds to give the Ray Serve autoscaler and Ray autoscaler sufficient time to:
 - Detect load changes
-- Immediately scale replicas up or down to enforce new min_replicas and max_replicas limits (via target_capacity)
-  - Scale down replicas immediately if they exceed the new max_replicas
-  - Scale up replicas immediately if they fall below the new min_replicas
+- Immediately scale replicas up or down to enforce new `min_replicas` and `max_replicas` limits (through `target_capacity`)
+  - Scale down replicas immediately if they exceed the new `max_replicas`
+  - Scale up replicas immediately if they fall below the new `min_replicas`
 - Provision resources
 
 A larger interval prevents the upgrade controller from making changes faster than the autoscaler can react, reducing the risk of service disruption.
@@ -395,7 +395,7 @@ This block is required *only* if `type` is set to `NewClusterWithIncrementalUpgr
 
 | Field | Type | Description | Required | Default |
 | :--- | :--- | :--- | :--- | :--- |
-| `maxSurgePercent` | `int32` | The percentage of *capacity* (Serve replicas) to add to the new cluster in each scaling step. For example, a value of `20` means the new cluster's `target_capacity` will increase in 20% increments (0% -> 20% -> 40%...). Must be between 0 and 100. | No | `100` |
+| `maxSurgePercent` | `int32` | The percentage of *capacity* (Serve replicas) to add to the new cluster in each scaling step. For example, a value of `20` means the new cluster's `target_capacity` increases in 20% increments (0% -> 20% -> 40% etc). Must be between 0 and 100. | No | `100` |
 | `stepSizePercent` | `int32` | The percentage of *traffic* to shift from the old to the new cluster during each interval. Must be between 0 and 100. | **Yes** | N/A |
 | `intervalSeconds` | `int32` | The time in seconds to wait between shifting traffic by `stepSizePercent`. | **Yes** | N/A |
 | `gatewayClassName` | `string` | The `metadata.name` of the `GatewayClass` resource KubeRay should use to create `Gateway` and `HTTPRoute` objects. | **Yes** | N/A |

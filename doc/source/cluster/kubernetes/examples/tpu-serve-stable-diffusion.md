@@ -38,7 +38,7 @@ Port-forward the Ray Dashboard from the Ray head service. To view the dashboard,
 kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
 ```
 
-Monitor the status of the RayService CR in the Ray Dashboard from the 'Serve' tab. The installed RayService CR should create a running app with the name 'stable_diffusion'. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
+Monitor the status of the RayService CR in the Ray Dashboard from the 'Serve' tab. The installed RayService CR should create a running app with the name `stable_diffusion`. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
 
 ![serve_dashboard](../images/serve_dashboard.png)
 
@@ -72,6 +72,6 @@ Submit a text-to-image prompt to the Stable Diffusion model server:
 python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The Python prompt script saves the results of the Stable Diffusion inference to a file named diffusion_results.png.
+* The Python prompt script saves the results of the Stable Diffusion inference to a file named `diffusion_results.png`.
 
 ![diffusion_results](../images/diffusion_results.png)

@@ -46,7 +46,7 @@ See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-
 
 Worker Node
 ------------
-*Worker nodes* do not run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <memory>`.
+*Worker nodes* don't run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <memory>`.
 
 .. _cluster-autoscaler:
 
@@ -55,10 +55,10 @@ Autoscaling
 
 The *Ray autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
 When the resource demands of the Ray workload exceed the
-current capacity of the cluster, the autoscaler will try to increase the number of worker nodes. When worker nodes
-sit idle, the autoscaler will remove worker nodes from the cluster.
+current capacity of the cluster, the autoscaler tries to increase the number of worker nodes. When worker nodes
+sit idle, the autoscaler removes worker nodes from the cluster.
 
-It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
+It's important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
 
@@ -70,7 +70,7 @@ To learn more about autoscaling, refer to the user guides for Ray clusters on :r
 Ray Jobs
 --------
 
-A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
+A Ray job is a single application: it's the collection of Ray tasks, objects, and actors that originate from the same script.
 The worker that runs the Python script is known as the *driver* of the job.
 
 There are two ways to run a Ray job on a Ray cluster:

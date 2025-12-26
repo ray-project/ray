@@ -260,7 +260,7 @@ Go to the Jaeger dashboard with the `service=raycluster-istio.default` query: <a
 
 ![Istio Jaeger Overview](../images/istio-jaeger-1.png)
 
-You can click on any trace of the internal gRPC calls and view their details, such as `grpc.path` and `status code`.
+You can click any trace of the internal gRPC calls and view their details, such as `grpc.path` and `status code`.
 
 ![Istio Jaeger Trace](../images/istio-jaeger-2.png)
 

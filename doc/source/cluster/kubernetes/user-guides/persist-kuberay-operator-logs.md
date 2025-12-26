@@ -37,7 +37,7 @@ Create a `fluent-bit-config.yaml` file, which configures Fluent Bit to:
 :end-before: ---
 ```
 
-A few notes on the above config:
+A few notes on the preceding config:
 
 * Inputs: The `tail` input reads log files from `/var/log/containers/*.log`, with `multiline.parser` to handle complex log messages across multiple lines.
 * Filters: The `kubernetes` filter adds metadata like namespace, pod, and container names to each log, enabling more efficient log management and querying in Loki.

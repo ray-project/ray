@@ -3,14 +3,14 @@
 Getting Started
 ===============
 
-This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
+This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, take a sample application designed to run on a laptop and scale it up in the cloud. Ray launches clusters and scales Python with just a few commands.
 
 For launching a Ray cluster manually, you can refer to the :ref:`on-premise cluster setup <on-prem>` guide.
 
 About the demo
 --------------
 
-This demo will walk through an end-to-end flow:
+This demo walks through an end-to-end flow:
 
 1. Create a (basic) Python application.
 2. Launch a cluster on a cloud provider.
@@ -19,7 +19,7 @@ This demo will walk through an end-to-end flow:
 Requirements
 ~~~~~~~~~~~~
 
-To run this demo, you will need:
+To run this demo, you need:
 
 * Python installed on your development machine (typically your laptop), and
 * an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, or vSphere).
@@ -27,7 +27,7 @@ To run this demo, you will need:
 Setup
 ~~~~~
 
-Before we start, you will need to install some Python dependencies as follows:
+Before starting, install some Python dependencies as follows:
 
 .. tab-set::
 
@@ -81,7 +81,7 @@ Before we start, you will need to install some Python dependencies as follows:
             vSphere Cluster Launcher Maintainers (GitHub handles): @roshankathawate, @ankitasonawane30, @VamshikShetty
 
 
-Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
+Next, if you're not set up to use your cloud provider from the command line, configure your credentials:
 
 .. tab-set::
 
@@ -127,7 +127,7 @@ Next, if you're not set up to use your cloud provider from the command line, you
 Create a (basic) Python application
 -----------------------------------
 
-We will write a simple Python application that tracks the IP addresses of the machines that its tasks are executed on:
+This section shows a simple Python application that tracks the IP addresses of the machines that its tasks are executed on:
 
 .. code-block:: python
 
@@ -145,7 +145,7 @@ We will write a simple Python application that tracks the IP addresses of the ma
 
 Save this application as ``script.py`` and execute it by running the command ``python script.py``. The application should take 10 seconds to run and output something similar to ``Counter({'127.0.0.1': 10000})``.
 
-With some small changes, we can make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough <core-walkthrough>`):
+With some small changes, make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough <core-walkthrough>`):
 
 .. code-block:: python
 
@@ -167,7 +167,7 @@ With some small changes, we can make this application run on Ray (for more infor
     ip_addresses = ray.get(object_ids)
     print(Counter(ip_addresses))
 
-Finally, let's add some code to make the output more interesting:
+Finally, add some code to make the output more interesting:
 
 .. code-block:: python
 
@@ -211,7 +211,7 @@ Running ``python script.py`` should now output something like:
 Launch a cluster on a cloud provider
 ------------------------------------
 
-To start a Ray Cluster, first we need to define the cluster configuration. The cluster configuration is defined within a YAML file that will be used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes.
+To start a Ray Cluster, first define the cluster configuration. The cluster configuration is defined within a YAML file that's used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes.
 
 A minimal sample cluster configuration file looks as follows:
 
@@ -272,7 +272,7 @@ A minimal sample cluster configuration file looks as follows:
          .. tab-item:: Aliyun
             :sync: Aliyun
 
-            Please refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__.
+            Refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__.
 
             Make sure your account balance is not less than 100 RMB, otherwise you will receive the error `InvalidAccountStatus.NotEnoughBalance`.
 
@@ -283,9 +283,9 @@ A minimal sample cluster configuration file looks as follows:
                :language: yaml
 
 
-Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
+Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
 
-After defining our configuration, we will use the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, we will use the :ref:`Ray CLI <ray-cluster-cli>`. Run the following command:
+After defining the configuration, use the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, use the :ref:`Ray CLI <ray-cluster-cli>`. Run the following command:
 
 .. code-block:: shell
 
@@ -294,10 +294,10 @@ After defining our configuration, we will use the Ray cluster launcher to start 
 Running applications on a Ray Cluster
 -------------------------------------
 
-We are now ready to execute an application on our Ray Cluster.
-``ray.init()`` will now automatically connect to the newly created cluster.
+The cluster is now ready to execute an application.
+``ray.init()`` now automatically connects to the newly created cluster.
 
-As a quick example, we execute a Python command on the Ray Cluster that connects to Ray and exits:
+As a quick example, execute a Python command on the Ray Cluster that connects to Ray and exits:
 
 .. code-block:: shell
 
@@ -305,7 +305,7 @@ As a quick example, we execute a Python command on the Ray Cluster that connects
     2022-08-10 11:23:17,093 INFO worker.py:1312 -- Connecting to existing Ray cluster at address: <remote IP address>:6379...
     2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster.
 
-You can also optionally get a remote shell using ``ray attach`` and run commands directly on the cluster. This command will create an SSH connection to the head node of the Ray Cluster.
+You can also optionally get a remote shell using ``ray attach`` and run commands directly on the cluster. This command creates an SSH connection to the head node of the Ray Cluster.
 
 .. code-block:: shell
 
@@ -315,9 +315,9 @@ You can also optionally get a remote shell using ``ray attach`` and run commands
     # Now on the head node...
     $ python -c "import ray; ray.init()"
 
-For a full reference on the Ray Cluster CLI tools, please refer to :ref:`the cluster commands reference <cluster-commands>`.
+For a full reference on the Ray Cluster CLI tools, refer to :ref:`the cluster commands reference <cluster-commands>`.
 
-While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <jobs-quickstart>`. Check out the :ref:`quickstart guide <jobs-quickstart>` to get started!
+While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <jobs-quickstart>`. Check out the :ref:`quickstart guide <jobs-quickstart>` to get started.
 
 Deleting a Ray Cluster
 ----------------------

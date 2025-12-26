@@ -18,11 +18,11 @@ A submission to the Ray Jobs API consists of:
 2. A [runtime environment](runtime-environments), which specifies the application's file and package dependencies.
 
 A job can be submitted by a remote client that lives outside of the Ray Cluster.
-We will show this workflow in the following user guides.
+The following user guides show this workflow.
 
 After a job is submitted, it runs once to completion or failure, regardless of the original submitter's connectivity.
 Retries or different runs with different parameters should be handled by the submitter.
-Jobs are bound to the lifetime of a Ray cluster, so if the cluster goes down, all running jobs on that cluster will be terminated.
+Jobs are bound to the lifetime of a Ray cluster, so if the cluster goes down, all running jobs on that cluster are terminated.
 
 To get started with the Ray Jobs API, check out the [quickstart](jobs-quickstart) guide, which walks you through the CLI tools for submitting and interacting with a Ray Job.
 This is suitable for any client that can communicate over HTTP to the Ray Cluster.
@@ -32,10 +32,10 @@ If needed, the Ray Jobs API also provides APIs for [programmatic job submission]
 
 If you would like to run an application *interactively* and see the output in real time (for example, during development or debugging), you can:
 
-- (Recommended) Run your script directly on a cluster node (e.g. after SSHing into the node using [`ray attach`](ray-attach-doc)), or
+- (Recommended) Run your script directly on a cluster node (for example, after SSHing into the node using [`ray attach`](ray-attach-doc)), or
 - (For Experts only) Use [Ray Client](ray-client-ref) to run a script from your local machine while maintaining a connection to the cluster.
 
-Note that jobs started in these ways are not managed by the Ray Jobs API, so the Ray Jobs API will not be able to see them or interact with them (with the exception of `ray job list` and `JobSubmissionClient.list_jobs()`).
+Note that jobs started in these ways aren't managed by the Ray Jobs API, so the Ray Jobs API can't see them or interact with them (with the exception of `ray job list` and `JobSubmissionClient.list_jobs()`).
 
 ## Contents
 

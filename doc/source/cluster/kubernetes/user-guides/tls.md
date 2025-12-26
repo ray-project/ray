@@ -3,17 +3,17 @@
 # TLS Authentication
 
 Ray can be configured to use TLS on its gRPC channels. This means that
-connecting to the Ray head will require an appropriate
+connecting to the Ray head requires an appropriate
 set of credentials and also that data exchanged between various processes
-(client, head, workers) will be encrypted ([Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html?highlight=tls#tls-authentication)).
+(client, head, workers) is encrypted ([Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html?highlight=tls#tls-authentication)).
 
 This document provides detailed instructions for generating a public-private
 key pair and CA certificate for configuring KubeRay.
 
-> Warning: Enabling TLS will cause a performance hit due to the extra
+> Warning: Enabling TLS causes a performance hit due to the extra
 overhead of mutual authentication and encryption. Testing has shown that
 this overhead is large for small workloads and becomes relatively smaller
-for large workloads. The exact overhead will depend on the nature of your
+for large workloads. The exact overhead depends on the nature of your
 workload.
 
 # Prerequisites
@@ -28,11 +28,11 @@ solid understanding of the following concepts:
 
 This [YouTube video](https://youtu.be/T4Df5_cojAs) is a good start.
 
-# TL;DR
+# Quick start
 
-> Please note that this document is designed to support KubeRay version 0.5.0 or later. If you are using an older version of KubeRay, some of the instructions or configurations may not apply or may require additional modifications.
+> Note that this document is designed to support KubeRay version 0.5.0 or later. If you are using an older version of KubeRay, some of the instructions or configurations may not apply or may require additional modifications.
 
-> Warning: Please note that the `ray-cluster.tls.yaml` file is intended for demo purposes only. It is crucial that you **do not** store
+> Warning: Note that the `ray-cluster.tls.yaml` file is intended for demo purposes only. It's crucial that you **don't** store
 your CA private key in a Kubernetes Secret in your production environment.
 
 ```sh
@@ -48,7 +48,7 @@ kubectl apply -f ray-cluster.tls.yaml
 # Jump to Step 4 "Verify TLS authentication" to verify the connection.
 ```
 
-`ray-cluster.tls.yaml` will create:
+`ray-cluster.tls.yaml` creates:
 
 * A Kubernetes Secret containing the CA's private key (`ca.key`) and self-signed certificate (`ca.crt`) (**Step 1**)
 * A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow Ray Pods to generate private keys
@@ -94,17 +94,17 @@ already been included in the Kubernetes Secret specified in [ray-cluster.tls.yam
 
 In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.5.1/ray-operator/config/samples/ray-cluster.tls.yaml), each Ray
 Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed
-certificate file (`tls.crt`) in its init container. We generate separate files for each Pod
-because worker Pods do not have deterministic DNS names, and we cannot use the same
-certificate across different Pods.
+certificate file (`tls.crt`) in its init container. This approach generates separate files for each Pod
+because worker Pods don't have deterministic DNS names, and the same
+certificate can't be used across different Pods.
 
-In the YAML file, you'll find a ConfigMap named `tls` that contains two shell scripts:
+In the YAML file, you find a ConfigMap named `tls` that contains two shell scripts:
 `gencert_head.sh` and `gencert_worker.sh`. These scripts are used to generate the private key
 and self-signed certificate files (`tls.key` and `tls.crt`) for the Ray head and worker Pods.
 An alternative approach for users is to prebake the shell scripts directly into the docker image that's utilized
 by the init containers, rather than relying on a ConfigMap.
 
-Please find below a brief explanation of what happens in each of these scripts:
+Find below a brief explanation of what happens in each of these scripts:
 1. A 2048-bit RSA private key is generated and saved as `/etc/ray/tls/tls.key`.
 2. A Certificate Signing Request (CSR) is generated using the private key file (`tls.key`)
 and the `csr.conf` configuration file.
@@ -139,11 +139,11 @@ In [Kubernetes networking model](https://github.com/kubernetes/design-proposals-
 To enable TLS authentication in your Ray cluster, set the following environment variables:
 
 - `RAY_USE_TLS`: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
-- `RAY_TLS_SERVER_CERT`: Location of a certificate file which is presented to other endpoints so as to achieve mutual authentication (i.e. `tls.crt`).
-- `RAY_TLS_SERVER_KEY`: Location of a private key file which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate (i.e. `tls.key`).
-- `RAY_TLS_CA_CERT`: Location of a CA certificate file which allows TLS to decide whether an endpoint’s certificate has been signed by the correct authority (i.e. `ca.crt`).
+- `RAY_TLS_SERVER_CERT`: Location of a certificate file which is presented to other endpoints so as to achieve mutual authentication (such as `tls.crt`).
+- `RAY_TLS_SERVER_KEY`: Location of a private key file which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate (such as `tls.key`).
+- `RAY_TLS_CA_CERT`: Location of a CA certificate file which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority (such as `ca.crt`).
 
-For more information on how to configure Ray with TLS authentication, please refer to [Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html#tls-authentication).
+For more information on how to configure Ray with TLS authentication, refer to [Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html#tls-authentication).
 
 # Step 4: Verify TLS authentication
 

@@ -42,9 +42,9 @@ pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource 
 
 ### Start Ray with the Ray cluster launcher
 
-The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
+The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) creates a small cluster with a Standard DS2v3 on-demand head node that's configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
 
-Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
+Note that you need to fill in your Azure [`resource_group`](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [`location`](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [`subscription_id`](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
 #### Download and configure the example configuration
 
@@ -74,7 +74,7 @@ auth:
 
 ##### (Optional) Manual SSH Key Configuration
 
-If you prefer to use your own existing SSH keys, uncomment and specify both of the key paths in the `auth` section. 
+If you prefer to use your own existing SSH keys, uncomment, and specify both of the key paths in the `auth` section. 
 
 For example, to use an existing `ed25519` key pair:
 
@@ -94,7 +94,7 @@ auth:
     ssh_public_key: ~/.ssh/id_rsa.pub
 ```
 
-Both methods inject the public key directly into the VM's `~/.ssh/authorized_keys` via Azure ARM templates.
+Both methods inject the public key directly into the VM's `~/.ssh/authorized_keys` through Azure ARM templates.
 
 #### Launch the Ray cluster on Azure
 
@@ -111,11 +111,11 @@ ray attach example-full.yaml
 ray down example-full.yaml
 ```
 
-Congratulations, you have started a Ray cluster on Azure!
+You have started a Ray cluster on Azure.
 
 ## Using Azure portal
 
-Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This will deploy [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/).
+Alternatively, you can deploy a cluster using Azure portal directly. Note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This deploys [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/).
 The head node conveniently exposes both SSH as well as JupyterLab.
 
 

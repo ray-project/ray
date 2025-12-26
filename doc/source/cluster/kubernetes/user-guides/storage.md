@@ -24,7 +24,7 @@ Table 1: Table comparing recommended setup for development and production.
 
 ## Interactive development
 
-To provide an interactive development environment for data scientists and ML practitioners, we recommend setting up the code, storage, and dependencies in a way that reduces context switches for developers and shortens iteration times.
+To provide an interactive development environment for data scientists and ML practitioners, Ray recommends setting up the code, storage, and dependencies in a way that reduces context switches for developers and shortens iteration times.
 
 ```{eval-rst}
 .. image:: ../images/interactive-dev.png

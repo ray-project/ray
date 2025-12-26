@@ -25,7 +25,7 @@ helm install kuberay-operator .
   * If true, the Helm chart creates RBAC resources. If false, it doesn't create any RBAC resources. Default: true.
 
 * **`singleNamespaceInstall`**
-  * If true, the Helm chart creates  namespace-scoped RBAC resources, that is, Role and RoleBinding. If false, it creates  cluster-scoped RBAC resources, that is, ClusterRole and ClusterRoleBinding instead. Default: false.
+  * If true, the Helm chart creates  namespace-scoped RBAC resources: Role and RoleBinding. If false, it creates  cluster-scoped RBAC resources: ClusterRole and ClusterRoleBinding instead. Default: false.
 
 * **`watchNamespace`**
   * A list of namespaces in which the KubeRay operator's informer watches the custom resources.

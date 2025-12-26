@@ -2,7 +2,7 @@
 
 This guide details the steps needed to launch a Ray cluster in a vSphere environment.
 
-To start a vSphere Ray cluster, you will use the Ray cluster launcher along with supervisor service (control plane) deployed on vSphere.
+To start a vSphere Ray cluster, use the Ray cluster launcher along with supervisor service (control plane) deployed on vSphere.
 
 ## Prepare the vSphere environment
 
@@ -12,7 +12,7 @@ If you don't already have a vSphere deployment, you can learn more about it by r
 
 ## Installing supervisor service for Ray on vSphere
 
-Please refer [build and installation guide](https://github.com/vmware/ray-on-vcf) to install Ray control plane as a superviosr servise on vSphere. The vSphere Ray cluster launcher requires the vSphere environment to have a cotrol plane installed a s a supervisor service for deploying a Ray cluster. This service installs all the k8s CRDs used to rapidly create head and worker nodes. The details of the Ray cluster provisioning process using supervisor service can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md).
+Refer to the [build and installation guide](https://github.com/vmware/ray-on-vcf) to install Ray control plane as a supervisor service on vSphere. The vSphere Ray cluster launcher requires the vSphere environment to have a control plane installed as a supervisor service for deploying a Ray cluster. This service installs all the Kubernetes CRDs used to rapidly create head and worker nodes. The details of the Ray cluster provisioning process using supervisor service can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md).
 
 
 ## Install Ray cluster launcher
@@ -26,9 +26,9 @@ pip install -U ray[default]
 
 ## Start Ray with the Ray cluster launcher
 
-Once the Ray supervisor service is active, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
+Once the Ray supervisor service is active, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) creates a small cluster with a head node configured to autoscale to up to two workers.
 
-Note that you need to configure your vSphere credentials and vCenter server address either via setting environment variables or adding them to the Ray cluster configuration YAML file.
+Note that you need to configure your vSphere credentials and vCenter server address either through setting environment variables or adding them to the Ray cluster configuration YAML file.
 
 Test that it works by running the following commands from your local machine:
 
@@ -51,11 +51,11 @@ exit
 ray down example-full.yaml
 ```
 
-Congrats, you have started a Ray cluster on vSphere!
+You have started a Ray cluster on vSphere.
 
 ## Configure vSAN File Service as persistent storage for Ray AI Libraries
 
-Starting in Ray 2.7, Ray AI Libraries (Train and Tune) will require users to provide a cloud storage or NFS path when running distributed training or tuning jobs. In a vSphere environment with a vSAN datastore, you can utilize the vSAN File Service feature to employ vSAN as a shared persistent storage. You can refer to [this vSAN File Service document](https://techdocs.broadcom.com/us/en/vmware-cis/vsan/vsan/8-0/vsan-administration.html) to create and configure NFS file shares supported by vSAN. The general steps are as follows:
+Starting in Ray 2.7, Ray AI Libraries (Train and Tune) require users to provide a cloud storage or NFS path when running distributed training or tuning jobs. In a vSphere environment with a vSAN datastore, you can utilize the vSAN File Service feature to employ vSAN as a shared persistent storage. You can refer to [this vSAN File Service document](https://techdocs.broadcom.com/us/en/vmware-cis/vsan/vsan/8-0/vsan-administration.html) to create and configure NFS file shares supported by vSAN. The general steps are as follows:
 
 1. Enable vSAN File Service and configure it with domain information and IP address pools.
 2. Create a vSAN file share with NFS as the protocol.

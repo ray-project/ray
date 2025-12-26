@@ -24,7 +24,7 @@ configure Redis itself to be resilient to failures.
 
 This solution provisions a
 [Persistent Volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
-backed by hardware storage, which Redis will use to write regular snapshots. If
+backed by hardware storage, which Redis uses to write regular snapshots. If
 you lose Redis or its host node, the Redis deployment can be restored from the
 snapshot.
 
@@ -68,7 +68,7 @@ Redis supports database dumps at set intervals, which is good for fast recovery
 and high performance during normal operation.
 
 Redis also supports journaling at frequent intervals (or continuously), which
-can provide stronger durability at the cost of more disk writes (i.e., slower
+can provide stronger durability at the cost of more disk writes (meaning slower
 performance).
 
 A good starting point for backups is to enable both as shown in the following:

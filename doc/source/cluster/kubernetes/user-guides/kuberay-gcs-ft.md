@@ -44,7 +44,7 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ### Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator through Helm repository.
 
 ### Step 3: Install a RayCluster with GCS FT enabled
 

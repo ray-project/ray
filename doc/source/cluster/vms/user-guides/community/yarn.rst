@@ -7,16 +7,16 @@ Deploying on YARN
 
   Running Ray on YARN is still a work in progress. If you have a
   suggestion for how to improve this documentation or want to request
-  a missing feature, please feel free to create a pull request or get in touch
+  a missing feature, feel free to create a pull request or get in touch
   using one of the channels in the `Questions or Issues?`_ section below.
 
-This document assumes that you have access to a YARN cluster and will walk
+This document assumes that you have access to a YARN cluster and walks
 you through using `Skein`_ to deploy a YARN job that starts a Ray cluster and
 runs an example script on it.
 
 Skein uses a declarative specification (either written as a yaml file or using the Python API) and allows users to launch jobs and scale applications without the need to write Java code.
 
-You will first need to install Skein: ``pip install skein``.
+You first need to install Skein: ``pip install skein``.
 
 The Skein ``yaml`` file and example Ray program used here are provided in the
 `Ray repository`_ to get you started. Refer to the provided ``yaml``
@@ -36,7 +36,7 @@ A Ray job is configured to run as two `Skein services`:
    You can change the number of instances in this configuration or at runtime
    using ``skein container scale`` to scale the cluster up/down.
 
-The specification for each service consists of necessary files and commands that will be run to start the service.
+The specification for each service consists of necessary files and commands that are run to start the service.
 
 .. code-block:: yaml
 
@@ -68,7 +68,7 @@ The specification for each service consists of necessary files and commands that
 Packaging Dependencies
 ----------------------
 
-Use the ``files`` option to specify files that will be copied into the YARN container for the application to use. See `the Skein file distribution page <https://jcrist.github.io/skein/distributing-files.html>`_ for more information.
+Use the ``files`` option to specify files that are copied into the YARN container for the application to use. See `the Skein file distribution page <https://jcrist.github.io/skein/distributing-files.html>`_ for more information.
 
 .. code-block:: yaml
 
@@ -94,7 +94,7 @@ Use the ``files`` option to specify files that will be copied into the YARN cont
 Ray Setup in YARN
 -----------------
 
-Below is a walkthrough of the bash commands used to start the ``ray-head`` and ``ray-worker`` services. Note that this configuration will launch a new Ray cluster for each application, not reuse the same cluster.
+Below is a walkthrough of the bash commands used to start the ``ray-head`` and ``ray-worker`` services. Note that this configuration launches a new Ray cluster for each application, not reuse the same cluster.
 
 Head node commands
 ~~~~~~~~~~~~~~~~~~
@@ -111,7 +111,7 @@ Register the Ray head address needed by the workers in the Skein key-value store
 
     skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) current
 
-Start all the processes needed on the ray head node. By default, we set object store memory
+Start all the processes needed on the ray head node. By default, this example sets object store memory
 and heap memory to roughly 200 MB. This is conservative and should be set according to application needs.
 
 .. code-block:: bash
@@ -137,7 +137,7 @@ Clean up all started processes even if the application fails or is killed.
     ray stop
     skein application shutdown current
 
-Putting things together, we have:
+Putting things together, the configuration looks like:
 
 .. literalinclude:: /cluster/doc_code/yarn/ray-skein.yaml
    :language: yaml
@@ -154,13 +154,13 @@ Fetch the address of the head node from the Skein key-value store.
 
     RAY_HEAD_ADDRESS=$(skein kv get current --key=RAY_HEAD_ADDRESS)
 
-Start all of the processes needed on a ray worker node, blocking until killed by Skein/YARN via SIGTERM. After receiving SIGTERM, all started processes should also die (ray stop).
+Start all of the processes needed on a ray worker node, blocking until killed by Skein/YARN through SIGTERM. After receiving SIGTERM, all started processes should also die (ray stop).
 
 .. code-block:: bash
 
     ray start --object-store-memory=200000000 --memory 200000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379 --block; ray stop
 
-Putting things together, we have:
+Putting things together, the configuration looks like:
 
 .. literalinclude:: /cluster/doc_code/yarn/ray-skein.yaml
    :language: yaml
@@ -185,7 +185,7 @@ Once it has been submitted, you can see the job running on the YARN dashboard.
 
 .. image:: /cluster/images/yarn-job.png
 
-If you have registered the Ray dashboard address in the Skein as shown above, you can retrieve it on Skein's application page:
+If you have registered the Ray dashboard address in the Skein as shown in the preceding example, you can retrieve it on Skein's application page:
 
 .. image:: /cluster/images/yarn-job-dashboard.png
 

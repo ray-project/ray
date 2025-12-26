@@ -3,14 +3,14 @@
 Deploying on Slurm
 ==================
 
-Slurm usage with Ray can be a little bit unintuitive.
+Using Ray with Slurm may not feel intuitive at first.
 
 * SLURM requires multiple copies of the same program are submitted multiple times to the same cluster to do cluster programming. This is particularly well-suited for MPI-based workloads.
-* Ray, on the other hand, expects a head-worker architecture with a single point of entry. That is, you'll need to start a Ray head node, multiple Ray worker nodes, and run your Ray script on the head node.
+* Ray, on the other hand, expects a head-worker architecture with a single point of entry; you need to start a Ray head node, multiple Ray worker nodes, and run your Ray script on the head node.
 
-To bridge this gap, Ray 2.49 and above introduces ``ray symmetric-run`` command, which will start a Ray cluster on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
+To bridge this gap, Ray 2.49 and later introduces ``ray symmetric-run`` command, which starts a Ray cluster on all nodes with given CPU and GPU resources and runs your entrypoint script **only** on the head node.
 
-Below, we provide a walkthrough using ``ray symmetric-run`` to run Ray on SLURM.
+Below is a walkthrough using ``ray symmetric-run`` to run Ray on SLURM.
 
 .. contents::
   :local:
@@ -19,11 +19,11 @@ Below, we provide a walkthrough using ``ray symmetric-run`` to run Ray on SLURM.
 Walkthrough using Ray with SLURM
 --------------------------------
 
-Many SLURM deployments require you to interact with slurm via ``sbatch``, which executes a batch script on SLURM.
+Many SLURM deployments require you to interact with slurm through ``sbatch``, which executes a batch script on SLURM.
 
-To run a Ray job with ``sbatch``, you will want to start a Ray cluster in the sbatch job with multiple ``srun`` commands (tasks), and then execute your python script that uses Ray. Each task will run on a separate node and start/connect to a Ray runtime.
+To run a Ray job with ``sbatch``, you want to start a Ray cluster in the sbatch job with multiple ``srun`` commands (tasks), and then execute your python script that uses Ray. Each task runs on a separate node and starts/connects to a Ray runtime.
 
-The below walkthrough will do the following:
+The below walkthrough does the following:
 
 1. Set the proper headers for the ``sbatch`` script.
 2. Load the proper environment/modules.
@@ -39,14 +39,14 @@ See :ref:`slurm-basic.sh <slurm-basic>` for an end-to-end example.
 sbatch directives
 ~~~~~~~~~~~~~~~~~
 
-In your sbatch script, you'll want to add `directives to provide context <https://slurm.schedmd.com/sbatch.html>`__ for your job to SLURM.
+In your sbatch script, you want to add `directives to provide context <https://slurm.schedmd.com/sbatch.html>`__ for your job to SLURM.
 
 .. code-block:: bash
 
   #!/bin/bash
   #SBATCH --job-name=my-workload
 
-You'll need to tell SLURM to allocate nodes specifically for Ray. Ray will then find and manage all resources on each node.
+You need to tell SLURM to allocate nodes specifically for Ray. Ray then finds and manages all resources on each node.
 
 .. code-block:: bash
 
@@ -54,14 +54,14 @@ You'll need to tell SLURM to allocate nodes specifically for Ray. Ray will then 
   #SBATCH --nodes=4
   #SBATCH --exclusive
 
-Important: To ensure that each Ray worker runtime will run on a separate node, set ``tasks-per-node``.
+Important: To ensure that each Ray worker runtime runs on a separate node, set ``tasks-per-node``.
 
 .. code-block:: bash
 
   #SBATCH --tasks-per-node=1
 
-Since we've set `tasks-per-node = 1`, this will be used to guarantee that each Ray worker runtime will obtain the
-proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory per node.
+Since this example sets `tasks-per-node = 1`, this guarantees that each Ray worker runtime obtains the
+proper resources. In this example, the configuration asks for at least 5 CPUs and 5 GB of memory per node.
 
 .. code-block:: bash
 
@@ -80,9 +80,9 @@ You can also add other optional flags to your sbatch directives.
 Loading your environment
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, you'll often want to Load modules or your own conda environment at the beginning of the script.
+First, you often want to Load modules or your own conda environment at the beginning of the script.
 
-Note that this is an optional step, but it is often required for enabling the right set of dependencies.
+Note that this is an optional step, but it's often required for enabling the right set of dependencies.
 
 .. code-block:: bash
 
@@ -94,26 +94,26 @@ Note that this is an optional step, but it is often required for enabling the ri
 Obtain the head IP address
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Next, we'll want to obtain a hostname and a node IP address for the head node. This way, when we start worker nodes, we'll be able to properly connect to the right head node.
+Next, obtain a hostname and a node IP address for the head node. This way, when you start worker nodes, you can properly connect to the right head node.
 
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh
    :language: bash
    :start-after: __doc_head_address_start__
    :end-before: __doc_head_address_end__
 
-.. note:: In Ray 2.49 and above, you can use IPv6 addresses/hostnames.
+.. note:: In Ray 2.49 and later, you can use IPv6 addresses/hostnames.
 
 
 Starting Ray and executing your script
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. note:: `ray symmetric-run` is available in Ray 2.49 and above. Check older versions of the documentation if you are using an older version of Ray.
+.. note:: `ray symmetric-run` is available in Ray 2.49 and later. Check older versions of the documentation if you are using an older version of Ray.
 
-Now, we'll use `ray symmetric-run` to start Ray on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
+Now, use `ray symmetric-run` to start Ray on all nodes with given CPU and GPU resources and run your entrypoint script **only** on the head node.
 
-Below, you'll see that we explicitly specify the number of CPUs (``num-cpus``)
-and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
-more resources than allocated. We also need to explicitly
+Below, you see that the example explicitly specifies the number of CPUs (``num-cpus``)
+and number of GPUs (``num-gpus``) to Ray, as this prevents Ray from using
+more resources than allocated. You also need to explicitly
 indicate the ``address`` parameter for the head node to identify itself and other nodes to connect to:
 
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh
@@ -121,9 +121,9 @@ indicate the ``address`` parameter for the head node to identify itself and othe
    :start-after: __doc_symmetric_run_start__
    :end-before: __doc_symmetric_run_end__
 
-After the training job is completed, the Ray cluster will be stopped automatically.
+After the training job is completed, the Ray cluster is stopped automatically.
 
-.. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
+.. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument isn't included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 
 .. _slurm-network-ray:
 
@@ -142,9 +142,9 @@ way the head node communicates with its workers.
 
 
 Considering 2 users, if they both schedule a SLURM job using Ray
-at the same time, they are both creating a head node. In the backend, Ray will
-assign some internal ports to a few services. The issue is that as soon as the
-first head node is created, it will bind some ports and prevent them to be
+at the same time, they're both creating a head node. In the backend, Ray
+assigns some internal ports to a few services. The issue is that as soon as the
+first head node is created, it binds some ports and prevents them to be
 used by another head node. To prevent any conflicts, users have to manually
 specify non overlapping ranges of ports. The following ports are to be
 adjusted. For an explanation on ports, see :ref:`here <ray-ports>`::
@@ -159,8 +159,8 @@ adjusted. For an explanation on ports, see :ref:`here <ray-ports>`::
     --ray-client-server-port
     --redis-shard-ports
 
-For instance, again with 2 users, they would run the following commands. Note that we don't use symmetric-run here
-because it does not currently work in multi-tenant environments:
+For instance, again with 2 users, they would run the following commands. Note that this example doesn't use symmetric-run here
+because it doesn't currently work in multi-tenant environments:
 
 .. code-block:: bash
 
@@ -195,7 +195,7 @@ because it does not currently work in multi-tenant environments:
     python -u your_script.py
 
 As for the IP binding, on some cluster architecture the network interfaces
-do not allow to use external IPs between nodes. Instead, there are internal
+don't allow to use external IPs between nodes. Instead, there are internal
 network interfaces (`eth0`, `eth1`, etc.). Currently, it's difficult to
 set an internal IP
 (see the open `issue <https://github.com/ray-project/ray/issues/22732>`_).
@@ -204,10 +204,10 @@ set an internal IP
 Python-interface SLURM scripts
 ------------------------------
 
-[Contributed by @pengzhenghao] Below, we provide a helper utility (:ref:`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch.
+[Contributed by @pengzhenghao] Below is a helper utility (:ref:`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch.
 ``slurm-launch.py`` uses an underlying template (:ref:`slurm-template.sh <slurm-template>`) and fills out placeholders given user input.
 
-You can feel free to copy both files into your cluster for use. Feel free to also open any PRs for contributions to improve this script!
+You can feel free to copy both files into your cluster for use. Feel free to also open any PRs for contributions to improve this script.
 
 Usage example
 ~~~~~~~~~~~~~
@@ -218,7 +218,7 @@ If you want to utilize a multi-node cluster in slurm:
 
     python slurm-launch.py --exp-name test --command "python your_file.py" --num-nodes 3
 
-If you want to specify the computing node(s), just use the same node name(s) in the same format of the output of ``sinfo`` command:
+If you want to specify the computing nodes, just use the same node names in the same format of the output of ``sinfo`` command:
 
 .. code-block:: bash
 
@@ -232,7 +232,7 @@ There are other options you can use when calling ``python slurm-launch.py``:
 * ``--num-gpus``: The number of GPUs you wish to use in each computing node. Default: 0.
 * ``--node`` (``-w``): The specific nodes you wish to use, in the same form as the output of ``sinfo``. Nodes are automatically assigned if not specified.
 * ``--num-nodes`` (``-n``): The number of nodes you wish to use. Default: 1.
-* ``--partition`` (``-p``): The partition you wish to use. Default: "", will use user's default partition.
+* ``--partition`` (``-p``): The partition you wish to use. Default: "", uses user's default partition.
 * ``--load-env``: The command to setup your environment. For example: ``module load cuda/10.1``. Default: "".
 
 Note that the :ref:`slurm-template.sh <slurm-template>` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
@@ -242,9 +242,9 @@ Implementation
 
 Concretely, the (:ref:`slurm-launch.py <slurm-launch>`) does the following things:
 
-1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name ``{exp-name}_{date}-{time}.sh``. Your command (``--command``) to launch your own job is also written into the sbatch script.
-2. Then it will submit the sbatch script to slurm manager via a new process.
-3. Finally, the python process will terminate itself and leaves a log file named ``{exp-name}_{date}-{time}.log`` to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the slurm cluster.
+1. It automatically writes your requirements, for example, number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name ``{exp-name}_{date}-{time}.sh``. Your command (``--command``) to launch your own job is also written into the sbatch script.
+2. Then it submits the sbatch script to slurm manager through a new process.
+3. Finally, the python process terminates itself and leaves a log file named ``{exp-name}_{date}-{time}.log`` to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the slurm cluster.
 
 
 Examples and templates
@@ -252,7 +252,7 @@ Examples and templates
 
 Here are some community-contributed templates for using SLURM with Ray:
 
-- `Ray sbatch submission scripts`_ used at `NERSC <https://www.nersc.gov/>`_, a US national lab.
+- `Ray sbatch submission scripts`_ used at `NERSC <https://www.nersc.gov/>`_, a national lab.
 - `YASPI`_ (yet another slurm python interface) by @albanie. The goal of yaspi is to provide an interface to submitting slurm jobs, thereby obviating the joys of sbatch files. It does so through recipes - these are collections of templates and rules for generating sbatch scripts. Supports job submissions for Ray.
 
 - `Convenient python interface`_ to launch ray cluster and submit task by @pengzhenghao

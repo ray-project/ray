@@ -1,6 +1,6 @@
 (deploying-on-argocd-example)=
 
-# Deploying Ray Clusters via ArgoCD
+# Deploying Ray Clusters through ArgoCD
 
 This guide provides a step-by-step approach for deploying Ray clusters on Kubernetes using ArgoCD. ArgoCD is a declarative GitOps tool that enables you to manage Ray cluster configurations in Git repositories with automated synchronization, version control, and rollback capabilities. This approach is particularly valuable when managing multiple Ray clusters across different environments, implementing audit trails and approval workflows, or maintaining infrastructure-as-code practices. For simpler use cases like single-cluster development or quick experimentation, direct kubectl or Helm deployments may be sufficient.
 You can read more about the benefits of ArgoCD [here](https://argo-cd.readthedocs.io/en/stable/#why-argo-cd).
@@ -250,7 +250,7 @@ Verify that the RayCluster is running:
 kubectl get raycluster -n ray-cluster
 ```
 
-Which will give something like:
+Which gives something like:
 ```
 NAME                 DESIRED WORKERS   AVAILABLE WORKERS   CPUS   MEMORY   GPUS   STATUS   AGE
 raycluster-kuberay   3                 3                   ...    ...      ...    ready    ...
@@ -291,7 +291,7 @@ Or, get the resource in YAML format to see the exact field paths:
 kubectl get raycluster raycluster-kuberay -n ray-cluster -o yaml
 ```
 
-Look for fields that are modified by controllers or autoscalers. In the case of Ray, the autoscaler modifies the `replicas` field under each worker group spec. You'll see output similar to:
+Look for fields that are modified by controllers or autoscalers. In the case of Ray, the autoscaler modifies the `replicas` field under each worker group spec. You see output similar to:
 
 ```yaml
 spec:
@@ -303,7 +303,7 @@ spec:
     # ...
 ```
 
-When ArgoCD detects differences between the desired state (in Git) and the actual state (in the cluster), it will show these in the UI or via CLI:
+When ArgoCD detects differences between the desired state (in Git) and the actual state (in the cluster), it shows these in the UI or through CLI:
 
 ```sh
 argocd app diff raycluster
@@ -311,9 +311,9 @@ argocd app diff raycluster
 
 If you see repeated differences in fields that should be managed by controllers (like autoscalers), those are candidates for `ignoreDifferences`.
 
-### Configuring ignoreDifferences
+### Configuring `ignoreDifferences`
 
-The `ignoreDifferences` section in the RayCluster Application configuration tells ArgoCD which fields to ignore. Without this setting, ArgoCD and the Ray Autoscaler may conflict, resulting in unexpected behavior when requesting workers dynamically (for example, using `ray.autoscaler.sdk.request_resources`). Specifically, when requesting N workers, the Autoscaler might not spin up the expected number of workers because ArgoCD could revert the replica count back to the original value defined in the Application manifest.
+The `ignoreDifferences` section in the RayCluster Application configuration tells ArgoCD which fields to ignore. Without this setting, ArgoCD, and the Ray Autoscaler may conflict, resulting in unexpected behavior when requesting workers dynamically (for example, using `ray.autoscaler.sdk.request_resources`). Specifically, when requesting N workers, the Autoscaler might not spin up the expected number of workers because ArgoCD could revert the replica count back to the original value defined in the Application manifest.
 
 The recommended approach is to use `jqPathExpressions`, which automatically handles any number of worker groups:
 
@@ -331,7 +331,7 @@ This configuration tells ArgoCD to ignore differences in the `replicas` field fo
 
 **Note**: The `name` and `namespace` must match your RayCluster resource name and namespace. Verify these values separately if you've customized them.
 
-**Alternative: Using jsonPointers**
+**Alternative: Using `jsonPointers`**
 
 If you prefer explicit configuration, you can use `jsonPointers` instead:
 
@@ -352,7 +352,7 @@ With `jsonPointers`, you must explicitly list each worker group by index:
 - `/spec/workerGroupSpecs/1/replicas` - Second worker group (`additional-worker-group1`)
 - `/spec/workerGroupSpecs/2/replicas` - Third worker group (`additional-worker-group2`)
 
-If you add or remove worker groups, you **must** update this list accordingly. The index corresponds to the order of worker groups as they appear in the RayCluster spec, with the default `worker` group at index 0 and `additionalWorkerGroups` following in the order they are defined.
+If you add or remove worker groups, you **must** update this list accordingly. The index corresponds to the order of worker groups as they appear in the RayCluster spec, with the default `worker` group at index 0 and `additionalWorkerGroups` following in the order they're defined.
 
 See the [ArgoCD diff customization documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/) for more details on both approaches.
 
@@ -377,7 +377,7 @@ You can customize the RayCluster configuration by modifying the `valuesObject` s
 * **Autoscaling**: Adjust `minReplicas`, `maxReplicas`, and `idleTimeoutSeconds` to control autoscaling behavior.
 * **Resources**: Modify `rayStartParams` to allocate custom resources to worker groups.
 
-After making changes, commit them to your Git repository. ArgoCD will automatically sync the changes to your cluster if automated sync is enabled.
+After making changes, commit them to your Git repository. ArgoCD automatically syncs the changes to your cluster if automated sync is enabled.
 
 ## Alternative: Deploy Everything in One File
 

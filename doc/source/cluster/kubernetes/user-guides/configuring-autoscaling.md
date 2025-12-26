@@ -59,7 +59,7 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ### Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator through Helm repository.
 
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
@@ -172,7 +172,7 @@ Therefore, if you create a detached actor with `@ray.remote(num_cpus=2)`, the Au
 # Step 6.1: Terminate the detached actor "actor1".
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor1
 
-# Step 6.2: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
+# Step 6.2: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60 s) seconds.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -183,7 +183,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # Step 6.3: Terminate the detached actor "actor2".
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor2
 
-# Step 6.4: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
+# Step 6.4: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60 s) seconds.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -282,7 +282,7 @@ Utilize the `RayCluster` CR's `autoscalerOptions` field to accomplish this. This
   - `Default`: Upscaling isn't rate-limited.
   - `Aggressive`: An alias for Default; upscaling isn't rate-limited.
 
-* **`idleTimeoutSeconds`** (default 60s):
+* **`idleTimeoutSeconds`** (default 60 s):
 This denotes the waiting time in seconds before scaling down an idle worker pod.
 A worker node is idle when it has no active tasks, actors, or referenced objects, either stored in-memory or spilled to disk.
 
