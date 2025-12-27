@@ -953,7 +953,7 @@ class Policy(metaclass=ABCMeta):
             "num_grad_updates": self.num_grad_updates,
         }
 
-        # Add this Policy's spec so it can be retreived w/o access to the original
+        # Add this Policy's spec so it can be retrieved w/o access to the original
         # code.
         policy_spec = PolicySpec(
             policy_class=type(self),
