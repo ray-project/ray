@@ -132,6 +132,32 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(const ray::gcs::GcsActor
   return death_cause;
 }
 
+// Returns true if the death cause represents an explicit termination due to
+// reference deletion or out-of-scope. These should never restart even if the
+// actor has max_restarts set. RAY_KILL is excluded because it can be used with
+// no_restart=False (allowing restarts) or no_restart=True (preventing restarts),
+// but this distinction isn't encoded in the death cause itself.
+bool IsExplicitTermination(const ray::rpc::ActorDeathCause &death_cause) {
+  if (!death_cause.has_actor_died_error_context()) {
+    return false;
+  }
+  auto reason = death_cause.actor_died_error_context().reason();
+  return reason == ray::rpc::ActorDiedErrorContext::REF_DELETED ||
+         reason == ray::rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
+}
+
+// Returns true for any intentional termination (including RAY_KILL).
+// Used for name cleanup decisions.
+bool IsIntentionalTermination(const ray::rpc::ActorDeathCause &death_cause) {
+  if (!death_cause.has_actor_died_error_context()) {
+    return false;
+  }
+  auto reason = death_cause.actor_died_error_context().reason();
+  return reason == ray::rpc::ActorDiedErrorContext::RAY_KILL ||
+         reason == ray::rpc::ActorDiedErrorContext::REF_DELETED ||
+         reason == ray::rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
+}
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -992,6 +1018,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
+    // If the actor has already been marked dead and moved to destroyed cache,
+    // ensure we still clean up named actor registry.
+    auto destroyed_it = destroyed_actors_.find(actor_id);
+    if (destroyed_it != destroyed_actors_.end()) {
+      RemoveActorNameFromRegistry(destroyed_it->second);
+    }
     if (done_callback) {
       done_callback();
     }
@@ -1015,6 +1047,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
                  << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
                  << actor->GetName();
+  bool actor_is_created = false;
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.
@@ -1025,12 +1058,17 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     const auto &node_id = actor->GetNodeID();
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
-    if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
+    actor_is_created =
+        (node_it != created_actors_.end() && node_it->second.count(worker_id));
+    if (actor_is_created) {
       NotifyRayletToKillActor(actor, death_cause, force_kill);
-
-      RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
-      if (node_it->second.empty()) {
-        created_actors_.erase(node_it);
+      // For force kill, remove immediately. For graceful, keep so OnWorkerDead can find
+      // it.
+      if (force_kill) {
+        RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
+        if (node_it->second.empty()) {
+          created_actors_.erase(node_it);
+        }
       }
 
       // Create timer only if one doesn't already exist.
@@ -1081,41 +1119,57 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     }
   }
 
-  // Update the actor to DEAD in case any callers are still alive. This can
-  // happen if the owner of the actor dies while there are still callers.
-  // TODO(swang): We can skip this step and delete the actor table entry
-  // entirely if the callers check directly whether the owner is still alive.
+  // For force kill, mark DEAD immediately. For graceful, defer until
+  // OnWorkerDead confirms. However, we can only defer for created actors because
+  // OnWorkerDead looks up actors in created_actors_ or the scheduler. For actors
+  // in creation phase, CancelActorInScheduling removes them from the scheduler,
+  // so OnWorkerDead won't find them and won't call RestartActor. Also treat
+  // unsignalable actors as needing immediate marking to avoid indefinite waiting.
+  bool can_signal_actor = actor->LocalRayletAddress().has_value();
+  bool should_mark_dead_now = force_kill || !actor_is_created || !can_signal_actor;
+
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
-  if (actor->GetState() != rpc::ActorTableData::DEAD) {
-    actor->UpdateState(rpc::ActorTableData::DEAD);
-    mutable_actor_table_data->set_end_time(time);
-    mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
-  } else if (mutable_actor_table_data->death_cause().context_case() ==
-                 ContextCase::kActorDiedErrorContext &&
-             death_cause.context_case() == ContextCase::kActorDiedErrorContext &&
-             mutable_actor_table_data->death_cause()
-                     .actor_died_error_context()
-                     .reason() == rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
-             death_cause.actor_died_error_context().reason() ==
-                 rpc::ActorDiedErrorContext::REF_DELETED) {
-    // Update death cause from restartable OUT_OF_SCOPE to non-restartable REF_DELETED
-    mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
-  }
-  mutable_actor_table_data->set_timestamp(time);
-
-  const bool is_restartable = IsActorRestartable(*mutable_actor_table_data);
-  if (!is_restartable) {
-    AddDestroyedActorToCache(it->second);
-    registered_actors_.erase(it);
-    function_manager_.RemoveJobReference(actor_id.JobId());
-    RemoveActorNameFromRegistry(actor);
-    // Clean up the client to the actor's owner, if necessary.
-    if (!actor->IsDetached()) {
-      RemoveActorFromOwner(actor);
-    } else {
-      runtime_env_manager_.RemoveURIReference(actor_id.Hex());
+  bool is_restartable = false;
+  if (should_mark_dead_now) {
+    if (actor->GetState() != rpc::ActorTableData::DEAD) {
+      actor->UpdateState(rpc::ActorTableData::DEAD);
+      mutable_actor_table_data->set_end_time(time);
+      mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
+    } else if (mutable_actor_table_data->death_cause().context_case() ==
+                   ContextCase::kActorDiedErrorContext &&
+               death_cause.context_case() == ContextCase::kActorDiedErrorContext &&
+               mutable_actor_table_data->death_cause()
+                       .actor_died_error_context()
+                       .reason() == rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
+               death_cause.actor_died_error_context().reason() ==
+                   rpc::ActorDiedErrorContext::REF_DELETED) {
+      mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
     }
+    mutable_actor_table_data->set_timestamp(time);
+
+    is_restartable = IsActorRestartable(*mutable_actor_table_data);
+    if (!is_restartable) {
+      AddDestroyedActorToCache(it->second);
+      registered_actors_.erase(it);
+      function_manager_.RemoveJobReference(actor_id.JobId());
+      // For immediate marking (force kill, pending creation, or unsignalable),
+      // remove the actor name to allow reuse.
+      RemoveActorNameFromRegistry(actor);
+      if (!actor->IsDetached()) {
+        // For intentional terminations, also remove the owner mapping immediately.
+        if (IsIntentionalTermination(death_cause)) {
+          RemoveActorFromOwner(actor);
+        }
+      } else {
+        runtime_env_manager_.RemoveURIReference(actor_id.Hex());
+      }
+    }
+  } else {
+    // Graceful: store death cause, defer DEAD marking until
+    // OnWorkerDead confirms
+    mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
+    mutable_actor_table_data->set_timestamp(time);
   }
 
   auto actor_table_data =
@@ -1129,17 +1183,22 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor_id,
         actor_table_data,
         is_restartable,
+        should_mark_dead_now,
         done_callback = std::move(done_callback)](Status status) {
          if (done_callback) {
            done_callback();
          }
          gcs_publisher_->PublishActor(actor_id,
                                       GenActorDataOnlyWithStates(*actor_table_data));
-         if (!is_restartable) {
+         if (!is_restartable && should_mark_dead_now) {
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
-         actor->WriteActorExportEvent(false);
+         // For graceful kills that can actually wait (can signal actor), defer export
+         // event to RestartActor when DEAD is finalized. Otherwise, write it now.
+         if (should_mark_dead_now) {
+           actor->WriteActorExportEvent(false);
+         }
          // Destroy placement group owned by this actor.
          destroy_owned_placement_group_if_needed_(actor_id);
        },
@@ -1265,22 +1324,38 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   auto actor_iter = registered_actors_.find(actor_id);
   if (actor_iter != registered_actors_.end()) {
     gcs_actor_scheduler_->OnActorDestruction(actor_iter->second);
+    // Mark DEAD now - worker confirmed exit (deferred from graceful shutdown)
+    if (actor_iter->second->GetState() != rpc::ActorTableData::DEAD) {
+      auto mutable_data = actor_iter->second->GetMutableActorTableData();
+      actor_iter->second->UpdateState(rpc::ActorTableData::DEAD);
+      auto time = current_sys_time_ms();
+      mutable_data->set_timestamp(time);
+    }
   }
 
   rpc::ActorDeathCause death_cause;
-  if (creation_task_exception != nullptr) {
+  auto actor = GetActor(actor_id);
+  if (actor != nullptr && actor->GetActorTableData().has_death_cause()) {
+    death_cause = actor->GetActorTableData().death_cause();
+  } else if (creation_task_exception != nullptr) {
     absl::StrAppend(
         &message, ": ", creation_task_exception->formatted_exception_string());
 
     death_cause.mutable_creation_task_failure_context()->CopyFrom(
         *creation_task_exception);
   } else {
-    death_cause = GenWorkerDiedCause(
-        GetActor(actor_id), worker_ip, disconnect_type, disconnect_detail);
+    death_cause =
+        GenWorkerDiedCause(actor, worker_ip, disconnect_type, disconnect_detail);
   }
+
+  // For explicit terminations (OUT_OF_SCOPE, REF_DELETED), don't reschedule even if
+  // disconnect_type suggests reconstruction. RestartActor will handle final cleanup
+  // and persistence without automatic restart.
+  bool should_reschedule = need_reconstruct && !IsExplicitTermination(death_cause);
+
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
+  RestartActor(actor_id, /*need_reschedule=*/should_reschedule, death_cause);
 }
 
 void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
@@ -1477,9 +1552,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
-  if (!need_reschedule) {
-    remaining_restarts = 0;
-  } else if (max_restarts == -1) {
+  // Calculate remaining restarts based on max_restarts, not on need_reschedule.
+  // need_reschedule controls whether we automatically restart, but cleanup decision
+  // should be based on whether the actor can ever be restarted.
+  if (max_restarts == -1) {
     remaining_restarts = -1;
   } else {
     // Restarts due to node preemption do not count towards max_restarts.
@@ -1497,10 +1573,17 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       << ", num_restarts_due_to_node_preemption = " << num_restarts_due_to_node_preemption
       << ", preempted = " << mutable_actor_table_data->preempted();
 
-  if (remaining_restarts != 0 ||
-      (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted())) {
-    // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
-    // between memory cache and storage.
+  // Creation task failures (e.g. actor __init__ raising or invalid constructor
+  // arguments) are treated as permanent initialization failures and should not
+  // be automatically retried, regardless of max_restarts. This preserves the
+  // semantics that an exception in the constructor surfaces as
+  // RayActorError(actor_init_failed=True) instead of infinite restarts.
+  bool should_restart = !death_cause.has_creation_task_failure_context() &&
+                        need_reschedule &&
+                        (remaining_restarts != 0 ||
+                         (max_restarts > 0 && mutable_actor_table_data->preempted()));
+
+  if (should_restart) {
     if (mutable_actor_table_data->preempted()) {
       mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
           num_restarts_due_to_node_preemption + 1);
@@ -1532,12 +1615,56 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     mutable_actor_table_data->set_end_time(time);
     mutable_actor_table_data->set_timestamp(time);
 
+    // Keep for lineage reconstruction ONLY if:
+    // - Death cause is OUT_OF_SCOPE (not REF_DELETED, not creation failure, etc.)
+    // - AND either has remaining restarts OR was preempted with max_restarts > 0
+    // This matches IsActorRestartable() which only returns true for OUT_OF_SCOPE.
+    // REF_DELETED means all refs including lineage refs are gone, so actor can never
+    // be restarted. Creation failures are permanent __init__ errors.
+    bool is_out_of_scope = death_cause.has_actor_died_error_context() &&
+                           death_cause.actor_died_error_context().reason() ==
+                               rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
+    bool can_restart_for_lineage =
+        is_out_of_scope && (remaining_restarts != 0 ||
+                            (max_restarts > 0 && mutable_actor_table_data->preempted()));
+
+    if (!can_restart_for_lineage) {
+      // Fully non-restartable: clean up completely.
+      AddDestroyedActorToCache(actor);
+      auto registered_iter = registered_actors_.find(actor_id);
+      if (registered_iter != registered_actors_.end()) {
+        registered_actors_.erase(registered_iter);
+      }
+      function_manager_.RemoveJobReference(actor_id.JobId());
+      // Remove the actor name only for intentional terminations (ray.kill, ref
+      // deleted, out of scope). For failures such as worker crashes, preserve
+      // the name while there are still references so that it cannot be reused
+      // until the last reference is gone (or an explicit kill occurs).
+      if (!actor->GetName().empty() && IsIntentionalTermination(death_cause)) {
+        RemoveActorNameFromRegistry(actor);
+      }
+      // For non-detached actors, only remove from owner on intentional terminations.
+      // For failures, keep owner mapping so WaitForActorRefDeleted can trigger cleanup.
+      if (!actor->IsDetached()) {
+        if (IsIntentionalTermination(death_cause)) {
+          RemoveActorFromOwner(actor);
+        }
+      } else {
+        runtime_env_manager_.RemoveURIReference(actor_id.Hex());
+      }
+    }
+
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, death_cause, done_callback](
-             Status status) {
+        {[this,
+          actor,
+          actor_id,
+          mutable_actor_table_data,
+          death_cause,
+          done_callback,
+          can_restart_for_lineage](Status status) {
            // If actor was a detached actor, make sure to destroy it.
            // We need to do this because detached actors are not destroyed
            // when its owners are dead because it doesn't have owners.
@@ -1549,14 +1676,15 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
-                                                           {[](auto) {}, io_context_});
+           // Only delete ActorTaskSpec if actor won't be restarted for lineage.
+           // Actors kept for lineage reconstruction need ActorTaskSpec for GCS restart.
+           if (!can_restart_for_lineage) {
+             gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
+                                                             {[](auto) {}, io_context_});
+           }
            actor->WriteActorExportEvent(false);
          },
          io_context_});
-    // The actor is dead, but we should not remove the entry from the
-    // registered actors yet. If the actor is owned, we will destroy the actor
-    // once the owner fails or notifies us that the actor has no references.
   }
 }
 
