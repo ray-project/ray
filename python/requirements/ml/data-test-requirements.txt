@@ -107,3 +107,9 @@
 # dask[complete]==2025.5.0; python_version >= '3.12'
 # distributed==2025.5.0; python_version >= '3.12'
 # # pymars>=0.8.3; python_version < "3.12"
+
+
+# modin==0.22.2; python_version < '3.12'
+# modin==0.31.0; python_version >= '3.12'
+# responses==0.13.4
+# pymars>=0.8.3; python_version < "3.12"

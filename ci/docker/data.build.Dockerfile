@@ -16,27 +16,16 @@ RUN <<EOF
 
 set -ex
 
-BUILD=1 ./ci/ci.sh init
+./ci/ci.sh configure_system
+./ci/env/install-dependencies.sh install_base
+./ci/env/install-dependencies.sh install_toolchains
+./ci/env/install-dependencies.sh install_thirdparty_packages
 
-pip uninstall -y ray
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="/root/.local/bin:$PATH"
+uv pip install --system -r ./python/requirements/ml/data-requirements.txt -c ./python/requirements_compiled.txt
 
-DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
-  ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-
-# if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-#   # Older versions of Arrow Mongo require an older version of NumPy.
-#   pip install numpy==1.23.5
-# fi
-
-# # Install MongoDB
-# sudo apt-get purge -y mongodb*
-# sudo apt-get install -y mongodb
-# sudo rm -rf /var/lib/mongodb/mongod.lock
-
-if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
-  # These packages increase the image size quite a bit, so we only install them
-  # as needed.
-  sudo apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
-fi
+rm -rf /opt/miniforge/pkgs/cache/
+rm /root/Miniforge3-25.3.0-1-Linux-x86_64.sh
 
 EOF
