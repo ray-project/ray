@@ -538,6 +538,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--object-spilling-enabled",
+    required=False,
+    type=bool,
+    help="Whether to enable object spilling. It is enabled by default. If enabled, then Ray will choose idle objects to spill when the object store is out of memory.",
+)
+@click.option(
     "--object-spilling-directory",
     required=False,
     type=str,
@@ -707,6 +713,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_enabled,
     object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
@@ -817,6 +824,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_enabled=object_spilling_enabled,
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         temp_dir=temp_dir,
