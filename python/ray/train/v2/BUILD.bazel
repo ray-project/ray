@@ -172,6 +172,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
+        "team:data",
         "team:ml",
         "train_v2",
     ],
@@ -204,6 +205,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
+        "team:data",
         "team:ml",
         "train_v2",
     ],
@@ -716,6 +718,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
+        "team:data",
         "team:ml",
         "train_v2",
     ],

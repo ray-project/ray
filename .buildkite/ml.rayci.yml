@@ -315,3 +315,12 @@ steps:
         --only-tags gpu,train_v2_gpu
     depends_on: [ "mlgpubuild-multipy", "forge" ]
     soft_fail: true
+
+  - label: ":train: ml: data tests"
+    tags:
+      - data
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... data
+        --build-name mlgpubuild-py3.10 --python-version 3.10
+    depends_on: [ "mlgpubuild-multipy", "forge" ]

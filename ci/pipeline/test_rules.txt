@@ -39,7 +39,7 @@ ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
 ci/docker/data9.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
-@ data ml train
+@ data
 ;
 
 python/ray/workflow/
