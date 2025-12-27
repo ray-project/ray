@@ -610,10 +610,10 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "actual data size is out of expected bound"
 
         datasource = ParquetDatasource(tensor_output_path)
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
-        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is either out of expected bound"
@@ -638,10 +638,10 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "actual data size is out of expected bound"
 
         datasource = ParquetDatasource(text_output_path)
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             datasource._encoding_ratio >= 6 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
-        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 700_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"

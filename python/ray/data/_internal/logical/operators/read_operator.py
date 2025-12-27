@@ -1,5 +1,4 @@
 import copy
-import functools
 import math
 from typing import Any, Dict, Optional, Union
 
@@ -47,6 +46,8 @@ class Read(
         self._parallelism = parallelism
         self._concurrency = concurrency
         self._detected_parallelism = None
+        self._cached_metadata: Optional[BlockMetadataWithSchema] = None
+        self._cached_expensive_metadata: Optional[BlockMetadataWithSchema] = None
 
     def output_data(self):
         return None
@@ -73,13 +74,13 @@ class Read(
         This method gets metadata from the read tasks. It doesn't trigger any actual
         execution.
         """
-        return self._cached_output_metadata.metadata
+        return self.get_metadata().metadata
 
     def infer_schema(self):
-        return self._cached_output_metadata.schema
+        return self.get_metadata().schema
 
     def _estimate_num_outputs(self) -> Optional[int]:
-        metadata = self._cached_output_metadata.metadata
+        metadata = self.get_metadata(allow_expensive=True).metadata
 
         target_max_block_size = DataContext.get_current().target_max_block_size
 
@@ -97,14 +98,40 @@ class Read(
 
         # Otherwise, estimate total number of blocks from estimated total
         # byte size
-        return math.ceil(metadata.size_bytes / target_max_block_size)
+        size_based = math.ceil(metadata.size_bytes / target_max_block_size)
+        if metadata.input_files is not None:
+            return max(size_based, len(metadata.input_files))
+        return size_based
 
-    @functools.cached_property
-    def _cached_output_metadata(self) -> "BlockMetadataWithSchema":
+    def get_metadata(self, allow_expensive: bool = False) -> "BlockMetadataWithSchema":
+        cache_attr = (
+            "_cached_expensive_metadata" if allow_expensive else "_cached_metadata"
+        )
+        cached_value = getattr(self, cache_attr)
+        if cached_value is not None:
+            return cached_value
+
+        metadata = self._build_output_metadata(allow_expensive)
+        if allow_expensive:
+            self._cached_expensive_metadata = metadata
+            self._cached_metadata = metadata
+        else:
+            self._cached_metadata = metadata
+        return metadata
+
+    def _build_output_metadata(
+        self, allow_expensive: bool
+    ) -> "BlockMetadataWithSchema":
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
             empty_meta = BlockMetadata(None, None, None, None)
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+
+        cached_meta = self._datasource.get_static_metadata(
+            allow_expensive_metadata=allow_expensive
+        )
+        if cached_meta is not None:
+            return cached_meta
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self._datasource.get_read_tasks(1)

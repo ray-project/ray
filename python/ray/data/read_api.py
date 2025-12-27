@@ -425,27 +425,45 @@ def read_datasource(
     )
 
     cur_pg = ray.util.get_current_placement_group()
+    static_metadata = None
+    mem_size_for_autodetect: Optional[int] = None
+    if isinstance(datasource_or_legacy_reader, Datasource):
+        static_metadata = datasource_or_legacy_reader.get_static_metadata()
+        if (
+            static_metadata is not None
+            and static_metadata.metadata.size_bytes is not None
+        ):
+            mem_size_for_autodetect = static_metadata.metadata.size_bytes
+
     requested_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
         datasource_or_legacy_reader,
+        mem_size=mem_size_for_autodetect,
         placement_group=cur_pg,
     )
 
-    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
-    # removing LazyBlockList code path.
-    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
-
-    stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
-        parent=None,
-    )
+    if static_metadata is not None:
+        stats = DatasetStats(
+            metadata={"Read": [static_metadata.metadata]},
+            parent=None,
+        )
+        num_outputs = None
+    else:
+        # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
+        # removing LazyBlockList code path.
+        read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+        stats = DatasetStats(
+            metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+            parent=None,
+        )
+        num_outputs = len(read_tasks) if read_tasks else 0
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism=parallelism,
-        num_outputs=len(read_tasks) if read_tasks else 0,
+        num_outputs=num_outputs,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
     )

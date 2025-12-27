@@ -36,7 +36,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -437,36 +437,25 @@ class ParquetDatasource(Datasource):
         elif isinstance(shuffle, FileShuffleConfig):
             self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
-        # Sample small number of parquet files to estimate
-        #   - Encoding ratio: ratio of file size on disk to approximate expected
-        #     size of the corresponding block in memory
-        #   - Default batch-size: number of rows to be read from a file at a time,
-        #     used to limit amount of memory pressure
-        sampled_fragments = _sample_fragments(
-            self._pq_fragments,
+        # Sampling statistics are computed lazily before data is read so metadata-only
+        # operations (e.g., schema()) don't incur network I/O.
+        self._encoding_ratio = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        target_block_size = DataContext.get_current().target_max_block_size
+        self._default_batch_size = (
+            DEFAULT_PARQUET_READER_ROW_BATCH_SIZE if target_block_size else None
         )
-
-        sampled_file_infos = _fetch_file_infos(
-            sampled_fragments,
-            columns=self._get_data_columns(),
-            schema=schema,
-            local_scheduling=self._local_scheduling,
-        )
-
-        self._encoding_ratio = _estimate_files_encoding_ratio(
-            sampled_fragments,
-            sampled_file_infos,
-        )
-
-        self._default_batch_size = _estimate_reader_batch_size(
-            sampled_file_infos, DataContext.get_current().target_max_block_size
-        )
+        self._sampling_stats_computed = False
+        self._static_metadata_cache: Optional[BlockMetadataWithSchema] = None
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read
         if self._projection_map == {}:
             return 0
 
+        self._ensure_sampling_stats()
+        self._update_static_metadata_size_estimate()
+        # Use the best-known encoding ratio. Before sampling happens this falls back to
+        # the default ratio, which is sufficient for planning without triggering I/O.
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
@@ -504,6 +493,8 @@ class ParquetDatasource(Datasource):
             if self._predicate_expr is not None
             else None
         )
+
+        self._ensure_sampling_stats(per_task_row_limit=per_task_row_limit)
 
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
@@ -563,6 +554,40 @@ class ParquetDatasource(Datasource):
             )
 
         return read_tasks
+
+    def get_static_metadata(
+        self, allow_expensive_metadata: bool = False
+    ) -> Optional[BlockMetadataWithSchema]:
+        if allow_expensive_metadata:
+            self._ensure_sampling_stats()
+        if self._static_metadata_cache is None:
+            target_schema = self._derive_schema(
+                self._read_schema,
+                file_schema=self._file_schema,
+                partition_schema=self._partition_schema,
+                projected_columns=self.get_current_projection(),
+                _block_udf=self._block_udf,
+            )
+            meta = BlockMetadata(
+                num_rows=None,
+                size_bytes=self._estimate_in_mem_size(self._pq_fragments),
+                input_files=self._pq_paths,
+                exec_stats=None,
+            )
+            self._static_metadata_cache = BlockMetadataWithSchema(
+                metadata=meta, schema=target_schema
+            )
+        if allow_expensive_metadata:
+            self._update_static_metadata_size_estimate()
+        target_schema = self._derive_schema(
+            self._read_schema,
+            file_schema=self._file_schema,
+            partition_schema=self._partition_schema,
+            projected_columns=self.get_current_projection(),
+            _block_udf=self._block_udf,
+        )
+        self._static_metadata_cache.schema = target_schema
+        return self._static_metadata_cache
 
     def get_name(self):
         """Return a human-readable name for this datasource.
@@ -708,6 +733,54 @@ class ParquetDatasource(Datasource):
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
         return round(in_mem_size)
+
+    def _ensure_sampling_stats(self, per_task_row_limit: Optional[int] = None) -> None:
+        if self._sampling_stats_computed:
+            return
+
+        if per_task_row_limit is not None:
+            # Skip sampling for limited reads (e.g., schema(), head()) to keep metadata
+            # calls fast. We'll recompute when a full read is requested.
+            logger.debug(
+                "Skipping Parquet sampling for limited read (per_task_row_limit=%s)",
+                per_task_row_limit,
+            )
+            return
+
+        if not self._pq_fragments:
+            self._sampling_stats_computed = True
+            return
+
+        sampled_fragments = _sample_fragments(self._pq_fragments)
+        if not sampled_fragments:
+            self._sampling_stats_computed = True
+            return
+
+        sampled_file_infos = _fetch_file_infos(
+            sampled_fragments,
+            columns=self._get_data_columns(),
+            schema=self._read_schema,
+            local_scheduling=self._local_scheduling,
+        )
+
+        self._encoding_ratio = _estimate_files_encoding_ratio(
+            sampled_fragments,
+            sampled_file_infos,
+        )
+
+        self._default_batch_size = _estimate_reader_batch_size(
+            sampled_file_infos, DataContext.get_current().target_max_block_size
+        )
+
+        self._sampling_stats_computed = True
+        self._update_static_metadata_size_estimate()
+
+    def _update_static_metadata_size_estimate(self) -> None:
+        if self._static_metadata_cache is None:
+            return
+        self._static_metadata_cache.size_bytes = self._estimate_in_mem_size(
+            self._pq_fragments
+        )
 
     @staticmethod
     def _derive_schema(

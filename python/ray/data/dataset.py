@@ -81,6 +81,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Zip,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
@@ -3891,9 +3892,14 @@ class Dataset:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
+        dag = self._logical_plan.dag
+        if isinstance(dag, Read):
+            dag.get_metadata(allow_expensive=True)
+
         # If the size is known from metadata, return it.
-        if self._logical_plan.dag.infer_metadata().size_bytes is not None:
-            return self._logical_plan.dag.infer_metadata().size_bytes
+        metadata = dag.infer_metadata()
+        if metadata.size_bytes is not None:
+            return metadata.size_bytes
 
         metadata = self._plan.execute().metadata
         if not metadata or metadata[0].size_bytes is None:

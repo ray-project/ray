@@ -5,7 +5,7 @@ import numpy as np
 import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import Block, BlockMetadata, BlockMetadataWithSchema, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -276,6 +276,25 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             datasource in parallel.
         """
         raise NotImplementedError
+
+    def get_static_metadata(
+        self, allow_expensive_metadata: bool = False
+    ) -> Optional[BlockMetadataWithSchema]:
+        """Return best-effort static metadata without constructing read tasks.
+
+        Args:
+            allow_expensive_metadata: Whether the caller requires precise metadata
+                and is willing to pay the I/O cost (for example, sampling remote
+                files). Datasources can ignore this flag if they don't support
+                inexpensive metadata gathering.
+
+        Datasources can override this to supply cheap metadata (e.g., file schema) so
+        that logical-plan introspection doesn't need to build read tasks eagerly.
+
+        Returns:
+            Static metadata if it can be produced cheaply, otherwise ``None``.
+        """
+        return None
 
     @property
     def should_create_reader(self) -> bool:
