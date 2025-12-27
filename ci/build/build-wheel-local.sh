@@ -1,0 +1,221 @@
+#!/bin/bash
+#
+# Local development script for building Ray wheels using wanda.
+#
+# ============================================================================
+# USAGE
+# ============================================================================
+#
+#   ci/build/build-wheel-local.sh [PYTHON_VERSION] [BUILD_TYPE]
+#
+# Build types:
+#   ray (default)  - Build ray wheel
+#   cpp            - Build ray-cpp wheel
+#   all            - Build both ray and ray-cpp wheels
+#
+# Examples (can be run from any directory within the repo):
+#   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
+#   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
+#   ci/build/build-wheel-local.sh 3.10 cpp             # Build ray-cpp wheel
+#   ci/build/build-wheel-local.sh 3.10 all             # Build both ray and ray-cpp wheels
+#
+# Output: Wheels are extracted to .whl/ (at the repo root)
+#
+# ============================================================================
+# WHEEL BUILD HIERARCHY
+# ============================================================================
+#
+# This script builds distributable Ray wheel files (.whl) using pre-built
+# artifacts from wanda images. The C++ compilation happens once in ray-core,
+# then gets packaged into wheels.
+#
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                     PRE-BUILT ARTIFACTS                                 │
+#   │                                                                         │
+#   │   manylinux2014 (glibc compatible base)                                 │
+#   │        │                                                                │
+#   │        ├──────────────────┬──────────────────┐                          │
+#   │        ▼                  ▼                  ▼                          │
+#   │   ray-core           ray-dashboard       ray-java                       │
+#   │   (bazel build)      (npm build)         (maven build)                  │
+#   │        │                  │                  │                          │
+#   │   ray_pkg.zip        dashboard.tar.gz    ray-java.jar                   │
+#   │   ray_py_proto.zip                                                      │
+#   │        │                  │                  │                          │
+#   └────────┼──────────────────┼──────────────────┼──────────────────────────┘
+#            │                  │                  │
+#            └──────────────────┴──────────────────┘
+#                               │
+#   ┌───────────────────────────┼─────────────────────────────────────────────┐
+#   │                           ▼                                             │
+#   │   RAY WHEEL BUILD (ray-wheel.wanda.yaml)                                │
+#   │                                                                         │
+#   │   1. Extract ray_pkg.zip (C++ binaries)                                 │
+#   │   2. Extract dashboard.tar.gz                                           │
+#   │   3. Copy ray-java.jar                                                  │
+#   │   4. pip wheel . (packages everything, NO C++ compile)                  │
+#   │                           │                                             │
+#   │                           ▼                                             │
+#   │                  ray-{version}-{platform}.whl                           │
+#   │                                                                         │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │   RAY-CPP WHEEL BUILD (optional, for C++ API users)                     │
+#   │                                                                         │
+#   │   ray-core ──► ray-cpp-core ──► ray-cpp-wheel                           │
+#   │                (gen_ray_cpp_pkg)   (pip wheel)                          │
+#   │                      │                  │                               │
+#   │                      ▼                  ▼                               │
+#   │                 C++ headers      ray_cpp-{version}.whl                  │
+#   │                 + libraries                                             │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+set -euo pipefail
+
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
+
+# Change to repo root so relative paths work from any directory
+REPO_ROOT="$(get_repo_root)"
+cd "$REPO_ROOT"
+
+# Extract wheel from a docker image to .whl/ directory
+extract_wheel() {
+    local image_name="$1"
+    local wheel_type="$2"
+    header "Extracting ${wheel_type} wheel to .whl/..."
+    container_id=$(docker create "${image_name}" true)
+    docker cp "${container_id}:/" - | tar -xf - -C .whl --strip-components=0 '*.whl' 2>/dev/null || \
+        docker cp "${container_id}:/" .whl/
+    docker rm "${container_id}" > /dev/null
+}
+
+usage() {
+    echo "Usage: $0 [PYTHON_VERSION] [BUILD_TYPE]"
+    echo ""
+    echo "Build types:"
+    echo "  ray (default)  - Build ray wheel"
+    echo "  cpp            - Build ray-cpp wheel"
+    echo "  all            - Build both ray and ray-cpp wheels"
+    echo ""
+    echo "Wheels are automatically extracted to .whl/ directory."
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Build ray wheel for Python 3.10"
+    echo "  $0 3.11               # Build ray wheel for Python 3.11"
+    echo "  $0 3.10 cpp           # Build ray-cpp wheel"
+    echo "  $0 3.10 all           # Build both wheels"
+    exit 1
+}
+
+# Handle help early
+if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+fi
+
+# Parse arguments
+PYTHON_VERSION="${1:-3.10}"
+BUILD_TYPE="${2:-ray}"
+
+# Setup environment and check prerequisites
+setup_build_env
+check_wanda_prerequisites "$WANDA_BIN"
+
+# Export configuration
+export PYTHON_VERSION
+
+# Set BUILDKITE_COMMIT from git if not already set.
+# This populates ray.__commit__ in the built wheel.
+if [[ -z "${BUILDKITE_COMMIT:-}" ]]; then
+    BUILDKITE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+fi
+export BUILDKITE_COMMIT
+
+echo "Building Ray wheel for Python ${PYTHON_VERSION}..."
+echo "    Commit: ${BUILDKITE_COMMIT}"
+echo "    Build type: ${BUILD_TYPE}"
+
+# Build common wheel dependencies (these are cached by wanda)
+build_wheel_deps() {
+    header "Building ray-core..."
+    $WANDA_BIN ci/docker/ray-core.wanda.yaml
+
+    header "Building ray-dashboard..."
+    $WANDA_BIN ci/docker/ray-dashboard.wanda.yaml
+
+    header "Building ray-java..."
+    $WANDA_BIN ci/docker/ray-java.wanda.yaml
+
+    # Tag images locally so the @ references in wanda.yaml files work
+    header "Tagging images for local wanda access..."
+    docker tag "cr.ray.io/rayproject/ray-core-py${PYTHON_VERSION}:latest" "ray-core-py${PYTHON_VERSION}:latest"
+    docker tag "cr.ray.io/rayproject/ray-java-build:latest" "ray-java-build:latest"
+    docker tag "cr.ray.io/rayproject/ray-dashboard:latest" "ray-dashboard:latest"
+}
+
+# Build ray wheel (assumes deps already built)
+build_ray_wheel() {
+    header "Building ray-wheel..."
+    $WANDA_BIN ci/docker/ray-wheel.wanda.yaml
+
+    # Tag for local image reference
+    docker tag "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray-wheel-py${PYTHON_VERSION}:latest"
+
+    header "Ray wheel build complete!"
+    echo "    Image: cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest"
+}
+
+# Build ray-cpp wheel (assumes deps already built)
+build_cpp_wheel() {
+    header "Building ray-cpp-core..."
+    $WANDA_BIN ci/docker/ray-cpp-core.wanda.yaml
+
+    # Tag cpp-core image for local access
+    docker tag "cr.ray.io/rayproject/ray-cpp-core-py${PYTHON_VERSION}:latest" "ray-cpp-core-py${PYTHON_VERSION}:latest"
+
+    header "Building ray-cpp-wheel..."
+    $WANDA_BIN ci/docker/ray-cpp-wheel.wanda.yaml
+
+    header "Ray C++ wheel build complete!"
+    echo "    Image: cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest"
+}
+
+# Main build logic - always build deps first, then specific wheel type
+build_wheel_deps
+
+case "$BUILD_TYPE" in
+    ray)
+        build_ray_wheel
+        ;;
+    cpp)
+        build_cpp_wheel
+        ;;
+    all)
+        build_ray_wheel
+        build_cpp_wheel
+        ;;
+    *)
+        echo "Unknown build type: $BUILD_TYPE"
+        usage
+        ;;
+esac
+
+# Extract wheel(s) to .whl/
+mkdir -p .whl
+
+if [[ "$BUILD_TYPE" == "ray" || "$BUILD_TYPE" == "all" ]]; then
+    extract_wheel "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray"
+fi
+
+if [[ "$BUILD_TYPE" == "cpp" || "$BUILD_TYPE" == "all" ]]; then
+    extract_wheel "cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest" "ray-cpp"
+fi
+
+# Clean up non-wheel files
+find .whl -type f ! -name '*.whl' -delete 2>/dev/null || true
+find .whl -type d -empty -delete 2>/dev/null || true
+
+header "Wheels extracted to .whl/:"
+ls -la .whl/*.whl 2>/dev/null || echo "    (no wheel files found)"
