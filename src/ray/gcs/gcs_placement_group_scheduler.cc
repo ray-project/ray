@@ -178,7 +178,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-    const StatusCallback &callback) {
+    const rpc::StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
     return;
@@ -209,7 +209,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-    const StatusCallback callback) {
+    const rpc::StatusCallback callback) {
   RAY_CHECK(node.has_value());
   const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());

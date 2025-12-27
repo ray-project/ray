@@ -38,7 +38,7 @@ void InMemoryStoreClient::AsyncPut(const std::string &table_name,
 void InMemoryStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
-    ToPostable<OptionalItemCallback<std::string>> callback) {
+    ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   auto table = GetTable(table_name);
   std::optional<std::string> data;
   if (table != nullptr) {
