@@ -1516,7 +1516,7 @@ def update_envs(env_vars: Dict[str, str]):
 
     for key, value in env_vars.items():
         expanded = os.path.expandvars(value)
-        # Replace non-existant env vars with an empty string.
+        # Replace non-existent env vars with an empty string.
         result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
         os.environ[key] = result
 
