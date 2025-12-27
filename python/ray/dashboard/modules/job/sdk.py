@@ -508,8 +508,15 @@ class JobSubmissionClient(SubmissionClient):
                         )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    # Old Ray versions may send ERROR on connection close
-                    logger.debug(
-                        f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
-                    )
-                    break
+                    # Old Ray versions (<=2.0.1) may send ERROR on connection close
+                    if hasattr(self, "_server_ray_version") and packaging.version.parse(
+                        self._server_ray_version
+                    ) > packaging.version.parse("2.0.1"):
+                        raise RuntimeError(
+                            f"WebSocket error for job {job_id}: {ws.exception()}"
+                        )
+                    else:
+                        logger.debug(
+                            f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
+                        )
+                        break
