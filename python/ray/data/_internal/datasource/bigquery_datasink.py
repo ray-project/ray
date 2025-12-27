@@ -118,7 +118,7 @@ class BigQueryDatasink(Datasink[None]):
                     raise RuntimeError(
                         f"Write failed due to {retry_cnt}"
                         + " repeated API rate limit exceeded responses. Consider"
-                        + " specifiying the max_retry_cnt kwarg with a higher value."
+                        + " specifying the max_retry_cnt kwarg with a higher value."
                     )
 
         _write_single_block = cached_remote_fn(_write_single_block)
