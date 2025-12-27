@@ -40,7 +40,20 @@ def random_impl(
         # 3. A base seed fixed by the user
 
         ctx = TaskContext.get_current()
-        task_idx = ctx.task_idx if ctx else 0
+
+        if ctx is None:
+            import warnings
+
+            warnings.warn(
+                "TaskContext is not available for random() expression with seed. "
+                "Falling back to task_idx=0 for all tasks, which reduces the parallelism "
+                "benefits of random number generation. If you see this warning, please "
+                "report it as it may indicate an execution context issue.",
+                stacklevel=2,
+            )
+            task_idx = 0
+        else:
+            task_idx = ctx.task_idx
 
         if reseed_after_execution:
             from ray.data.context import DataContext
