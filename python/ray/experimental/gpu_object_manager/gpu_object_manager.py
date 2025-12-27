@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tu
 
 import ray
 from ray._private import ray_constants
-from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -270,7 +269,7 @@ class GPUObjectManager:
         self, obj_ref: ObjectRef, gpu_object_meta: GPUObjectMeta
     ):
         """
-        Add the GPU object metadata to the GPU object manager.
+        Add the GPU object metadata to the GPU object manager when borrowing an RDT object.
 
         Args:
             obj_ref: The ObjectRef of the GPU object.
@@ -295,6 +294,7 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
             tensor_transport_meta: The tensor transport metadata that is pre-computed.
+                This is known at ref creation time if the object is created through ray.put.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_get_tensor_transport_metadata__,
@@ -328,7 +328,7 @@ class GPUObjectManager:
     def _fetch_object(
         self,
         obj_id: str,
-        tensor_transport: Optional[str],
+        use_object_store: bool,
     ):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
@@ -339,11 +339,9 @@ class GPUObjectManager:
         fulfill a `ray.get` call.
 
         Args:
-            obj_id: The object ID of the GPU object.
-            tensor_transport: The tensor transport to use to fetch the GPU object.
-                This should either be object store or the tensor transport for the RDT object.
-                If this is None, the tensor transport backend of the RDT object will be used.
-                Note that NIXL is the only supported RDT tensor transport right now.
+            obj_id: The object ID of the RDT object.
+            use_object_store: Whether to fetch the RDT object through the
+                object store or through its designated tensor transport.
 
         Returns:
             None
@@ -353,42 +351,27 @@ class GPUObjectManager:
         )
         from ray.experimental.gpu_object_manager.util import (
             get_tensor_transport_manager,
+            validate_one_sided,
         )
 
         if self.gpu_object_store.has_object(obj_id):
             return
 
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
-        tensor_transport_backend = gpu_object_meta.tensor_transport_backend
-        if tensor_transport is None:
-            tensor_transport = tensor_transport_backend
 
-        from ray.experimental.gpu_object_manager.util import validate_one_sided
-
-        validate_one_sided(tensor_transport, "ray.get")
-
-        if (
-            tensor_transport != TensorTransportEnum.OBJECT_STORE.name
-            and tensor_transport != tensor_transport_backend
-        ):
-            raise ValueError(
-                f"Got {tensor_transport} and object had tensor transport backend {tensor_transport_backend}, "
-                "please specify the correct tensor transport in ray.get()."
-            )
-
-        src_actor = gpu_object_meta.src_actor
-        tensor_transport_manager = get_tensor_transport_manager(
-            tensor_transport_backend
-        )
-
-        if tensor_transport == TensorTransportEnum.OBJECT_STORE.name:
+        if use_object_store:
+            src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_fetch_gpu_object__, obj_id
                 )
             )
-            self.gpu_object_store.add_object(obj_id, tensors, is_primary=False)
+            self.gpu_object_store.add_object(obj_id, tensors)
         else:
+            tensor_transport = gpu_object_meta.tensor_transport_backend
+            validate_one_sided(tensor_transport, "ray.get")
+            tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
+
             if isinstance(gpu_object_meta.tensor_transport_meta, ObjectRef):
                 # If the tensor transport meta is an ObjectRef, gpu object manager
                 # needs to fetch the tensor transport meta from the src actor first.
@@ -406,14 +389,14 @@ class GPUObjectManager:
             )
 
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
-                None, None, tensor_transport_backend
+                None, None, tensor_transport
             )
             __ray_recv__(
                 None,
                 obj_id,
                 [gpu_object_meta.tensor_transport_meta],
                 communicator_meta,
-                tensor_transport_backend,
+                tensor_transport,
             )
 
     def trigger_out_of_band_tensor_transfer(
@@ -558,21 +541,22 @@ class GPUObjectManager:
     def get_gpu_object(
         self,
         object_id: str,
-        tensor_transport: Optional[str],
+        use_object_store: bool = False,
     ) -> List["torch.Tensor"]:
         """
-        Get the GPU object for a given object ID.
+        Get the RDT object for a given object ID.
 
         Args:
-            object_id: The object ID of the GPU object.
-            tensor_transport: The tensor transport to use to fetch the GPU object.
+            object_id: The object ID of the RDT object.
+            use_object_store: Whether to fetch the RDT object
+                through the object store or through its designated tensor transport.
 
         Returns:
-            The GPU object.
+            The RDT object.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self._fetch_object(object_id, tensor_transport)
+            self._fetch_object(object_id, use_object_store)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
@@ -660,7 +644,7 @@ class GPUObjectManager:
         )
 
         src_actor = ray.get_runtime_context().current_actor
-        self.gpu_object_store.add_object(obj_ref.hex(), tensors, is_primary=True)
+        self.gpu_object_store.add_object_primary(obj_ref.hex(), tensors)
         self.add_gpu_object_ref(
             obj_ref,
             src_actor,

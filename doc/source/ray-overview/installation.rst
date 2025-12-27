@@ -423,7 +423,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.10)
         :sync: ray (Python 3.10)
 
-        Ray version: nightly (`ae94ff4 <https://github.com/ray-project/ray/commit/ae94ff496a308c52100cd99b1857836b739498e0>`_)
+        Ray version: nightly (`0ddb7ee <https://github.com/ray-project/ray/commit/0ddb7eea6e84cad4b51dbdb5745164535e0a5e97>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py310-cpu.txt
 

@@ -160,6 +160,24 @@ class DeploymentStatus(str, Enum):
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=UPDATING,
+        4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+        """
+        mapping = {
+            DeploymentStatus.DEPLOY_FAILED: 1,
+            DeploymentStatus.UNHEALTHY: 2,
+            DeploymentStatus.UPDATING: 3,
+            DeploymentStatus.UPSCALING: 4,
+            DeploymentStatus.DOWNSCALING: 5,
+            DeploymentStatus.HEALTHY: 6,
+        }
+        return mapping.get(self, 0)
+
 
 class DeploymentStatusTrigger(str, Enum):
     """Explains how a deployment reached its current DeploymentStatus."""

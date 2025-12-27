@@ -166,6 +166,12 @@ class TaskManagerInterface {
   /// \param[in] task_id to cancel.
   virtual void MarkTaskCanceled(const TaskID &task_id) = 0;
 
+  /// Check if a task has been marked as cancelled.
+  ///
+  /// \param[in] task_id The task ID to check.
+  /// \return true if the task was cancelled, false otherwise.
+  virtual bool IsTaskCanceled(const TaskID &task_id) const = 0;
+
   /// Return the spec for a pending task.
   virtual std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 

@@ -337,6 +337,113 @@ async def test_vllm_wrapper_embed(model_opt_125m):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pooling_params,expect_same_output",
+    [
+        ({}, True),
+        ({"truncate_prompt_tokens": 3}, False),
+        ({"normalize": True}, False),
+    ],
+)
+async def test_vllm_wrapper_embed_pooling_params(
+    model_opt_125m, pooling_params, expect_same_output
+):
+    prompt = "Hello! How's the weather?"
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            "pooling_params": pooling_params,
+        },
+        {
+            "__idx_in_batch": 1,
+            "prompt": prompt,
+            # By default, no pooling params are applied.
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        # Validate pooling params for idx=0
+        if idx == 0 and pooling_params:
+            for key, expected_value in pooling_params.items():
+                assert hasattr(request.params, key)
+                actual_value = getattr(request.params, key)
+                assert actual_value == expected_value
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    assert (
+        outputs[0]["embeddings"] == outputs[1]["embeddings"]
+    ).all() == expect_same_output
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Sufficiently long prompt to trigger truncation to max_model_len
+    prompt = "Hello! How's the weather?" * 10_000
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            # Long prompts shouldn't induce vLLM errors as prommpt length is truncated
+            # to max_model_len when truncate_prompt_tokens is set to -1
+            "pooling_params": {"truncate_prompt_tokens": -1},
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,

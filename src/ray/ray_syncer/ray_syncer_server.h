@@ -17,7 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <atomic>
-#include <optional>
+#include <memory>
 #include <string>
 
 #include "ray/ray_syncer/common.h"
@@ -40,7 +40,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-      const std::optional<ray::rpc::AuthenticationToken> &auth_token,
+      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
       size_t max_batch_size,
       uint64_t max_batch_delay_ms);
 
@@ -64,9 +64,9 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
 
-  /// Authentication token for validation, will be empty if token authentication is
+  /// Authentication token for validation, will be nullptr if token authentication is
   /// disabled
-  std::optional<ray::rpc::AuthenticationToken> auth_token_;
+  std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token_;
 
   /// Track if Finish() has been called to avoid using a reactor that is terminating
   std::atomic<bool> finished_{false};

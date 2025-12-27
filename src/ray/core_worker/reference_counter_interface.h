@@ -150,7 +150,7 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) = 0;
+      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -542,7 +542,7 @@ class ReferenceCounterInterface {
   virtual void ReleaseAllLocalReferences() = 0;
 
   /// Get the tensor transport for the given object.
-  virtual std::optional<rpc::TensorTransport> GetTensorTransport(
+  virtual std::optional<std::string> GetTensorTransport(
       const ObjectID &object_id) const = 0;
 
   virtual ~ReferenceCounterInterface() = default;

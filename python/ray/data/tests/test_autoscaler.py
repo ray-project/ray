@@ -454,7 +454,7 @@ def test_autoscaling_config_validation_warnings(
     expected_message = (
         "⚠️  Actor Pool configuration of the "
         "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
-        "configured utilization threshold (200.0%) couldn't be reached with "
+        "configured utilization threshold (175.0%) couldn't be reached with "
         "configured max_concurrency=1 and max_tasks_in_flight_per_actor=1 "
         "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 100%)"
     )

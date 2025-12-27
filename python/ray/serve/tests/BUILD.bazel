@@ -132,7 +132,6 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_task_processor.py",
-        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -171,7 +170,7 @@ py_test_module_list(
 
 # Large tests.
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -180,6 +179,7 @@ py_test_module_list(
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
@@ -470,7 +470,7 @@ py_test_module_list(
 
 # Large tests with pack scheduling
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_standalone.py",

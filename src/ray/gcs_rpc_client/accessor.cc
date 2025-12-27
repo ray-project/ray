@@ -548,6 +548,19 @@ void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData>
       });
 }
 
+void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
+                                      const StatusCallback &callback,
+                                      int64_t timeout_ms) {
+  client_impl_->GetGcsRpcClient().AddEvents(
+      std::move(request),
+      [callback](const Status &status, rpc::events::AddEventsReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
+}
+
 void TaskInfoAccessor::AsyncGetTaskEvents(
     const MultiItemCallback<rpc::TaskEvents> &callback) {
   RAY_LOG(DEBUG) << "Getting all task events info.";

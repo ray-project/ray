@@ -41,7 +41,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -778,16 +777,13 @@ class ServeController:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                # HTTP is disabled
-                if http_config.host is None:
-                    return ""
-                return (
-                    f"http://{build_address(http_config.host, http_config.port)}"
-                    f"{http_config.root_path}"
-                )
+            # HTTP is disabled
+            if http_config.host is None:
+                return ""
+            return (
+                f"http://{build_address(http_config.host, http_config.port)}"
+                f"{http_config.root_path}"
+            )
         return http_config.root_url
 
     def config_checkpoint_deleted(self) -> bool:

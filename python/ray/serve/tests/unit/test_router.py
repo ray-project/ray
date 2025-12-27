@@ -1122,19 +1122,23 @@ class TestSingletonThreadRouter:
     ) -> SingletonThreadRouter:
         asyncio_router, fake_request_router = setup_router
 
-        router = SingletonThreadRouter(
-            controller_handle=Mock(),
-            deployment_id=DeploymentID(name="test", app_name="test"),
-            handle_id="test",
-            self_actor_id="test",
-            handle_source="test",
-            request_router=fake_request_router,
-            enable_strict_max_ongoing_requests=False,
-            resolve_request_arg_func=Mock(),
-            node_id="test-node-id",
-            availability_zone="test-az",
-            prefer_local_node_routing=False,
-        )
+        # Mock ray.get_runtime_context() to avoid triggering Ray initialization
+        with patch("ray.get_runtime_context") as mock_context:
+            mock_context.return_value.get_actor_id.return_value = "test-actor-id"
+
+            router = SingletonThreadRouter(
+                controller_handle=Mock(),
+                deployment_id=DeploymentID(name="test", app_name="test"),
+                handle_id="test",
+                self_actor_id="test",
+                handle_source="test",
+                request_router=fake_request_router,
+                enable_strict_max_ongoing_requests=False,
+                resolve_request_arg_func=Mock(),
+                node_id="test-node-id",
+                availability_zone="test-az",
+                prefer_local_node_routing=False,
+            )
         router._asyncio_router = asyncio_router
         return router
 
@@ -1170,7 +1174,7 @@ class TestSingletonThreadRouter:
         fake_router, _ = setup_router
         thread_router = setup_singleton_thread_router
 
-        loop = thread_router._get_singleton_asyncio_loop()
+        loop = thread_router._get_singleton_asyncio_loop(component="unknown")
 
         async def init_events():
             return asyncio.Event()
@@ -1298,7 +1302,7 @@ class TestSingletonThreadRouter:
             ),
             is_generator_object=False,
         )
-        loop = thread_router._get_singleton_asyncio_loop()
+        loop = thread_router._get_singleton_asyncio_loop(component="unknown")
 
         async def init_events():
             return asyncio.Event(), asyncio.Event()

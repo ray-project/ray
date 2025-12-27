@@ -78,7 +78,7 @@ steps:
         --python-version {{matrix.python}} --platform {{matrix.platform}}
         --image-type ray --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubaseextra-testdeps
       - raycudabaseextra-testdeps
@@ -104,7 +104,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-llmbaseextra-testdeps
     matrix:
@@ -120,7 +120,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
         --platform cu12.1.1-cudnn8 --image-type ray-ml --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-mlcudabaseextra-testdeps
     matrix:

@@ -96,7 +96,7 @@ class GrpcServer {
              bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::optional<AuthenticationToken> auth_token = std::nullopt)
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
@@ -104,8 +104,8 @@ class GrpcServer {
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
     // Initialize auth token: use provided value or load from AuthenticationTokenLoader
-    if (auth_token.has_value()) {
-      auth_token_ = std::move(auth_token.value());
+    if (auth_token) {
+      auth_token_ = auth_token;
     } else {
       auth_token_ = AuthenticationTokenLoader::instance().GetToken();
     }
@@ -174,7 +174,7 @@ class GrpcServer {
   ClusterID cluster_id_;
 
   /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
@@ -243,7 +243,7 @@ class GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) = 0;
+      std::shared_ptr<const AuthenticationToken> auth_token) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;
