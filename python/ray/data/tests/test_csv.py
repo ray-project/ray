@@ -13,10 +13,12 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+)
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -152,7 +154,7 @@ def test_csv_read_meta_provider(ray_start_regular_shared, tmp_path):
     df1.to_csv(path1, index=False)
     ds = ray.data.read_csv(
         path1,
-        meta_provider=FastFileMetadataProvider(),
+        meta_provider=DefaultFileMetadataProvider(),
     )
 
     dsdf = ds.to_pandas()
