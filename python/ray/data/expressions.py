@@ -458,6 +458,43 @@ class Expr(ABC):
             self
         )
 
+    # trigonometric helpers
+    def sin(self) -> "UDFExpr":
+        """Compute the sine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.sin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def cos(self) -> "UDFExpr":
+        """Compute the cosine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.cos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def tan(self) -> "UDFExpr":
+        """Compute the tangent of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.tan, return_dtype=DataType.float64())(
+            self
+        )
+
+    def asin(self) -> "UDFExpr":
+        """Compute the arcsine (inverse sine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.asin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def acos(self) -> "UDFExpr":
+        """Compute the arccosine (inverse cosine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.acos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def atan(self) -> "UDFExpr":
+        """Compute the arctangent (inverse tangent) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.atan, return_dtype=DataType.float64())(
+            self
+        )
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
