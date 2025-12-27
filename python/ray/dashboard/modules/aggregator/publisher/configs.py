@@ -42,7 +42,7 @@ HTTP_EXPOSABLE_EVENT_TYPES = os.environ.get(
 )
 
 # GCS Publisher specific configurations
-# List of event types that are allowed to be exposed to GCS, not overriden by environment variable
+# List of event types that are allowed to be exposed to GCS, not overridden by environment variable
 # as GCS only supports Task event types
 GCS_EXPOSABLE_EVENT_TYPES = [
     "TASK_DEFINITION_EVENT",
