@@ -1,3 +1,5 @@
+import uuid
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -6,7 +8,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.block import BlockColumn, BlockType
 
 
-def random_impl(
+def eval_random(
     num_rows: int,
     block_type: BlockType,
     *,
@@ -76,5 +78,30 @@ def random_impl(
         return pd.Series(random_values, dtype=np.float64)
     elif block_type == BlockType.ARROW:
         return pa.array(random_values, type=pa.float64())
+
+    raise TypeError(f"Unsupported block type: {block_type}")
+
+
+def eval_uuid(
+    num_rows: int,
+    block_type: BlockType,
+) -> BlockColumn:
+    """Implementation of the uuid expression.
+
+    Args:
+        num_rows: The number of rows to generate uuid values for.
+        block_type: The type of block to generate uuid values for.
+
+    Returns:
+        A BlockColumn containing the uuid values.
+
+    Raises:
+        TypeError: If the block type is not supported.
+    """
+    arr = [str(uuid.uuid4()) for _ in range(num_rows)]
+    if block_type == BlockType.PANDAS:
+        return pd.Series(arr, dtype=pd.StringDtype())
+    elif block_type == BlockType.ARROW:
+        return pa.array(arr, type=pa.string())
 
     raise TypeError(f"Unsupported block type: {block_type}")

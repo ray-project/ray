@@ -524,7 +524,6 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             BinaryExpr,
             Operation,
             UnaryExpr,
-            random as random_func,
         )
 
         func_name = node.func.id if isinstance(node.func, ast.Name) else str(node.func)
@@ -554,28 +553,17 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             right = self.visit(node.args[1])
             return BinaryExpr(Operation.IN, left, right)
         elif func_name == "random":
-            # Extract and validate positional arguments are constant literals
-            args = []
-            for arg in node.args:
-                if not isinstance(arg, ast.Constant):
-                    raise ValueError("random() arguments must be constant literals")
-                args.append(arg.value)
-
-            # Extract and validate keyword arguments are constant literals
-            kwargs = {}
-            for keyword in node.keywords:
-                if keyword.arg is None:
-                    raise ValueError("random() does not support **kwargs")
-                keyword_expr = self.visit(keyword.value)
-                if not isinstance(keyword_expr, LiteralExpr):
-                    raise ValueError("random() arguments must be constant literals")
-                kwargs[keyword.arg] = keyword_expr.value
-
-            # Call the actual random() function which will validate:
-            # - Too many positional arguments
-            # - Duplicate argument values
-            # - Unknown keyword arguments
-            return random_func(*args, **kwargs)
+            raise ValueError(
+                "random() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "from ray.data.expressions import random; ds.filter(expr=(random(seed=42)>0.5))"
+            )
+        elif func_name == "uuid":
+            raise ValueError(
+                "uuid() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "ds.filter(expr=uuid().str.starts_with('a'))"
+            )
         else:
             raise ValueError(f"Unsupported function: {func_name}")
 
@@ -728,23 +716,22 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         Returns:
             The evaluated result based on the nullary operation type.
         """
-        if expr.op == NullaryOperation.RANDOM:
-            from ray.data._internal.planner.plan_expression.random_impl import (
-                random_impl,
-            )
+        from ray.data._internal.planner.plan_expression.nullary_impl import (
+            eval_random,
+            eval_uuid,
+        )
 
-            return random_impl(
+        if expr.op == NullaryOperation.RANDOM:
+            return eval_random(
                 self.block_accessor.num_rows(),
                 self.block_accessor.block_type(),
-                seed=expr.kwargs.get("seed"),
-                reseed_after_execution=expr.kwargs.get("reseed_after_execution", True),
+                seed=expr.kwargs["seed"],
+                reseed_after_execution=expr.kwargs["reseed_after_execution"],
             )
         elif expr.op == NullaryOperation.UUID:
-            import uuid
-
-            return pa.array(
-                [str(uuid.uuid4()) for _ in range(self.block_accessor.num_rows())],
-                type=pa.string(),
+            return eval_uuid(
+                self.block_accessor.num_rows(),
+                self.block_accessor.block_type(),
             )
         else:
             raise TypeError(f"Unsupported nullary operation: {expr.op}")

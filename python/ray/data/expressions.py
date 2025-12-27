@@ -782,13 +782,14 @@ class NullaryExpr(Expr):
     """
 
     op: NullaryOperation
+    data_type: DataType
     kwargs: Dict[str, Any] = field(default_factory=dict)
-    data_type: DataType = field(default_factory=lambda: DataType.float64(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, NullaryExpr)
             and self.op is other.op
+            and self.data_type == other.data_type
             and self.kwargs == other.kwargs
         )
 
@@ -1592,6 +1593,7 @@ def random(seed: int | None = None, reseed_after_execution: bool = True) -> Null
     return NullaryExpr(
         op=NullaryOperation.RANDOM,
         kwargs={"seed": seed, "reseed_after_execution": reseed_after_execution},
+        data_type=DataType.float64(),
     )
 
 
@@ -1618,7 +1620,11 @@ def uuid() -> NullaryExpr:
          {'id': 4, 'uuid': 'b6265f98e2d0431ea86d837e8a16d31c'}]
 
     """
-    return NullaryExpr(op=NullaryOperation.UUID, kwargs={})
+    return NullaryExpr(
+        op=NullaryOperation.UUID,
+        kwargs={},
+        data_type=DataType.string(),
+    )
 
 
 # ──────────────────────────────────────
@@ -1648,6 +1654,7 @@ __all__ = [
     "download",
     "random",
     "star",
+    "uuid",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",

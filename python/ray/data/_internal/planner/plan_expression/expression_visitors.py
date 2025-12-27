@@ -522,15 +522,15 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_nullary(self, expr: "NullaryExpr") -> str:
         """Visit a nullary expression and return its inline representation."""
         if expr.op == NullaryOperation.RANDOM:
-            parts = []
-            seed = expr.kwargs.get("seed")
+            # ray.data.expressions.random() always add
+            # seed and reseed_after_execution to the kwargs
+            seed = expr.kwargs["seed"]
             if seed is not None:
-                parts.append(f"seed={seed}")
-            reseed_after_execution = expr.kwargs.get("reseed_after_execution", True)
-            if seed is not None and not reseed_after_execution:
-                parts.append("reseed_after_execution=False")
-            if parts:
+                parts = [f"{seed=}"]
+                reseed = expr.kwargs["reseed_after_execution"]
+                parts.append(f"{reseed=}")
                 return f"random({', '.join(parts)})"
+
             return "random()"
         else:
             # For future nullary operations, add handling here
