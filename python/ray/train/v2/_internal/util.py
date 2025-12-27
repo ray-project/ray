@@ -257,7 +257,7 @@ def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
 
     Args:
         raise_in_tune_session: Whether to raise a specific error message if the caller
-            is in a Tune session. If True, will raise a DeprecationWarning.
+            is in a Tune session. If True, will raise a RuntimeError.
 
     Returns:
         A decorator that performs this check, which raises an error if the caller
@@ -270,7 +270,7 @@ def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
             from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 
             if raise_in_tune_session and _in_tune_session():
-                raise DeprecationWarning(
+                raise RuntimeError(
                     f"`ray.train.{fn.__name__}` is deprecated when running in a function "
                     "passed to Ray Tune. Please use the equivalent `ray.tune` API instead. "
                     "See this issue for more context: "

@@ -134,7 +134,7 @@ class LightGBMTrainer(DataParallelTrainer):
             or params is not None
             or num_boost_round is not None
         ):
-            raise DeprecationWarning(
+            raise ValueError(
                 "The legacy LightGBMTrainer API is deprecated. "
                 "Please switch to passing in a custom `train_loop_per_worker` "
                 "function instead. "
@@ -165,7 +165,7 @@ class LightGBMTrainer(DataParallelTrainer):
 
         This API is deprecated. Use `RayTrainReportCallback.get_model` instead.
         """
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`LightGBMTrainer.get_model` is deprecated. "
             "Use `RayTrainReportCallback.get_model` instead."
         )

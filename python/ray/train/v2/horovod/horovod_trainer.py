@@ -25,7 +25,7 @@ class HorovodTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`HorovodTrainer` is not supported and is scheduled to be removed "
             "in the future. "
             "Please consider using `TorchTrainer` or `TensorflowTrainer`, "

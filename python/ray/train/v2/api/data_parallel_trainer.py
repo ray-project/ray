@@ -106,10 +106,10 @@ class DataParallelTrainer:
         )
 
         if resume_from_checkpoint is not None:
-            raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
+            raise ValueError(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
-            raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
+            raise ValueError(_GET_METADATA_DEPRECATION_MESSAGE)
 
         self._validate_configs()
 
@@ -316,7 +316,7 @@ class DataParallelTrainer:
 
         This method is deprecated and will be removed in a future release.
         """
-        raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+        raise RuntimeError(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
     @classmethod
     @Deprecated
@@ -326,4 +326,4 @@ class DataParallelTrainer:
 
         This method is deprecated and will be removed in a future release.
         """
-        raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+        raise RuntimeError(_TRAINER_RESTORE_DEPRECATION_WARNING)

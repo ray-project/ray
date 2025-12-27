@@ -130,7 +130,7 @@ class Result(ResultV1):
     @property
     @Deprecated
     def config(self) -> Optional[Dict[str, Any]]:
-        raise DeprecationWarning(
+        raise RuntimeError(
             "The `config` property for a `ray.train.Result` is deprecated, "
             "since it is only relevant in the context of Ray Tune."
         )
