@@ -21,7 +21,6 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
 from ray.data.context import DataContext
@@ -41,7 +40,7 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 
 # These are physical operators that must receive all inputs before they start
 # processing data.
-MATERIALIZING_OPERATORS = (AllToAllOperator, ZipOperator)
+MATERIALIZING_OPERATORS = AllToAllOperator
 
 
 class ResourceManager:
