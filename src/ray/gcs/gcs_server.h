@@ -69,6 +69,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
+  std::string node_id;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -304,7 +305,7 @@ class GcsServer {
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
   /// The node id of GCS.
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
