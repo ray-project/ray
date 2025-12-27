@@ -167,6 +167,13 @@ bazel_container_resource_flags() {
     # CPU detection (count)
     # -----------------------
     local cpu_limit quota period bazel_jobs bazel_cpus
+    local cpu_full_threshold="${BAZEL_DETECT_CPU_FULL_THRESHOLD:-4}"
+    local cpu_headroom_pct="${BAZEL_DETECT_CPU_HEADROOM_PCT:-65}"
+
+    # C++-oriented RAM budget
+    local mb_per_job="${BAZEL_DETECT_MB_PER_JOB:-2048}"
+    local ram_reserve_mb="${BAZEL_DETECT_RAM_RESERVE_MB:-3072}"  # keep some for links/OS
+
     cpu_limit=""
 
     if [[ -r /sys/fs/cgroup/cpu.max ]]; then
@@ -195,12 +202,47 @@ bazel_container_resource_flags() {
         bazel_jobs="$force_jobs"
         bazel_cpus="$force_jobs"
     else
-        bazel_jobs="$cpu_limit"
         bazel_cpus="$cpu_limit"
+
+        # CPU-based "wiggle" jobs
+        local jobs_by_cpu
+        if (( cpu_limit <= cpu_full_threshold )); then
+            jobs_by_cpu="$cpu_limit"
+        else
+            jobs_by_cpu=$(( cpu_limit * cpu_headroom_pct / 100 ))
+            if (( jobs_by_cpu < cpu_full_threshold )); then jobs_by_cpu="$cpu_full_threshold"; fi
+            if (( jobs_by_cpu > cpu_limit )); then jobs_by_cpu="$cpu_limit"; fi
+        fi
+
+        # RAM-based jobs (with reserve)
+        local usable_mb="$bazel_mem_mb"
+        if (( usable_mb > ram_reserve_mb )); then
+            usable_mb=$(( usable_mb - ram_reserve_mb ))
+        else
+            usable_mb=0
+        fi
+
+        local jobs_by_ram=1
+        if (( mb_per_job > 0 )); then
+            jobs_by_ram=$(( usable_mb / mb_per_job ))
+            if (( jobs_by_ram < 1 )); then jobs_by_ram=1; fi
+        fi
+
+        # Final jobs = tighter bound
+        bazel_jobs="$jobs_by_cpu"
+        if (( jobs_by_ram < bazel_jobs )); then
+            bazel_jobs="$jobs_by_ram"
+        fi
+
+        # Sane bounds
+        if (( bazel_jobs < 1 )); then bazel_jobs=1; fi
+        if (( bazel_jobs > cpu_limit )); then bazel_jobs="$cpu_limit"; fi
     fi
 
     if (( max_jobs > 0 && bazel_jobs > max_jobs )); then
         bazel_jobs="$max_jobs"
+    fi
+    if (( max_jobs > 0 && bazel_cpus > max_jobs )); then
         bazel_cpus="$max_jobs"
     fi
 

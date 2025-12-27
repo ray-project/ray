@@ -19,7 +19,7 @@ WORKDIR /home/forge/ray
 COPY . .
 
 # Mounting cache dir for faster local rebuilds (architecture-specific to avoid toolchain conflicts)
-RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE}-${PYTHON_VERSION}-${ARCH_SUFFIX} \
+RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE}-${PYTHON_VERSION} \
     <<'EOF'
 #!/bin/bash
 set -euo pipefail
