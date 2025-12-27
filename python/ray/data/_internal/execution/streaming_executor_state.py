@@ -280,18 +280,12 @@ class OpState:
             backpressure_types = []
             if self.op._in_task_submission_backpressure:
                 # The op is backpressured from submitting new tasks.
-                if self.op._task_submission_backpressure_policies:
-                    policies = ",".join(self.op._task_submission_backpressure_policies)
-                    backpressure_types.append(f"tasks({policies})")
-                else:
-                    backpressure_types.append("tasks")
+                policies = ",".join(self.op._task_submission_backpressure_policies)
+                backpressure_types.append(f"tasks({policies})")
             if self.op._in_task_output_backpressure:
                 # The op is backpressured from producing new outputs.
-                if self.op._task_output_backpressure_policies:
-                    policies = ",".join(self.op._task_output_backpressure_policies)
-                    backpressure_types.append(f"outputs({policies})")
-                else:
-                    backpressure_types.append("outputs")
+                policies = ",".join(self.op._task_output_backpressure_policies)
+                backpressure_types.append(f"outputs({policies})")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
