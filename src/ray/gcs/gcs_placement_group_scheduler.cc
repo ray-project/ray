@@ -692,7 +692,7 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
       // A placement group's wildcard resource has to be the sum of all related bundles.
       // Even though `ToNodeBundleResourcesMap` has already considered this,
       // it misses the scenario in which single (or subset of) bundle is rescheduled.
-      // When commiting this single bundle, its wildcard resource would wrongly overwrite
+      // When committing this single bundle, its wildcard resource would wrongly overwrite
       // the existing value, unless using the following additive operation.
       auto capacity = node_bundle_resources.Get(resource_id);
       if (IsPlacementGroupWildcardResource(resource_id.Binary())) {

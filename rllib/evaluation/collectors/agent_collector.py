@@ -349,7 +349,7 @@ class AgentCollector:
                     f"used_for_compute_actions flag is set to True. Please fix the "
                     f"discrepancy. Hint: If you are using a custom model make sure "
                     f"the view_requirements are initialized properly and is point "
-                    f"only refering to past timesteps during inference."
+                    f"only referring to past timesteps during inference."
                 )
 
             # Some columns don't exist yet
