@@ -285,6 +285,35 @@ class TestTaskConsumerDecorator:
             class MyConsumer:
                 pass
 
+    def test_task_consumer_cleanup_only_calls_stop_consumer(self, config):
+        """Test that __del__ only calls stop_consumer(), not shutdown().
+
+        This is critical for rolling updates: shutdown() broadcasts to ALL
+        workers, while stop_consumer() targets only this specific worker.
+        Calling shutdown() during replica teardown would kill other replicas.
+        """
+
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            @task_handler
+            def my_task(self):
+                pass
+
+        instance = MyConsumer()
+        instance.initialize_callable(5)
+        adapter = instance._adapter
+
+        adapter._stop_consumer_received = False
+        adapter._shutdown_received = False
+
+        instance.__del__()
+
+        assert adapter._stop_consumer_received is True
+        assert adapter._shutdown_received is False, (
+            "shutdown() should NOT be called during cleanup - it broadcasts "
+            "shutdown to ALL workers instead of just this one"
+        )
+
 
 def test_default_deployment_name_stays_same_with_task_consumer(config):
     """Test that the default deployment name is the class name when using task_consumer with serve.deployment."""
