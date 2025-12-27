@@ -24,6 +24,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+    from ray.data.namespace_expressions.image_namespace import _ImageNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
@@ -526,6 +527,13 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
+
+    @property
+    def image(self) -> "_ImageNamespace":
+        """Access image operations for this expression."""
+        from ray.data.namespace_expressions.image_namespace import _ImageNamespace
+
+        return _ImageNamespace(self)
 
     @property
     def dt(self) -> "_DatetimeNamespace":
@@ -1125,6 +1133,7 @@ __all__ = [
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
+    "_ImageNamespace",
     "_DatetimeNamespace",
 ]
 
@@ -1143,6 +1152,10 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace
+    elif name == "_ImageNamespace":
+        from ray.data.namespace_expressions.image_namespace import _ImageNamespace
+
+        return _ImageNamespace
     elif name == "_DatetimeNamespace":
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
 
