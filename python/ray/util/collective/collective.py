@@ -257,9 +257,9 @@ def create_collective_group(
         raise RuntimeError(
             "World size must be greater than zero. Got '{}'.".format(world_size)
         )
-    if not all(ranks) >= 0:
+    if not all(r >= 0 for r in ranks):
         raise RuntimeError("Ranks must be non-negative.")
-    if not all(ranks) < world_size:
+    if not all(r < world_size for r in ranks):
         raise RuntimeError("Ranks cannot be greater than world_size.")
 
     # avoid a circular dependency
