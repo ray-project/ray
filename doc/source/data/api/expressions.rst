@@ -23,11 +23,13 @@ Public API
     udf
     pyarrow_udf
     download
+    random
+    uuid
 
 Expression Classes
 ------------------
 
-These classes represent the structure of expressions. You typically don't need to 
+These classes represent the structure of expressions. You typically don't need to
 instantiate them directly, but you may encounter them when working with expressions.
 
 .. autosummary::
@@ -41,6 +43,8 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    DownloadExpr
+    NullaryExpr
 
 Expression namespaces
 ------------------------------------
