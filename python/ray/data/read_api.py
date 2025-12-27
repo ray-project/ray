@@ -3933,7 +3933,7 @@ def read_lance(
             integer version number or a string tag. By default, the
             latest version is loaded.
         columns: The columns to read. By default, all columns are read.
-        filter: Expression or str that is a valid SQL where clause. Read returns
+        filter: A string that is a valid SQL WHERE clause. Read returns
             only the rows matching the filter. See
             `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
             for valid SQL expressions. By default, no filter is applied.
