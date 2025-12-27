@@ -46,6 +46,7 @@ class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
     _poll_failure = None
+    _shutdown_failure = None
 
     # TODO: Clean this up and use Mocks instead.
     def __init__(
@@ -82,6 +83,8 @@ class DummyWorkerGroup(WorkerGroup):
         }
 
     def shutdown(self):
+        if self._shutdown_failure:
+            raise self._shutdown_failure
         self._worker_group_state = None
 
     def abort(self):
@@ -103,6 +106,10 @@ class DummyWorkerGroup(WorkerGroup):
     @classmethod
     def set_poll_failure(cls, poll_failure):
         cls._poll_failure = poll_failure
+
+    @classmethod
+    def set_shutdown_failure(cls, shutdown_failure):
+        cls._shutdown_failure = shutdown_failure
 
 
 class MockScalingPolicy(ScalingPolicy):

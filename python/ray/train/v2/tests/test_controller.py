@@ -49,6 +49,7 @@ def patch_worker_group(monkeypatch):
     yield
     DummyWorkerGroup.set_poll_failure(None)
     DummyWorkerGroup.set_start_failure(None)
+    DummyWorkerGroup.set_shutdown_failure(None)
 
 
 @pytest.fixture(autouse=True)
@@ -355,6 +356,96 @@ async def test_controller_abort(monkeypatch):
     await controller.abort()
     assert mock_exit_actor.call_count == 1
     assert isinstance(controller.get_state(), AbortedState)
+
+
+@pytest.mark.asyncio
+async def test_worker_group_shutdown_error_during_resize():
+    """Test that worker group shutdown errors are properly caught and handled during resize."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    # Start with a worker group
+    assert isinstance(controller.get_state(), InitializingState)
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+    assert controller.get_worker_group() is not None
+
+    # Set shutdown failure and trigger a resize
+    shutdown_error = RuntimeError("Worker group shutdown failed")
+    DummyWorkerGroup.set_shutdown_failure(shutdown_error)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    scaling_policy.queue_monitor_decision(
+        ResizeDecision(num_workers=3, resources_per_worker={})
+    )
+
+    # The resize should trigger shutdown, which will fail
+    await controller._run_control_loop_iteration()
+    # Should transition to ResizingState
+    assert isinstance(controller.get_state(), ResizingState)
+    await controller._run_control_loop_iteration()
+    # Should transition to SchedulingState
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    # During execute_resize_decision, shutdown should fail and trigger failure handling
+    # The failure policy should be called with WorkerGroupError
+    # Since we're in SchedulingState, RETRY should transition to ReschedulingState
+    # (to retry the scheduling phase) rather than RestartingState
+    assert isinstance(controller.get_state(), ReschedulingState)
+
+
+@pytest.mark.asyncio
+async def test_worker_group_shutdown_error_during_final_shutdown():
+    """Test that worker group shutdown errors are properly caught and handled during final shutdown."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    # Start with a worker group
+    assert isinstance(controller.get_state(), InitializingState)
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+    assert controller.get_worker_group() is not None
+
+    # Finish training and set shutdown failure
+    worker_group = controller.get_worker_group()
+    for i in range(len(worker_group.get_workers())):
+        worker_group.finish_worker(i)
+
+    shutdown_error = RuntimeError("Worker group shutdown failed")
+    DummyWorkerGroup.set_shutdown_failure(shutdown_error)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+
+    # Training finished, should transition to ShuttingDownState
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ShuttingDownState)
+
+    # During shutdown, the shutdown error should be caught and handled
+    await controller._run_control_loop_iteration()
+    # Should transition to ErroredState due to the shutdown failure
+    assert isinstance(controller.get_state(), ErroredState)
 
 
 if __name__ == "__main__":
