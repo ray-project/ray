@@ -671,6 +671,69 @@ def test_with_column_logarithmic_operations(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "test_data, expr_factory, expected_results, test_id",
+    [
+        # Test negate
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").negate(),
+            [-5, 3, 0],
+            "negate",
+        ),
+        # Test sign
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").sign(),
+            [1, -1, 0],
+            "sign",
+        ),
+        # Test abs
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").abs(),
+            [5, 3, 0],
+            "abs",
+        ),
+        # Test power with integer exponent
+        pytest.param(
+            [{"x": 2}, {"x": 3}, {"x": 4}],
+            lambda: col("x").power(2),
+            [4, 9, 16],
+            "power_int",
+        ),
+        # Test power with float exponent
+        pytest.param(
+            [{"x": 4}, {"x": 9}, {"x": 16}],
+            lambda: col("x").power(0.5),
+            [2.0, 3.0, 4.0],
+            "power_sqrt",
+        ),
+    ],
+)
+def test_with_column_arithmetic_operations(
+    ray_start_regular_shared,
+    test_data,
+    expr_factory,
+    expected_results,
+    test_id,
+):
+    """Test arithmetic helper expressions: negate, sign, power, abs."""
+    ds = ray.data.from_items(test_data)
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+
+    # Create expected dataframe
+    expected_df = pd.DataFrame(test_data)
+    expected_df["result"] = expected_results
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "test_data, expression, expected_results, test_description",
     [
         # Test with null values
