@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Iterable, List
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef
@@ -53,6 +53,105 @@ def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMeta
     )
 
 
+def _read_task_runner(
+    read_task: ReadTask,
+    reader_cls: Optional[type] = None,
+    reader_args: Tuple = (),
+    reader_kwargs: Dict = None,
+    is_actor_pool: bool = False,
+) -> Iterable[Block]:
+    """A wrapper function for reader functions/classes to be used as UDFs.
+
+    This manages the initialization and execution of readers,
+    supporting both function-based and class-based readers (with caching
+    in _ReadActorContext for actor pools).
+    """
+    reader_kwargs = reader_kwargs or {}
+
+    actual_reader_cls = reader_cls or read_task.read_fn
+    if isinstance(actual_reader_cls, type):
+        if not is_actor_pool:
+            from ray.data._internal.compute import ActorPoolStrategy
+
+            raise ValueError(
+                "Callable class readers are only supported with "
+                f"{ActorPoolStrategy}, but TaskPoolStrategy was used."
+            )
+
+        if ray.data._read_actor_context is None:
+            from ray.data import _ReadActorContext
+
+            ray.data._read_actor_context = _ReadActorContext()
+
+        # Determine constructor arguments.
+        # ReadTask arguments take precedence over Datasource-level arguments.
+        ctor_args = read_task.read_fn_constructor_args or reader_args
+        ctor_kwargs = read_task.read_fn_constructor_kwargs or reader_kwargs
+
+        # Key based on class and constructor args to manage caching.
+        key = (
+            actual_reader_cls,
+            _make_reader_hashable(ctor_args),
+            _make_reader_hashable(ctor_kwargs),
+        )
+
+        readers = ray.data._read_actor_context.readers
+        if key not in readers:
+            readers[key] = actual_reader_cls(*(ctor_args or ()), **(ctor_kwargs or {}))
+
+        reader = readers[key]
+
+        call_args = read_task.read_fn_call_args or ()
+        call_kwargs = read_task.read_fn_call_kwargs or {}
+
+        yield from reader(*call_args, **call_kwargs)
+
+    else:
+        # Simple function
+        yield from read_task()
+
+
+def _make_reader_hashable(value):
+    if isinstance(value, (tuple, list)):
+        return tuple(_make_reader_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(sorted((k, _make_reader_hashable(v)) for k, v in value.items()))
+    try:
+        hash(value)
+        return value
+    except TypeError:
+        return str(value)
+
+
+def get_init_and_udf(op: Read) -> Tuple[Callable, Callable, bool]:
+    # Get reader metadata from datasource if available
+    reader_cls = None
+    reader_args = ()
+    reader_kwargs = {}
+
+    if hasattr(op._datasource, "get_reader_cls"):
+        reader_cls = op._datasource.get_reader_cls()
+        if reader_cls:
+            reader_args, reader_kwargs = op._datasource.get_reader_args()
+
+    from ray.data._internal.compute import ActorPoolStrategy
+    from ray.data._internal.planner.plan_udf_map_op import _get_udf
+
+    is_actor_pool = isinstance(op._compute, ActorPoolStrategy)
+
+    # Use _get_udf to handle proper wrapping and initialization for both
+    # task and actor pool strategies.
+    udf_fn, init_fn_orig = _get_udf(
+        _read_task_runner,
+        (reader_cls, reader_args, reader_kwargs, is_actor_pool),
+        {},
+        None,
+        None,
+        compute=op._compute,
+    )
+    return init_fn_orig, udf_fn, is_actor_pool
+
+
 def plan_read_op(
     op: Read,
     physical_children: List[PhysicalOperator],
@@ -103,9 +202,19 @@ def plan_read_op(
 
     inputs = InputDataBuffer(data_context, input_data_factory=get_input_data)
 
-    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
-        for read_task in blocks:
-            yield from read_task()
+    init_fn_orig, udf_fn, is_actor_pool = get_init_and_udf(op)
+
+    def init_fn():
+        if init_fn_orig:
+            init_fn_orig()
+        if is_actor_pool and ray.data._read_actor_context is None:
+            from ray.data import _ReadActorContext
+
+            ray.data._read_actor_context = _ReadActorContext()
+
+    def do_read(read_tasks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
+        for read_task in read_tasks:
+            yield from udf_fn(read_task)
 
     # Create a MapTransformer for a read operator
     map_transformer = MapTransformer(
@@ -117,7 +226,8 @@ def plan_read_op(
                     target_max_block_size=data_context.target_max_block_size,
                 ),
             ),
-        ]
+        ],
+        init_fn=init_fn,
     )
 
     return MapOperator.create(

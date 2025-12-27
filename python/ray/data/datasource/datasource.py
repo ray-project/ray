@@ -1,5 +1,15 @@
 import copy
-from typing import TYPE_CHECKING, Callable, Dict, Generator, Iterable, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+)
 
 import numpy as np
 import pyarrow as pa
@@ -303,6 +313,37 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         """If ``False``, only launch read tasks on the driver's node."""
         return True
 
+    def get_reader_cls(self) -> Optional[type]:
+        """Return the reader class to use for this datasource.
+
+        If this returns a class, it will be used to instantiate the reader
+        on the workers. The class must be callable (implement ``__call__``).
+
+        This is the preferred way to implement stateful readers that can cache
+        resources (e.g. database connections) when using :class:`~ray.data.ActorPoolStrategy`.
+
+        Example:
+            >>> class MyReader:
+            ...     def __init__(self, conn_str):
+            ...         self.conn = connect(conn_str)
+            ...     def __call__(self, partition_id):
+            ...         return self.conn.read(partition_id)
+            >>> class MyDatasource(Datasource):
+            ...     def get_reader_cls(self):
+            ...         return MyReader
+            ...     def get_reader_args(self):
+            ...         return ("db://uri",), {}
+        """
+        return None
+
+    def get_reader_args(self) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+        """Return the arguments to pass to the reader class constructor.
+
+        Returns:
+            A tuple of (args, kwargs).
+        """
+        return (), {}
+
 
 @Deprecated
 class Reader:
@@ -378,6 +419,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
     if a task is reading a single large file it can return multiple blocks to
     avoid running out of memory during the read.
 
+    The ``read_fn`` can be a function or a callable class. If it is a callable class,
+    it can be instantiated once per actor (or task) with ``read_fn_constructor_args``
+    and ``read_fn_constructor_kwargs``. This allows stateful readers that can cache
+    resources (e.g. database connections) when using ``ActorPoolStrategy``.
+
     The initial metadata should reflect all the blocks returned by the read,
     e.g., if the metadata says ``num_rows=1000``, the read can return a single
     block of 1000 rows, or multiple blocks with 1000 rows altogether.
@@ -392,11 +438,19 @@ class ReadTask(Callable[[], Iterable[Block]]):
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
         per_task_row_limit: Optional[int] = None,
+        read_fn_constructor_args: Optional[Tuple[Any, ...]] = None,
+        read_fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        read_fn_call_args: Optional[Tuple[Any, ...]] = None,
+        read_fn_call_kwargs: Optional[Dict[str, Any]] = None,
     ):
         self._metadata = metadata
         self._read_fn = read_fn
         self._schema = schema
         self._per_task_row_limit = per_task_row_limit
+        self._read_fn_constructor_args = read_fn_constructor_args
+        self._read_fn_constructor_kwargs = read_fn_constructor_kwargs
+        self._read_fn_call_args = read_fn_call_args
+        self._read_fn_call_kwargs = read_fn_call_kwargs
 
     @property
     def metadata(self) -> BlockMetadata:
@@ -415,6 +469,26 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def per_task_row_limit(self) -> Optional[int]:
         """Get the per-task row limit for this read task."""
         return self._per_task_row_limit
+
+    @property
+    def read_fn_constructor_args(self) -> Optional[Tuple[Any, ...]]:
+        """Get the constructor arguments for callable class read functions."""
+        return self._read_fn_constructor_args
+
+    @property
+    def read_fn_constructor_kwargs(self) -> Optional[Dict[str, Any]]:
+        """Get the constructor keyword arguments for callable class read functions."""
+        return self._read_fn_constructor_kwargs
+
+    @property
+    def read_fn_call_args(self) -> Optional[Tuple[Any, ...]]:
+        """Get the call arguments for callable class read functions."""
+        return self._read_fn_call_args
+
+    @property
+    def read_fn_call_kwargs(self) -> Optional[Dict[str, Any]]:
+        """Get the call keyword arguments for callable class read functions."""
+        return self._read_fn_call_kwargs
 
     def __call__(self) -> Iterable[Block]:
         result = self._read_fn()
