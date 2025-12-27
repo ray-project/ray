@@ -27,9 +27,9 @@ msgpack
 webdataset
 
 # Mongo
-pymongo
-pymongoarrow
-bson
+# pymongo
+# pymongoarrow
+# bson
 
 
 # Snowflake
