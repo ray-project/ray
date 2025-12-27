@@ -116,6 +116,46 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
+class _CallableClassUDFCollector(_ExprVisitorBase):
+    """Visitor that collects all callable class UDFs from expression trees.
+
+    This visitor traverses expression trees and accumulates UDFExpr nodes
+    that use callable classes (as opposed to regular functions).
+    """
+
+    def __init__(self):
+        """Initialize with an empty list of callable class UDFs."""
+        self._callable_class_udfs: List[UDFExpr] = []
+
+    def get_callable_class_udfs(self) -> List[UDFExpr]:
+        """Get the list of collected callable class UDFs.
+
+        Returns:
+            List of UDFExpr nodes that use callable classes.
+        """
+        return self._callable_class_udfs
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        """Visit a column expression (no UDFs to collect)."""
+        pass
+
+    def visit_udf(self, expr: UDFExpr) -> None:
+        """Visit a UDF expression and collect it if it's a callable class.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            None (only collects UDFs as a side effect).
+        """
+        # Check if this UDF uses a callable class (indicated by callable_class_spec being set)
+        if expr.callable_class_spec is not None:
+            self._callable_class_udfs.append(expr)
+
+        # Continue visiting child expressions
+        super().visit_udf(expr)
+
+
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
@@ -193,7 +233,11 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
         return UDFExpr(
-            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
+            fn=expr.fn,
+            data_type=expr.data_type,
+            args=new_args,
+            kwargs=new_kwargs,
+            callable_class_spec=expr.callable_class_spec,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:

@@ -822,6 +822,91 @@ def test_expression_inline_repr(expr_fn, expected_prefix):
     assert inline_repr.endswith(".alias('complex_filter')")
 
 
+class TestUDFExprStructuralEquality:
+    """Test structural equality for UDFExpr."""
+
+    def test_callable_class_udf_structural_equality(self):
+        """Test that callable class UDFs with same spec are structurally equal.
+
+        Each call to ExpressionAwareCallableClass.__call__ creates a new _placeholder
+        function, but structurally_equals should still return True when the
+        callable_class_spec is the same.
+        """
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        class AddOffset:
+            def __init__(self, offset):
+                self.offset = offset
+
+            def __call__(self, x: pa.Array) -> pa.Array:
+                return pc.add(x, self.offset)
+
+        # Create the same callable class instance
+        add_five = AddOffset(5)
+
+        # Each call creates a new _placeholder function internally,
+        # but the callable_class_spec should be the same
+        expr1 = add_five(col("value"))
+        expr2 = add_five(col("value"))
+
+        # These should be structurally equal despite having different
+        # _placeholder function objects
+        assert expr1.structurally_equals(expr2)
+        assert expr2.structurally_equals(expr1)
+
+        # Different constructor args should not be equal
+        add_ten = AddOffset(10)
+        expr3 = add_ten(col("value"))
+        assert not expr1.structurally_equals(expr3)
+
+        # Different column args should not be equal
+        expr4 = add_five(col("other"))
+        assert not expr1.structurally_equals(expr4)
+
+    def test_regular_function_udf_structural_equality(self):
+        """Test that regular function UDFs compare fn correctly."""
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        def add_one(x: pa.Array) -> pa.Array:
+            return pc.add(x, 1)
+
+        @udf(return_dtype=DataType.int32())
+        def add_two(x: pa.Array) -> pa.Array:
+            return pc.add(x, 2)
+
+        expr1 = add_one(col("value"))
+        expr2 = add_one(col("value"))
+        expr3 = add_two(col("value"))
+
+        # Same function should be equal
+        assert expr1.structurally_equals(expr2)
+
+        # Different functions should not be equal
+        assert not expr1.structurally_equals(expr3)
+
+    def test_callable_class_vs_regular_function_udf(self):
+        """Test that callable class UDFs are not equal to regular function UDFs."""
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        class AddOne:
+            def __call__(self, x: pa.Array) -> pa.Array:
+                return pc.add(x, 1)
+
+        @udf(return_dtype=DataType.int32())
+        def add_one(x: pa.Array) -> pa.Array:
+            return pc.add(x, 1)
+
+        class_expr = AddOne()(col("value"))
+        func_expr = add_one(col("value"))
+
+        # Different types of UDFs should not be equal
+        assert not class_expr.structurally_equals(func_expr)
+        assert not func_expr.structurally_equals(class_expr)
+
+
 if __name__ == "__main__":
     import sys
 

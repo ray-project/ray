@@ -3,9 +3,11 @@ import collections
 import inspect
 import logging
 import queue
+from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -16,6 +18,9 @@ from typing import (
     Tuple,
     TypeVar,
 )
+
+if TYPE_CHECKING:
+    from ray.data.expressions import Expr, _CallableClassSpec
 
 import numpy as np
 import pandas as pd
@@ -75,18 +80,35 @@ DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
 )
 
 
+@dataclass
+class UDFSpec:
+    """Specification for a callable class UDF to be instantiated in an actor.
+
+    Attributes:
+        spec: The callable class specification (contains class and constructor args)
+        instantiation_class: The class to instantiate (may be wrapped, e.g., for concurrency)
+    """
+
+    spec: "_CallableClassSpec"
+    instantiation_class: type
+
+
 class _MapActorContext:
     def __init__(
         self,
-        udf_map_cls: UserDefinedFunction,
-        udf_map_fn: Callable[[Any], Any],
-        is_async: bool,
+        is_async: bool = False,
+        udf_instances: Optional[Dict[int, Any]] = None,
     ):
-        self.udf_map_cls = udf_map_cls
-        self.udf_map_fn = udf_map_fn
+        """Initialize the map actor context.
+
+        Args:
+            is_async: Whether any UDF is async
+            udf_instances: Dict mapping UDF class ID to instantiated instance
+        """
         self.is_async = is_async
         self.udf_map_asyncio_loop = None
         self.udf_map_asyncio_thread = None
+        self.udf_instances = udf_instances or {}
 
         if is_async:
             self._init_async()
@@ -105,6 +127,62 @@ class _MapActorContext:
         self.udf_map_asyncio_thread = thread
 
 
+def _collect_udf_specs_from_expressions(
+    exprs: List["Expr"], compute: Optional[ComputeStrategy] = None
+) -> List[UDFSpec]:
+    """Collect UDFSpecs for callable class UDFs found in expressions.
+
+    Deduplicates by class AND constructor arguments, and applies
+    make_callable_class_single_threaded wrapping when appropriate. This ensures
+    that the same class with different constructor args (e.g., Multiplier(2) vs
+    Multiplier(3)) are treated as distinct UDFs with separate instances.
+
+    Args:
+        exprs: List of expressions to collect UDFs from
+        compute: Optional compute strategy. When ActorPoolStrategy with
+            enable_true_multi_threading=False, non-async UDFs are wrapped
+            for single-threaded execution.
+
+    Returns:
+        List of UDFSpec objects for all unique callable class UDFs found
+    """
+    from ray.data._internal.planner.plan_expression.expression_visitors import (
+        _CallableClassUDFCollector,
+    )
+
+    # Collect all callable class UDFs from all expressions using a single collector
+    collector = _CallableClassUDFCollector()
+    for expr in exprs:
+        collector.visit(expr)
+
+    # Deduplicate by spec key and create UDFSpec list
+    udf_specs = []
+    seen_keys = set()
+
+    for udf_expr in collector.get_callable_class_udfs():
+        spec = udf_expr.callable_class_spec
+        key = spec.make_key()
+        if key not in seen_keys:
+            seen_keys.add(key)
+
+            is_async_udf = _is_async_udf(spec.cls.__call__)
+
+            # Apply concurrency wrapper for non-async UDFs when using ActorPoolStrategy
+            # with enable_true_multi_threading=False (same as _get_udf for map_batches)
+            if (
+                not is_async_udf
+                and isinstance(compute, ActorPoolStrategy)
+                and not compute.enable_true_multi_threading
+            ):
+                wrapped_cls = make_callable_class_single_threaded(spec.cls)
+            else:
+                wrapped_cls = spec.cls
+
+            udf_specs.append(UDFSpec(spec=spec, instantiation_class=wrapped_cls))
+
+    return udf_specs
+
+
 def plan_project_op(
     op: Project,
     physical_children: List[PhysicalOperator],
@@ -118,6 +196,13 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
+    compute = get_compute(op._compute)
+
+    # Collect UDF specs from expressions and create init_fn if needed
+    # Pass compute strategy to properly handle enable_true_multi_threading flag
+    udf_specs = _collect_udf_specs_from_expressions(projection_exprs, compute)
+    init_fn = create_actor_context_init_fn(udf_specs) if udf_specs else None
+
     def _project_block(block: Block) -> Block:
         try:
             from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -128,14 +213,14 @@ def plan_project_op(
         except Exception as e:
             _try_wrap_udf_exception(e)
 
-    compute = get_compute(op._compute)
     map_transformer = MapTransformer(
         [
             BlockMapTransformFn(
                 _generate_transform_fn_for_map_block(_project_block),
                 disable_block_shaping=(len(op.exprs) == 0),
             )
-        ]
+        ],
+        init_fn=init_fn,
     )
     return MapOperator.create(
         map_transformer,
@@ -322,10 +407,15 @@ def _get_udf(
     fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
+        from ray.data.expressions import _CallableClassSpec
+
         fn_constructor_args = op_fn_constructor_args or ()
         fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
         is_async_udf = _is_async_udf(udf.__call__)
+
+        # Capture original class BEFORE wrapping for use as dict key
+        original_udf_class = udf
 
         if (
             not is_async_udf
@@ -341,25 +431,33 @@ def _get_udf(
             # max_concurrency > 1.
             udf = make_callable_class_single_threaded(udf)
 
-        def init_fn():
-            if ray.data._map_actor_context is None:
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=udf,
-                    udf_map_fn=udf(
-                        *fn_constructor_args,
-                        **fn_constructor_kwargs,
-                    ),
-                    is_async=is_async_udf,
-                )
+        # Create the callable class spec for this UDF
+        callable_class_spec = _CallableClassSpec(
+            cls=original_udf_class,
+            args=fn_constructor_args,
+            kwargs=fn_constructor_kwargs,
+        )
+
+        # Use the shared init function creator (handles both map_batches and expressions)
+        init_fn = create_actor_context_init_fn(
+            udf_specs=[UDFSpec(spec=callable_class_spec, instantiation_class=udf)]
+        )
+
+        # Capture the spec for lookup on the actor
+        captured_spec = callable_class_spec
 
         if inspect.iscoroutinefunction(udf.__call__):
-
+            # Async coroutine UDF: wrapper must be async to work with async transform machinery
             async def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    return await ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    # Direct await - already in async context
+                    return await udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -374,7 +472,10 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    gen = ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    gen = udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -394,7 +495,10 @@ def _get_udf(
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    return udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -530,6 +634,172 @@ def _generate_transform_fn_for_map_batches(
 
 def _is_async_udf(fn: UserDefinedFunction) -> bool:
     return inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn)
+
+
+def _call_udf_instance_with_async_bridge(
+    instance: Any,
+    async_loop: Optional[Any],
+    *args,
+    **kwargs,
+) -> Any:
+    """Call a UDF instance, bridging from sync context to async if needed.
+
+    This is the shared async calling logic used by both map_batches and expressions.
+    Extracted from the core logic in _get_udf's wrapper functions.
+
+    Args:
+        instance: The callable instance to call
+        async_loop: The async event loop (if available)
+        *args: Positional arguments
+        **kwargs: Keyword arguments
+
+    Returns:
+        The result of calling the instance
+    """
+    import asyncio
+
+    # Check if the instance's __call__ is async
+    if inspect.iscoroutinefunction(instance.__call__):
+        # Async coroutine: bridge from sync to async
+        if async_loop is not None:
+            future = asyncio.run_coroutine_threadsafe(
+                instance(*args, **kwargs), async_loop
+            )
+            return future.result()
+        else:
+            return asyncio.run(instance(*args, **kwargs))
+    elif inspect.isasyncgenfunction(instance.__call__):
+        # Async generator: collect results
+        async def _collect():
+            results = []
+            async for item in instance(*args, **kwargs):
+                results.append(item)
+            # In map_batches, each yield becomes a separate output batch.
+            # In expressions, the UDF must return a single array with the same
+            # length as the input (one output element per input row).
+            # If the async generator yields multiple arrays, we take the last one
+            # since expressions don't support multi-batch output semantics.
+            if not results:
+                return None
+            elif len(results) == 1:
+                return results[0]
+            else:
+                import logging
+
+                logging.warning(
+                    f"Async generator yielded {len(results)} values in expression context; "
+                    "only the last (most recent) is returned. Use map_batches for multi-yield support."
+                )
+                # Expressions require a single output array, not multiple yielded batches.
+                # Take the final yield as the result.
+                return results[-1]
+
+        if async_loop is not None:
+            future = asyncio.run_coroutine_threadsafe(_collect(), async_loop)
+            return future.result()
+        else:
+            return asyncio.run(_collect())
+    else:
+        # Synchronous instance - direct call
+        return instance(*args, **kwargs)
+
+
+class _NotInActorContext:
+    """Sentinel class to indicate call_udf_from_actor_context was not in actor context.
+
+    This is distinct from None to properly handle UDFs that legitimately return None.
+    """
+
+    pass
+
+
+# Singleton sentinel instance
+NOT_IN_ACTOR_CONTEXT = _NotInActorContext()
+
+
+def call_udf_from_actor_context(
+    callable_class_spec: Optional["_CallableClassSpec"],
+    args: List[Any],
+    kwargs: Dict[str, Any],
+) -> Any:
+    """Call a UDF from actor context if available.
+
+    This reuses the same instance lookup and calling logic as map_batches.
+
+    Args:
+        callable_class_spec: The callable class specification (or None for functions)
+        args: Positional arguments to pass to the UDF __call__
+        kwargs: Keyword arguments to pass to the UDF __call__
+
+    Returns:
+        The result of calling the UDF, or NOT_IN_ACTOR_CONTEXT sentinel if not
+        in actor context. Callers should check for this sentinel using
+        `result is NOT_IN_ACTOR_CONTEXT` rather than `result is None` to properly
+        handle UDFs that legitimately return None.
+    """
+    import ray
+
+    if (
+        callable_class_spec is not None
+        and ray.data._map_actor_context is not None
+        and ray.data._map_actor_context.udf_instances
+    ):
+        # Get the instance from the actor context using the spec's key
+        udf_key = callable_class_spec.make_key()
+        if udf_key in ray.data._map_actor_context.udf_instances:
+            instance = ray.data._map_actor_context.udf_instances[udf_key]
+            # Use the shared async bridge helper
+            return _call_udf_instance_with_async_bridge(
+                instance,
+                ray.data._map_actor_context.udf_map_asyncio_loop,
+                *args,
+                **kwargs,
+            )
+
+    return NOT_IN_ACTOR_CONTEXT
+
+
+def create_actor_context_init_fn(
+    udf_specs: List[UDFSpec],
+):
+    """Create an init function for registering callable class UDFs in actor context.
+
+    This is the shared core logic between map_batches (single UDF) and expressions (multiple UDFs).
+
+    Args:
+        udf_specs: List of UDF specifications
+
+    Returns:
+        An init function that sets up all UDFs in the actor context
+    """
+
+    def init_fn():
+        import ray
+
+        if ray.data._map_actor_context is None:
+            # Check if any UDF is async
+            has_async_udf = any(
+                _is_async_udf(spec.instantiation_class.__call__) for spec in udf_specs
+            )
+
+            # Create instances for all callable class UDFs
+            udf_instances = {}
+            for spec in udf_specs:
+                # Use the spec's key for deduplication and lookup
+                udf_key = spec.spec.make_key()
+                if udf_key not in udf_instances:
+                    # Instantiate using the wrapped/processed class
+                    udf_instances[udf_key] = spec.instantiation_class(
+                        *spec.spec.args, **spec.spec.kwargs
+                    )
+
+            # Single unified context for all UDFs
+            ray.data._map_actor_context = _MapActorContext(
+                is_async=has_async_udf,
+                udf_instances=udf_instances,
+            )
+
+    return init_fn
 
 
 def _validate_row_output(item):
