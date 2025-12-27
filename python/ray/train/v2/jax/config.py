@@ -1,6 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 import ray
 from ray._private import ray_constants
@@ -12,6 +13,7 @@ from ray.train.constants import (
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
 from ray.util import PublicAPI
+from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 class JaxConfig(BackendConfig):
     use_tpu: bool = False
     use_gpu: bool = False
+    num_slices: int = 1
 
     @property
     def backend_cls(self):
@@ -34,6 +37,7 @@ def _setup_jax_distributed_environment(
     use_tpu: bool,
     use_gpu: bool,
     resources_per_worker: dict,
+    jax_env_vars: Optional[dict] = None,
 ):
     """Set up distributed Jax training information.
 
@@ -49,6 +53,8 @@ def _setup_jax_distributed_environment(
         use_gpu: Whether to configure for GPU. If True and JAX_PLATFORMS is not
             already set, it will be set to "cuda".
         resources_per_worker: The resources per worker.
+        jax_env_vars: The JAX coordinator env vars to inject for multi-slice. These
+            values do not override existing values if specified.
     """
     # Get JAX_PLATFORMS from environment if already set
     jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
@@ -56,6 +62,12 @@ def _setup_jax_distributed_environment(
     if not jax_platforms and use_tpu:
         os.environ["JAX_PLATFORMS"] = "tpu"
         jax_platforms = "tpu"
+
+    if jax_env_vars:
+        for k, v in jax_env_vars.items():
+            # Respect configured JAX env vars if set.
+            if k not in os.environ:
+                os.environ[k] = v
 
     if not jax_platforms and use_gpu:
         os.environ["JAX_PLATFORMS"] = "cuda"
@@ -105,10 +117,44 @@ class _JaxBackend(Backend):
 
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
+        num_slices = backend_config.num_slices
+
+        # Calculate the number of workers per slice for multi-slice env setup.
+        if backend_config.use_tpu and num_slices > 1:
+            scaling_config = worker_group._train_run_context.scaling_config
+
+            if not scaling_config.topology or not scaling_config.accelerator_type:
+                raise ValueError(
+                    "When `num_slices > 1` for TPU, you must specify `topology` and "
+                    "`accelerator_type` in `ScalingConfig`."
+                )
+
+            # Handle the case where a user requests less workers than the total
+            # capacity of the TPU slice.
+            total_capacity, _ = get_tpu_worker_resources(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                resources_per_unit=scaling_config.resources_per_worker,
+                num_slices=num_slices,
+            )
+            workers_per_slice = total_capacity // num_slices
+        else:
+            # Assume even distribution based on the requested number of workers.
+            workers_per_slice = max(1, len(worker_group) // num_slices)
 
         # Set up JAX distributed environment on all workers
+        num_workers_total = len(worker_group)
         setup_futures = []
-        for i in range(len(worker_group)):
+        for i in range(num_workers_total):
+            env_vars = {}
+            if num_slices > 1:
+                slice_id = min(i // workers_per_slice, num_slices - 1)
+                env_vars = get_tpu_coordinator_env_vars(
+                    coordinator_address=master_addr,
+                    num_slices=num_slices,
+                    slice_id=slice_id,
+                )
+
             setup_futures.append(
                 worker_group.execute_single_async(
                     i,
@@ -119,6 +165,7 @@ class _JaxBackend(Backend):
                     use_tpu=backend_config.use_tpu,
                     use_gpu=backend_config.use_gpu,
                     resources_per_worker=worker_group.get_resources_per_worker(),
+                    jax_env_vars=env_vars,
                 )
             )
         ray.get(setup_futures)

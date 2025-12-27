@@ -28,7 +28,6 @@ from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
     DatasetsCallback,
-    TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
@@ -204,12 +203,10 @@ class DataParallelTrainer:
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
         datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
-        tpu_reservation_setup_callback = TPUReservationCallback()
         placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
-                tpu_reservation_setup_callback,
                 backend_setup_callback,
                 placement_group_cleaner_callback,
                 datasets_callback,
