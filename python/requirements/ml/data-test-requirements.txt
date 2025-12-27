@@ -59,7 +59,7 @@ torchvision
 pymysql
 
 # TFRecords
-tensorflow
+tensorflow==2.15.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 # tensorflow-datasets==4.9.3
 tensorflow-metadata
 crc32c==2.3
