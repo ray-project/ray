@@ -23,7 +23,7 @@ set -ex
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="/root/.local/bin:$PATH"
-uv pip install --system -r ./python/requirements/ml/data-requirements.txt -c ./python/requirements_compiled.txt
+uv pip install --system -r ./python/requirements/ml/data-requirements.txt -r ./python/requirements/ml/data-test-requirements.txt -c ./python/requirements_compiled.txt
 
 rm -rf /opt/miniforge/pkgs/cache/
 rm /root/Miniforge3-25.3.0-1-Linux-x86_64.sh
