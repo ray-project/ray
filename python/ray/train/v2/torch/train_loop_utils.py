@@ -385,17 +385,17 @@ def prepare_data_loader(
 
 @Deprecated
 def accelerate(amp: bool = False) -> None:
-    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
+    raise RuntimeError(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
 @Deprecated
 def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
-    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
+    raise RuntimeError(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
 @Deprecated
 def backward(tensor: torch.Tensor) -> None:
-    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
+    raise RuntimeError(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
 @PublicAPI(stability="stable")

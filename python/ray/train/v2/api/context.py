@@ -16,14 +16,14 @@ class TrainContext(ABC):
         """[Deprecated] User metadata dict passed to the Trainer constructor."""
         from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 
-        raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
+        raise RuntimeError(_GET_METADATA_DEPRECATION_MESSAGE)
 
     @Deprecated
     def get_trial_name(self) -> str:
         """[Deprecated] Trial name for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
-        raise DeprecationWarning(
+        raise RuntimeError(
             _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_name")
         )
 
@@ -32,7 +32,7 @@ class TrainContext(ABC):
         """[Deprecated] Trial id for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
-        raise DeprecationWarning(
+        raise RuntimeError(
             _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_id")
         )
 
@@ -41,7 +41,7 @@ class TrainContext(ABC):
         """[Deprecated] Trial resources for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
-        raise DeprecationWarning(
+        raise RuntimeError(
             _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_resources")
         )
 
@@ -54,7 +54,7 @@ class TrainContext(ABC):
         """
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
-        raise DeprecationWarning(
+        raise RuntimeError(
             _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir")
         )
 
