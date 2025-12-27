@@ -57,7 +57,7 @@ class KubernetesHttpApiClient(object):
         token = SERVICE_ACCOUNT_TOKEN
         # If SERVICE_ACCOUNT_TOKEN not present, use local
         # ~/.kube/config file. Active context will be used.
-        # This is usefull when Ray CLI are used and local autoscaler needs
+        # This is useful when Ray CLI are used and local autoscaler needs
         # communicate with the k8s API server
         # If the token is present then use that for communication.
         if not token:
