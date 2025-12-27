@@ -133,7 +133,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle push request from remote object manager
   ///
   /// Push request will contain the object which is specified by pull request
-  /// the object will be transfered by a sequence of chunks.
+  /// the object will be transferred by a sequence of chunks.
   ///
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
@@ -318,7 +318,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Send one chunk of the object to remote object manager
   ///
-  /// Object will be transfered as a sequence of chunks, small object(defined in config)
+  /// Object will be transferred as a sequence of chunks, small object(defined in config)
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
