@@ -477,6 +477,18 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
         core_worker->free_actor_object_callback_(object_id);
+      },
+      /*set_direct_transport_metadata=*/
+      [this,
+       set_direct_transport_metadata = std::move(options.set_direct_transport_metadata)](
+          const ObjectID &object_id, std::string direct_transport_metadata) {
+        io_service_.post(
+            [set_direct_transport_metadata,
+             object_id,
+             direct_transport_metadata = std::move(direct_transport_metadata)]() {
+              set_direct_transport_metadata(object_id, direct_transport_metadata);
+            },
+            "CoreWorker.SetDirectTransportMetadata");
       });
 
   auto on_excess_queueing = [this](const ActorID &actor_id,

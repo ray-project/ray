@@ -954,6 +954,13 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 
 @PublicAPI(stability="alpha")
+class RayDirectTransportError(RaySystemError):
+    """Raised when there is an error during a Ray direct transport transfer."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 class UnserializableException(RayError):
     """Raised when there is an error deserializing a serialized exception.
 

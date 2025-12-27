@@ -295,7 +295,6 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -305,6 +304,7 @@ ray_cc_library(
     hdrs = ["task_manager.h"],
     deps = [
         ":actor_manager",
+        ":core_worker_options",
         ":memory_store",
         ":task_event_buffer",
         ":task_manager_interface",

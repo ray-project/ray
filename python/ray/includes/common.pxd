@@ -348,6 +348,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
         optional[c_string] GetTensorTransport() const
+        void SetDirectTransportMetadata(c_string direct_transport_metadata)
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":

@@ -32,6 +32,10 @@
 namespace ray {
 namespace core {
 
+using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
+using SetDirectTransportMetadata = std::function<void(
+    const ObjectID &object_id, const std::string &direct_transport_metadata)>;
+
 // If you change this options's definition, you must change the options used in
 // other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
@@ -80,6 +84,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -127,8 +132,10 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// Callback to free GPU object from the in-actor object store.
-  std::function<void(const ObjectID &)> free_actor_object_callback;
+  /// Callback to free RDT object from the in-actor RDT store.
+  FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to set the direct transport metadata for an RDT object.
+  SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
