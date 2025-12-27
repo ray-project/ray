@@ -148,6 +148,18 @@ class ScalingConfig(ScalingConfigV1):
         """The number of TPUs to set per worker."""
         return self._resources_per_worker_not_none.get("TPU", 0)
 
+    def to_dict(self) -> Dict[str, int | str | dict]:
+        return {
+            "num_workers": self.num_workers,
+            "use_gpu": self.use_gpu,
+            "resources_per_worker": self.resources_per_worker,
+            "placement_strategy": self.placement_strategy,
+            "bundle_label_selector": self.bundle_label_selector,
+            "accelerator_type": self.accelerator_type,
+            "use_tpu": self.use_tpu,
+            "topology": self.topology,
+        }
+
 
 @dataclass
 @PublicAPI(stability="stable")
@@ -208,6 +220,13 @@ class CheckpointConfig:
                 "Must be 'max' or 'min'."
             )
 
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            "num_to_keep": str(self.num_to_keep),
+            "checkpoint_score_attribute": self.checkpoint_score_attribute,
+            "checkpoint_score_order": self.checkpoint_score_order,
+        }
+
 
 @dataclass
 class FailureConfig(FailureConfigV1):
@@ -229,6 +248,12 @@ class FailureConfig(FailureConfigV1):
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
+
+    def to_dict(self) -> Dict[str, int]:
+        return {
+            "max_failures": self.max_failures,
+            "controller_failure_limit": self.controller_failure_limit,
+        }
 
 
 @dataclass

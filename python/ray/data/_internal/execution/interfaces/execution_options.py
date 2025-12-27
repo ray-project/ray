@@ -358,6 +358,17 @@ class ExecutionOptions:
                     f" both be set for {attr} resource."
                 )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert this ExecutionOptions object to a dict."""
+        return {
+            "resource_limits": self.resource_limits.to_resource_dict(),
+            "exclude_resources": self.exclude_resources.to_resource_dict(),
+            "locality_with_output": self.locality_with_output,
+            "preserve_order": self.preserve_order,
+            "actor_locality_enabled": self.actor_locality_enabled,
+            "verbose_progress": self.verbose_progress,
+        }
+
 
 def safe_or(value: Optional[Any], alt: Any) -> Any:
     return value if value is not None else alt

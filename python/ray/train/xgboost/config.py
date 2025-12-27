@@ -4,7 +4,7 @@ import os
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import xgboost
 from packaging.version import Version
@@ -14,6 +14,7 @@ from xgboost.collective import CommunicatorContext
 import ray
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,11 @@ class XGBoostConfig(BackendConfig):
             )
 
         raise NotImplementedError(f"Unsupported backend: {self.xgboost_communicator}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        config_dict = super().to_dict()
+        config_dict["framework"] = TrainingFramework.XGBOOST.value
+        return config_dict
 
 
 class _XGBoostRabitBackend(Backend):
