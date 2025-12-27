@@ -515,7 +515,7 @@ def hash_runtime_conf(
         # Add cluster_synced_files to the file_mounts_content hash
         if cluster_synced_files is not None:
             for local_path in sorted(cluster_synced_files):
-                # For cluster_synced_files, we let the path be non-existant
+                # For cluster_synced_files, we let the path be non-existent
                 # because its possible that the source directory gets set up
                 # anytime over the life of the head node.
                 add_content_hashes(local_path, allow_non_existing_paths=True)
