@@ -94,7 +94,7 @@ def pad_batch_to_sequences_of_same_size(
         # parts of the API are stable and user-friendly.
         seq_lens = batch.get(SampleBatch.SEQ_LENS)
 
-        # state_in is a nested dict of tensors of states. We need to retreive the
+        # state_in is a nested dict of tensors of states. We need to retrieve the
         # length of the inner most tensor (which should be already the same as the
         # length of other tensors) and compare it to len(seq_lens).
         state_ins = tree.flatten(batch["state_in"])
