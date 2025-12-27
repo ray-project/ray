@@ -31,13 +31,15 @@ class TPUReservationCallback(ControllerCallback):
             assert scaling_config.accelerator_type is not None
             assert scaling_config.topology is not None
 
-            slice_name = reserve_tpu_slice(
+            reservation = reserve_tpu_slice(
                 topology=scaling_config.topology,
                 accelerator_type=scaling_config.accelerator_type,
             )
-            if not slice_name:
+
+            if not reservation:
                 raise RuntimeError("Failed to reserve TPU slice.")
 
+            slice_name, _ = reservation
             label_selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
 
         return label_selector
