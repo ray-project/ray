@@ -51,15 +51,15 @@ Found logged `ratio_time_sampling_over_learning` in result dict.
 """
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.examples.algorithms.classes.vpg import VPG, VPGConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_SAMPLING_TIMER,
     LEARNER_UPDATE_TIMER,
     TIMERS,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 

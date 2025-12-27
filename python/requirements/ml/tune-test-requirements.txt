@@ -1,7 +1,5 @@
 aim==3.23.0; python_version < "3.12"
 
-gpy==1.13.1
-
 jupyterlab==3.6.1
 matplotlib!=3.4.3
 

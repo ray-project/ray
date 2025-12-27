@@ -121,9 +121,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             return {}
         return {self._name: to_stats(self._output_metadata)}
 
-    def implements_accurate_memory_accounting(self):
-        return True
-
     def _try_zip_ready_bundles(self) -> None:
         """Zip bundles whenever each input has data available."""
         while all(buffer and len(buffer) > 0 for buffer in self._input_buffers):

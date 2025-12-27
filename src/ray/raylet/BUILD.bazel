@@ -39,6 +39,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":lease_dependency_manager",
+        ":metrics",
         ":worker_interface",
         ":worker_pool",
         "//src/ray/common:lease",
@@ -126,6 +127,7 @@ ray_cc_library(
     hdrs = ["worker_pool.h"],
     visibility = [":__subpackages__"],
     deps = [
+        ":metrics",
         ":runtime_env_agent_client",
         ":worker_interface",
         "//src/ray/common:constants",
@@ -192,6 +194,7 @@ ray_cc_library(
         "//src/ray/common:ray_object",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/object_manager:object_directory",
+        "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/util:time",
@@ -257,6 +260,7 @@ ray_cc_library(
         "//src/ray/object_manager",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/observability:metric_interface",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/rpc:node_manager_server",
@@ -266,6 +270,7 @@ ray_cc_library(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
+        "//src/ray/util:port_persistence",
         "//src/ray/util:throttler",
         "//src/ray/util:time",
         "@boost//:system",
@@ -286,9 +291,11 @@ ray_cc_binary(
     deps = [
         ":local_object_manager",
         ":local_object_manager_interface",
+        ":metrics",
         ":raylet_lib",
         "//src/ray/common:asio",
         "//src/ray/common:lease",
+        "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common/cgroup2:cgroup_manager_factory",
@@ -314,5 +321,14 @@ ray_cc_binary(
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/observability:metrics",
+        "//src/ray/stats:stats_lib",
     ],
 )

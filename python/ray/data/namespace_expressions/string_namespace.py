@@ -9,7 +9,7 @@ import pyarrow
 import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
-from ray.data.expressions import pyarrow_udf
+from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr, UDFExpr
@@ -33,14 +33,7 @@ def _create_str_udf(
         A callable that creates UDFExpr instances
     """
 
-    def wrapper(expr: Expr, *positional: Any, **kwargs: Any) -> "UDFExpr":
-        @pyarrow_udf(return_dtype=return_dtype)
-        def udf(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc_func(arr, *positional, **kwargs)
-
-        return udf(expr)
-
-    return wrapper
+    return _create_pyarrow_compute_udf(pc_func, return_dtype=return_dtype)
 
 
 @dataclass
@@ -262,6 +255,28 @@ class _StringNamespace:
     ) -> "UDFExpr":
         """Center strings in a field of given width."""
         return _create_str_udf(pc.utf8_center, DataType.string())(
+            self._expr, width, padding, *args, **kwargs
+        )
+
+    def lpad(
+        self, width: int, padding: str = " ", *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
+        """Right-align strings by padding with a given character while respecting ``width``.
+
+        If the string is longer than the specified width, it remains intact (no truncation occurs).
+        """
+        return _create_str_udf(pc.utf8_lpad, DataType.string())(
+            self._expr, width, padding, *args, **kwargs
+        )
+
+    def rpad(
+        self, width: int, padding: str = " ", *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
+        """Left-align strings by padding with a given character while respecting ``width``.
+
+        If the string is longer than the specified width, it remains intact (no truncation occurs).
+        """
+        return _create_str_udf(pc.utf8_rpad, DataType.string())(
             self._expr, width, padding, *args, **kwargs
         )
 

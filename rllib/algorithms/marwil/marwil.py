@@ -28,6 +28,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     OFFLINE_SAMPLING_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -474,6 +475,12 @@ class MARWIL(Algorithm):
                 # multiple times per RLlib iteration.
                 return_iterator=return_iterator,
             )
+            self.metrics.log_value(
+                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                value=self.config.train_batch_size_per_learner
+                * max(1, self.config.num_learners),
+                reduce="lifetime_sum",
+            )
             if return_iterator:
                 training_data = TrainingData(data_iterators=batch_or_iterator)
             else:
@@ -485,6 +492,11 @@ class MARWIL(Algorithm):
                 training_data=training_data,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    )
+                },
                 **self.offline_data.iter_batches_kwargs,
             )
 
