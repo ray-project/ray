@@ -15,6 +15,16 @@ steps:
       MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
 
+  # Python 3.14 uses fresh build from PyPA base image
+  - name: ray-core-build-py314
+    label: "wanda: core binary parts py3.14 (x86_64)"
+    wanda: ci/docker/ray-core-py314.wanda.yaml
+    env:
+      PYTHON_VERSION: "3.14"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+    tags: release_wheels
+
   - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
@@ -51,6 +61,20 @@ steps:
       - "3.13"
     depends_on:
       - manylinux-x86_64
+      - forge
+
+  # Python 3.14 uses a fresh manylinux build from PyPA base image
+  - label: ":tapioca: build: wheel 3.14 (x86_64)"
+    key: linux_wheels_py314
+    tags:
+      - release_wheels
+      - linux_wheels
+      - oss
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.14 --architecture x86_64 --upload
+    depends_on:
+      - manylinux-py314-x86_64
       - forge
 
   - label: ":tapioca: build: jar"
