@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG ARROW_VERSION=20.*
@@ -16,22 +16,22 @@ RUN <<EOF
 
 set -ex
 
-DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
-  ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-  # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
-fi
+./ci/ci.sh configure_system
+./ci/env/install-dependencies.sh install_base
+./ci/env/install-dependencies.sh install_toolchains
+./ci/env/install-dependencies.sh install_thirdparty_packages
 
-# Install MongoDB
-sudo apt-get purge -y mongodb*
-sudo apt-get install -y mongodb
-sudo rm -rf /var/lib/mongodb/mongod.lock
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="/root/.local/bin:$PATH"
+uv pip install --system --index-strategy unsafe-best-match -r ./python/requirements/ml/data-requirements.txt -r ./python/requirements/ml/data-test-requirements.txt -c ./python/requirements_compiled.txt
 
-if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
-  # These packages increase the image size quite a bit, so we only install them
-  # as needed.
-  sudo apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
-fi
+rm -rf /opt/miniforge/pkgs/cache/
+rm /root/Miniforge3-25.3.0-1-Linux-x86_64.sh
 
 EOF
+
+
+# -r data-requirements.txt
+# -r default-requirements.txt
+
+# -r data-test-requirements.txt
