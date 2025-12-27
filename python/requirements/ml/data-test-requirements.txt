@@ -87,12 +87,12 @@
 # PyYAML
 # datasketches
 # getdaft==0.4.3
-# pytest
+pytest
 # testcontainers[kafka]
 
 
-# pytest-repeat
-# pytest-mock
+pytest-repeat
+pytest-mock
 
 
 
@@ -113,3 +113,6 @@
 # modin==0.31.0; python_version >= '3.12'
 # responses==0.13.4
 # pymars>=0.8.3; python_version < "3.12"
+
+pytest-lazy-fixtures
+freezegun
