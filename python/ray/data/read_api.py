@@ -496,7 +496,8 @@ def read_audio(
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
-            A list of paths can contain both files and directories.
+            A list of paths can contain both files and directories. Supports glob
+            patterns (``*``, ``**``, ``?``, ``[...]``) for flexible file selection.
         filesystem: The pyarrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -906,6 +907,23 @@ def read_parquet(
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
+        Use glob patterns to select files.
+
+        >>> # Read all parquet files in a directory
+        >>> ray.data.read_parquet("/data/*.parquet") # doctest: +SKIP
+
+        >>> # Read all parquet files recursively in nested directories
+        >>> ray.data.read_parquet("/data/**/*.parquet") # doctest: +SKIP
+
+        >>> # Read files matching specific patterns
+        >>> ray.data.read_parquet("/logs/app_?.parquet") # doctest: +SKIP
+
+        >>> # Combine with partitioning patterns
+        >>> ray.data.read_parquet("/data/year=*/month=*/events.parquet") # doctest: +SKIP
+
+        >>> # Use glob patterns with cloud storage
+        >>> ray.data.read_parquet("s3://bucket/data/**/*.parquet") # doctest: +SKIP
+
         Specify a schema for the parquet file.
 
         >>> import pyarrow as pa
@@ -953,7 +971,8 @@ def read_parquet(
 
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
-            directories are not supported.
+            directories are not supported. Supports glob patterns (``*``, ``**``,
+            ``?``, ``[...]``) for flexible file selection.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1280,6 +1299,14 @@ def read_json(
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
+        Use glob patterns to select specific files.
+
+        >>> # Read all JSON files in a directory
+        >>> ray.data.read_json("/data/*.json") # doctest: +SKIP
+
+        >>> # Read JSON files from nested directories recursively
+        >>> ray.data.read_json("/data/**/*.json") # doctest: +SKIP
+
         By default, :meth:`~ray.data.read_json` parses
         `Hive-style partitions <https://athena.guide/articles/\
         hive-style-partitioning/>`_
@@ -1292,7 +1319,8 @@ def read_json(
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
-            A list of paths can contain both files and directories.
+            A list of paths can contain both files and directories. Supports glob
+            patterns (``*``, ``**``, ``?``, ``[...]``) for flexible file selection.
         lines: [Experimental] If ``True``, read files assuming line-delimited JSON.
             If set, will ignore the ``filesystem``, ``arrow_open_stream_args``, and
             ``arrow_json_args`` parameters.
@@ -1454,6 +1482,14 @@ def read_csv(
 
         >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
 
+        Use glob patterns to select specific files.
+
+        >>> # Read all CSV files in a directory
+        >>> ray.data.read_csv("/data/*.csv") # doctest: +SKIP
+
+        >>> # Read CSV files from nested directories recursively
+        >>> ray.data.read_csv("/data/**/*.csv") # doctest: +SKIP
+
         Read files that use a different delimiter. For more uses of ParseOptions see
         https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
 
@@ -1501,7 +1537,8 @@ def read_csv(
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
-            A list of paths can contain both files and directories.
+            A list of paths can contain both files and directories. Supports glob
+            patterns (``*``, ``**``, ``?``, ``[...]``) for flexible file selection.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
