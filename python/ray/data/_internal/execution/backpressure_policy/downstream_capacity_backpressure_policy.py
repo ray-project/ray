@@ -36,6 +36,10 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     - Reduces object spilling and unnecessary rebuilds
     """
 
+    @property
+    def name(self) -> str:
+        return "DownstreamCapacity"
+
     def __init__(
         self,
         data_context: DataContext,

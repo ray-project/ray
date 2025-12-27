@@ -40,6 +40,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     TODO(chengsu): Consolidate with actor scaling logic of `ActorPoolMapOperator`.
     """
 
+    @property
+    def name(self) -> str:
+        return "ConcurrencyCap"
+
     # Smoothing factor for the asymmetric EWMA (slow fall, faster rise).
     EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.1)
     EWMA_ALPHA_UP = 1.0 - (1.0 - EWMA_ALPHA) ** 2  # fast rise

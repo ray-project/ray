@@ -339,7 +339,9 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
+        self._task_submission_backpressure_policies: List[str] = []
         self._in_task_output_backpressure = False
+        self._task_output_backpressure_policies: List[str] = []
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._is_execution_marked_finished = False
@@ -729,29 +731,37 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_names: Optional[List[str]] = None
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            policy_names: Names of the backpressure policies that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+        self._task_submission_backpressure_policies = policy_names or []
 
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, policy_names: Optional[List[str]] = None
+    ) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's output backpressure should be set to.
+            policy_names: Names of the backpressure policies that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
+        self._task_output_backpressure_policies = policy_names or []
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
