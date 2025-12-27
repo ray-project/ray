@@ -19,6 +19,7 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.result import Result
 from ray.train import Checkpoint
 from ray.train._internal.session import get_session
@@ -66,6 +67,25 @@ _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
     "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
     f"release. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
+
+
+def _truncate_repr_if_needed(representation: str) -> str:
+    """Ensure repr strings remain shorter than MAX_REPR_LENGTH."""
+    if len(representation) < MAX_REPR_LENGTH:
+        return representation
+
+    ellipsis = "..."
+    closing = ""
+    if representation:
+        closing = representation[-1]
+        representation = representation[:-1]
+
+    max_body_len = MAX_REPR_LENGTH - len(ellipsis) - len(closing) - 1
+    if max_body_len < 0:
+        max_body_len = 0
+
+    truncated_body = representation[:max_body_len]
+    return f"{truncated_body}{ellipsis}{closing}"
 
 
 @PublicAPI(stability="beta")
@@ -462,9 +482,11 @@ class BaseTrainer(abc.ABC):
                 non_default_arguments.append(f"{parameter}={value!r}")
 
         if non_default_arguments:
-            return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+            return _truncate_repr_if_needed(
+                f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+            )
 
-        return f"<{self.__class__.__name__}>"
+        return _truncate_repr_if_needed(f"<{self.__class__.__name__}>")
 
     def __new__(cls, *args, **kwargs):
         # Store the init args as attributes so this can be merged with Tune hparams.

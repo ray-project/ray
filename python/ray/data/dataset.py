@@ -29,6 +29,10 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.dataset_repr import (
+    _build_dataset_ascii_repr,
+    _dataset_repr_config_from_context,
+)
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -242,12 +246,14 @@ class Dataset:
         999
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()  # doctest: +ELLIPSIS
-        RandomShuffle
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ...
+        (Dataset isn't materialized)
         >>> # Sort it back in order.
         >>> ds.sort("id")  # doctest: +ELLIPSIS
-        Sort
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ...
+        (Dataset isn't materialized)
 
     Both unexecuted and materialized Datasets can be passed between Ray tasks and
     actors without incurring a copy. Dataset supports conversion to/from several
@@ -6247,8 +6253,10 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> materialized_ds = ds.materialize()
-            >>> materialized_ds
-            MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
+            >>> materialized_ds  # doctest: +ELLIPSIS
+            shape: (10, 1)
+            ...
+            (Showing 10 of 10 rows)
 
         Returns:
             A MaterializedDataset holding the materialized data blocks.
@@ -6685,7 +6693,20 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self.__class__)
+        try:
+            return self._tabular_repr()
+        except Exception:
+            logger.debug("Falling back to plan-based Dataset repr.", exc_info=True)
+            return self._plan.get_plan_as_string(self.__class__)
+
+    def _tabular_repr(self) -> str:
+        schema = self.schema(fetch_if_missing=False)
+        if schema is None or not isinstance(schema, Schema):
+            return self._plan.get_plan_as_string(self.__class__)
+
+        is_materialized = isinstance(self, MaterializedDataset)
+        config = _dataset_repr_config_from_context(self.context)
+        return _build_dataset_ascii_repr(self, schema, is_materialized, config)
 
     def __str__(self) -> str:
         return repr(self)

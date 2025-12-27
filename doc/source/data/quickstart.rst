@@ -73,19 +73,11 @@ across your cluster for better performance.
     print(transformed_ds.materialize())
 
 .. testoutput::
+    :options: +ELLIPSIS
 
-    MaterializedDataset(
-       num_blocks=...,
-       num_rows=150,
-       schema={
-          sepal length (cm): double,
-          sepal width (cm): double,
-          petal length (cm): double,
-          petal width (cm): double,
-          target: int64,
-          petal area (cm^2): double
-       }
-    )
+    shape: (150, 6)
+    ...
+    (Showing 10 of 150 rows)
 
 To explore more transformation capabilities, read :ref:`Transforming data <transforming_data>`.
 

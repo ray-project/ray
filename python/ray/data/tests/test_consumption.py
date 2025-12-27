@@ -58,21 +58,22 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
+    ds2_repr = str(ds2)
+    assert "shape: (10, 1)" in ds2_repr
+    assert "Dataset isn't materialized" in ds2_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
 
-    assert (
-        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
-    )
+    ds3_repr = str(ds3)
+    assert "shape: (10, 1)" in ds3_repr
+    assert "(Showing" in ds3_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
-    assert (
-        str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
-        "schema={a: string, b: double})"
-    )
+    ds4_repr = str(ds4)
+    assert "shape: (5, 2)" in ds4_repr
+    assert "(Showing" in ds4_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -380,21 +381,24 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     _check_none_computed(ds)
 
 
-def test_dataset_repr(ray_start_regular_shared):
+def test_dataset_plan_string(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
-    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
+    assert (
+        ds._plan.get_plan_as_string(type(ds))
+        == "Dataset(num_rows=10, schema={id: int64})"
+    )
     ds = ds.map_batches(lambda x: x)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "RandomShuffle\n"
         "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
@@ -402,20 +406,23 @@ def test_dataset_repr(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert (
-        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        ds._plan.get_plan_as_string(type(ds))
+        == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
 
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
+        ds1._plan.get_plan_as_string(type(ds1))
+        == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
         "schema={id: int64})"
     )
     assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
+        ds2._plan.get_plan_as_string(type(ds2))
+        == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
 
@@ -437,9 +444,95 @@ def test_dataset_repr(ray_start_regular_shared):
 
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
+
+
+def test_dataset_repr(ray_start_regular_shared, restore_data_context):
+    ds = ray.data.range(5)
+    text = repr(ds)
+    assert "Dataset isn't materialized" in text
+    assert "shape: (5, 1)" in text
+    assert "│ id" in text
+
+    materialized = ds.materialize()
+    materialized_text = repr(materialized)
+    assert "Dataset isn't materialized" not in materialized_text
+    assert "(Showing 5 of 5 rows)" in materialized_text
+    assert "│ id" in materialized_text
+    assert "0" in materialized_text and "4" in materialized_text
+
+    ds_with_gap = ray.data.range(20).materialize()
+    gap_text = repr(ds_with_gap)
+    assert "(Showing 10 of 20 rows)" in gap_text
+    assert "…" in gap_text
+
+
+def test_dataset_repr_row_truncation_config(
+    ray_start_regular_shared, restore_data_context
+):
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.dataset_repr_max_rows = 4
+    ctx.dataset_repr_head_rows = 1
+
+    ds = ray.data.range(6).materialize()
+    text = repr(ds)
+
+    assert "(Showing 4 of 6 rows)" in text
+    assert "│ …" in text
+    assert "│ 0" in text
+    assert "│ 5" in text
+    assert "│ 1" not in text
+
+
+def test_dataset_repr_column_truncation(ray_start_regular_shared, restore_data_context):
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.dataset_repr_max_columns = 5
+    ctx.dataset_repr_head_columns = 2
+
+    item = {
+        "alpha": 1,
+        "beta": 2,
+        "gamma": 3,
+        "delta": 4,
+        "epsilon": 5,
+        "zeta": 6,
+    }
+    text = repr(ray.data.from_items([item]).materialize())
+
+    assert "(Showing 4 of 6 columns)" in text
+    for column in ["alpha", "beta", "epsilon", "zeta"]:
+        assert column in text
+    assert "gamma" not in text
+    assert "delta" not in text
+
+
+def test_dataset_repr_value_truncation(ray_start_regular_shared, restore_data_context):
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.dataset_repr_max_column_width = 120
+    ctx.dataset_repr_max_string_length = 5
+    ctx.dataset_repr_max_collection_items = 2
+    ctx.dataset_repr_max_tensor_elements = 2
+    ctx.dataset_repr_max_bytes_length = 4
+
+    ds = ray.data.from_items(
+        [
+            {
+                "text": "abcdefghij",
+                "vec": [1, 2, 3, 4],
+                "tensor": np.arange(6).reshape(2, 3),
+                "blob": b"0123456789",
+            }
+        ]
+    ).materialize()
+    text = repr(ds)
+
+    assert "abcde…" in text
+    assert "[1, 2, …]" in text
+    assert "array(shape=(2, 3), dtype" in text
+    assert "data=[0, 1, …]" in text
+    assert "0123…" in text
 
 
 def test_dataset_explain(ray_start_regular_shared, capsys):

@@ -1330,26 +1330,30 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
     ds = ray.data.range(5)
 
-    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
+    mapped = ds.map(lambda x: {"id": str(x["id"])})
+    r = mapped._plan.get_plan_as_string(type(mapped))
     assert r.startswith("Map(<lambda>)"), r
 
     class C:
         def __call__(self, x):
             return x
 
-    r = ds.map(C, concurrency=4).__repr__()
+    mapped = ds.map(C, concurrency=4)
+    r = mapped._plan.get_plan_as_string(type(mapped))
     assert r.startswith("Map(C)"), r
 
     # Simple and partial functions
     def func(x, y):
         return x
 
-    r = ds.map(func, fn_args=[0]).__repr__()
+    mapped = ds.map(func, fn_args=[0])
+    r = mapped._plan.get_plan_as_string(type(mapped))
     assert r.startswith("Map(func)")
 
     from functools import partial
 
-    r = ds.map(partial(func, y=1)).__repr__()
+    mapped = ds.map(partial(func, y=1))
+    r = mapped._plan.get_plan_as_string(type(mapped))
     assert r.startswith("Map(func)"), r
 
     # Preprocessor
@@ -1357,7 +1361,8 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
     ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
     enc = OneHotEncoder(columns=["item"])
-    r = enc.fit_transform(ds).__repr__()
+    transformed = enc.fit_transform(ds)
+    r = transformed._plan.get_plan_as_string(type(transformed))
     assert "OneHotEncoder" in r, r
 
 

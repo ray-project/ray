@@ -329,7 +329,8 @@ def test_tensors_inferred_from_map(
         lambda _: {"data": np.ones((4, 4))}
     )
     ds = ds.materialize()
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=10,\n"
@@ -342,7 +343,8 @@ def test_tensors_inferred_from_map(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
@@ -355,7 +357,8 @@ def test_tensors_inferred_from_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=20,\n"
@@ -368,7 +371,8 @@ def test_tensors_inferred_from_map(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
@@ -381,7 +385,8 @@ def test_tensors_inferred_from_map(
         batch_size=2,
     )
     ds = ds.materialize()
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=16,\n"

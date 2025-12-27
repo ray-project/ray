@@ -1209,7 +1209,8 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
         {"x_add_5": 25},
     ]
-    assert "MapBatches(func)" in ds.__repr__()
+    plan_repr = ds._plan.get_plan_as_string(type(ds))
+    assert "MapBatches(func)" in plan_repr
 
 
 def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
