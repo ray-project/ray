@@ -521,7 +521,7 @@ def test_xgboost_trainer_local_mode(ray_start_4_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(RuntimeError):
         XGBoostTrainer.get_model(result.checkpoint)
 
 

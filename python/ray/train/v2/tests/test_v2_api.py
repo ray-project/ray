@@ -21,7 +21,7 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 )
 def test_api_configs(operation, raise_error):
     if raise_error:
-        with pytest.raises(DeprecationWarning):
+        with pytest.raises(ValueError):
             operation()
     else:
         try:
@@ -68,10 +68,10 @@ def test_scaling_config_total_resources():
 
 
 def test_trainer_restore():
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(RuntimeError):
         DataParallelTrainer.restore("dummy")
 
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(RuntimeError):
         DataParallelTrainer.can_restore("dummy")
 
 

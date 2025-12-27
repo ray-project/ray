@@ -257,7 +257,7 @@ def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
 
     Args:
         raise_in_tune_session: Whether to raise a specific error message if the caller
-            is in a Tune session. If True, will raise a DeprecationWarning.
+            is in a Tune session. If True, will raise a RuntimeError.
 
     Returns:
         A decorator that performs this check, which raises an error if the caller
