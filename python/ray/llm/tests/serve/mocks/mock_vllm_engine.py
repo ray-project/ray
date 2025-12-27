@@ -43,6 +43,7 @@ class MockVLLMEngine(LLMEngine):
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
         self._is_sleeping = False
+        self._is_paused = False
 
     async def start(self):
         """Start the mock engine."""
@@ -103,6 +104,39 @@ class MockVLLMEngine(LLMEngine):
             True if the engine is sleeping, False otherwise.
         """
         return self._is_sleeping
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the mock engine.
+
+        This mimics vLLM's behavior: halts generation while keeping weights in GPU.
+
+        Args:
+            **kwargs: Engine-specific options (wait_for_inflight_requests, clear_cache).
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        # vLLM optionally clears cache on pause
+        if kwargs.get("clear_cache", True):
+            await self.reset_prefix_cache()
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the mock engine after pause.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check if the mock engine is paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        return self._is_paused
 
     async def chat(
         self,
