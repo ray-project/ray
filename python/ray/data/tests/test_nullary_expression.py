@@ -231,6 +231,59 @@ def test_random_validation_errors(
         random(*args, **kwargs)
 
 
+def test_random_with_column_then_random_shuffle(ray_start_regular_shared):
+    """Test that random() works correctly when used with with_column followed by random_shuffle.
+
+    This test verifies the fix for the issue where random() expressions would fail
+    with "TaskContext is not available" when used in a pipeline that gets fused
+    with random_shuffle().
+    """
+    from ray.data.expressions import random
+
+    # Test with seed - this was the failing case
+    ds = ray.data.range(100).with_column("rand", random(seed=123))
+    ds = ds.random_shuffle()
+    results = ds.take_all()
+
+    # Verify we got results without errors
+    assert len(results) == 100
+    for result in results:
+        assert "rand" in result
+        assert "id" in result
+        assert 0.0 <= result["rand"] < 1.0
+
+    # Test without seed
+    ds2 = ray.data.range(50).with_column("rand", random())
+    ds2 = ds2.random_shuffle()
+    results2 = ds2.take_all()
+
+    assert len(results2) == 50
+    for result in results2:
+        assert "rand" in result
+        assert 0.0 <= result["rand"] < 1.0
+
+
+def test_random_with_column_then_random_shuffle_deterministic(ray_start_regular_shared):
+    """Test that random() with seed produces deterministic results even after random_shuffle."""
+    from ray.data.expressions import random
+
+    # Create two identical pipelines
+    ds1 = ray.data.range(100).with_column("rand", random(seed=42))
+    ds1 = ds1.random_shuffle(seed=1)
+
+    ds2 = ray.data.range(100).with_column("rand", random(seed=42))
+    ds2 = ds2.random_shuffle(seed=1)
+
+    # The random column values should be deterministic (same seed)
+    # but the row order may differ due to shuffle
+    results1 = sorted(ds1.take_all(), key=lambda x: x["id"])
+    results2 = sorted(ds2.take_all(), key=lambda x: x["id"])
+
+    # Same random values for same id
+    for r1, r2 in zip(results1, results2):
+        assert r1["rand"] == r2["rand"]
+
+
 def test_uuid_expression_creation():
     """Test that uuid() creates a NullaryExpr with UUID operation."""
     expr = uuid()

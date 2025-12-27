@@ -24,6 +24,7 @@ Public API
     pyarrow_udf
     download
     random
+    uuid
 
 Expression Classes
 ------------------
