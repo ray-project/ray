@@ -142,7 +142,7 @@ class HuggingFaceDatasource(Datasource):
             # HuggingFace IterableDatasets do not fully support methods like
             # `set_format`, `with_format`, and `formatted_as`, so the dataset
             # can return whatever is the default configured batch type, even if
-            # the format is manually overriden before iterating above.
+            # the format is manually overridden before iterating above.
             # Therefore, we limit support to batch formats which have native
             # block types in Ray Data (pyarrow.Table, pd.DataFrame),
             # or can easily be converted to such (dict, np.array).

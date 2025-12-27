@@ -1060,7 +1060,7 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Ensure that stub doesn't get overriden
+        # Ensure that stub doesn't get overridden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
