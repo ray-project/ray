@@ -1,13 +1,11 @@
 import logging
 import sys
-import threading
 import time
-from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from typing import Optional
 
-import ray
+from ray.data._internal.progress.base_progress import BaseProgressBar
+from ray.data._internal.progress.utils import truncate_operator_name
 from ray.experimental import tqdm_ray
-from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -20,99 +18,8 @@ except ImportError:
     tqdm = None
     needs_warning = True
 
-# Used a signal to cancel execution.
-_canceled_threads = set()
-_canceled_threads_lock = threading.Lock()
 
-
-def extract_num_rows(result: Any) -> int:
-    """Extract the number of rows from a result object.
-
-    Args:
-        result: The result object from which to extract the number of rows.
-
-    Returns:
-        The number of rows, defaulting to 1 if it cannot be determined.
-    """
-    if hasattr(result, "num_rows"):
-        return result.num_rows
-    elif hasattr(result, "__len__"):
-        # For output is DataFrame,i.e. sort_sample
-        return len(result)
-    else:
-        return 1
-
-
-class AbstractProgressBar(ABC):
-    """Abstract class to define a progress bar."""
-
-    def block_until_complete(self, remaining: List[ObjectRef]) -> None:
-        t = threading.current_thread()
-        while remaining:
-            done, remaining = ray.wait(
-                remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
-            )
-            total_rows_processed = 0
-            for _, result in zip(done, ray.get(done)):
-                num_rows = extract_num_rows(result)
-                total_rows_processed += num_rows
-            self.update(total_rows_processed)
-
-            with _canceled_threads_lock:
-                if t in _canceled_threads:
-                    break
-
-    def fetch_until_complete(self, refs: List[ObjectRef]) -> List[Any]:
-        ref_to_result = {}
-        remaining = refs
-        t = threading.current_thread()
-        # Triggering fetch_local redundantly for the same object is slower.
-        # We only need to trigger the fetch_local once for each object,
-        # raylet will persist these fetch requests even after ray.wait returns.
-        # See https://github.com/ray-project/ray/issues/30375.
-        fetch_local = True
-        while remaining:
-            done, remaining = ray.wait(
-                remaining,
-                num_returns=len(remaining),
-                fetch_local=fetch_local,
-                timeout=0.1,
-            )
-            if fetch_local:
-                fetch_local = False
-            total_rows_processed = 0
-            for ref, result in zip(done, ray.get(done)):
-                ref_to_result[ref] = result
-                num_rows = extract_num_rows(result)
-                total_rows_processed += num_rows
-            self.update(total_rows_processed)
-
-            with _canceled_threads_lock:
-                if t in _canceled_threads:
-                    break
-
-        return [ref_to_result[ref] for ref in refs]
-
-    @abstractmethod
-    def set_description(self, name: str) -> None:
-        ...
-
-    @abstractmethod
-    def get_description(self) -> str:
-        ...
-
-    @abstractmethod
-    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        ...
-
-    def refresh(self):
-        pass
-
-    def close(self):
-        pass
-
-
-class ProgressBar(AbstractProgressBar):
+class ProgressBar(BaseProgressBar):
     """Thin wrapper around tqdm to handle soft imports.
 
     If `total` is `None` known (for example, it is unknown
@@ -258,40 +165,3 @@ class ProgressBar(AbstractProgressBar):
 
     def __setstate__(self, state):
         self._bar = None  # Progress bar is disabled on remote nodes.
-
-
-def truncate_operator_name(name: str, max_name_length: int) -> str:
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-    if not ctx.enable_progress_bar_name_truncation or len(name) <= max_name_length:
-        return name
-
-    op_names = name.split("->")
-    if len(op_names) == 1:
-        return op_names[0]
-
-    # Include as many operators as possible without approximately
-    # exceeding `MAX_NAME_LENGTH`. Always include the first and
-    # last operator names so it is easy to identify the DAG.
-    truncated_op_names = [op_names[0]]
-    for op_name in op_names[1:-1]:
-        if (
-            len("->".join(truncated_op_names))
-            + len("->")
-            + len(op_name)
-            + len("->")
-            + len(op_names[-1])
-        ) > max_name_length:
-            truncated_op_names.append("...")
-            if log_once("ray_data_truncate_operator_name"):
-                logger.warning(
-                    f"Truncating long operator name to {max_name_length} "
-                    "characters. To disable this behavior, set "
-                    "`ray.data.DataContext.get_current()."
-                    "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
-                )
-            break
-        truncated_op_names.append(op_name)
-    truncated_op_names.append(op_names[-1])
-    return "->".join(truncated_op_names)
