@@ -15,6 +15,7 @@
 #include "ray/util/compression.h"
 
 #include <gtest/gtest.h>
+
 #include <string>
 
 namespace ray {
