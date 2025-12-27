@@ -29,3 +29,9 @@ rm -rf /opt/miniforge/pkgs/cache/
 rm /root/Miniforge3-25.3.0-1-Linux-x86_64.sh
 
 EOF
+
+
+# -r data-requirements.txt
+# -r default-requirements.txt
+
+# -r data-test-requirements.txt
