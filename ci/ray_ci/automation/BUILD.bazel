@@ -305,3 +305,29 @@ py_binary(
         ci_require("click"),
     ],
 )
+
+py_binary(
+    name = "extract_wanda_wheel",
+    srcs = ["extract_wanda_wheel.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_extract_wanda_wheel",
+    size = "small",
+    srcs = ["test_extract_wanda_wheel.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("click"),
+        ci_require("pytest"),
+        ":automation",
+    ],
+)

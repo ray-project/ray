@@ -35,15 +35,77 @@ steps:
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "251216.3835fc5"
 
-  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+  - name: ray-wheel-build
+    label: "wanda: wheel py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
+    tags:
+      - release_wheels
+      - linux_wheels
+      - oss
+    depends_on:
+      - ray-core-build
+      - ray-dashboard-build
+      - ray-java-build
+
+  - name: ray-cpp-core-build
+    label: "wanda: cpp core py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-cpp-core.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
+    tags:
+      - release_wheels
+      - oss
+    depends_on:
+      - ray-core-build
+
+  - name: ray-cpp-wheel-build
+    label: "wanda: cpp wheel py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-cpp-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
+    tags:
+      - release_wheels
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - ray-cpp-core-build
+
+  - label: ":tapioca: upload: wheel py{{matrix}} (x86_64)"
     key: linux_wheels
     tags:
       - release_wheels
       - linux_wheels
       - oss
-    instance_type: large
+    instance_type: small
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      - bazel run //ci/ray_ci/automation:extract_wanda_wheel -- --python-version {{matrix}} --arch x86_64
+      - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
       - "3.11"
@@ -52,6 +114,8 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
+      - ray-wheel-build
+      - ray-cpp-wheel-build
 
   - label: ":tapioca: build: jar"
     key: java_wheels
