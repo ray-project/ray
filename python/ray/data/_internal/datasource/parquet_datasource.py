@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
 )
 
 import numpy as np
@@ -600,6 +601,14 @@ class ParquetDatasource(Datasource):
 
     def supports_predicate_pushdown(self) -> bool:
         return True
+
+    def apply_projection(
+        self, projection_map: Optional[Dict[str, str]]
+    ) -> "ParquetDatasource":
+        clone = cast("ParquetDatasource", super().apply_projection(projection_map))
+        # Projections change schemas; force the clone to recompute metadata.
+        clone._static_metadata_cache = None
+        return clone
 
     def get_current_projection(self) -> Optional[List[str]]:
         """Override to include partition columns in addition to data columns."""
