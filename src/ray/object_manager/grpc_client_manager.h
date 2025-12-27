@@ -24,7 +24,7 @@
 
 namespace ray::rpc {
 
-// Managers multiple gRPC clients. It's reponsible for initializing
+// Manages multiple gRPC clients. It's responsible for initializing
 // gRPC clients with arguments, distributing requests between clients,
 // and destroying the clients.
 class ClientCallManager;
