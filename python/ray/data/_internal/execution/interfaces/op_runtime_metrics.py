@@ -6,7 +6,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.common import (
     RuntimeMetricsHistogram,
     histogram_bucket_rows,
@@ -476,6 +475,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
 
+    obj_store_mem_pending_task_inputs: int = metric_field(
+        default=0,
+        description="Byte size of input blocks used by pending tasks.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+
+    obj_store_mem_internal_inqueue: int = metric_field(
+        default=0,
+        description="Byte size of input blocks in the operator's internal input queue.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+
+    obj_store_mem_internal_outqueue: int = metric_field(
+        default=0,
+        description=(
+            "Byte size of output blocks in the operator's internal output queue."
+        ),
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+
     # === Miscellaneous metrics ===
     # Use "metrics_group: "misc" in the metadata for new metrics in this section.
 
@@ -491,9 +510,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Start time of current pause due to task output backpressure
         self._task_output_backpressure_start_time = -1
 
-        self._internal_inqueue = create_bundle_queue()
-        self._internal_outqueue = create_bundle_queue()
-        self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
@@ -623,29 +639,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
         else:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
-
-    @metric_property(
-        description="Byte size of input blocks in the operator's internal input queue.",
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
-    def obj_store_mem_internal_inqueue(self) -> int:
-        return self._internal_inqueue.estimate_size_bytes()
-
-    @metric_property(
-        description=(
-            "Byte size of output blocks in the operator's internal output queue."
-        ),
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
-    def obj_store_mem_internal_outqueue(self) -> int:
-        return self._internal_outqueue.estimate_size_bytes()
-
-    @metric_property(
-        description="Byte size of input blocks used by pending tasks.",
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
-    def obj_store_mem_pending_task_inputs(self) -> int:
-        return self._pending_task_inputs.estimate_size_bytes()
 
     @property
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
@@ -783,13 +776,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_input_queued(self, input: RefBundle):
         """Callback when the operator queues an input."""
         self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
-        self._internal_inqueue.add(input)
+        self.obj_store_mem_internal_inqueue += input.size_bytes()
 
     def on_input_dequeued(self, input: RefBundle):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
-        self._internal_inqueue.remove(input)
+        self.obj_store_mem_internal_inqueue -= input.size_bytes()
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,
@@ -799,13 +792,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_output_queued(self, output: RefBundle):
         """Callback when an output is queued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks += len(output.blocks)
-        self._internal_outqueue.add(output)
+        self.obj_store_mem_internal_outqueue += output.size_bytes()
 
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks -= len(output.blocks)
         output_size = output.size_bytes()
-        self._internal_outqueue.remove(output)
+        self.obj_store_mem_internal_outqueue -= output.size_bytes()
         assert self.obj_store_mem_internal_outqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_outqueue,
@@ -846,7 +839,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
-        self._pending_task_inputs.add(inputs)
+        self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
@@ -936,7 +929,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
         input_size = inputs.size_bytes()
-        self._pending_task_inputs.remove(inputs)
+        self.obj_store_mem_pending_task_inputs -= inputs.size_bytes()
         assert self.obj_store_mem_pending_task_inputs >= 0, (
             self._op,
             self.obj_store_mem_pending_task_inputs,

@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Deque, Dict, Iterator, Optional
 
-from .bundle_queue import BundleQueue
+from typing_extensions import override
+
+from .base import BaseBundleQueue, SupportsDequeue, SupportsRemoval
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -10,15 +14,19 @@ if TYPE_CHECKING:
 
 @dataclass
 class _Node:
-    value: "RefBundle"
-    next: Optional["_Node"] = None
-    prev: Optional["_Node"] = None
+    value: RefBundle
+    next: Optional[_Node] = None
+    prev: Optional[_Node] = None
 
 
-class FIFOBundleQueue(BundleQueue):
-    """A bundle queue that follows a first-in-first-out policy."""
+class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDequeue):
+    """A bundle queue that supports these operations quickly:
+    - contains(bundle)
+    - remove(bundle)
+    """
 
     def __init__(self):
+        super().__init__()
         # We manually implement a linked list because we need to remove elements
         # efficiently, and Python's built-in data structures have O(n) removal time.
         self._head: Optional[_Node] = None
@@ -27,20 +35,14 @@ class FIFOBundleQueue(BundleQueue):
         # This allows us to remove a bundle from the queue in O(1) time. We need a list
         # because a bundle can be added to the queue multiple times. Nodes in each list
         # are insertion-ordered.
-        self._bundle_to_nodes: Dict["RefBundle", List[_Node]] = defaultdict(deque)
+        self._bundle_to_nodes: Dict[RefBundle, Deque[_Node]] = defaultdict(deque)
 
-        self._nbytes = 0
-        self._num_blocks = 0
-        self._num_bundles = 0
-
-    def __len__(self) -> int:
-        return self._num_bundles
-
-    def __contains__(self, bundle: "RefBundle") -> bool:
+    @override
+    def __contains__(self, bundle: RefBundle) -> bool:
         return bundle in self._bundle_to_nodes
 
-    def add(self, bundle: "RefBundle") -> None:
-        """Add a bundle to the end (right) of the queue."""
+    @override
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
         new_node = _Node(value=bundle, next=None, prev=self._tail)
         # Case 1: The queue is empty.
         if self._head is None:
@@ -54,12 +56,23 @@ class FIFOBundleQueue(BundleQueue):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-        self._nbytes += bundle.size_bytes()
-        self._num_blocks += len(bundle.block_refs)
-        self._num_bundles += 1
+    @override
+    def _add_to_front_inner(self, bundle: RefBundle):
+        new_node = _Node(value=bundle, next=self._head, prev=None)
+        # Case 1: The queue is empty.
+        if self._head is None:
+            assert self._tail is None
+            self._head = new_node
+            self._tail = new_node
+        # Case 2: The queue has at least one element.
+        else:
+            self._head.prev = new_node  # Link old head back to new node
+            self._head = new_node  # Update head pointer
 
-    def get_next(self) -> "RefBundle":
-        """Return the first (left) bundle in the queue."""
+        self._bundle_to_nodes[bundle].appendleft(new_node)
+
+    @override
+    def get_next(self) -> RefBundle:
         # Case 1: The queue is empty.
         if not self._head:
             raise IndexError("You can't pop from an empty queue")
@@ -69,22 +82,37 @@ class FIFOBundleQueue(BundleQueue):
 
         return bundle
 
+    @override
+    def get_last(self) -> RefBundle:
+        # Case 1: The queue is empty.
+        if not self._tail:
+            raise IndexError("You can't pop from an empty queue")
+
+        bundle = self._tail.value
+        self.remove_last(bundle)
+
+        return bundle
+
+    @override
     def has_next(self) -> bool:
         return self._num_bundles > 0
 
-    def peek_next(self) -> Optional["RefBundle"]:
-        """Return the first (left) bundle in the queue without removing it."""
+    @override
+    def peek_next(self) -> Optional[RefBundle]:
         if self._head is None:
             return None
 
         return self._head.value
 
-    def remove(self, bundle: "RefBundle"):
-        """Remove a bundle from the queue.
+    @override
+    def peek_last(self) -> Optional[RefBundle]:
+        if self._tail is None:
+            return None
 
-        If there are multiple instances of the bundle in the queue, this method only
-        removes the first one.
-        """
+        return self._tail.value
+
+    @override
+    def remove(self, bundle: RefBundle) -> RefBundle:
         # Case 1: The queue is empty.
         if bundle not in self._bundle_to_nodes:
             raise ValueError(f"The bundle {bundle} is not in the queue.")
@@ -93,6 +121,23 @@ class FIFOBundleQueue(BundleQueue):
         if not self._bundle_to_nodes[bundle]:
             del self._bundle_to_nodes[bundle]
 
+        node = self._remove_node(node)
+        return node.value
+
+    @override
+    def remove_last(self, bundle: RefBundle) -> RefBundle:
+        # Case 1: The queue is empty.
+        if bundle not in self._bundle_to_nodes:
+            raise ValueError(f"The bundle {bundle} is not in the queue.")
+
+        node = self._bundle_to_nodes[bundle].pop()
+        if not self._bundle_to_nodes[bundle]:
+            del self._bundle_to_nodes[bundle]
+
+        node = self._remove_node(node)
+        return node.value
+
+    def _remove_node(self, node: _Node) -> _Node:
         # Case 2: The bundle is the only element in the queue.
         if self._head is self._tail:
             self._head = None
@@ -110,30 +155,27 @@ class FIFOBundleQueue(BundleQueue):
             node.prev.next = node.next
             node.next.prev = node.prev
 
-        self._num_bundles -= 1
-        self._num_blocks -= len(bundle)
-        self._nbytes -= bundle.size_bytes()
+        self._on_dequeue(node.value)
 
         assert self._nbytes >= 0, (
             "Expected the total size of objects in the queue to be non-negative, but "
             f"got {self._nbytes} bytes instead."
         )
 
-        return node.value
+        return node
+
+    @override
+    def finalize(self, key: Optional[int] = None):
+        pass
+
+    def __iter__(self) -> Iterator[RefBundle]:
+        curr = self._head
+        while curr:
+            yield curr.value
+            curr = curr.next
 
     def clear(self):
+        self._reset_metrics()
+        self._bundle_to_nodes.clear()
         self._head = None
         self._tail = None
-        self._bundle_to_nodes.clear()
-        self._num_bundles = 0
-        self._num_blocks = 0
-        self._nbytes = 0
-
-    def estimate_size_bytes(self) -> int:
-        return self._nbytes
-
-    def num_blocks(self) -> int:
-        return self._num_blocks
-
-    def is_empty(self):
-        return not self._bundle_to_nodes and self._head is None and self._tail is None

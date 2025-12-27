@@ -7,7 +7,13 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    Schema,
+    _take_first_non_empty_schema,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -233,9 +239,9 @@ class RefBundle:
         assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
-        assert (
-            needed_rows < self.num_rows()
-        ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {self.num_rows()} rows."
+
+        if needed_rows == self.num_rows():
+            return self, RefBundle(blocks=(), schema=None, owns_blocks=False)
 
         block_slices = []
         for metadata, block_slice in zip(self.metadata, self.slices):
@@ -309,7 +315,9 @@ class RefBundle:
         merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
         return cls(
             blocks=tuple(merged_blocks),
-            schema=bundles[0].schema,  # Assume all bundles have the same schema
+            schema=_take_first_non_empty_schema(
+                bundle.schema for bundle in bundles
+            ),  # Assume all bundles have the same schema
             owns_blocks=bundles[
                 0
             ].owns_blocks,  # Assume all bundles have the same ownership
