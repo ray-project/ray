@@ -119,6 +119,10 @@ class Read(
             self._cached_metadata = metadata
         return metadata
 
+    def _reset_metadata_cache(self) -> None:
+        self._cached_metadata = None
+        self._cached_expensive_metadata = None
+
     def _build_output_metadata(
         self, allow_expensive: bool
     ) -> "BlockMetadataWithSchema":
@@ -197,6 +201,7 @@ class Read(
         projection_map: Optional[Dict[str, str]],
     ) -> "Read":
         clone = copy.copy(self)
+        clone._reset_metadata_cache()
 
         projected_datasource = self._datasource.apply_projection(projection_map)
         clone._datasource = projected_datasource
@@ -217,6 +222,7 @@ class Read(
         predicated_datasource = self._datasource.apply_predicate(predicate_expr)
 
         clone = copy.copy(self)
+        clone._reset_metadata_cache()
         clone._datasource = predicated_datasource
         clone._datasource_or_legacy_reader = predicated_datasource
 

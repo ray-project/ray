@@ -560,14 +560,14 @@ class ParquetDatasource(Datasource):
     ) -> Optional[BlockMetadataWithSchema]:
         if allow_expensive_metadata:
             self._ensure_sampling_stats()
+        target_schema = self._derive_schema(
+            self._read_schema,
+            file_schema=self._file_schema,
+            partition_schema=self._partition_schema,
+            projected_columns=self.get_current_projection(),
+            _block_udf=self._block_udf,
+        )
         if self._static_metadata_cache is None:
-            target_schema = self._derive_schema(
-                self._read_schema,
-                file_schema=self._file_schema,
-                partition_schema=self._partition_schema,
-                projected_columns=self.get_current_projection(),
-                _block_udf=self._block_udf,
-            )
             meta = BlockMetadata(
                 num_rows=None,
                 size_bytes=self._estimate_in_mem_size(self._pq_fragments),
@@ -577,16 +577,11 @@ class ParquetDatasource(Datasource):
             self._static_metadata_cache = BlockMetadataWithSchema(
                 metadata=meta, schema=target_schema
             )
+        else:
+            self._static_metadata_cache.schema = target_schema
+
         if allow_expensive_metadata:
             self._update_static_metadata_size_estimate()
-        target_schema = self._derive_schema(
-            self._read_schema,
-            file_schema=self._file_schema,
-            partition_schema=self._partition_schema,
-            projected_columns=self.get_current_projection(),
-            _block_udf=self._block_udf,
-        )
-        self._static_metadata_cache.schema = target_schema
         return self._static_metadata_cache
 
     def get_name(self):
@@ -712,12 +707,14 @@ class ParquetDatasource(Datasource):
             # Apply partition pruning directly to self
             self._pq_fragments = pruned_fragments
             self._pq_paths = pruned_paths
+            self._invalidate_static_metadata_cache()
 
         # Push down data predicate to PyArrow if present
         # Create a copy and push down the data predicate to PyArrow
         import copy
 
         datasource = copy.copy(self)
+        datasource._static_metadata_cache = None
 
         # Only call apply_predicate if there's a data predicate to push down
         # If data_predicate is None (pure partition predicate), skip it to avoid
@@ -781,6 +778,9 @@ class ParquetDatasource(Datasource):
         self._static_metadata_cache.size_bytes = self._estimate_in_mem_size(
             self._pq_fragments
         )
+
+    def _invalidate_static_metadata_cache(self) -> None:
+        self._static_metadata_cache = None
 
     @staticmethod
     def _derive_schema(
