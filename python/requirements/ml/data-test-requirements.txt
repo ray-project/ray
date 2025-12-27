@@ -60,7 +60,7 @@ pymysql
 
 # TFRecords
 tensorflow
-tensorflow-datasets==4.9.3
+# tensorflow-datasets==4.9.3
 tensorflow-metadata
 crc32c==2.3
 # tfx-bsl
