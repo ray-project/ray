@@ -242,16 +242,8 @@ def ray_deps_setup():
     # TODO(owner): Upgrade abseil to latest version after protobuf updated, which requires to upgrade `rules_cc` first.
     auto_http_archive(
         name = "com_google_absl",
-<<<<<<< HEAD
         sha256 = "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3",
-        strip_prefix = "abseil-cpp-20240722.0",
-        urls = [
-            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
-        ],
-=======
-        sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
->>>>>>> origin/master
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
@@ -323,16 +315,8 @@ def ray_deps_setup():
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         # https://github.com/grpc/grpc/blob/v1.67.1/bazel/grpc_deps.bzl#L33
         name = "boringssl",
-<<<<<<< HEAD
-        sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
-        strip_prefix = "boringssl-b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6",
-        urls = [
-            "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
-        ],
-=======
         sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
         url = "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
->>>>>>> origin/master
     )
 
     # The protobuf version we use to auto generate python and java code.
