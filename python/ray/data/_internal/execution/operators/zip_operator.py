@@ -2,7 +2,6 @@ import collections
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -19,7 +18,11 @@ if TYPE_CHECKING:
 
 
 class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
-    """An operator that zips its inputs together in a streaming fashion."""
+    """An operator that zips its inputs together in a streaming fashion.
+
+    NOTE: This implementation assumes input blocks are aligned (same number of rows
+    per corresponding block across inputs).
+    """
 
     def __init__(
         self,
@@ -138,47 +141,57 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _zip_bundles(self, bundles: List[RefBundle]) -> RefBundle:
         assert len(bundles) >= 2
-        zip_bundle_group_remote = cached_remote_fn(
-            _zip_bundle_group_remote, num_returns=2
-        )
-        block_groups = [[block for block, _ in bundle.blocks] for bundle in bundles]
 
-        result_block, meta_with_schema = zip_bundle_group_remote.remote(block_groups)
-        meta_with_schema = ray.get(meta_with_schema)
+        # Collect all blocks from all bundles (flattened)
+        all_block_lists = []
+        for bundle in bundles:
+            all_block_lists.append([block for block, _ in bundle.blocks])
+
+        # Zip blocks at corresponding indices across all bundles
+        zip_blocks_remote = cached_remote_fn(_zip_blocks_remote, num_returns=2)
+
+        output_blocks = []
+        output_metadata = []
+
+        # Assuming all bundles have same number of blocks (aligned)
+        num_blocks = len(all_block_lists[0])
+        for i in range(num_blocks):
+            blocks_to_zip = [block_list[i] for block_list in all_block_lists]
+            result_block, meta_with_schema = zip_blocks_remote.remote(*blocks_to_zip)
+            output_blocks.append(result_block)
+            output_metadata.append(meta_with_schema)
+
+        # Get metadata
+        output_metadata: List["BlockMetadataWithSchema"] = ray.get(output_metadata)
 
         for bundle in bundles:
             bundle.destroy_if_owned()
 
-        self._output_metadata.append(meta_with_schema)
+        self._output_metadata.extend(output_metadata)
 
         owns_blocks = all(bundle.owns_blocks for bundle in bundles)
 
+        # Create output RefBundle with all zipped blocks
+        block_refs_with_meta = [
+            (block, meta.metadata)
+            for block, meta in zip(output_blocks, output_metadata)
+        ]
+
         return RefBundle(
-            [
-                (
-                    result_block,
-                    meta_with_schema.metadata,
-                )
-            ],
+            block_refs_with_meta,
             owns_blocks=owns_blocks,
-            schema=meta_with_schema.schema,
+            schema=output_metadata[0].schema if output_metadata else None,
         )
 
 
-def _zip_bundle_group_remote(
-    block_groups: List[List[Block]],
+def _zip_blocks_remote(
+    *blocks: Block,
 ) -> Tuple[Block, "BlockMetadataWithSchema"]:
+    """Zip multiple blocks together."""
     stats = BlockExecStats.builder()
 
-    merged_blocks = []
-    for blocks in block_groups:
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(ray.get(block))
-        merged_blocks.append(builder.build())
-
-    result = merged_blocks[0]
-    for other in merged_blocks[1:]:
+    result = blocks[0]
+    for other in blocks[1:]:
         result = BlockAccessor.for_block(result).zip(other)
 
     from ray.data.block import BlockMetadataWithSchema
