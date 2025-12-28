@@ -22,7 +22,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
@@ -72,6 +72,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
     get_table_block_metadata_schema,
@@ -447,7 +448,7 @@ def read_datasource(
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
-        concurrency=concurrency,
+        compute=TaskPoolStrategy(concurrency),
     )
     execution_plan = ExecutionPlan(
         stats,
@@ -3105,7 +3106,7 @@ def from_pandas(
             ary = dfs[0]
         dfs = np.array_split(ary, override_num_blocks)
 
-    from ray.air.util.data_batch_conversion import (
+    from ray.data.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
@@ -3534,47 +3535,16 @@ def from_huggingface(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Union[MaterializedDataset, Dataset]:
-    """Create a :class:`~ray.data.MaterializedDataset` from a
+    """Read a Hugging Face Dataset into a Ray Dataset.
+
+    Creates a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
-    For an `IterableDataset`, we use a streaming implementation to read data.
 
-    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
-    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
-    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
-    other cases will be done with a single node read.
+    It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
+    filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
-    Example:
-
-        ..
-            The following `testoutput` is mocked to avoid illustrating download
-            logs like "Downloading and preparing dataset 162.17 MiB".
-
-        .. testcode::
-
-            import ray
-            import datasets
-
-            hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-            ray_ds = ray.data.from_huggingface(hf_dataset["train"])
-            print(ray_ds)
-
-            hf_dataset_stream = datasets.load_dataset("tweet_eval", "emotion", streaming=True)
-            ray_ds_stream = ray.data.from_huggingface(hf_dataset_stream["train"])
-            print(ray_ds_stream)
-
-        .. testoutput::
-            :options: +MOCK
-
-            MaterializedDataset(
-                num_blocks=...,
-                num_rows=3257,
-                schema={text: string, label: int64}
-            )
-            Dataset(
-                num_rows=3257,
-                schema={text: string, label: int64}
-            )
+    See :ref:`Loading Hugging Face datasets <loading_huggingface_datasets>` for more details.
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
@@ -4438,7 +4408,7 @@ def _resolve_parquet_args(
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),
                     tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col, tensor_col_name),
+                    ArrowTensorArray.from_numpy(np_col, column_name=tensor_col_name),
                 )
             if existing_block_udf is not None:
                 # Apply UDF after casting the tensor columns.

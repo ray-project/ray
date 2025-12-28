@@ -269,18 +269,29 @@ class LearnerGroup(Checkpointable):
         # User kwargs passed onto the Learners.
         **kwargs,
     ) -> List[Dict[str, Any]]:
-        """Performs gradient based updates on Learners, based on given training data.
+        """Performs gradient based updates on Learners in parallel.
+
+        Updates are performed with data from any of the provided arguments
+        (batch, batches, batch_refs, episodes, episodes_refs, data_iterators, training_data).
 
         Args:
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
-            batch_refs:
+            batch_refs: A list of Ray ObjectRefs to the batches. If there are more
+                than one Learner workers, the list of batch refs is split amongst these and
+                one list shard is sent to each Learner.
             episodes: A list of Episodes to process and perform the update
                 for. If there are more than one Learner workers, the list of episodes
                 is split amongst these and one list shard is sent to each Learner.
-            episodes_refs:
-            timesteps:
+            episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
+                than one Learner workers, the list of episode refs is split amongst these and
+                one list shard is sent to each Learner.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
+            training_data: A TrainingData object to use for the update. If not provided,
+                a new TrainingData object will be created from the batch, batches, batch_refs,
+                episodes, and episodes_refs.
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -328,6 +339,10 @@ class LearnerGroup(Checkpointable):
                 )
             training_data.validate()
 
+            # NEW: allow caller to defer Ray.get()/materialization to the learner thread.
+            # TODO (simon): Set to `False` and create attribute in config.
+            defer_solve = kwargs.pop("defer_solve_refs_to_learner", False)
+
             # Local Learner instance.
             if self.is_local:
                 if async_update:
@@ -336,13 +351,15 @@ class LearnerGroup(Checkpointable):
                         "`num_learners=0`! Set `config.num_learners > 0` to allow async "
                         "updates."
                     )
-                # Solve all ray refs locally already here.
+                # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
+                # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+                if not defer_solve:
+                    # Ray metrics
+                    with TimerAndPrometheusLogger(
+                        self._metrics_local_learner_training_data_solve_refs
+                    ):
+                        training_data.solve_refs()
 
-                # Ray metrics
-                with TimerAndPrometheusLogger(
-                    self._metrics_local_learner_training_data_solve_refs
-                ):
-                    training_data.solve_refs()
                 if return_state:
                     kwargs["return_state"] = return_state
                 # Return the single Learner's update results.

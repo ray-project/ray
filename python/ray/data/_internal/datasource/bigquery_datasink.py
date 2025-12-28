@@ -3,9 +3,12 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray.data._internal.datasource import bigquery_datasource
@@ -38,7 +41,7 @@ class BigQueryDatasink(Datasink[None]):
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         from google.api_core import exceptions
 
         if self.project_id is None or self.dataset is None:

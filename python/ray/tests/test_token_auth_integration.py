@@ -9,7 +9,13 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import client_test_enabled, wait_for_condition
+from ray._common.network_utils import build_address
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+    client_test_enabled,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -24,6 +30,7 @@ from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
+    set_auth_token_path,
     set_env_auth_token,
 )
 
@@ -424,20 +431,19 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     from ray.util.state import list_actors, list_nodes, list_tasks
 
     # List nodes - should include at least the head node
-    nodes = list_nodes()
-    assert len(nodes) >= 1, f"Expected at least 1 node, got {len(nodes)}"
+    wait_for_condition(lambda: len(list_nodes()) >= 1)
 
     # List actors - should include our SimpleActor
-    actors = list_actors()
-    assert len(actors) >= 1, f"Expected at least 1 actor, got {len(actors)}"
-    actor_classes = [a.class_name for a in actors]
-    assert (
-        "SimpleActor" in actor_classes[0]
-    ), f"SimpleActor not found in {actor_classes}"
+    def check_actors():
+        actors = list_actors()
+        if len(actors) < 1:
+            return False
+        return "SimpleActor" in actors[0].class_name
+
+    wait_for_condition(check_actors)
 
     # List tasks - should include completed tasks
-    tasks = list_tasks()
-    assert len(tasks) >= 1, f"Expected at least 1 task, got {len(tasks)}"
+    wait_for_condition(lambda: len(list_tasks()) >= 1)
 
     # Test 4: Submit a job and wait for completion
     from ray.job_submission import JobSubmissionClient
@@ -563,6 +569,123 @@ def test_get_auth_token_cli_piping():
         assert result.returncode == 0
         char_count = int(result.stdout.strip())
         assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_missing_token_file_raises_authentication_error():
+    """Test that RAY_AUTH_TOKEN_PATH pointing to missing file raises AuthenticationError."""
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path(None, "/nonexistent/path/to/token")
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        # Verify error message is informative
+        assert str(Path("/nonexistent/path/to/token")) in str(exc_info.value)
+        assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_empty_token_file_raises_authentication_error(tmp_path):
+    """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
+    token_file = tmp_path / "empty_token_file.txt"
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path("", token_file)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        assert "cannot be opened or is empty" in str(exc_info.value)
+        assert str(token_file) in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_no_token_with_auth_enabled_returns_false():
+    """Test that has_token(ignore_auth_mode=True) returns False when no token exists.
+
+    This allows the caller (ensure_token_if_auth_enabled) to decide whether
+    to generate a new token or raise an error.
+    """
+    with authentication_env_guard():
+        set_auth_mode("token")
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        # has_token(ignore_auth_mode=True) should return False, not raise an exception
+        result = token_loader.has_token(ignore_auth_mode=True)
+        assert result is False
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="no benefit testing this in client mode",
+)
+def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
+    """Test that OpenTelemetry metrics are exported with token authentication.
+
+    This test verifies that the C++ OpenTelemetryMetricRecorder correctly includes
+    the authentication token in its gRPC metadata when exporting metrics to the
+    metrics agent. If the auth headers are missing or incorrect, the metrics agent
+    would reject the requests and metrics wouldn't be collected.
+    """
+
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
+
+    # Get the metrics export address from the head node
+    head_node = cluster.head_node
+    prom_addresses = [
+        build_address(head_node.node_ip_address, head_node.metrics_export_port)
+    ]
+
+    timeseries = PrometheusTimeseries()
+
+    def verify_metrics_collected():
+        """Verify that metrics are being exported successfully."""
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_names = list(timeseries.metric_descriptors.keys())
+
+        # Check for core Ray metrics that are always exported
+        # These metrics are exported via the C++ OpenTelemetry recorder
+        expected_metrics = [
+            "ray_node_cpu_utilization",
+            "ray_node_mem_used",
+            "ray_node_disk_usage",
+        ]
+
+        # At least some metrics should be present
+        return len(metric_names) > 0 and any(
+            any(expected in name for name in metric_names)
+            for expected in expected_metrics
+        )
+
+    # Wait for metrics to be collected
+    # If auth wasn't working, the metrics agent would reject the exports
+    # and we wouldn't see any metrics
+    wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":
