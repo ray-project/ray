@@ -30,7 +30,9 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         *,
         execution_id: str,
     ):
-        super().__init__(topology, resource_manager, execution_id)
+        self._topology = topology
+        self._resource_manager = resource_manager
+        self._execution_id = execution_id
 
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
