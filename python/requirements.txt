@@ -39,6 +39,7 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
+ormsgpack>=1.7.0
 gymnasium==1.2.2; python_version >= '3.10'
 virtualenv!=20.21.1,>=20.0.24
 opencensus

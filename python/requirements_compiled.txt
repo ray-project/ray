@@ -1407,7 +1407,9 @@ orjson==3.9.15
     #   gradio
     #   tensordict
 ormsgpack==1.7.0
-    # via -r python/requirements/ml/rllib-requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/ml/rllib-requirements.txt
 packaging==24.2
     # via
     #   -r python/requirements.txt
