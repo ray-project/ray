@@ -836,3 +836,71 @@ def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
     ).astype(int)
 
     return boundaries
+
+
+def _merge_schemas(schemas: List[Optional[Schema]]) -> Optional[Schema]:
+    """Merge schemas from multiple inputs, handling duplicate column names.
+
+    This mimics the behavior of BlockAccessor.zip() which renames duplicates
+    with suffixes like '_1', '_2', etc.
+    """
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    if not schemas or all(s is None for s in schemas):
+        return None
+
+    # For PyArrow schemas
+    if any(isinstance(s, pa.Schema) for s in schemas if s is not None):
+        fields = []
+        column_names = set()
+
+        for schema in schemas:
+            if schema is None:
+                continue
+            if not isinstance(schema, pa.Schema):
+                # Skip non-Arrow schemas; fall back to first non-None
+                continue
+            for field in schema:
+                name = field.name
+                # Handle duplicates (same logic as arrow_block._zip)
+                if name in column_names:
+                    i = 1
+                    new_name = name
+                    while new_name in column_names:
+                        new_name = f"{name}_{i}"
+                        i += 1
+                    name = new_name
+                column_names.add(name)
+                fields.append(pa.field(name, field.type))
+
+        return pa.schema(fields) if fields else None
+
+    # For PandasBlockSchema
+    if any(isinstance(s, PandasBlockSchema) for s in schemas if s is not None):
+        merged_names = []
+        merged_types = []
+        column_names = set()
+
+        for schema in schemas:
+            if schema is None or not isinstance(schema, PandasBlockSchema):
+                continue
+            for name, dtype in zip(schema.names, schema.types):
+                # Handle duplicates (same logic as pandas_block._zip)
+                if name in column_names:
+                    i = 1
+                    new_name = name
+                    while new_name in column_names:
+                        new_name = f"{name}_{i}"
+                        i += 1
+                    name = new_name
+                column_names.add(name)
+                merged_names.append(name)
+                merged_types.append(dtype)
+
+        return PandasBlockSchema(merged_names, merged_types) if merged_names else None
+
+    # Fallback: return first non-None schema
+    for s in schemas:
+        if s is not None:
+            return s
+    return None

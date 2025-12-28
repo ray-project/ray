@@ -10,8 +10,17 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, to_stats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    Schema,
+    _merge_schemas,
+    to_stats,
+)
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 if TYPE_CHECKING:
 
@@ -37,6 +46,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         ]
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._output_metadata: List["BlockMetadataWithSchema"] = []
+        self._pending_metadata_refs: List[ObjectRef["BlockMetadataWithSchema"]] = []
+        self._merged_schema: Optional[Schema] = None
         super().__init__(
             data_context,
             *input_ops,
@@ -117,6 +128,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return refs
 
     def get_stats(self) -> StatsDict:
+        # Resolve any pending metadata refs in batch (deferred from _zip_bundles)
+        if self._pending_metadata_refs:
+            resolved = ray.get(self._pending_metadata_refs)
+            self._output_metadata.extend(resolved)
+            self._pending_metadata_refs = []
         if not self._output_metadata:
             return {}
         return {self._name: to_stats(self._output_metadata)}
@@ -132,6 +148,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             for bundle in bundles:
                 self._metrics.on_input_dequeued(bundle)
 
+            merged_schema = _merge_schemas([bundle.schema for bundle in bundles])
+            if merged_schema is not None:
+                self._merged_schema = merged_schema
+
             output_bundle = self._zip_bundles(bundles)
             self._output_buffer.append(output_bundle)
             self._metrics.on_output_queued(output_bundle)
@@ -143,25 +163,33 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         )
         block_groups = [[block for block, _ in bundle.blocks] for bundle in bundles]
 
-        result_block, meta_with_schema = zip_bundle_group_remote.remote(block_groups)
-        meta_with_schema = ray.get(meta_with_schema)
+        result_block, meta_with_schema_ref = zip_bundle_group_remote.remote(
+            block_groups
+        )
+
+        self._pending_metadata_refs.append(meta_with_schema_ref)
 
         for bundle in bundles:
             bundle.destroy_if_owned()
 
-        self._output_metadata.append(meta_with_schema)
-
         owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+
+        estimated_metadata = BlockMetadata(
+            num_rows=bundles[0].num_rows(),
+            size_bytes=sum(bundle.size_bytes() for bundle in bundles),
+            input_files=None,
+            exec_stats=None,
+        )
 
         return RefBundle(
             [
                 (
                     result_block,
-                    meta_with_schema.metadata,
+                    estimated_metadata,
                 )
             ],
             owns_blocks=owns_blocks,
-            schema=meta_with_schema.schema,
+            schema=self._merged_schema,
         )
 
 
