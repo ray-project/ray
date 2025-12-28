@@ -1912,7 +1912,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   ASSERT_EQ(task_manager->num_tasks_failed, 1);
   ASSERT_EQ(task_manager->num_generator_failed_and_resubmitted, 0);
 
-  // Succesful queue generator for resubmit -> cancel -> successful execution -> no
+  // Successful queue generator for resubmit -> cancel -> successful execution -> no
   // resubmit.
   TaskSpecification task2 = BuildEmptyTaskSpec();
   submitter.SubmitTask(task2);
