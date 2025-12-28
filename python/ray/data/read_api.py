@@ -427,7 +427,9 @@ def read_datasource(
     cur_pg = ray.util.get_current_placement_group()
     static_metadata = None
     mem_size_for_autodetect: Optional[int] = None
-    if isinstance(datasource_or_legacy_reader, Datasource):
+    if override_num_blocks is None and isinstance(
+        datasource_or_legacy_reader, Datasource
+    ):
         static_metadata = datasource_or_legacy_reader.get_static_metadata()
         if (
             static_metadata is not None
@@ -449,7 +451,7 @@ def read_datasource(
             metadata={"Read": [static_metadata.metadata]},
             parent=None,
         )
-        num_outputs = None
+        num_outputs = requested_parallelism
     else:
         # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
         # removing LazyBlockList code path.
