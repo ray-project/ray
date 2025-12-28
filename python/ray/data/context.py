@@ -641,7 +641,7 @@ class DataContext:
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
     def __post_init__(self):
-        # The additonal ray remote args that should be added to
+        # The additional ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}
         # The extra key-value style configs.
