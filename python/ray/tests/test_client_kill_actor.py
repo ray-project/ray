@@ -14,6 +14,8 @@
 
 """Unit tests for `ray kill-actor` CLI."""
 
+import sys
+
 import pytest
 from click.testing import CliRunner
 
@@ -147,3 +149,7 @@ def test_kill_actor_by_name_graceful(ray_start_cluster):
 
     with pytest.raises(Exception):
         ray.get(detached_actor.ping.remote())
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
