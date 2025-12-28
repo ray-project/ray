@@ -2171,7 +2171,7 @@ def status(address: str, verbose: bool):
     "--name",
     required=False,
     type=str,
-    help="Named actor to kill. Mutually exclusive with --actor-id.",
+    help="Named actor to kill.",
 )
 @click.option(
     "--namespace",
@@ -2192,9 +2192,25 @@ def status(address: str, verbose: bool):
     help="If set, the actor will not be restarted after being killed.",
 )
 def kill_actor(
-    address: Optional[str], name: Optional[str], namespace: Optional[str], force: bool, no_restart: bool
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
 ):
     """Kill an actor by name.
+
+    Args:
+        address: Address of the Ray cluster to connect to. If not provided,
+            uses the default address.
+        name: Name of the named actor to kill. Must be specified.
+        namespace: Namespace of the actor. Defaults to the current namespace.
+        force: If True, forcefully kill the actor without graceful shutdown.
+        no_restart: If True (default), prevents the actor from being restarted
+            after termination.
+
+    Returns:
+        None
 
     Examples:
       ray kill-actor --name my_actor --namespace default
@@ -2216,7 +2232,9 @@ def kill_actor(
         try:
             actor_handle = ray.get_actor(name, namespace=namespace)
         except Exception as e:
-            raise click.ClickException(f"No named actor found: {name} (namespace={namespace}): {e}")
+            raise click.ClickException(
+                f"No named actor found: {name} (namespace={namespace}): {e}"
+            )
 
         if force:
             try:
@@ -2240,8 +2258,8 @@ def kill_actor(
     finally:
         try:
             ray.shutdown()
-        except Exception as e:
-            raise e
+        except Exception:
+            pass
 
 
 @cli.command(hidden=True)

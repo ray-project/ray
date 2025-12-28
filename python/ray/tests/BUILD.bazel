@@ -162,6 +162,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_client_init.py",
+        "test_client_kill_actor.py",
     ],
     tags = [
         "custom_setup",
