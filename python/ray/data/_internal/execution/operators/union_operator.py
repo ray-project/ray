@@ -134,6 +134,3 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
-
-    def implements_accurate_memory_accounting(self):
-        return True
