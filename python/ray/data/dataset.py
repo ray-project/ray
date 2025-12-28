@@ -3893,8 +3893,9 @@ class Dataset:
             in-memory size is not known.
         """
         dag = self._logical_plan.dag
-        if isinstance(dag, Read):
-            dag.get_metadata(allow_expensive=True)
+        for op in dag.post_order_iter():
+            if isinstance(op, Read):
+                op.get_metadata(allow_expensive=True)
 
         # If the size is known from metadata, return it.
         metadata = dag.infer_metadata()
