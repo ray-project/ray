@@ -33,7 +33,6 @@ First, install Ray Data. To learn more about installing Ray and its libraries, s
 Here is an example of how to do perform a simple batch text classification task with Ray Data:
 
 .. testcode::
-    :skipif: True
 
     import ray
     import pandas as pd
@@ -56,7 +55,12 @@ Here is an example of how to do perform a simple batch text classification task 
         batch_format="pandas"
         # num_gpus=1  # this will set 1 GPU per worker
     )
-    ds.show(limit=10)
+    ds.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'ham\tGo until jurong point, crazy.. Available only in bugis n great world la e buffet... Cine there got amore wat...', 'label': 'NEGATIVE', 'score': 0.9935141801834106}
 
 
 Why choose Ray Data?

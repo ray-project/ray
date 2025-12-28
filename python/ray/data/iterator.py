@@ -430,7 +430,7 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
 
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             move_tensors_to_device,
         )
 
@@ -559,7 +559,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
@@ -689,8 +689,8 @@ class DataIterator(abc.ABC):
         """
         import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -904,7 +904,7 @@ class DataIterator(abc.ABC):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
 
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_to_tf_tensor,
             get_type_spec,
         )

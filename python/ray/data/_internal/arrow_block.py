@@ -19,15 +19,14 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import (
-    convert_to_pyarrow_array,
-    pyarrow_table_from_pydict,
-)
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.arrow import (
+    convert_to_pyarrow_array,
+    pyarrow_table_from_pydict,
+)
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -38,6 +37,7 @@ from ray.data.block import (
     BlockType,
     U,
 )
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.expressions import Expr
 
@@ -272,7 +272,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         # We specify ignore_metadata=True because pyarrow will use the metadata
         # to build the Table. This is handled incorrectly for older pyarrow versions
@@ -556,6 +556,14 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def unique(self) -> BlockColumn:
         import pyarrow.compute as pac
 
+        if self.is_composed_of_lists():
+            # NOTE: Arrow doesn't provide unique kernels for `ListArray`s and
+            #       such, so we rely on Polars to encode and compute unique
+            #       values instead
+            import polars
+
+            return polars.from_arrow(self._column).unique().to_arrow()
+
         return pac.unique(self._column)
 
     def value_counts(self) -> Optional[Dict[str, List]]:
@@ -586,9 +594,8 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return pac.drop_null(self._column)
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        if not types:
-            types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+    def is_composed_of_lists(self) -> bool:
+        types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
         return isinstance(self._column.type, types)
 
     def to_pylist(self) -> List[Any]:

@@ -18,16 +18,16 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
@@ -1277,7 +1277,8 @@ def test_seed_file_shuffle(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
@@ -1285,7 +1286,7 @@ def test_seed_file_shuffle(
     assert ds1.take_all() == ds2.take_all()
 
 
-def test_seed_file_shuffle_with_epoch_update(
+def test_seed_file_shuffle_with_execution_update(
     restore_data_context, tmp_path, target_max_block_size_infinite_or_default
 ):
     def write_parquet_file(path, file_index):
@@ -1314,20 +1315,17 @@ def test_seed_file_shuffle_with_epoch_update(
     ds1_epoch_results = []
     ds2_epoch_results = []
     for i in range(5):
-        ds1_epoch = ds1.take_all()
-        ds2_epoch = ds2.take_all()
+        ds1_epoch = ds1.to_pandas()
+        ds2_epoch = ds2.to_pandas()
         ds1_epoch_results.append(ds1_epoch)
         ds2_epoch_results.append(ds2_epoch)
         # For the same epoch, ds1 and ds2 should produce identical results
-        assert ds1_epoch == ds2_epoch, (
-            f"Epoch {i}: ds1 and ds2 should produce the same results "
-            "for the same epoch with the same shuffle seed"
-        )
+        pd.testing.assert_frame_equal(ds1_epoch, ds2_epoch)
 
     # Convert results to hashable format for comparison
-    def make_hashable(rows):
-        """Convert a list of dicts to a hashable tuple representation."""
-        return tuple(tuple(sorted(row.items())) for row in rows)
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
 
     ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
     ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
@@ -1340,7 +1338,7 @@ def test_seed_file_shuffle_with_epoch_update(
     ), "ds2 should produce different results across epochs"
 
 
-def test_seed_file_shuffle_with_epoch_no_effect(
+def test_seed_file_shuffle_with_execution_no_effect(
     restore_data_context, tmp_path, target_max_block_size_infinite_or_default
 ):
     def write_parquet_file(path, file_index):
@@ -1362,37 +1360,34 @@ def test_seed_file_shuffle_with_epoch_no_effect(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
-    ds1_epoch_results = []
-    ds2_epoch_results = []
+    ds1_execution_results = []
+    ds2_execution_results = []
     for i in range(5):
-        ds1_epoch = ds1.take_all()
-        ds2_epoch = ds2.take_all()
-        ds1_epoch_results.append(ds1_epoch)
-        ds2_epoch_results.append(ds2_epoch)
-        # For the same epoch, ds1 and ds2 should produce identical results
-        assert ds1_epoch == ds2_epoch, (
-            f"Epoch {i}: ds1 and ds2 should produce the same results "
-            "for the same epoch with the same shuffle seed"
-        )
+        ds1_execution = ds1.to_pandas()
+        ds2_execution = ds2.to_pandas()
+        ds1_execution_results.append(ds1_execution)
+        ds2_execution_results.append(ds2_execution)
+        # For the same execution, ds1 and ds2 should produce identical results
+        pd.testing.assert_frame_equal(ds1_execution, ds2_execution)
 
     # Convert results to hashable format for comparison
-    def make_hashable(rows):
-        """Convert a list of dicts to a hashable tuple representation."""
-        return tuple(tuple(sorted(row.items())) for row in rows)
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
 
-    ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
-    ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
+    ds1_hashable_results = {make_hashable(result) for result in ds1_execution_results}
+    ds2_hashable_results = {make_hashable(result) for result in ds2_execution_results}
 
     assert (
         len(ds1_hashable_results) == 1
-    ), "ds1 should produce the same results across epochs"
+    ), "ds1 should produce the same results across executions"
     assert (
         len(ds2_hashable_results) == 1
-    ), "ds2 should produce the same results across epochs"
+    ), "ds2 should produce the same results across executions"
 
 
 def test_read_file_with_partition_values(
@@ -2499,6 +2494,54 @@ def test_hive_partitioned_parquet_operations(
         f"Expected head:\n{expected_df.head()}\n"
         f"Actual head:\n{actual_df.head()}"
     )
+
+
+@pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
+)
+def test_write_parquet_partitioning(choice, tmp_path):
+
+    # Ray's default is "hive", while pyarrow's default is "directory" (when None).
+    kwargs = {
+        "default": (
+            {"partitioning_flavor": None},
+            pds.partitioning(field_names=["grp"], flavor=None),
+        ),
+        "hive": ({"partitioning_flavor": "hive"}, pds.partitioning(flavor="hive")),
+        "filename": (
+            {"partitioning_flavor": "filename"},
+            pds.partitioning(
+                pa.schema([pa.field("grp", pa.int64())]), flavor="filename"
+            ),
+        ),
+        "ray_default": (
+            {},
+            "hive",
+        ),
+    }
+
+    parquet_kwargs, partitioning = kwargs[choice]
+
+    ds = ray.data.range(1000).add_column("grp", lambda x: x["id"] % 10)
+
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["grp"],
+        **parquet_kwargs,
+        mode="overwrite",
+    )
+
+    pq_ds = pq.ParquetDataset(
+        tmp_path,
+        partitioning=partitioning,
+    )
+    df = pq_ds.read_pandas().to_pandas()
+
+    assert len(df) == 1000
+    assert df["grp"].nunique() == 10
+    assert set(df.columns.tolist()) == {"id", "grp"}
 
 
 if __name__ == "__main__":

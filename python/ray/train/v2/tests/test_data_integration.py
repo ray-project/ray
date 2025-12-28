@@ -16,7 +16,7 @@ from ray.data import (
 )
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -92,7 +92,7 @@ def test_data_config_validation():
 
 
 def test_datasets_callback(ray_start_4_cpus):
-    """Check that the `DatasetsSetupCallback` correctly configures the
+    """Check that the `DatasetsCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
 
@@ -121,7 +121,7 @@ def test_datasets_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsSetupCallback(train_run_context)
+    callback = DatasetsCallback(train_run_context)
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -236,19 +236,21 @@ def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
     trainer.fit()
 
 
-@pytest.mark.parametrize("different_seeds_across_epochs", [True, False])
-def test_parquet_file_shuffle_with_epochs(
-    ray_start_4_cpus, restore_data_context, different_seeds_across_epochs  # noqa: F811,
+@pytest.mark.parametrize("different_seeds_across_executions", [True, False])
+def test_parquet_file_shuffle_with_executions(
+    ray_start_4_cpus,
+    restore_data_context,  # noqa: F811
+    different_seeds_across_executions,  # noqa: F811,
 ):
     """Test that Parquet file shuffling produces:
-    1. Different results across epochs when different_seeds_across_epochs=True
-       (FileShuffleConfig with base_seed: seed = base_seed + epoch_idx)
-    2. Same results across epochs when different_seeds_across_epochs=False
+    1. Different results across executions when different_seeds_across_executions=True
+       (FileShuffleConfig with reseed_after_execution=True: seed = seed + execution_idx)
+    2. Same results across executions when different_seeds_across_executions=False
        (FileShuffleConfig with seed: seed remains constant)
-    3. Same results for different datasets with same shuffle config per epoch
+    3. Same results for different datasets with same shuffle config per execution
     """
     NUM_WORKERS = 2
-    NUM_EPOCHS = 5
+    NUM_EXECUTIONS = 5
     NUM_FILES = 15
 
     # Create temporary directory for test files
@@ -276,10 +278,10 @@ def test_parquet_file_shuffle_with_epochs(
         execution_options.preserve_order = True
 
         # Create shuffle config based on parameter
-        if different_seeds_across_epochs:
+        if different_seeds_across_executions:
             shuffle_config = FileShuffleConfig(seed=42)
         else:
-            shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+            shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
 
         # Create two datasets with the same shuffle config
         ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
@@ -292,24 +294,24 @@ def test_parquet_file_shuffle_with_epochs(
             train_ds1 = ray.train.get_dataset_shard("train1")
             train_ds2 = ray.train.get_dataset_shard("train2")
 
-            # Collect results across multiple epochs
-            ds1_epoch_results = []
-            ds2_epoch_results = []
+            # Collect results across multiple executions
+            ds1_execution_results = []
+            ds2_execution_results = []
 
-            for epoch_idx in range(NUM_EPOCHS):
-                ds1_epoch_data = list(train_ds1.iter_rows())
-                ds1_epoch_results.append(ds1_epoch_data)
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds1_execution_data = list(train_ds1.iter_rows())
+                ds1_execution_results.append(ds1_execution_data)
 
-            for epoch_idx in range(NUM_EPOCHS):
-                ds2_epoch_data = list(train_ds2.iter_rows())
-                ds2_epoch_results.append(ds2_epoch_data)
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds2_execution_data = list(train_ds2.iter_rows())
+                ds2_execution_results.append(ds2_execution_data)
 
-            # Assertion 1: For the same epoch, ds1 and ds2 should yield identical results
+            # Assertion 1: For the same execution, ds1 and ds2 should yield identical results
             # (deterministic shuffling with same base_seed)
-            for i in range(NUM_EPOCHS):
-                assert ds1_epoch_results[i] == ds2_epoch_results[i], (
-                    f"Epoch {i}: ds1 and ds2 should produce identical results "
-                    f"for the same epoch with the same shuffle seed"
+            for i in range(NUM_EXECUTIONS):
+                assert ds1_execution_results[i] == ds2_execution_results[i], (
+                    f"Execution {i}: ds1 and ds2 should produce identical results "
+                    f"for the same execution with the same shuffle seed"
                 )
 
             # Convert results to hashable format for uniqueness check
@@ -318,42 +320,44 @@ def test_parquet_file_shuffle_with_epochs(
                 return tuple(tuple(sorted(row.items())) for row in rows)
 
             ds1_hashable_results = {
-                make_hashable(result) for result in ds1_epoch_results
+                make_hashable(result) for result in ds1_execution_results
             }
             ds2_hashable_results = {
-                make_hashable(result) for result in ds2_epoch_results
+                make_hashable(result) for result in ds2_execution_results
             }
 
-            # Assertion 2: Different epochs produce different results vs same results
-            # based on whether seed varies by epoch_idx
-            if different_seeds_across_epochs:
-                # seed varies by epoch, so expect variation
-                assert len(ds1_hashable_results) == NUM_EPOCHS, (
-                    f"ds1 should produce different results across epochs, "
-                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
+            # Assertion 2: Different executions produce different results vs same results
+            # based on whether seed varies by execution_idx
+            if different_seeds_across_executions:
+                # seed varies by execution, so expect variation
+                assert len(ds1_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds1 should produce different results across executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
                 )
-                assert len(ds2_hashable_results) == NUM_EPOCHS, (
-                    f"ds2 should produce different results across epochs, "
-                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
+                assert len(ds2_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds2 should produce different results across executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
                 )
             else:
                 # seed is constant, so expect no variation
                 assert len(ds1_hashable_results) == 1, (
-                    f"ds1 should produce the same results across all epochs, "
-                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
+                    f"ds1 should produce the same results across all executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
                 )
                 assert len(ds2_hashable_results) == 1, (
-                    f"ds2 should produce the same results across all epochs, "
-                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
+                    f"ds2 should produce the same results across all executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
                 )
 
             # Additional verification: Check that the total number of rows is consistent
-            for epoch_idx in range(NUM_EPOCHS):
+            for execution_idx in range(NUM_EXECUTIONS):
                 assert (
-                    len(ds1_epoch_results[epoch_idx]) == (NUM_FILES * 10) // NUM_WORKERS
+                    len(ds1_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
                 )
                 assert (
-                    len(ds2_epoch_results[epoch_idx]) == (NUM_FILES * 10) // NUM_WORKERS
+                    len(ds2_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
                 )
 
         trainer = DataParallelTrainer(

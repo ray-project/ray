@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -6,6 +8,7 @@ from pkg_resources import parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -598,6 +601,69 @@ def test_with_column_floor_division_and_logical_operations(
     expected_df = pd.DataFrame({"id": [0, 1, 2, 3, 4], "result": expected_column_data})
 
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expr_factory, expected_values",
+    [
+        pytest.param(lambda: col("value").ceil(), [-1, 0, 0, 1, 2], id="ceil"),
+        pytest.param(lambda: col("value").floor(), [-2, -1, 0, 0, 1], id="floor"),
+        pytest.param(lambda: col("value").round(), [-2, 0, 0, 0, 2], id="round"),
+        pytest.param(lambda: col("value").trunc(), [-1, 0, 0, 0, 1], id="trunc"),
+    ],
+)
+def test_with_column_rounding_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_values,
+):
+    """Test ceil, floor, round, and trunc expressions."""
+    values = [-1.75, -0.25, 0.0, 0.25, 1.75]
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").ln(), math.log, id="ln"),
+        pytest.param(lambda: col("value").log10(), math.log10, id="log10"),
+        pytest.param(lambda: col("value").log2(), math.log2, id="log2"),
+        pytest.param(lambda: col("value").exp(), math.exp, id="exp"),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param([1.0, math.e, 10.0, 4.0], id="float_inputs"),
+        pytest.param([1, 10, 4, 2], id="int_inputs"),
+    ],
+)
+def test_with_column_logarithmic_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+    input_values,
+):
+    """Test logarithmic and exponential expressions."""
+    values = input_values
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    expected_values = [expected_fn(v) for v in values]
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(
