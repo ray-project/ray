@@ -13,6 +13,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
+    get_ineligible_op_usage,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -38,6 +39,12 @@ class TestReservationOpResourceAllocator:
         o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
         o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        # Mock min_max_resource_requirements to return default unbounded behavior
+        for op in [o2, o3]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
         op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
@@ -517,22 +524,26 @@ class TestReservationOpResourceAllocator:
         assert o2 not in allocator._op_budgets
 
     def test_gpu_allocation(self, restore_data_context):
-        """Test GPU allocation for GPU vs non-GPU operators."""
+        """Test GPU allocation for GPU vs non-GPU operators.
+
+        With unified allocation (no GPU special-casing), GPU flows through
+        the normal shared allocation path just like CPU and memory.
+        """
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
 
-        # Non-GPU operator
+        # Non-GPU operator (unbounded)
         o2 = mock_map_op(o1)
         o2.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 0, 0), ExecutionResources(0, 0, 0))
+            return_value=(ExecutionResources(0, 0, 0), ExecutionResources.inf())
         )
 
-        # GPU operator
+        # GPU operator (unbounded)
         o3 = mock_map_op(o2, ray_remote_args={"num_gpus": 1})
         o3.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
+            return_value=(ExecutionResources(0, 1, 0), ExecutionResources.inf())
         )
 
         topo = build_streaming_topology(o3, ExecutionOptions())
@@ -557,11 +568,10 @@ class TestReservationOpResourceAllocator:
             limits=global_limits,
         )
 
-        # Non-GPU operator should get 0 GPU
-        assert allocator._op_budgets[o2].gpu == 0
-
-        # GPU operator should get remaining GPUs (4 total - 1 used = 3 available)
-        assert allocator._op_budgets[o3].gpu == 3
+        # Both unbounded operators get shared GPU allocation
+        # GPU flows through normal allocation, both get GPU budget > 0
+        assert allocator._op_budgets[o2].gpu > 0
+        assert allocator._op_budgets[o3].gpu > 0
 
     def test_multiple_gpu_operators(self, restore_data_context):
         """Test GPU allocation for multiple GPU operators."""
@@ -594,6 +604,8 @@ class TestReservationOpResourceAllocator:
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
@@ -601,13 +613,14 @@ class TestReservationOpResourceAllocator:
             limits=global_limits,
         )
 
-        # o2: 4 total - 1 used = 3 available
-        assert allocator._op_budgets[o2].gpu == 3
-
-        # o3: 4 total - 0 used = 4 available
-        assert allocator._op_budgets[o3].gpu == 4
+        # Both operators are capped at their max of 1 GPU
+        # o2: using 1 GPU, reserved 1, so reserved_remaining = 0, gets 0 shared (capped)
+        # o3: using 0 GPU, reserved 1, so reserved_remaining = 1, gets 0 shared (capped)
+        assert allocator._op_budgets[o2].gpu == 0
+        assert allocator._op_budgets[o3].gpu == 1
 
     def test_gpu_usage_exceeds_global_limits(self, restore_data_context):
+        """Test that GPU budget is 0 when usage exceeds limits."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
 
         # One GPU operator
@@ -631,6 +644,8 @@ class TestReservationOpResourceAllocator:
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2], 0)
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
@@ -638,38 +653,140 @@ class TestReservationOpResourceAllocator:
             limits=global_limits,
         )
 
+        # When usage (2) exceeds limits (1), the budget should be 0
+        # because reserved_remaining = reserved - usage = negative, clamped to 0
         assert allocator._op_budgets[o2].gpu == 0
 
-    def test_get_ineligible_ops_with_usage(self, restore_data_context):
+    def test_gpu_unbounded_operator_can_autoscale(self, restore_data_context):
+        """Test that unbounded GPU operators (max_size=None) get GPU budget for autoscaling.
+
+        This is a regression test for the bug where ActorPoolStrategy(min_size=1, max_size=None)
+        with GPU actors would not get any GPU budget, preventing autoscaling.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # Unbounded GPU operator (simulating ActorPoolStrategy with max_size=None)
+        # min = 1 GPU (for 1 actor), max = inf (unbounded)
+        o2 = mock_map_op(o1, ray_remote_args={"num_gpus": 1})
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 1, 0), ExecutionResources.inf())
+        )
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+
+        global_limits = ExecutionResources(gpu=8)
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(gpu=1),  # Currently using 1 GPU
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(
+            limits=global_limits,
+        )
+
+        # The unbounded GPU operator should get GPU budget > 0 so it can autoscale
+        # With 8 GPUs available and 1 used, there should be budget for more
+        assert allocator._op_budgets[o2].gpu > 0, (
+            f"Unbounded GPU operator should get GPU budget for autoscaling, "
+            f"but got {allocator._op_budgets[o2].gpu}"
+        )
+
+    def test_gpu_bounded_vs_unbounded_operators(self, restore_data_context):
+        """Test GPU allocation when one operator is bounded and one is unbounded.
+
+        With unified allocation, bounded operator is capped, unbounded gets remaining.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # Bounded GPU operator (max 2 GPUs)
+        o2 = mock_map_op(o1, ray_remote_args={"num_gpus": 1})
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 2, 0))
+        )
+
+        # Unbounded GPU operator
+        o3 = mock_map_op(o2, ray_remote_args={"num_gpus": 1})
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources(0, 1, 0), ExecutionResources.inf())
+        )
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        global_limits = ExecutionResources(gpu=8)
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources.zero(),
+            o3: ExecutionResources.zero(),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(
+            limits=global_limits,
+        )
+
+        # o2 is capped at 2 GPUs (its max)
+        assert allocator._op_budgets[o2].gpu == 2
+
+        # o3 (unbounded) gets remaining GPUs after o2's excess is returned
+        # With 8 total GPUs and o2 capped at 2, o3 gets 6
+        assert allocator._op_budgets[o3].gpu == 6
+
+    def test_get_ineligible_op_usage(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(
-            o1,
-        )
+        o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
-        o4 = mock_map_op(
-            o3,
-        )
-        o5 = mock_map_op(
-            o4,
-        )
+        o4 = mock_map_op(o3)
+        o5 = mock_map_op(o4)
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
         topo = build_streaming_topology(o5, ExecutionOptions())
 
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=1, object_store_memory=1),
+            o3: ExecutionResources(cpu=2, object_store_memory=2),
+            o4: ExecutionResources(cpu=3, object_store_memory=3),
+            o5: ExecutionResources(cpu=4, object_store_memory=4),
+        }
+
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        allocator = resource_manager._op_resource_allocator
+        # Ineligible: o1 (finished), o2 (finished), o3 (throttling disabled)
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
-        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
-        assert len(ops_to_exclude) == 2
-        assert set(ops_to_exclude) == {o2, o3}
+        # Expected: o1 + o2 + o3 = (0+1+2, 0+10+20)
+        assert ineligible_usage == ExecutionResources(cpu=3, object_store_memory=3)
 
-    def test_get_ineligible_ops_with_usage_complex_graph(self, restore_data_context):
+    def test_get_ineligible_op_usage_complex_graph(self, restore_data_context):
         """
         o1 (InputDataBuffer)
                 |
@@ -693,14 +810,10 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(
-            o1,
-        )
+        o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
         o4 = InputDataBuffer(DataContext.get_current(), [])
-        o5 = mock_map_op(
-            o4,
-        )
+        o5 = mock_map_op(o4)
         o6 = mock_union_op([o3, o5])
         o7 = InputDataBuffer(DataContext.get_current(), [])
         o8 = mock_join_op(o7, o6)
@@ -713,15 +826,26 @@ class TestReservationOpResourceAllocator:
 
         topo = build_streaming_topology(o8, ExecutionOptions())
 
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=2, object_store_memory=2),
+            o3: ExecutionResources(cpu=3, object_store_memory=3),
+            o4: ExecutionResources.zero(),
+            o5: ExecutionResources(cpu=5, object_store_memory=5),
+            o6: ExecutionResources(cpu=6, object_store_memory=6),
+            o7: ExecutionResources.zero(),
+            o8: ExecutionResources(cpu=8, object_store_memory=8),
+        }
+
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        allocator = resource_manager._op_resource_allocator
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
-        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
-        assert len(ops_to_exclude) == 4
-        assert set(ops_to_exclude) == {o2, o3, o5, o7}
+        # Ineligible: o1, o2, o3, o4, o5, o7 -> sum = 2+3+5 = 10
+        assert ineligible_usage == ExecutionResources(cpu=10, object_store_memory=10)
 
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
@@ -732,6 +856,13 @@ class TestReservationOpResourceAllocator:
         o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o4 = mock_map_op(o3, incremental_resource_usage=ExecutionResources(1, 0, 10))
+
+        # Mock min_max_resource_requirements to return default unbounded behavior
+        for op in [o2, o3, o4]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 

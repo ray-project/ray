@@ -2,6 +2,7 @@ import logging
 import math
 import threading
 import time
+import typing
 from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import (
@@ -50,6 +51,9 @@ from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+
 logger = logging.getLogger(__name__)
 
 # Force a progress update after this many events processed. Avoids the
@@ -84,7 +88,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
-        self._progress_manager = None
+        self._progress_manager: Optional["BaseExecutionProgressManager"] = None
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
