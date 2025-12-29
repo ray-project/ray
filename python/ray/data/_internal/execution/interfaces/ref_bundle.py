@@ -233,7 +233,7 @@ class RefBundle:
             needed_rows: Number of rows to take from the head of the bundle.
 
         Returns:
-            A tuple of (sliced_bundle, remaining_bundle). The needed rows must be less than the number of rows in the bundle.
+            A tuple of (sliced_bundle, remaining_bundle).
         """
         assert (
             self.num_rows() is not None
