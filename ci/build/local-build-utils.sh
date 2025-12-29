@@ -103,148 +103,62 @@ setup_build_env() {
     export WANDA_BIN="${WANDA_BIN:-$(command -v wanda || echo /home/ubuntu/rayci/bin/wanda)}"
 }
 
-# Emit Bazel flags tuned to the container's cgroup CPU + memory limits.
+# Emit Bazel flags for local scheduling and C++ compile concurrency.
 #
-# Output example:
-#   --jobs=4 --local_cpu_resources=4 --local_ram_resources=6144
+# Environment knobs
+#   BAZEL_DETECT_MEM_HEADROOM_PCT     (default: 90)  percent of HOST_RAM for Bazel memory
+#   BAZEL_DETECT_CPU_HEADROOM_PCT     (default: 80)  percent of HOST_CPUS for Bazel CPU
+#   BAZEL_DETECT_MB_PER_CPP           (default: 1024) estimated MB per concurrent C++ compile
+#   BAZEL_DETECT_CPP_RESERVE_MB       (default: 3072) MB reserved for non-compile work (OS/link/etc.)
 #
-# Env overrides:
-#   BAZEL_DETECT_HEADROOM_PCT   (default: 80)  # percent of mem limit to give Bazel
-#   BAZEL_DETECT_MIN_RAM_MB     (default: 2048)
-#   BAZEL_DETECT_MAX_JOBS       (default: 0)   # 0 means no cap
-#   BAZEL_DETECT_FORCE_JOBS     (default: 0)   # if >0, use exactly this jobs/cpus
-#   BAZEL_DETECT_FORCE_RAM_MB   (default: 0)   # if >0, use exactly this RAM
+# Decision: rely on HOST_RAM / HOST_CPUS
+# We intentionally do not read cgroup limits (/sys/fs/cgroup/*) by default.
+# In our environments, Bazel's HOST_* values reflect the effective resource boundary
+# (e.g., Docker Desktop/BuildKit VM or a dedicated CI runner), and HOST_* expressions
+# are well-supported via --local_resources.
 #
-# Notes:
-# - Works with cgroup v2 and v1.
-# - Falls back to host totals if unbounded.
-# - Intended for running *inside* the build container, but will also behave sensibly on host.
+# When to revisit this decision
+# If builds run under strict cgroup limits (Kubernetes, docker --memory, etc.) where
+# actions can allocate far less than HOST_RAM, reintroduce cgroup/proc detection and
+# switch memory to a numeric MB value derived from the actual limit.
 bazel_container_resource_flags() {
-    local headroom_pct="${BAZEL_DETECT_HEADROOM_PCT:-80}"
-    local min_ram_mb="${BAZEL_DETECT_MIN_RAM_MB:-2048}"
-    local max_jobs="${BAZEL_DETECT_MAX_JOBS:-0}"
-    local force_jobs="${BAZEL_DETECT_FORCE_JOBS:-0}"
-    local force_ram_mb="${BAZEL_DETECT_FORCE_RAM_MB:-0}"
+    local mem_headroom="${BAZEL_DETECT_MEM_HEADROOM:-0.90}"
+    local cpu_headroom="${BAZEL_DETECT_CPU_HEADROOM:-0.90}"
 
-    # -----------------------
-    # Memory detection (MB)
-    # -----------------------
-    local mem_limit_mb mem_max v bazel_mem_mb
-    if [[ -r /sys/fs/cgroup/memory.max ]]; then
-        # cgroup v2
-        mem_max="$(cat /sys/fs/cgroup/memory.max)"
-        if [[ "$mem_max" != "max" ]]; then
-            mem_limit_mb=$(( mem_max / 1024 / 1024 ))
-        else
-            mem_limit_mb=""
-        fi
+    # --- compute integer cpu + ram for legacy bazel flags ---
+    local cpu_total
+    cpu_total="$(nproc 2>/dev/null || echo 1)"
+
+    # Prefer MemAvailable; fallback to MemTotal
+    local avail_mb
+    avail_mb="$(awk '
+        $1=="MemAvailable:" {print int($2/1024); found=1; exit}
+        $1=="MemTotal:" {total=int($2/1024)}
+        END {if (!found) print total}
+    ' /proc/meminfo)"
+
+    # Apply headroom multipliers -> integers
+    local bazel_cpus bazel_ram_mb
+    bazel_cpus="$(awk -v c="$cpu_total" -v h="$cpu_headroom" 'BEGIN{v=int(c*h); if(v<1)v=1; print v}')"
+    bazel_ram_mb="$(awk -v m="$avail_mb" -v h="$mem_headroom" 'BEGIN{v=int(m*h); if(v<256)v=256; print v}')"
+
+    # --- derive cpp compile cap from available memory budget ---
+    local mb_per_cpp="${BAZEL_DETECT_MB_PER_CPP:-3072}"
+    local reserve_mb="${BAZEL_DETECT_CPP_RESERVE_MB:-1024}"
+
+    local budget_mb=$(( bazel_ram_mb - reserve_mb ))
+    (( budget_mb < 0 )) && budget_mb=0
+
+    local cpp_compile_max=1
+    if (( mb_per_cpp > 0 )); then
+        cpp_compile_max=$(( budget_mb / mb_per_cpp ))
+        (( cpp_compile_max < 1 )) && cpp_compile_max=1
     fi
 
-    if [[ -z "${mem_limit_mb:-}" && -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
-        # cgroup v1
-        v="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)"
-        # Treat very large values as "unlimited"
-        if (( v > 0 && v < (1<<60) )); then
-            mem_limit_mb=$(( v / 1024 / 1024 ))
-        fi
-    fi
+    local extra_flags=""
+    # Limit C++ compile concurrency to prevent OOMs
+    extra_flags+=" --local_extra_resources=cppmem=${cpp_compile_max}"
+    extra_flags+=" --modify_execution_info=CppCompile=+resources:cppmem:1"
 
-    if [[ -z "${mem_limit_mb:-}" ]]; then
-        # fallback to host total: kB -> MB
-        mem_limit_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
-    fi
-
-    if (( force_ram_mb > 0 )); then
-        bazel_mem_mb="$force_ram_mb"
-    else
-        bazel_mem_mb=$(( mem_limit_mb * headroom_pct / 100 ))
-        if (( bazel_mem_mb < min_ram_mb )); then
-            bazel_mem_mb="$min_ram_mb"
-        fi
-    fi
-
-    # -----------------------
-    # CPU detection (count)
-    # -----------------------
-    local cpu_limit quota period bazel_jobs bazel_cpus
-    local cpu_full_threshold="${BAZEL_DETECT_CPU_FULL_THRESHOLD:-4}"
-    local cpu_headroom_pct="${BAZEL_DETECT_CPU_HEADROOM_PCT:-65}"
-
-    # C++-oriented RAM budget
-    local mb_per_job="${BAZEL_DETECT_MB_PER_JOB:-2048}"
-    local ram_reserve_mb="${BAZEL_DETECT_RAM_RESERVE_MB:-3072}"  # keep some for links/OS
-
-    cpu_limit=""
-
-    if [[ -r /sys/fs/cgroup/cpu.max ]]; then
-        # cgroup v2: "max" or "<quota> <period>"
-        read -r quota period < /sys/fs/cgroup/cpu.max
-        if [[ "$quota" == "max" ]]; then
-            cpu_limit="$(nproc)"
-        else
-            cpu_limit=$(( (quota + period - 1) / period )) # ceil
-        fi
-    elif [[ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us && -r /sys/fs/cgroup/cpu/cpu.cfs_period_us ]]; then
-        # cgroup v1
-        quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)"
-        period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)"
-        if (( quota > 0 && period > 0 )); then
-            cpu_limit=$(( (quota + period - 1) / period )) # ceil
-        fi
-    fi
-
-    if [[ -z "${cpu_limit:-}" ]]; then
-        cpu_limit="$(nproc)"
-    fi
-    if (( cpu_limit < 1 )); then cpu_limit=1; fi
-
-    if (( force_jobs > 0 )); then
-        bazel_jobs="$force_jobs"
-        bazel_cpus="$force_jobs"
-    else
-        bazel_cpus="$cpu_limit"
-
-        # CPU-based "wiggle" jobs
-        local jobs_by_cpu
-        if (( cpu_limit <= cpu_full_threshold )); then
-            jobs_by_cpu="$cpu_limit"
-        else
-            jobs_by_cpu=$(( cpu_limit * cpu_headroom_pct / 100 ))
-            if (( jobs_by_cpu < cpu_full_threshold )); then jobs_by_cpu="$cpu_full_threshold"; fi
-            if (( jobs_by_cpu > cpu_limit )); then jobs_by_cpu="$cpu_limit"; fi
-        fi
-
-        # RAM-based jobs (with reserve)
-        local usable_mb="$bazel_mem_mb"
-        if (( usable_mb > ram_reserve_mb )); then
-            usable_mb=$(( usable_mb - ram_reserve_mb ))
-        else
-            usable_mb=0
-        fi
-
-        local jobs_by_ram=1
-        if (( mb_per_job > 0 )); then
-            jobs_by_ram=$(( usable_mb / mb_per_job ))
-            if (( jobs_by_ram < 1 )); then jobs_by_ram=1; fi
-        fi
-
-        # Final jobs = tighter bound
-        bazel_jobs="$jobs_by_cpu"
-        if (( jobs_by_ram < bazel_jobs )); then
-            bazel_jobs="$jobs_by_ram"
-        fi
-
-        # Sane bounds
-        if (( bazel_jobs < 1 )); then bazel_jobs=1; fi
-        if (( bazel_jobs > cpu_limit )); then bazel_jobs="$cpu_limit"; fi
-    fi
-
-    if (( max_jobs > 0 && bazel_jobs > max_jobs )); then
-        bazel_jobs="$max_jobs"
-    fi
-    if (( max_jobs > 0 && bazel_cpus > max_jobs )); then
-        bazel_cpus="$max_jobs"
-    fi
-
-    echo "--jobs=${bazel_jobs} --local_cpu_resources=${bazel_cpus} --local_ram_resources=${bazel_mem_mb}"
+    echo "--local_cpu_resources=${bazel_cpus} --local_ram_resources=${bazel_ram_mb}${extra_flags}"
 }

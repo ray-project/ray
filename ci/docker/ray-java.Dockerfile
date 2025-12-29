@@ -27,7 +27,6 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
 fi
 
 echo "build --repository_cache=/home/forge/.cache/bazel-repo" >> "$HOME/.bazelrc"
-echo "build --experimental_repository_cache_hardlinks" >> "$HOME/.bazelrc"
 
 source "$HOME/ray/ci/build/local-build-utils.sh"
 BAZEL_FLAGS="$(bazel_container_resource_flags)"

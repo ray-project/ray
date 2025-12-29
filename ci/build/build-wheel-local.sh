@@ -30,46 +30,25 @@
 # then gets packaged into wheels.
 #
 #   ┌─────────────────────────────────────────────────────────────────────────┐
-#   │                     PRE-BUILT ARTIFACTS                                 │
+#   │                        PRE-BUILT ARTIFACTS                              │
 #   │                                                                         │
-#   │   manylinux2014 (glibc compatible base)                                 │
-#   │        │                                                                │
-#   │        ├──────────────────┬──────────────────┐                          │
-#   │        ▼                  ▼                  ▼                          │
-#   │   ray-core           ray-dashboard       ray-java                       │
-#   │   (bazel build)      (npm build)         (maven build)                  │
-#   │        │                  │                  │                          │
-#   │   ray_pkg.zip        dashboard.tar.gz    ray-java.jar                   │
-#   │   ray_py_proto.zip                                                      │
-#   │        │                  │                  │                          │
-#   └────────┼──────────────────┼──────────────────┼──────────────────────────┘
-#            │                  │                  │
-#            └──────────────────┴──────────────────┘
+#   │   manylinux2014 ──┬── ray-core ──────► ray_pkg.zip, ray_py_proto.zip    │
+#   │                   ├── ray-dashboard ─► dashboard.tar.gz                 │
+#   │                   └── ray-java ──────► ray-java.jar                     │
+#   └───────────────────────────┬─────────────────────────────────────────────┘
 #                               │
-#   ┌───────────────────────────┼─────────────────────────────────────────────┐
-#   │                           ▼                                             │
-#   │   RAY WHEEL BUILD (ray-wheel.wanda.yaml)                                │
-#   │                                                                         │
-#   │   1. Extract ray_pkg.zip (C++ binaries)                                 │
-#   │   2. Extract dashboard.tar.gz                                           │
-#   │   3. Copy ray-java.jar                                                  │
-#   │   4. pip wheel . (packages everything, NO C++ compile)                  │
-#   │                           │                                             │
-#   │                           ▼                                             │
-#   │                  ray-{version}-{platform}.whl                           │
-#   │                                                                         │
-#   └─────────────────────────────────────────────────────────────────────────┘
-#
-#   ┌─────────────────────────────────────────────────────────────────────────┐
-#   │   RAY-CPP WHEEL BUILD (optional, for C++ API users)                     │
-#   │                                                                         │
-#   │   ray-core ──► ray-cpp-core ──► ray-cpp-wheel                           │
-#   │                (gen_ray_cpp_pkg)   (pip wheel)                          │
-#   │                      │                  │                               │
-#   │                      ▼                  ▼                               │
-#   │                 C++ headers      ray_cpp-{version}.whl                  │
-#   │                 + libraries                                             │
-#   └─────────────────────────────────────────────────────────────────────────┘
+#            ┌──────────────────┴──────────────────┐
+#            ▼                                     ▼
+#   ┌────────────────────────┐        ┌────────────────────────┐
+#   │   RAY WHEEL            │        │   RAY-CPP WHEEL        │
+#   │   ray-wheel.wanda.yaml │        │   ray-cpp-wheel.wanda  │
+#   │                        │        │                        │
+#   │   Combines artifacts   │        │   ray-cpp-core builds  │
+#   │   + pip wheel          │        │   C++ headers + libs   │
+#   │         │              │        │         │              │
+#   │         ▼              │        │         ▼              │
+#   │   ray-*.whl            │        │   ray_cpp-*.whl        │
+#   └────────────────────────┘        └────────────────────────┘
 #
 set -euo pipefail
 
