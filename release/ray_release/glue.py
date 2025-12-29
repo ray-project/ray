@@ -68,7 +68,10 @@ def _get_extra_tags_from_env() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_ORGANIZATION_SLUG",
         "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_BUILD_ID",
+        "BUILDKITE_BUILD_NUMBER",
         "BUILDKITE_SOURCE",
         "RELEASE_FREQUENCY",
     )
@@ -117,6 +120,8 @@ def _load_test_configuration(
     # We don't need other attributes as they can be derived from the name
     extra_tags["test_name"] = str(test["name"])
     extra_tags["test_smoke_test"] = str(result.smoke_test)
+    extra_tags["release_test_team"] = str(test.get("team", ""))
+    extra_tags["release_test_env"] = str(test.get("env", ""))
     result.extra_tags = extra_tags
 
     artifact_path = test["run"].get("artifact_path", None)
