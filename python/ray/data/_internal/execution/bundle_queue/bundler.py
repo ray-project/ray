@@ -93,8 +93,9 @@ class ExactSize(RebundlingStrategy):
     ) -> int:
         """Returns an exact # of rows from the last pending bundle."""
         extra_rows = num_pending_rows - self._target_num_rows
-        assert extra_rows <= pending_bundle.num_rows()
-        return pending_bundle.num_rows() - extra_rows
+        pending_rows = pending_bundle.num_rows() or 0
+        assert extra_rows <= pending_rows
+        return pending_rows - extra_rows
 
 
 """**For `ExactSize` strategy ONLY**
