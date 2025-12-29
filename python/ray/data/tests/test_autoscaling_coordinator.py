@@ -475,10 +475,6 @@ def test_double_allocation_with_multiple_request_remaining():
         assert res1 == req1 + [expected_remaining_per_requester]
         assert res2 == req2 + [expected_remaining_per_requester]
 
-        # Verify fair allocation: both get the same fair share
-        assert expected_remaining_per_requester in res1
-        assert expected_remaining_per_requester in res2
-
 
 if __name__ == "__main__":
     import sys
