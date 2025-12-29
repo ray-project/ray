@@ -7,7 +7,6 @@ import io.ray.api.Ray;
 import io.ray.runtime.util.SystemUtil;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})

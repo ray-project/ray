@@ -7,7 +7,6 @@ import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
