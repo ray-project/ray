@@ -13,11 +13,6 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
-  @BeforeClass
-  public void setUp() {
-    System.setProperty("ray.raylet.startup-token", "0");
-  }
-
   public static class HangActor {
 
     public String ping() {

@@ -21,11 +21,6 @@ public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
-  @BeforeClass
-  public void setUp() {
-    System.setProperty("ray.raylet.startup-token", "0");
-  }
-
   public static int badFunc() {
     throw new RuntimeException(EXCEPTION_MESSAGE);
   }

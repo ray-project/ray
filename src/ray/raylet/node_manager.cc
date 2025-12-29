@@ -1192,7 +1192,6 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = WorkerID::FromBinary(message->worker_id()->str());
   pid_t pid = message->worker_pid();
-  StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = message->ip_address()->str();
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
@@ -1211,8 +1210,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                worker_type,
                                worker_ip_address,
                                client,
-                               client_call_manager_,
-                               worker_startup_token));
+                               client_call_manager_));
 
   std::function<void(Status, int)> send_reply_callback;
   send_reply_callback = [this, client](Status status, int assigned_port) {
@@ -1243,8 +1241,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
-    return RegisterForNewWorker(
-        worker, pid, worker_startup_token, std::move(send_reply_callback));
+    return RegisterForNewWorker(worker, pid, std::move(send_reply_callback));
   }
   return RegisterForNewDriver(
       worker, pid, job_id, message, std::move(send_reply_callback));
@@ -1253,10 +1250,8 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
 Status NodeManager::RegisterForNewWorker(
     std::shared_ptr<WorkerInterface> worker,
     pid_t pid,
-    const StartupToken &worker_startup_token,
     std::function<void(Status, int)> send_reply_callback) {
-  Status status =
-      worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
+  Status status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
   if (!status.ok()) {
     // If the worker failed to register to Raylet, trigger lease granting here to
     // allow new worker processes to be started (if capped by
@@ -1907,8 +1902,8 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                 const std::string &runtime_env_setup_error_message) {
         // This callback does not use the worker.
         RAY_LOG(DEBUG).WithField(worker->WorkerId())
-            << "Prestart worker started! token " << worker->GetStartupToken()
-            << ", status " << status << ", runtime_env_setup_error_message "
+            << "Prestart worker started! status " << status
+            << ", runtime_env_setup_error_message "
             << runtime_env_setup_error_message;
         return false;
       });
