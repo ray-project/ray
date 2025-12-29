@@ -4,8 +4,7 @@ from typing import List, Optional
 
 from typing_extensions import override
 
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
-from ray.data._internal.execution.bundle_queue.base import BaseBundleQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     PhysicalOperator,
