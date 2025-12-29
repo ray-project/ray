@@ -50,7 +50,6 @@ steps:
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-x86_64
       - forge
 
   - label: ":tapioca: build: jar"
@@ -83,7 +82,6 @@ steps:
         --platform cpu
         --image-type ray --upload
     depends_on:
-      - manylinux-x86_64
       - forge
       - raycudabase
       - raycpubase
@@ -109,7 +107,6 @@ steps:
         --platform cpu
         --image-type ray-extra --upload
     depends_on:
-      - manylinux-x86_64
       - forge
       - raycpubaseextra
       - raycudabaseextra
@@ -128,7 +125,6 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
-      - manylinux-x86_64
       - forge
       - ray-llmbase
     matrix:
@@ -144,7 +140,6 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm-extra --upload
     depends_on:
-      - manylinux-x86_64
       - forge
       - ray-llmbaseextra
     matrix:
