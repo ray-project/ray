@@ -284,10 +284,14 @@ def convert_to_pyarrow_array(
         if (
             enable_fallback_config is None or not object_ext_type_fallback_allowed
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
+            # Extract error type and message without full data dump
+            error_msg = str(ace).split('\n')[0] if '\n' in str(ace) else str(ace)
+            # Truncate if still too long (e.g., contains array preview)
+            if len(error_msg) > 200:
+                error_msg = error_msg[:200] + "..."
             logger.warning(
                 f"Failed to convert column '{column_name}' into pyarrow "
-                f"array due to: {ace}; {object_ext_type_detail}",
-                exc_info=ace,
+                f"array due to: {error_msg}; {object_ext_type_detail}"
             )
 
         if not object_ext_type_fallback_allowed:
