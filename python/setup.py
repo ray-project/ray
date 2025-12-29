@@ -386,11 +386,43 @@ if setup_spec.type == SetupType.RAY:
                 "meson",
                 "pybind11",
                 "hf_transfer",
-                # boto3 is needed for S3 filesystem operations in ray.llm
-                "boto3>=1.29.0,<2.0.0",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
+        )
+    )
+
+    # Cloud provider extras for ray[llm]. These are optional dependencies
+    # for cloud storage backends. Users can install specific ones based on
+    # their cloud provider:
+    #   pip install ray[llm-s3]    # For AWS S3
+    #   pip install ray[llm-gcp]   # For Google Cloud Storage
+    #   pip install ray[llm-azure] # For Azure Blob Storage
+    setup_spec.extras["llm-s3"] = list(
+        set(
+            [
+                "boto3>=1.28.0",
+            ]
+            + setup_spec.extras["llm"]
+        )
+    )
+
+    setup_spec.extras["llm-gcp"] = list(
+        set(
+            [
+                "google-cloud-storage>=2.0.0",
+            ]
+            + setup_spec.extras["llm"]
+        )
+    )
+
+    setup_spec.extras["llm-azure"] = list(
+        set(
+            [
+                "adlfs>=2023.1.0",
+                "azure-identity>=1.12.0",
+            ]
+            + setup_spec.extras["llm"]
         )
     )
 
