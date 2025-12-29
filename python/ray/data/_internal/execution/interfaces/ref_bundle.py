@@ -240,9 +240,9 @@ class RefBundle:
         ), "Cannot slice a RefBundle with unknown number of rows."
 
         if needed_rows == 0:
-            return RefBundle(blocks=(), schema=None, owns_blocks=False), self
+            return RefBundle(blocks=(), schema=self.schema, owns_blocks=False), self
         if needed_rows == self.num_rows():
-            return self, RefBundle(blocks=(), schema=None, owns_blocks=False)
+            return self, RefBundle(blocks=(), schema=self.schema, owns_blocks=False)
 
         block_slices = []
         for metadata, block_slice in zip(self.metadata, self.slices):
