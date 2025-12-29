@@ -2936,7 +2936,7 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "event_routing_config", [ "default", "aggregator"], indirect=True
+    "event_routing_config", ["default", "aggregator"], indirect=True
 )
 @pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks(shutdown_only):
