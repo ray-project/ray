@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-class _QueueMetricRecorderMixin:
+@runtime_checkable
+class _QueueMetricRecorder(Protocol):
     """Mixin for recording stats about a queue. Subclasses
     may choose to use the _on_dequeue and _on_enqueue methods to
     track num_blocks, nbytes, etc... If not, they should override
@@ -61,7 +62,7 @@ class _QueueMetricRecorderMixin:
         return self._num_bundles
 
 
-class BaseBundleQueue(_QueueMetricRecorderMixin):
+class BaseBundleQueue(_QueueMetricRecorder):
     """Base class for storing bundles. Here and subclasses should adhere to the mental
     model that "first", "front", or "head" is the next bundle to be dequeued. Consequently,
     "last", "back", or "tail" is the last bundle to be dequeued.
@@ -131,7 +132,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
 
 @runtime_checkable
-class SupportsDequeue(_QueueMetricRecorderMixin, Protocol):
+class SupportsDequeue(_QueueMetricRecorder):
     """Protocol for queues that support deque operations (add to front, get from back)."""
 
     def add_to_front(self, bundle: RefBundle):
