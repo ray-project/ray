@@ -73,8 +73,9 @@ parser = add_rllib_example_script_args(
     default_timesteps=5_000_000,
 )
 parser.set_defaults(
-    num_env_runners=5,
+    num_env_runners=4,
     num_envs_per_env_runner=16,
+    num_learners=1,
 )
 args = parser.parse_args()
 

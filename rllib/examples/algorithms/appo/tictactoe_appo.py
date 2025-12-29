@@ -46,15 +46,16 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Training will run for 100 thousand timesteps (see: `default_timesteps` in the
-code) for p0 (policy 0) to achieve a mean return of XX compared to the
-random policy. The number of environment steps can be changed through
-`default_timesteps`. The trainable policies should gradually improve their
-play quality through self-play, learning both offensive strategies (creating
-winning sequences) and defensive strategies (blocking opponent sequences).
+Training will run for 10 million timesteps (see: `default_timesteps` in the
+code) until the average return for all the agents reaches -0.5 as the mean return
+between all the trained policy should reach 0 while the mean return is partially
+negative due to policies (in particular the random policy) taking invalid moves.
+The trainable policies should gradually improve their play quality through
+self-play, learning both offensive strategies (creating winning sequences) and
+defensive strategies (blocking opponent sequences).
 Due to the random policy matching, each of the 5 policies may develop slightly different
 playing styles. You can monitor the episode reward mean for each policy
-separately to track learning progress and compare their relative performance.
+separately to track learning progress and compare their relative performance in WandB.
 """
 import random
 
@@ -74,8 +75,9 @@ parser = add_rllib_example_script_args(
     default_timesteps=10_000_000,
 )
 parser.set_defaults(
-    num_env_runners=5,
-    num_envs_per_env_runner=8,
+    num_env_runners=4,
+    num_envs_per_env_runner=3,
+    num_learners=1,
     num_agents=5,
 )
 args = parser.parse_args()
@@ -126,4 +128,3 @@ config = (
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args)
-    # TODO: Add custom stop condition for results
