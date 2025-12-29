@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <thread>
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/memory_monitor.h"
@@ -32,19 +33,18 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
  public:
   /// Constructor.
   ///
-  /// \param io_service the event loop.
+  /// \param kill_workers_callback function to execute when the memory usage limit is
+  /// exceeded.
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold.
-  /// \param monitor_interval_ms the frequency to update the usage. 0 disables the the
-  /// monitor and callbacks won't fire.
-  /// \param monitor_callback function to execute on a dedicated thread owned by this
-  /// monitor when the usage is refreshed.
-  ThresholdMemoryMonitor(instrumented_io_context &io_service,
-                         KillWorkersCallback kill_workers_callback,
+  /// becomes over the threshold. \param monitor_interval_ms the frequency to update the
+  /// usage. 0 disables the monitor and callbacks won't fire.
+  ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                          float usage_threshold,
                          int64_t min_memory_free_bytes,
                          uint64_t monitor_interval_ms);
+
+  ~ThresholdMemoryMonitor() override;
 
  private:
   /// The computed threshold in bytes based on usage_threshold_ and
@@ -53,6 +53,16 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
 
   /// The computed threshold fraction on usage_threshold_ and min_memory_free_bytes_.
   float computed_threshold_fraction_;
+
+  /// IO service for running the memory monitoring event loop.
+  instrumented_io_context io_service_;
+
+  /// Work guard to prevent the io service from exiting when no work.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+
+  /// Thread executing the io service. Started before the runner so the io_service
+  /// is ready to process work. Explicitly joined in the destructor.
+  std::thread thread_;
 
   /// Periodical runner for memory monitoring.
   std::shared_ptr<PeriodicalRunner> runner_;

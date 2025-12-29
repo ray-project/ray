@@ -22,7 +22,7 @@
 namespace ray {
 
 std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
-    instrumented_io_context &io_service, KillWorkersCallback kill_workers_callback) {
+    KillWorkersCallback kill_workers_callback) {
   RAY_LOG(INFO) << "Creating ThresholdMemoryMonitor with usage_threshold="
                 << RayConfig::instance().memory_usage_threshold()
                 << ", min_memory_free_bytes="
@@ -30,7 +30,6 @@ std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
                 << ", monitor_interval_ms="
                 << RayConfig::instance().memory_monitor_refresh_ms();
   return std::make_unique<ThresholdMemoryMonitor>(
-      io_service,
       kill_workers_callback,
       RayConfig::instance().memory_usage_threshold(),
       RayConfig::instance().min_memory_free_bytes(),

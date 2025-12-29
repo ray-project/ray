@@ -36,12 +36,10 @@ class MemoryMonitorFactory {
    *
    * On non-Linux platforms, creates a NoopMemoryMonitor that does nothing.
    *
-   * @param io_service the event loop.
-   * @param monitor_callback function to execute when the memory usage is refreshed.
+   * @param kill_workers_callback function to execute when the memory usage is refreshed.
    * @return a unique pointer to the memory monitor instance.
    */
-  static std::unique_ptr<MemoryMonitor> Create(instrumented_io_context &io_service,
-                                               KillWorkersCallback kill_workers_callback);
+  static std::unique_ptr<MemoryMonitor> Create(KillWorkersCallback kill_workers_callback);
 };
 
 }  // namespace ray

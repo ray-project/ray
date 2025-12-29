@@ -25,9 +25,8 @@ class NoopMemoryMonitor : public MemoryMonitor {
   ///
   /// \param io_service the event loop (unused in noop implementation).
   /// \param monitor_callback function callback (unused in noop implementation).
-  NoopMemoryMonitor(instrumented_io_context &io_service,
-                    KillWorkersCallback kill_workers_callback)
-      : MemoryMonitor(io_service, kill_workers_callback) {
+  NoopMemoryMonitor(KillWorkersCallback kill_workers_callback)
+      : MemoryMonitor(kill_workers_callback) {
     // No-op: does not start any periodic monitoring
   }
 

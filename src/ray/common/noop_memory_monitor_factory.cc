@@ -21,11 +21,10 @@
 namespace ray {
 
 std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
-    instrumented_io_context &io_service, KillWorkersCallback kill_workers_callback) {
+    KillWorkersCallback kill_workers_callback) {
   RAY_LOG(WARNING) << "MemoryMonitor is only supported on Linux. "
                    << "Using no-op memory monitor.";
-  return std::make_unique<NoopMemoryMonitor>(io_service,
-                                             std::move(kill_workers_callback));
+  return std::make_unique<NoopMemoryMonitor>(std::move(kill_workers_callback));
 }
 
 }  // namespace ray

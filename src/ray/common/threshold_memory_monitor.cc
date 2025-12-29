@@ -16,17 +16,24 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/util/logging.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray {
 
-ThresholdMemoryMonitor::ThresholdMemoryMonitor(instrumented_io_context &io_service,
-                                               KillWorkersCallback kill_workers_callback,
+ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                                                float usage_threshold,
                                                int64_t min_memory_free_bytes,
                                                uint64_t monitor_interval_ms)
-    : MemoryMonitor(io_service, kill_workers_callback) {
-  RAY_CHECK(kill_workers_callback_ != nullptr);
-  runner_ = PeriodicalRunner::Create(io_service_);
+    : MemoryMonitor(std::move(kill_workers_callback)),
+      io_service_(/*enable_metrics=*/false,
+                  /*running_on_single_thread=*/true,
+                  "MemoryMonitor.IOContext"),
+      work_guard_(boost::asio::make_work_guard(io_service_.get_executor())),
+      thread_([this] {
+        SetThreadName("MemoryMonitor.IOContextThread");
+        io_service_.run();
+      }),
+      runner_(PeriodicalRunner::Create(io_service_)) {
   if (monitor_interval_ms > 0) {
     auto [_, total_memory_bytes] = MemoryMonitor::GetMemoryBytes();
     computed_threshold_bytes_ = MemoryMonitor::GetMemoryThreshold(
@@ -43,13 +50,13 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(instrumented_io_context &io_servi
           MemorySnapshot system_memory;
           system_memory.used_bytes = used_mem_bytes;
           system_memory.total_bytes = total_mem_bytes;
-          system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
 
           bool is_usage_above_threshold = MemoryMonitor::IsUsageAboveThreshold(
               system_memory, computed_threshold_bytes_);
 
           if (is_usage_above_threshold) {
-            kill_workers_callback_(system_memory);
+            system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
+            kill_workers_callback_(std::move(system_memory));
           }
         },
         monitor_interval_ms,
@@ -57,6 +64,14 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(instrumented_io_context &io_servi
   } else {
     RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
                   << "`memory_monitor_refresh_ms` > 0 to enable the monitor.";
+  }
+}
+
+ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
+  runner_.reset();
+  io_service_.stop();
+  if (thread_.joinable()) {
+    thread_.join();
   }
 }
 

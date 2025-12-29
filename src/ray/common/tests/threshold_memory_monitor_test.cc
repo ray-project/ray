@@ -144,20 +144,7 @@ namespace ray {
 
 class ThresholdMemoryMonitorTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    thread_ = std::make_unique<std::thread>([this]() {
-      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
-          io_context_.get_executor());
-      io_context_.run();
-    });
-  }
-  void TearDown() override {
-    io_context_.stop();
-    thread_->join();
-    instance.reset();
-  }
-  std::unique_ptr<std::thread> thread_;
-  instrumented_io_context io_context_;
+  void TearDown() override { instance.reset(); }
 
   void MakeMemoryUsage(pid_t pid,
                        const std::string usage_kb,
@@ -179,8 +166,7 @@ class ThresholdMemoryMonitorTest : public ::testing::Test {
       int64_t min_memory_free_bytes,
       uint64_t monitor_interval_ms,
       KillWorkersCallback kill_workers_callback) {
-    instance = std::make_unique<ThresholdMemoryMonitor>(io_context_,
-                                                        kill_workers_callback,
+    instance = std::make_unique<ThresholdMemoryMonitor>(kill_workers_callback,
                                                         usage_threshold,
                                                         min_memory_free_bytes,
                                                         monitor_interval_ms);

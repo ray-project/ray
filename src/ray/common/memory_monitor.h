@@ -24,7 +24,6 @@
 #include <tuple>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/process.h"
@@ -58,11 +57,9 @@ class MemoryMonitor {
  public:
   /// Constructor.
   ///
-  /// \param io_service the event loop.
-  /// \param monitor_callback function to execute on a dedicated thread owned by this
-  /// monitor when the usage is refreshed.
-  MemoryMonitor(instrumented_io_context &io_service,
-                KillWorkersCallback kill_workers_callback);
+  /// \param kill_workers_callback function to execute when the memory usage limit is
+  /// exceeded.
+  MemoryMonitor(KillWorkersCallback kill_workers_callback);
 
   /// Virtual destructor to ensure proper cleanup of derived classes.
   virtual ~MemoryMonitor() = default;
@@ -145,9 +142,6 @@ class MemoryMonitor {
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
-
-  /// The raylet's event loop.
-  instrumented_io_context &io_service_;
 
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.

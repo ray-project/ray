@@ -26,9 +26,8 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
-                             KillWorkersCallback kill_workers_callback)
-    : io_service_(io_service), kill_workers_callback_(kill_workers_callback) {
+MemoryMonitor::MemoryMonitor(KillWorkersCallback kill_workers_callback)
+    : kill_workers_callback_(kill_workers_callback) {
   RAY_CHECK(kill_workers_callback_ != nullptr);
 }
 
