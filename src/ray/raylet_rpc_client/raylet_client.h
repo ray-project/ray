@@ -17,7 +17,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,10 +28,6 @@
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
-
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 namespace ray {
 namespace rpc {
@@ -159,7 +154,7 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_->load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
@@ -174,6 +169,10 @@ class RayletClient : public RayletClientInterface {
   void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
+  void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
+
  protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
@@ -187,7 +186,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_ = 0;
+  /// NOTE: `shared_ptr` because it is captured in a callback that can outlive this
+  /// instance.
+  std::shared_ptr<std::atomic<int64_t>> pins_in_flight_;
 };
 
 }  // namespace rpc

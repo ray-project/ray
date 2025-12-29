@@ -9,8 +9,7 @@ import pyarrow
 import pytest
 
 import ray
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     Categorizer,
@@ -31,7 +30,9 @@ from ray.data.preprocessors import (
     SimpleImputer,
     StandardScaler,
     Tokenizer,
+    TorchVisionPreprocessor,
 )
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 @pytest.fixture
@@ -451,6 +452,37 @@ def test_get_input_output_columns():
     label_encoder = LabelEncoder(label_column="target", output_column="target_encoded")
     assert label_encoder.get_input_columns() == ["target"]
     assert label_encoder.get_output_columns() == ["target_encoded"]
+
+    # Test Concatenator (uses output_column_name instead of output_columns)
+    concatenator = Concatenator(columns=["A", "B"])
+    assert concatenator.get_input_columns() == ["A", "B"]
+    assert concatenator.get_output_columns() == ["concat_out"]
+
+    concatenator_with_output = Concatenator(
+        columns=["A", "B"], output_column_name="AB_concat"
+    )
+    assert concatenator_with_output.get_input_columns() == ["A", "B"]
+    assert concatenator_with_output.get_output_columns() == ["AB_concat"]
+
+    # Test FeatureHasher (uses output_column instead of output_columns)
+    feature_hasher = FeatureHasher(
+        columns=["token1", "token2"], num_features=8, output_column="hashed"
+    )
+    assert feature_hasher.get_input_columns() == ["token1", "token2"]
+    assert feature_hasher.get_output_columns() == ["hashed"]
+
+    # Test TorchVisionPreprocessor (uses _columns and _output_columns)
+    torch_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x
+    )
+    assert torch_preprocessor.get_input_columns() == ["image"]
+    assert torch_preprocessor.get_output_columns() == ["image"]
+
+    torch_preprocessor_with_output = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x, output_columns=["image_transformed"]
+    )
+    assert torch_preprocessor_with_output.get_input_columns() == ["image"]
+    assert torch_preprocessor_with_output.get_output_columns() == ["image_transformed"]
 
     # Test with preprocessor without columns attribute
     class CustomPreprocessor(Preprocessor):

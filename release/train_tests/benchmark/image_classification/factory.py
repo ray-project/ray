@@ -8,9 +8,10 @@ import torch
 import torchvision
 import pyarrow
 import ray
-import ray.data
 import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
+from concurrent.futures import ThreadPoolExecutor
+from ray.data.dataset import TorchDeviceType
 
 # Local imports
 from benchmark_factory import BenchmarkFactory
@@ -176,21 +177,39 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 class CustomArrowCollateFn(ArrowBatchCollateFn):
     """Custom collate function for converting Arrow batches to PyTorch tensors."""
 
+    _DEFAULT_NUM_WORKERS = 4
+
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
+        device: Optional["TorchDeviceType"] = None,
         pin_memory: bool = False,
+        num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
         """Initialize the collate function.
 
         Args:
             dtypes: Optional torch dtype(s) for the tensors
             device: Optional device to place tensors on
+            pin_memory: Whether to pin the memory of the created tensors
+            num_workers: Number of worker threads for parallel tensor conversion
+                Defaults to `_DEFAULT_NUM_WORKERS`.
         """
+        import torch
+
         self.dtypes = dtypes
-        self.device = device
+        if isinstance(device, (str, int)):
+            self.device = torch.device(device)
+        else:
+            self.device = device
         self.pin_memory = pin_memory
+        self.num_workers = num_workers
+        self._threadpool: Optional[ThreadPoolExecutor] = None
+
+    def __del__(self):
+        """Clean up threadpool on destruction."""
+        if getattr(self, "_threadpool", None):
+            self._threadpool.shutdown(wait=False)
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -205,11 +224,21 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             arrow_batch_to_tensors,
         )
 
+        if self.num_workers > 0 and self._threadpool is None:
+            self._threadpool = ThreadPoolExecutor(max_workers=self.num_workers)
+
+        # For GPU transfer, we can skip the combining chunked arrays. This is because
+        # we can convert the chunked arrays to corresponding numpy format and then to
+        # Tensors and transfer the corresponding list of Tensors to GPU directly.
+        # However, for CPU transfer, we need to combine the chunked arrays first
+        # before converting to numpy format and then to Tensors.
+        combine_chunks = self.device is not None and self.device.type == "cpu"
         tensors = arrow_batch_to_tensors(
             batch,
             dtypes=self.dtypes,
-            combine_chunks=self.device.type == "cpu",
+            combine_chunks=combine_chunks,
             pin_memory=self.pin_memory,
+            threadpool=self._threadpool,
         )
         return tensors["image"], tensors["label"]
 

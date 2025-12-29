@@ -41,17 +41,18 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """
 
     # Smoothing factor for the asymmetric EWMA (slow fall, faster rise).
-    EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.2)
+    EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.1)
+    EWMA_ALPHA_UP = 1.0 - (1.0 - EWMA_ALPHA) ** 2  # fast rise
     # Deadband width in units of the EWMA absolute deviation estimate.
-    K_DEV = env_float("RAY_DATA_CONCURRENCY_CAP_K_DEV", 2.0)
+    K_DEV = env_float("RAY_DATA_CONCURRENCY_CAP_K_DEV", 1.0)
     # Factor to back off when the queue is too large.
     BACKOFF_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_BACKOFF_FACTOR", 1)
     # Factor to ramp up when the queue is too small.
     RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
-    # Threshold for per-Op object store budget (available) vs total usage (used)
-    # (available / used) ratio to enable dynamic output queue size backpressure.
-    OBJECT_STORE_USAGE_RATIO = env_float(
-        "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1
+    # Threshold for per-Op object store budget (available) vs total
+    # (available / total) ratio to enable dynamic output queue size backpressure.
+    AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD = env_float(
+        "RAY_DATA_CONCURRENCY_CAP_AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD", 0.1
     )
 
     def __init__(self, *args, **kwargs):
@@ -92,7 +93,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             dynamic_output_queue_size_backpressure_configs = (
                 f", EWMA_ALPHA={self.EWMA_ALPHA}, K_DEV={self.K_DEV}, "
                 f"BACKOFF_FACTOR={self.BACKOFF_FACTOR}, RAMPUP_FACTOR={self.RAMPUP_FACTOR}, "
-                f"OBJECT_STORE_USAGE_RATIO={self.OBJECT_STORE_USAGE_RATIO}"
+                f"AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD={self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD}"
             )
         logger.debug(
             f"ConcurrencyCapBackpressurePolicy caps: {self._concurrency_caps}, "
@@ -112,8 +113,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         if prev_value <= 0:
             return sample
 
-        alpha_up = 1.0 - (1.0 - self.EWMA_ALPHA) ** 2  # fast rise
-        alpha = alpha_up if sample > prev_value else self.EWMA_ALPHA  # slow fall
+        # fast rise if sample > prev_value, slow fall otherwise
+        alpha = self.EWMA_ALPHA_UP if sample > prev_value else self.EWMA_ALPHA
         return (1 - alpha) * prev_value + alpha * sample
 
     def _update_level_and_dev(self, op: "PhysicalOperator", q_bytes: int) -> None:
@@ -140,42 +141,41 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         """Return whether `op` may accept another input now."""
         num_tasks_running = op.metrics.num_tasks_running
 
-        # If not a MapOperator or feature disabled, just enforce configured cap.
+        # Skip dynamic backpressure if:
+        # - Not a MapOperator
+        # - Not eligible for Op for Backpressure
+        # - Dynamic backpressure based on output queue size is disabled
+        # - Downstream is a materializing op which requires full materialization
         if (
             not isinstance(op, MapOperator)
+            or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
+            or self._resource_manager.has_materializing_downstream_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
-        # For this Op, if the objectstore budget (available) to total usage (used)
+        # For this Op, if the objectstore budget (available) to total
         # ratio is below threshold (10%), skip dynamic output queue size backpressure.
         op_usage = self._resource_manager.get_op_usage(op)
         op_budget = self._resource_manager.get_budget(op)
-        if (
-            op_usage is not None
-            and op_budget is not None
-            and op_budget.object_store_memory > 0
-            and op_usage.object_store_memory > 0
-        ):
-            if (
-                op_budget.object_store_memory / op_usage.object_store_memory
-                > self.OBJECT_STORE_USAGE_RATIO
+        if op_usage is not None and op_budget is not None:
+            total_mem = op_usage.object_store_memory + op_budget.object_store_memory
+            if total_mem == 0 or (
+                op_budget.object_store_memory / total_mem
+                > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
             ):
-                # If the objectstore budget (available) to total usage (used)
+                # If the objectstore budget (available) to total
                 # ratio is above threshold (10%), skip dynamic output queue size
                 # backpressure, but still enforce the configured cap.
                 return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
-        current_queue_size_bytes = (
-            self._resource_manager.get_op_internal_object_store_usage(op)
-            + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
-                op
-            )
-        )
+        current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
+            op
+        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
-        # we don't update the EWMA state if the objectstore budget (available) vs total usage (used)
+        # we don't update the EWMA state if the objectstore budget (available) vs total
         # ratio is above threshold (10%), because the level and dev adjusts quickly.
         self._update_level_and_dev(op, current_queue_size_bytes)
         effective_cap = self._effective_cap(

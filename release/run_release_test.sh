@@ -47,10 +47,10 @@ fi
 if [[ -z "${NO_INSTALL}" ]]; then
   # Strip the hashes from the constraint file
   # TODO(aslonnie): use bazel run..
-  grep '==' ./requirements_buildkite.txt > /tmp/requirements_buildkite_nohash.txt
-  sed -i 's/ \\//' /tmp/requirements_buildkite_nohash.txt  # Remove ending slashes.
-  sed -i 's/\[.*\]//g' /tmp/requirements_buildkite_nohash.txt  # Remove extras.
-  pip install -c /tmp/requirements_buildkite_nohash.txt -e .
+  grep '==' ./requirements_py310.txt > /tmp/requirements_nohash.txt
+  sed -i 's/ \\//' /tmp/requirements_nohash.txt  # Remove ending slashes.
+  sed -i 's/\[.*\]//g' /tmp/requirements_nohash.txt  # Remove extras.
+  pip install -c /tmp/requirements_nohash.txt -e .
 fi
 
 RETRY_NUM=0

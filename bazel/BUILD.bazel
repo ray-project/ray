@@ -1,6 +1,6 @@
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@python3_10//:defs.bzl", python310 = "interpreter")
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 
 exports_files([
@@ -133,4 +133,10 @@ platform(
     constraint_values = [":py310"],
     parents = ["@local_config_platform//:host"],
     visibility = ["//visibility:private"],
+)
+
+alias(
+    name = "py3",
+    actual = ":py310",
+    visibility = ["//visibility:public"],
 )

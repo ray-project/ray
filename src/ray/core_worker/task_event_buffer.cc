@@ -1012,7 +1012,7 @@ std::string TaskEventBufferImpl::DebugString() {
 
   auto stats = stats_counter_.GetAll();
   ss << "\nIO Service Stats:\n";
-  ss << io_service_.stats().StatsString();
+  ss << io_service_.stats()->StatsString();
   ss << "\nOther Stats:"
      << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_
      << "\n\tevent_aggregator_grpc_in_progress:" << event_aggregator_grpc_in_progress_

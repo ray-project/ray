@@ -46,8 +46,9 @@ class StreamSplitDataIterator(DataIterator):
         See also: `Dataset.streaming_split`.
         """
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n,
+            max_concurrency=n + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
@@ -94,6 +95,7 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
+        self._base_dataset._plan._run_index += 1
         return gen_blocks(), self._iter_stats, False
 
     def stats(self) -> str:
@@ -245,6 +247,13 @@ class SplitCoordinator:
         finally:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
+
+    def shutdown_executor(self):
+        """Shuts down the internal data executor."""
+        with self._lock:
+            # Call shutdown on the executor
+            if self._executor is not None:
+                self._executor.shutdown(force=False)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

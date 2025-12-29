@@ -117,7 +117,7 @@ class LimitOperator(OneToOneOperator):
     def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._execution_finished:
+        if self.has_execution_finished():
             return self._cur_output_bundles
         return self._estimated_num_output_bundles
 
@@ -130,7 +130,4 @@ class LimitOperator(OneToOneOperator):
         return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

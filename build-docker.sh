@@ -64,11 +64,16 @@ RAY_DEPS_BUILD_DIR="$(mktemp -d)"
 cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
 mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
 cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+PYTHON_DEPSET_FILE_NAME="ray_base_deps_py${PYTHON_VERSION}.lock"
+REQUIREMENTS_FILE_BASE_DEPS="python/deplocks/base_deps/${PYTHON_DEPSET_FILE_NAME}"
+
+cp "${REQUIREMENTS_FILE_BASE_DEPS}" "${RAY_DEPS_BUILD_DIR}/."
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
+    --build-arg PYTHON_DEPSET="${PYTHON_DEPSET_FILE_NAME}"
     -t "rayproject/base-deps:dev$GPU" "${RAY_DEPS_BUILD_DIR}"
 )
 

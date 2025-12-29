@@ -56,9 +56,9 @@ std::function<void()> RayletClientPool::GetDefaultUnavailableTimeoutCallback(
     };
 
     if (gcs_client->Nodes().IsSubscribedToNodeChange()) {
-      auto *node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(
+      auto node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(
           node_id, /*filter_dead_nodes=*/false);
-      if (node_info == nullptr) {
+      if (!node_info) {
         // Node could be dead or info may have not made it to the subscriber cache yet.
         // Check with the GCS to confirm if the node is dead.
         gcs_check_node_alive();

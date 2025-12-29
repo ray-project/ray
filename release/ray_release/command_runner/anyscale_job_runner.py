@@ -20,6 +20,7 @@ from ray_release.exception import (
     JobOutOfRetriesError,
     JobTerminatedBeforeStartError,
     JobTerminatedError,
+    LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
     TestCommandError,
@@ -119,7 +120,6 @@ class AnyscaleJobRunner(CommandRunner):
         script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
         shutil.copy(script, script_name)
 
-
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("anyscale_job_wrapper.py")
         self._copy_script_to_working_dir("wait_cluster.py")
@@ -133,6 +133,8 @@ class AnyscaleJobRunner(CommandRunner):
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         self._wait_for_nodes_timeout = timeout
         self.job_manager.cluster_startup_timeout += timeout
+
+        # Give 30 seconds more to account for communication
         self.run_prepare_command(
             f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
         )
@@ -345,6 +347,12 @@ class AnyscaleJobRunner(CommandRunner):
         )
 
         return time_taken
+
+    def get_last_logs_ex(self) -> Optional[str]:
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:

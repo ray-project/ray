@@ -5,12 +5,12 @@ from unittest.mock import patch
 import pytest
 
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import Timer
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
-from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.schema import LoggingConfig, ProxyStatus
 

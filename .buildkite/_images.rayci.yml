@@ -8,19 +8,18 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
     label: "wanda: ray-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -40,7 +39,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -53,9 +51,11 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
@@ -64,7 +64,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -77,6 +76,7 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -127,7 +127,6 @@ steps:
     wanda: docker/ray-ml/cpu.wanda.yaml
     depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -137,7 +136,6 @@ steps:
     label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -157,7 +155,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -172,7 +169,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -222,6 +218,7 @@ steps:
           - "12.5.1"
           - "12.6.3"
           - "12.8.1"
+          - "12.9.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"

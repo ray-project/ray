@@ -14,10 +14,7 @@ from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    ClusterCreationError,
     ClusterNodesWaitTimeout,
-    ClusterStartupError,
-    ClusterStartupTimeout,
     CommandError,
     CommandTimeout,
     ExitCode,
@@ -311,40 +308,6 @@ class GlueTest(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
             self._run(result, True)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-    def testStartClusterFails(self):
-        result = Result()
-
-        self._succeed_until("cluster_env")
-
-        # Fails because API response faulty
-        with self.assertRaises(ClusterCreationError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
-
-        self.cluster_manager_return["cluster_id"] = "valid"
-
-        # Fail for random cluster startup reason
-        self.cluster_manager_return["start_cluster"] = _fail_on_call(
-            ClusterStartupError
-        )
-        with self.assertRaises(ClusterStartupError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_ERROR.value)
-
-        # Ensure cluster was terminated
-        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
-
-        # Fail for cluster startup timeout
-        self.cluster_manager_return["start_cluster"] = _fail_on_call(
-            ClusterStartupTimeout
-        )
-        with self.assertRaises(ClusterStartupTimeout):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_TIMEOUT.value)
-
-        # Ensure cluster was terminated
-        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testPrepareRemoteEnvFails(self):
         result = Result()

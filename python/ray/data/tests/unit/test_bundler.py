@@ -65,6 +65,12 @@ def _make_ref_bundles_for_unit_test(raw_bundles: List[List[List[Any]]]) -> tuple
             [[[1]], [[]], [[2, 3]], [[]], [[4, 5]]],
             [3, 2],  # Expected: [1,2,3] and [4,5]
         ),
+        (
+            # Test with last block smaller than target num rows per block
+            100,
+            [[[1]], [[2]], [[3]], [[4]], [[5]]],
+            [5],
+        ),
     ],
 )
 def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_counts):

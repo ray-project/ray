@@ -5,12 +5,11 @@ import tempfile
 from typing import Optional
 
 import boto3
-from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 from google.cloud import storage
 
 from ray_release.aws import RELEASE_AWS_BUCKET
-from ray_release.cloud_util import generate_tmp_cloud_storage_path
+from ray_release.cloud_util import generate_tmp_cloud_storage_path, get_azure_credential
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import FileDownloadError, FileUploadError
 from ray_release.job_manager import JobManager
@@ -82,9 +81,7 @@ class JobFileManager:
             self._run_with_retry(lambda: blob.download_to_filename(target))
         if self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
             account_url = f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"
-            credential = DefaultAzureCredential(
-                exclude_managed_identity_credential=True
-            )
+            credential = get_azure_credential()
             blob_service_client = BlobServiceClient(account_url, credential)
             blob_client = blob_service_client.get_blob_client(
                 container=AZURE_STORAGE_CONTAINER, blob=key
@@ -160,6 +157,9 @@ class JobFileManager:
                 return
             if self.cloud_storage_provider == GS_CLOUD_STORAGE:
                 self._delete_gs_fn(key, recursive)
+                return
+            if self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+                # TODO(aslonnie): Implement Azure blob deletion.
                 return
 
         try:

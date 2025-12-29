@@ -28,7 +28,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -343,7 +342,7 @@ class PhysicalOperator(Operator):
         self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
-        self._execution_finished = False
+        self._is_execution_marked_finished = False
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
@@ -401,48 +400,51 @@ class PhysicalOperator(Operator):
 
     def mark_execution_finished(self):
         """Manually mark that this operator has finished execution."""
-        self._execution_finished = True
+        self._is_execution_marked_finished = True
 
-    def execution_finished(self) -> bool:
+    def has_execution_finished(self) -> bool:
         """Return True when this operator has finished execution.
 
         The outputs may or may not have been taken.
         """
-        return self._execution_finished
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_input_queue_num_blocks = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_input_queue_num_blocks = self.internal_input_queue_num_blocks()
+
+        # NOTE: Execution is considered finished if
+        #   - The operator was explicitly marked finished OR
+        #   - The following auto-completion conditions are met
+        #       - All input blocks have been ingested
+        #       - Internal queue is empty
+        #       - There are no active or pending tasks
+
+        return self._is_execution_marked_finished or (
+            self._inputs_complete
+            and self.num_active_tasks() == 0
+            and internal_input_queue_num_blocks == 0
+        )
 
     def completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
-            * The operator has finished execution (i.e., `execution_finished()` is True).
+            * The operator has finished execution (i.e., `has_execution_finished()` is True).
             * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_input_queue_num_blocks = 0
         internal_output_queue_num_blocks = 0
         if isinstance(self, InternalQueueOperatorMixin):
-            internal_input_queue_num_blocks = self.internal_input_queue_num_blocks()
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
-
-        if not self._execution_finished:
-            if (
-                self._inputs_complete
-                and internal_input_queue_num_blocks == 0
-                and self.num_active_tasks() == 0
-            ):
-                # NOTE: Operator is considered completed iff
-                #   - All input blocks have been ingested
-                #   - Internal queue is empty
-                #   - There are no active or pending tasks
-                self._execution_finished = True
 
         # NOTE: We check for (internal_output_queue_size == 0) and
         # (not self.has_next()) because _OrderedOutputQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (
-            self._execution_finished
+            self.has_execution_finished()
             and not self.has_next()
             and internal_output_queue_num_blocks == 0
         )
@@ -486,7 +488,7 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+    def get_max_concurrency_limit(self: "PhysicalOperator") -> Optional[int]:
         """The maximum number of tasks that can be run concurrently.
 
         Some operators manually configure a maximum concurrency. For example, if you
@@ -755,21 +757,6 @@ class PhysicalOperator(Operator):
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        """Return whether this operator implements accurate memory accounting.
-
-        An operator that implements accurate memory accounting should properly
-        report its memory usage via the following APIs:
-          - `self._metrics.on_input_queued`.
-          - `self._metrics.on_input_dequeued`.
-          - `self._metrics.on_output_queued`.
-          - `self._metrics.on_output_dequeued`.
-        """
-        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
-        # all operators in the dataset have implemented accurate memory accounting.
-        # Eventually all operators should implement accurate memory accounting.
-        return False
-
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
@@ -812,11 +799,6 @@ class PhysicalOperator(Operator):
             op.num_outputs_total() or 0 for op in self.input_dependencies
         )
         return upstream_op_num_outputs
-
-    def get_max_concurrency_limit(self) -> Optional[int]:
-        """Max value of how many tasks this operator could run
-        concurrently (if limited)"""
-        return None
 
 
 class ReportsExtraResourceUsage(abc.ABC):
@@ -863,19 +845,3 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
-
-
-def _create_sub_pb(
-    name: str, total_output_rows: Optional[int], position: int
-) -> Tuple[ProgressBar, int]:
-    progress_bar = ProgressBar(
-        name,
-        total_output_rows or 1,
-        unit="row",
-        position=position,
-    )
-    # NOTE: call `set_description` to trigger the initial print of progress
-    # bar on console.
-    progress_bar.set_description(f"  *- {name}")
-    position += 1
-    return progress_bar, position

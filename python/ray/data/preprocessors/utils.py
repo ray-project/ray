@@ -205,6 +205,9 @@ class StatComputationPlan:
             spec for spec in self._aggregators if isinstance(spec, CallableStatSpec)
         ]
 
+    def has_custom_stat_fn(self):
+        return len(self._get_custom_stat_fn_specs()) > 0
+
     def __iter__(self):
         """
         Iterates over all AggregatorSpecs.

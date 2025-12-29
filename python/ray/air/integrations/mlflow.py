@@ -9,6 +9,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 from ray.util.annotations import PublicAPI
 
 try:
@@ -58,7 +59,7 @@ def setup_mlflow(
     mlflow. All other workers will return a noop client, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
     ``rank_zero_only=False``, which will then initialize mlflow in every training
-    worker.
+    worker. Note: for Ray Tune, there's no concept of worker ranks, so the `rank_zero_only` is ignored.
 
     This function will return the ``mlflow`` module or a noop module for
     non-rank zero workers ``if rank_zero_only=True``. By using
@@ -146,16 +147,18 @@ def setup_mlflow(
             "mlflow was not found - please install with `pip install mlflow`"
         )
 
+    default_trial_id = None
+    default_trial_name = None
+
     try:
-        train_context = ray.train.get_context()
-
-        # Do a try-catch here if we are not in a train session
-        if rank_zero_only and train_context.get_world_rank() != 0:
-            return _NoopModule()
-
-        default_trial_id = train_context.get_trial_id()
-        default_trial_name = train_context.get_trial_name()
-
+        if _in_tune_session():
+            context: ray.tune.TuneContext = ray.tune.get_context()
+            default_trial_id = context.get_trial_id()
+            default_trial_name = context.get_trial_name()
+        else:
+            context: ray.train.TrainContext = ray.train.get_context()
+            if rank_zero_only and context.get_world_rank() != 0:
+                return _NoopModule()
     except RuntimeError:
         default_trial_id = None
         default_trial_name = None

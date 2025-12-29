@@ -92,7 +92,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
-           const rpc::TensorTransport &tensor_transport) -> Status {
+           const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
 
@@ -216,6 +216,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        mock_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -225,17 +226,19 @@ class CoreWorkerTest : public ::testing::Test {
         actor_creator_,
         JobID::Nil(),
         lease_request_rate_limiter,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_),
+        [](const ObjectID &object_id) { return std::nullopt; },
+        io_service_,
         fake_scheduler_placement_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
+        *raylet_client_pool,
+        mock_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,
         /*tensor_transport_getter=*/
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);

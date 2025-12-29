@@ -50,6 +50,8 @@ enum class ClusterIdAuthType {
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
+enum class ServerCallThreadPoolMode { SYSTEM_COMPONENT = 0, CORE_WORKER = 1 };
+
 /// Drain the executor.
 void DrainServerCallExecutor();
 
@@ -58,6 +60,10 @@ void DrainServerCallExecutor();
 /// you need to regenerate the executor
 /// because they are global.
 void ResetServerCallExecutor();
+
+/// Set which config this process uses for the global reply thread pool.
+/// Call before the first GetServerCallExecutor().
+void SetServerCallThreadPoolMode(ServerCallThreadPoolMode mode);
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -176,7 +182,7 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token,
+      std::shared_ptr<const AuthenticationToken> auth_token,
       bool record_metrics,
       std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
@@ -201,7 +207,7 @@ class ServerCallImpl : public ServerCall {
   ServerCallState GetState() const override { return state_; }
 
   void HandleRequest() override {
-    stats_handle_ = io_service_.stats().RecordStart(call_name_);
+    stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
     bool token_auth_failed = false;
     bool cluster_id_auth_failed = false;
@@ -347,7 +353,7 @@ class ServerCallImpl : public ServerCall {
     // If auth token is empty, we assume auth is not required.
     // The only exception is when auth mode is 'k8s' where the server
     // auth token can be empty.
-    if ((!auth_token_.has_value() || auth_token_->empty()) &&
+    if ((!auth_token_ || auth_token_->empty()) &&
         GetAuthenticationMode() != AuthenticationMode::K8S) {
       return true;
     }
@@ -360,14 +366,13 @@ class ServerCallImpl : public ServerCall {
     }
 
     const std::string_view header(it->second.data(), it->second.length());
-    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
-        auth_token_, provided_token);
+    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_,
+                                                                            header);
   }
 
   /// Log the duration this query used
   void LogProcessTime() {
-    EventTracker::RecordEnd(std::move(stats_handle_));
+    io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       grpc_server_req_process_time_ms_histogram_.Record(
@@ -432,8 +437,8 @@ class ServerCallImpl : public ServerCall {
   /// Check skipped if empty.
   const ClusterID &cluster_id_;
 
-  /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  /// Cached authentication token for token-based authentication.
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -516,7 +521,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token,
+      std::shared_ptr<const AuthenticationToken> auth_token,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -581,8 +586,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// Check skipped if empty.
   const ClusterID cluster_id_;
 
-  /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  /// Cached authentication token for token-based authentication.
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.
