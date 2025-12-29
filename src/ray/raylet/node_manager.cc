@@ -1903,8 +1903,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
         // This callback does not use the worker.
         RAY_LOG(DEBUG).WithField(worker->WorkerId())
             << "Prestart worker started! status " << status
-            << ", runtime_env_setup_error_message "
-            << runtime_env_setup_error_message;
+            << ", runtime_env_setup_error_message " << runtime_env_setup_error_message;
         return false;
       });
 

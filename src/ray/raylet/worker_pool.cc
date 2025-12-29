@@ -521,7 +521,8 @@ std::tuple<Process, WorkerID> WorkerPool::StartWorkerProcess(
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env, worker_id);
   worker_pool_metrics_.num_workers_started_sum.Record(1);
-  RAY_LOG(INFO).WithField(worker_id) << "Started worker process with pid " << proc.GetId();
+  RAY_LOG(INFO).WithField(worker_id)
+      << "Started worker process with pid " << proc.GetId();
   if (!IsIOWorkerType(worker_type)) {
     AdjustWorkerOomScore(proc.GetId());
   }
@@ -789,7 +790,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   const WorkerID &worker_id = worker->WorkerId();
   auto it = state.worker_processes.find(worker_id);
   if (it == state.worker_processes.end()) {
-    RAY_LOG(WARNING).WithField(worker_id) << "Received a register request from an unknown worker";
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Received a register request from an unknown worker";
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
@@ -825,9 +827,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end - starting_process_info.start_time);
   worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration.count());
-  RAY_LOG(DEBUG).WithField(worker_id) << "Registering worker with pid " << pid
-                 << ", port: " << port << ", register cost: " << duration.count()
-                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
+  RAY_LOG(DEBUG).WithField(worker_id)
+      << "Registering worker with pid " << pid << ", port: " << port
+      << ", register cost: " << duration.count()
+      << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
   state.registered_workers.insert(worker);
