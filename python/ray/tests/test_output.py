@@ -111,15 +111,15 @@ for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
 
 """
-    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
-        script, env={"RAY_verbose_spill_logs": "1"}
-    )
+    env = os.environ.copy()
+    env.update({"RAY_verbose_spill_logs": "1"})
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(script, env=env)
     out_str = stdout_str + stderr_str
     assert "Spilled " in out_str
 
-    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
-        script, env={"RAY_verbose_spill_logs": "0"}
-    )
+    env = os.environ.copy()
+    env.update({"RAY_verbose_spill_logs": "0"})
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(script, env=env)
     out_str = stdout_str + stderr_str
     assert "Spilled " not in out_str
 
@@ -146,9 +146,9 @@ def f():
 print(ray.get(f.remote()))
 """
 
-    proc = run_string_as_driver_nonblocking(
-        script, env={"RAY_RUNTIME_ENV_HOOK": "ray.tests.test_output._hook"}
-    )
+    env = os.environ.copy()
+    env.update({"RAY_RUNTIME_ENV_HOOK": "ray.tests.test_output._hook"})
+    proc = run_string_as_driver_nonblocking(script, env=env)
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
     if skip_hook:
@@ -207,7 +207,9 @@ ray.get(A.remote().__ray_ready__.remote())
         address=ray_start_cluster_head_with_env_vars.address
     )
 
-    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
+    env = os.environ.copy()
+    env.update({"PYTHONUNBUFFERED": "1"})
+    proc = run_string_as_driver_nonblocking(script, env=env)
 
     def _check_for_infeasible_msg():
         l = proc.stdout.readline().decode("ascii")
@@ -259,13 +261,14 @@ while True:
 
     for event_level, expected_msg, unexpected_msg in test_cases:
         print("Running test case for level:", event_level)
-        proc = run_string_as_driver_nonblocking(
-            script,
-            env={
+        driver_env = os.environ.copy()
+        driver_env.update(
+            {
                 "PYTHONUNBUFFERED": "1",
                 "RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level,
-            },
+            }
         )
+        proc = run_string_as_driver_nonblocking(script, env=driver_env)
 
         out_str = ""
 
@@ -542,7 +545,7 @@ while True:
         )
 
         # Start the driver and wait for it to start executing Ray code.
-        proc = run_string_as_driver_nonblocking(script)
+        proc = run_string_as_driver_nonblocking(script, env=os.environ.copy())
         wait_for_condition(lambda: len(f.read()) > 0)
         print(f"Script is running... pid: {proc.pid}")
 
