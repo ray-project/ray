@@ -161,7 +161,7 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
     
     result = ds.groupby("group").aggregate(CustomMean(on="value")).take_all()
     print(result)
-    # Output: [{'group': 0, 'custom_mean(value)': 832.5}, ...]
+    # Output: [{'group': 2, 'custom_mean(value)': 1250.0}, {'group': 1, 'custom_mean(value)': 1247.5}, {'group': 0, 'custom_mean(value)': 1248.75}]
 
 
 .. note::
