@@ -202,6 +202,10 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
       task_spec_->PlacementGroupBundleId().first.Binary());
   const auto &labels = task_spec_->GetMessage().labels();
   definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
+  const auto &call_site = task_spec_->GetMessage().call_site();
+  if (!call_site.empty()) {
+    definition_event_data.set_call_site(call_site);
+  }
 
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
@@ -262,6 +266,11 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
 
   if (state_update_->pid_.has_value()) {
     lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
+  }
+
+  if (state_update_->is_debugger_paused_.has_value()) {
+    lifecycle_event_data.set_is_debugger_paused(
+        state_update_->is_debugger_paused_.value());
   }
 }
 

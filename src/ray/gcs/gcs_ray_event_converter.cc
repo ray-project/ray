@@ -107,6 +107,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
   }
+  if (event.has_call_site()) {
+    task_info->set_call_site(event.call_site());
+  }
 
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_task_func()),
@@ -140,6 +143,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_ray_error_info()) {
     *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
   }
+  if (event.has_is_debugger_paused()) {
+    task_state_update->set_is_debugger_paused(event.is_debugger_paused());
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
@@ -169,6 +175,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   }
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
+  }
+  if (event.has_call_site()) {
+    task_info->set_call_site(event.call_site());
   }
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),
