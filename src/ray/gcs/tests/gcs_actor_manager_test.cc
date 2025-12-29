@@ -1335,8 +1335,7 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
 
   {
     rpc::GetAllActorInfoRequest request;
-    auto &reply =
-        *google::protobuf::Arena::Create<rpc::GetAllActorInfoReply>(&arena);
+    auto &reply = *google::protobuf::Arena::Create<rpc::GetAllActorInfoReply>(&arena);
     auto callback = [](Status, std::function<void()>, std::function<void()>) {};
     gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
     ASSERT_EQ(reply.actor_table_data().size(), 3);
