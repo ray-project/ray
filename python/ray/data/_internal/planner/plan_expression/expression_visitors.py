@@ -12,6 +12,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    _CallableClassUDF,
     _ExprVisitor,
 )
 
@@ -119,21 +120,21 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
 class _CallableClassUDFCollector(_ExprVisitorBase):
     """Visitor that collects all callable class UDFs from expression trees.
 
-    This visitor traverses expression trees and accumulates UDFExpr nodes
-    that use callable classes (as opposed to regular functions).
+    This visitor traverses expression trees and collects _CallableClassUDF instances
+    that wrap callable classes (as opposed to regular functions).
     """
 
     def __init__(self):
-        """Initialize with an empty list of callable class UDFs."""
-        self._callable_class_udfs: List[UDFExpr] = []
+        """Initialize with an empty list of _CallableClassUDF instances."""
+        self._expr_udfs: List[_CallableClassUDF] = []
 
-    def get_callable_class_udfs(self) -> List[UDFExpr]:
-        """Get the list of collected callable class UDFs.
+    def get_callable_class_udfs(self) -> List[_CallableClassUDF]:
+        """Get the list of collected _CallableClassUDF instances.
 
         Returns:
-            List of UDFExpr nodes that use callable classes.
+            List of _CallableClassUDF instances that wrap callable classes.
         """
-        return self._callable_class_udfs
+        return self._expr_udfs
 
     def visit_column(self, expr: ColumnExpr) -> None:
         """Visit a column expression (no UDFs to collect)."""
@@ -148,9 +149,9 @@ class _CallableClassUDFCollector(_ExprVisitorBase):
         Returns:
             None (only collects UDFs as a side effect).
         """
-        # Check if this UDF uses a callable class (indicated by callable_class_spec being set)
-        if expr.callable_class_spec is not None:
-            self._callable_class_udfs.append(expr)
+        # Check if fn is an _CallableClassUDF (indicates callable class)
+        if isinstance(expr.fn, _CallableClassUDF):
+            self._expr_udfs.append(expr.fn)
 
         # Continue visiting child expressions
         super().visit_udf(expr)
@@ -237,7 +238,6 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             data_type=expr.data_type,
             args=new_args,
             kwargs=new_kwargs,
-            callable_class_spec=expr.callable_class_spec,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:

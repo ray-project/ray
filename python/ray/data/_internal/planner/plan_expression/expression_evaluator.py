@@ -623,8 +623,8 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
     def visit_udf(self, expr: UDFExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a UDF expression and return the result of the function call.
 
-        For callable class UDFs running in an actor context, this will use the
-        instance from the actor context instead of the wrapped function.
+        For callable class UDFs (_CallableClassUDF), the actor context lookup is
+        handled internally by the _CallableClassUDF.__call__ method.
 
         Args:
             expr: The UDF expression.
@@ -632,31 +632,15 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         Returns:
             The result of the UDF call as a BlockColumn.
         """
-        from ray.data._internal.planner.plan_udf_map_op import (
-            NOT_IN_ACTOR_CONTEXT,
-            call_udf_from_actor_context,
-        )
-
         args = [self.visit(arg) for arg in expr.args]
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
 
-        # Try to call from actor context (handles both sync and async UDFs)
-        result = call_udf_from_actor_context(
-            expr.callable_class_spec,
-            args,
-            kwargs,
-        )
-
-        if result is NOT_IN_ACTOR_CONTEXT:
-            # Not in actor context - use regular function call
-            result = expr.fn(*args, **kwargs)
+        # Just call the function - _CallableClassUDF handles actor context internally
+        result = expr.fn(*args, **kwargs)
 
         if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
-            # Use callable class name if available, otherwise use function name
-            if expr.callable_class_spec is not None:
-                function_name = expr.callable_class_spec.cls.__name__
-            else:
-                function_name = expr.fn.__name__
+            # Use __name__ attribute which works for both regular functions and _CallableClassUDF
+            function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
                 f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"

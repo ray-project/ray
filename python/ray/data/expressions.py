@@ -727,6 +727,210 @@ class _CallableClassSpec:
             return (id(self.cls), repr(self.args), repr(self.kwargs))
 
 
+def _call_udf_instance_with_async_bridge(
+    instance: Any,
+    async_loop: Optional[Any],
+    *args,
+    **kwargs,
+) -> Any:
+    """Call a UDF instance, bridging from sync context to async if needed.
+
+    This handles the complexity of calling callable class UDF instances that may
+    be sync, async coroutine, or async generator functions.
+
+    Args:
+        instance: The callable instance to call
+        async_loop: The async event loop (if available)
+        *args: Positional arguments
+        **kwargs: Keyword arguments
+
+    Returns:
+        The result of calling the instance
+    """
+    import asyncio
+    import inspect
+
+    # Check if the instance's __call__ is async
+    if inspect.iscoroutinefunction(instance.__call__):
+        # Async coroutine: bridge from sync to async
+        if async_loop is not None:
+            future = asyncio.run_coroutine_threadsafe(
+                instance(*args, **kwargs), async_loop
+            )
+            return future.result()
+        else:
+            return asyncio.run(instance(*args, **kwargs))
+    elif inspect.isasyncgenfunction(instance.__call__):
+        # Async generator: collect results
+        async def _collect():
+            results = []
+            async for item in instance(*args, **kwargs):
+                results.append(item)
+            # In expressions, the UDF must return a single array with the same
+            # length as the input (one output element per input row).
+            # If the async generator yields multiple arrays, we take the last one
+            # since expressions don't support multi-batch output semantics.
+            if not results:
+                return None
+            elif len(results) == 1:
+                return results[0]
+            else:
+                import logging
+
+                logging.warning(
+                    f"Async generator yielded {len(results)} values in expression context; "
+                    "only the last (most recent) is returned. Use map_batches for multi-yield support."
+                )
+                return results[-1]
+
+        if async_loop is not None:
+            future = asyncio.run_coroutine_threadsafe(_collect(), async_loop)
+            return future.result()
+        else:
+            return asyncio.run(_collect())
+    else:
+        # Synchronous instance - direct call
+        return instance(*args, **kwargs)
+
+
+class _CallableClassUDF:
+    """A wrapper that makes callable class UDFs appear as regular functions.
+
+    This class encapsulates all the actor context handling logic for callable
+    class UDFs used in expressions. From the expression evaluator's perspective,
+    this is just a callable function.
+
+    Key responsibilities:
+    1. Store the callable class and constructor arguments
+    2. Provide UDFSpec for actor initialization via get_udf_spec()
+    3. Handle actor context lookup during __call__
+
+    Example:
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x):
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> add_five = AddOffset(5)  # Creates _CallableClassUDF internally
+        >>> expr = add_five(col("value"))  # Creates UDFExpr with fn=_CallableClassUDF
+    """
+
+    def __init__(
+        self,
+        cls: type,
+        ctor_args: Tuple[Any, ...],
+        ctor_kwargs: Dict[str, Any],
+        return_dtype: DataType,
+    ):
+        """Initialize the _CallableClassUDF wrapper.
+
+        Args:
+            cls: The original callable class
+            ctor_args: Constructor positional arguments
+            ctor_kwargs: Constructor keyword arguments
+            return_dtype: The return data type for schema inference
+        """
+        self._cls = cls
+        self._ctor_args = ctor_args
+        self._ctor_kwargs = ctor_kwargs
+        self._return_dtype = return_dtype
+
+    @property
+    def __name__(self) -> str:
+        """Return the original class name for error messages."""
+        return self._cls.__name__
+
+    @property
+    def callable_class_spec(self) -> _CallableClassSpec:
+        """Return the callable class spec for this UDF."""
+        return _CallableClassSpec(
+            cls=self._cls,
+            args=self._ctor_args,
+            kwargs=self._ctor_kwargs,
+        )
+
+    def get_udf_spec(self, compute: Optional[Any] = None) -> "UDFSpec":
+        """Get the UDFSpec for actor initialization.
+
+        This is called during planning to collect all callable class UDFs
+        that need to be instantiated on actors.
+
+        Args:
+            compute: Optional compute strategy for wrapping decisions
+
+        Returns:
+            UDFSpec containing the class spec and instantiation class
+        """
+        from ray.data._internal.compute import ActorPoolStrategy
+        from ray.data._internal.execution.util import (
+            make_callable_class_single_threaded,
+        )
+        from ray.data._internal.planner.plan_udf_map_op import UDFSpec, _is_async_udf
+
+        instantiation_class = self._cls
+
+        # Apply single-threaded wrapping if needed
+        is_async = _is_async_udf(self._cls.__call__)
+        if (
+            not is_async
+            and isinstance(compute, ActorPoolStrategy)
+            and not compute.enable_true_multi_threading
+        ):
+            instantiation_class = make_callable_class_single_threaded(self._cls)
+
+        return UDFSpec(
+            spec=self.callable_class_spec,
+            instantiation_class=instantiation_class,
+        )
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Call the UDF, looking up the instance from actor context.
+
+        This is called during expression evaluation. It automatically
+        handles actor context lookup and async bridging.
+
+        Args:
+            *args: Evaluated expression arguments (PyArrow arrays, etc.)
+            **kwargs: Evaluated expression keyword arguments
+
+        Returns:
+            The result of calling the UDF instance
+
+        Raises:
+            RuntimeError: If called outside actor context
+        """
+        import ray
+
+        # Check if we're in actor context
+        if (
+            ray.data._map_actor_context is not None
+            and ray.data._map_actor_context.udf_instances
+        ):
+            spec = self.callable_class_spec
+            udf_key = spec.make_key()
+            if udf_key in ray.data._map_actor_context.udf_instances:
+                instance = ray.data._map_actor_context.udf_instances[udf_key]
+                return _call_udf_instance_with_async_bridge(
+                    instance,
+                    ray.data._map_actor_context.udf_map_asyncio_loop,
+                    *args,
+                    **kwargs,
+                )
+
+        # Not in actor context - this is an error for callable class UDFs
+        raise RuntimeError(
+            f"Callable class UDF '{self._cls.__name__}' executed outside actor context. "
+            f"Callable class UDFs require ActorPoolStrategy for execution."
+        )
+
+
+# Type alias for UDFSpec (imported from plan_udf_map_op when needed)
+if TYPE_CHECKING:
+    from ray.data._internal.planner.plan_udf_map_op import UDFSpec
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
@@ -739,10 +943,10 @@ class UDFExpr(Expr):
     as a PyArrow Array containing multiple values from that column across the batch.
 
     Args:
-        fn: The user-defined function to call or callable class instance
+        fn: The user-defined function to call. For callable classes, this is an
+            _CallableClassUDF instance that handles actor context lookup internally.
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        callable_class_spec: Specification for callable class UDFs (None for functions)
 
     Example:
         >>> from ray.data.expressions import col, udf
@@ -770,23 +974,31 @@ class UDFExpr(Expr):
         >>> expr = add_five(col("value"))
     """
 
-    fn: Callable[..., BatchColumn]
+    fn: Callable[..., BatchColumn]  # Can be regular function OR _CallableClassUDF
     args: List[Expr]
     kwargs: Dict[str, Expr]
-    # Specification for callable class UDFs (None for regular functions)
-    callable_class_spec: Optional[_CallableClassSpec] = None
+
+    @property
+    def callable_class_spec(self) -> Optional[_CallableClassSpec]:
+        """Return callable_class_spec if fn is an _CallableClassUDF, else None.
+
+        This property maintains backward compatibility with code that checks
+        for callable_class_spec.
+        """
+        if isinstance(self.fn, _CallableClassUDF):
+            return self.fn.callable_class_spec
+        return None
 
     def structurally_equals(self, other: Any) -> bool:
         if not isinstance(other, UDFExpr):
             return False
 
-        # For callable class UDFs, compare callable_class_spec only (not fn).
-        # Each call to ExpressionAwareCallableClass.__call__ creates a new
-        # _placeholder function, so fn comparison would always be False even
-        # for semantically equivalent expressions.
-        # For regular function UDFs, compare fn (callable_class_spec is None).
-        if self.callable_class_spec is not None:
-            if self.callable_class_spec != other.callable_class_spec:
+        # For callable class UDFs (_CallableClassUDF), compare the callable_class_spec.
+        # For regular function UDFs, compare fn directly.
+        if isinstance(self.fn, _CallableClassUDF):
+            if not isinstance(other.fn, _CallableClassUDF):
+                return False
+            if self.fn.callable_class_spec != other.fn.callable_class_spec:
                 return False
         else:
             if self.fn != other.fn:
@@ -806,14 +1018,13 @@ class UDFExpr(Expr):
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
     return_dtype: DataType,
-    callable_class_spec: Optional[_CallableClassSpec] = None,
 ) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions.
 
     Args:
-        fn: The user-defined function to wrap
+        fn: The user-defined function to wrap. Can be a regular function
+            or an _CallableClassUDF instance (for callable classes).
         return_dtype: The return data type of the UDF
-        callable_class_spec: Specification for callable class UDFs (None for functions)
 
     Returns:
         A callable that creates UDFExpr instances when called with expressions
@@ -840,7 +1051,6 @@ def _create_udf_callable(
             args=expr_args,
             kwargs=expr_kwargs,
             data_type=return_dtype,
-            callable_class_spec=callable_class_spec,
         )
 
     # Preserve original function metadata
@@ -929,37 +1139,30 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
                 Allows natural syntax like:
                     add_five = AddOffset(5)
                     ds.with_column("result", add_five(col("x")))
+
+                When instantiated, creates an _CallableClassUDF that encapsulates all
+                actor context handling logic. The _CallableClassUDF is used as the fn
+                in UDFExpr, making callable classes appear as regular functions.
                 """
 
                 def __init__(self, *args, **kwargs):
-                    # Capture class and constructor args (don't instantiate yet)
-                    self._udf_cls = func_or_class
-                    self._ctor_args = args
-                    self._ctor_kwargs = kwargs
+                    # Create an _CallableClassUDF that encapsulates the callable class
+                    # and its constructor arguments. This wrapper handles actor
+                    # context lookup internally when called.
+                    self._expr_udf = _CallableClassUDF(
+                        cls=func_or_class,
+                        ctor_args=args,
+                        ctor_kwargs=kwargs,
+                        return_dtype=return_dtype,
+                    )
 
                 def __call__(self, *call_args, **call_kwargs):
-                    # Return a UDFExpr. The real instance is created on the actor
-                    # via create_actor_context_init_fn() and retrieved during
-                    # evaluation via call_udf_from_actor_context().
-                    #
-                    # This placeholder should never be called since callable classes
-                    # always use actors, but provides a clear error if something goes wrong.
-                    def _placeholder(*args, **kwargs):
-                        raise RuntimeError(
-                            f"Callable class UDF '{self._udf_cls.__name__}' executed "
-                            f"outside actor context (this should not happen)."
-                        )
-
-                    udf_callable = _create_udf_callable(
-                        _placeholder,
+                    # Create UDFExpr with fn=_CallableClassUDF
+                    # The _CallableClassUDF handles actor context lookup internally
+                    return _create_udf_callable(
+                        self._expr_udf,
                         return_dtype,
-                        callable_class_spec=_CallableClassSpec(
-                            cls=self._udf_cls,
-                            args=self._ctor_args,
-                            kwargs=self._ctor_kwargs,
-                        ),
-                    )
-                    return udf_callable(*call_args, **call_kwargs)
+                    )(*call_args, **call_kwargs)
 
             # Preserve the original class name and module for better error messages
             ExpressionAwareCallableClass.__name__ = func_or_class.__name__
