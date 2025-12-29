@@ -35,7 +35,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   auto make_accept_callback = [&]() {
     // Capture resource_ids by value at the time of callback creation, AFTER it
     // has been populated for non-actor tasks inside the critical section.
-    return [this, reply, resource_ids = resource_ids](
+    return [this, reply, resource_ids = std::move(resource_ids)](
                const TaskSpecification &accepted_task_spec,
                const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
       auto num_returns = accepted_task_spec.NumReturns();
@@ -204,14 +204,14 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 
   if (!task_spec.IsActorTask()) {
-    resource_ids = ResourceMappingType{};
-    for (const auto &mapping : request.resource_mapping()) {
+    resource_ids.emplace();
+    for (auto &mapping : *request.mutable_resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
       rids.reserve(mapping.resource_ids().size());
       for (const auto &ids : mapping.resource_ids()) {
         rids.emplace_back(ids.index(), ids.quantity());
       }
-      (*resource_ids)[mapping.name()] = std::move(rids);
+      resource_ids->emplace(std::move(*mapping.mutable_name()), std::move(rids));
     }
   }
 

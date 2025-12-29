@@ -11,7 +11,6 @@ from ray.data._internal.execution.autoscaling_requester import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -26,11 +25,11 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
     def __init__(
         self,
         topology: "Topology",
-        resource_manager: "ResourceManager",
         *,
         execution_id: str,
     ):
-        super().__init__(topology, resource_manager, execution_id)
+        self._topology = topology
+        self._execution_id = execution_id
 
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0

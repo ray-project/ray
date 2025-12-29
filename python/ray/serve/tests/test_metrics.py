@@ -26,6 +26,10 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
+from ray.serve._private.constants import (
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
@@ -2355,6 +2359,210 @@ def test_long_poll_host_sends_counted(metrics_start_shutdown):
         expected_tags={"namespace_or_state": "TIMEOUT"},
         timeseries=timeseries,
     )
+
+
+def test_event_loop_monitoring_metrics(metrics_start_shutdown):
+    """Test that event loop monitoring metrics are emitted correctly.
+
+    This tests the following metrics:
+    - serve_event_loop_scheduling_latency_ms: Event loop lag in milliseconds
+        Tags: component, loop_type, actor_id
+    - serve_event_loop_monitoring_iterations: Heartbeat counter
+        Tags: component, loop_type, actor_id
+    - serve_event_loop_tasks: Number of pending asyncio tasks
+        Tags: component, loop_type, actor_id
+
+    Components monitored:
+    - Proxy: main loop only
+    - Replica: main loop + user_code loop (when separate thread enabled)
+    - Router: router loop (when separate loop enabled, runs on replica)
+    """
+
+    @serve.deployment(name="g")
+    class ChildDeployment:
+        def __call__(self):
+            return "child"
+
+    @serve.deployment(name="f")
+    class SimpleDeployment:
+        def __init__(self, child):
+            self.child = child
+
+        async def __call__(self):
+            return await self.child.remote()
+
+    serve.run(
+        SimpleDeployment.bind(ChildDeployment.bind()), name="app", route_prefix="/test"
+    )
+
+    # Make a request to ensure everything is running
+    url = get_application_url("HTTP", "app")
+    assert httpx.get(url).text == "child"
+
+    timeseries = PrometheusTimeseries()
+
+    # Test 1: Check proxy main loop metrics
+    def check_proxy_main_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "proxy" and m.get("loop_type") == "main":
+                assert "actor_id" in m, "actor_id tag should be present"
+                print(f"Proxy main loop metric found: {m}")
+                return True
+        return False
+
+    wait_for_condition(check_proxy_main_loop_metrics, timeout=30)
+    print("Proxy main loop monitoring metrics verified.")
+
+    # Test 1a: Check proxy router loop metrics
+    def check_proxy_router_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "proxy" and m.get("loop_type") == "router":
+                assert "actor_id" in m, "actor_id tag should be present"
+                print(f"Proxy router loop metric found: {m}")
+                return True
+        return False
+
+    if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+        wait_for_condition(check_proxy_router_loop_metrics, timeout=30)
+        print("Proxy router loop monitoring metrics verified.")
+    else:
+        print("Proxy router loop monitoring metrics not verified.")
+
+    # Test 2: Check replica main loop metrics
+    def check_replica_main_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "replica" and m.get("loop_type") == "main":
+                assert "actor_id" in m, "actor_id tag should be present"
+                assert m.get("deployment") in [
+                    "f",
+                    "g",
+                ], "deployment tag should be 'f' or 'g'"
+                assert m.get("application") == "app", "application tag should be 'app'"
+                print(f"Replica main loop metric found: {m}")
+                return True
+        return False
+
+    wait_for_condition(check_replica_main_loop_metrics, timeout=30)
+    print("Replica main loop monitoring metrics verified.")
+
+    # Test 3: Check replica user_code loop metrics (enabled by default)
+    def check_replica_user_code_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "replica" and m.get("loop_type") == "user_code":
+                assert "actor_id" in m, "actor_id tag should be present"
+                assert m.get("deployment") in [
+                    "f",
+                    "g",
+                ], "deployment tag should be 'f' or 'g'"
+                assert m.get("application") == "app", "application tag should be 'app'"
+                print(f"Replica user_code loop metric found: {m}")
+                return True
+        return False
+
+    if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+        wait_for_condition(check_replica_user_code_loop_metrics, timeout=30)
+        print("Replica user_code loop monitoring metrics verified.")
+    else:
+        print("Replica user_code loop monitoring metrics not verified.")
+
+    # Test 4: Check router loop metrics (enabled by default)
+    def check_router_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "replica" and m.get("loop_type") == "router":
+                assert "actor_id" in m, "actor_id tag should be present"
+                print(f"Router loop metric found: {m}")
+                return True
+        return False
+
+    if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+        wait_for_condition(check_router_loop_metrics, timeout=30)
+        print("Router loop monitoring metrics verified.")
+    else:
+        print("Router loop monitoring metrics not verified.")
+
+    # Test 5: Check that scheduling latency histogram exists and has reasonable values
+    def check_scheduling_latency_metric():
+        # Check for the histogram count metric
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_scheduling_latency_ms_count",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        # Should have metrics for proxy main, replica main, replica user_code, router
+        component_loop_pairs = set()
+        for m in metrics:
+            component = m.get("component")
+            loop_type = m.get("loop_type")
+            if component and loop_type:
+                component_loop_pairs.add((component, loop_type))
+
+        expected_pairs = {
+            ("proxy", "main"),
+            ("replica", "main"),
+        }
+        if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            expected_pairs.add(("replica", "user_code"))
+        if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            expected_pairs.add(("replica", "router"))
+            expected_pairs.add(("proxy", "router"))
+        return expected_pairs.issubset(component_loop_pairs)
+
+    wait_for_condition(check_scheduling_latency_metric, timeout=30)
+    print("Scheduling latency histogram metrics verified.")
+
+    # Test 6: Check that tasks gauge exists
+    def check_tasks_gauge_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_tasks",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        # Should have metrics for proxy main, replica main, replica user_code, router
+        component_loop_pairs = set()
+        for m in metrics:
+            component = m.get("component")
+            loop_type = m.get("loop_type")
+            if component and loop_type:
+                component_loop_pairs.add((component, loop_type))
+
+        expected_pairs = {
+            ("proxy", "main"),
+            ("replica", "main"),
+        }
+        if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            expected_pairs.add(("replica", "user_code"))
+        if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            expected_pairs.add(("replica", "router"))
+            expected_pairs.add(("proxy", "router"))
+        return expected_pairs.issubset(component_loop_pairs)
+
+    wait_for_condition(check_tasks_gauge_metric, timeout=30)
+    print("Event loop tasks gauge metrics verified.")
 
 
 def test_actor_summary(serve_instance):

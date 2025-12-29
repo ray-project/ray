@@ -38,19 +38,32 @@ class EventAggregatorClient {
 
   virtual void AddEvents(const rpc::events::AddEventsRequest &request,
                          const ClientCallback<rpc::events::AddEventsReply> &callback) = 0;
+
+  virtual void Connect(const int port) {}
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
  public:
-  /// Constructor.
+  /// Constructor for deferred connection.
+  /// Call Connect() later to establish the connection when the port is known.
+  ///
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  explicit EventAggregatorClientImpl(ClientCallManager &client_call_manager)
+      : client_call_manager_(&client_call_manager) {}
+
+  /// Constructor with immediate connection.
   ///
   /// \param[in] port Port of the event aggregator server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  EventAggregatorClientImpl(const int port, ClientCallManager &client_call_manager) {
-    RAY_LOG(INFO) << "Initiating the local event aggregator client with port: " << port;
-    grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
-        "127.0.0.1", port, client_call_manager);
+  EventAggregatorClientImpl(const int port, ClientCallManager &client_call_manager)
+      : client_call_manager_(&client_call_manager) {
+    Connect(port);
   };
+
+  void Connect(const int port) override {
+    grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
+        "127.0.0.1", port, *client_call_manager_);
+  }
 
   VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
                          AddEvents,
@@ -59,6 +72,8 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
                          override)
 
  private:
+  // Saved for deferred connection.
+  ClientCallManager *client_call_manager_;
   // The RPC client.
   std::unique_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
 };

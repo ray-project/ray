@@ -3926,11 +3926,10 @@ class Algorithm(Checkpointable, Trainable):
 
             # Return dict (shallow copy of `train_results`).
             results: ResultDict = train_results.copy()
-            # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
-            # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-            results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
-                ENV_RUNNER_RESULTS, {}
-            ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+            if NUM_ENV_STEPS_SAMPLED_LIFETIME not in results:
+                results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
+                    ENV_RUNNER_RESULTS, {}
+                ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
             # Evaluation results.
             if eval_results:

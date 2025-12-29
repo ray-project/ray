@@ -953,6 +953,27 @@ def test_get_runtime_context_gcs_client(call_ray_start_shared):
         assert context.gcs_address, "gcs_address not set"
 
 
+def test_get_runtime_context_session_name_client(call_ray_start_shared):
+    """
+    Tests get_runtime_context get_session_name in client mode
+    """
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        context = ray.get_runtime_context()
+        session_name = context.get_session_name()
+        assert isinstance(session_name, str), "session_name should be a string"
+        assert len(session_name) > 0, "session_name should not be empty"
+
+        @ray.remote
+        def verify_session_name(expected_session_name):
+            rtc = ray.get_runtime_context()
+            assert isinstance(rtc.get_session_name(), str)
+            assert rtc.get_session_name() == expected_session_name
+            return True
+
+        # Verify session name is consistent across driver and remote tasks
+        ray.get(verify_session_name.remote(session_name))
+
+
 def test_internal_kv_in_proxy_mode(call_ray_start_shared):
     import ray
 

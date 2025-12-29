@@ -8,14 +8,16 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.air.util.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
+from ray.data._internal.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -65,7 +67,7 @@ class TestReadImages:
                 "example://image-datasets/simple/image2.jpg",
                 "example://image-datasets/simple/image2.jpg",
             ],
-            meta_provider=FastFileMetadataProvider(),
+            meta_provider=DefaultFileMetadataProvider(),
         )
         assert ds.count() == 3
 
@@ -238,7 +240,7 @@ class TestReadImages:
         with pytest.warns(DeprecationWarning):
             ray.data.read_images(
                 paths=["example://image-datasets/simple/image1.jpg"],
-                meta_provider=FastFileMetadataProvider(),
+                meta_provider=DefaultFileMetadataProvider(),
             )
 
 

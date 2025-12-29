@@ -352,7 +352,8 @@ class _AutoscalingCoordinatorActor:
         if any(res1.get(key, 0) < res2[key] for key in res2):
             return False
         for key in res2:
-            res1[key] -= res2[key]
+            if key in res1:
+                res1[key] -= res2[key]
         return True
 
     def _update_cluster_node_resources(self) -> bool:

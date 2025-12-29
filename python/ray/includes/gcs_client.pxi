@@ -20,6 +20,7 @@ from ray._common.utils import get_or_create_event_loop
 from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,

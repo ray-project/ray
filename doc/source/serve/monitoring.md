@@ -276,11 +276,6 @@ In the replica `Model` log file, you should see the following:
 {"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
 
-:::{note}
-The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
-next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
-:::
-
 #### Disable access log
 
 :::{note}
@@ -350,6 +345,29 @@ You can also update logging configuration similar above to the Serve controller 
 :start-after: __configure_serve_component_start__
 :end-before:  __configure_serve_component_end__
 :language: python
+```
+
+#### Run custom initialization code in the controller
+
+For advanced use cases, you can run custom initialization code when the Serve Controller starts by setting the `RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during controller initialization. The function doesn't need to return anything.
+
+For example, to add a custom log handler:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_custom_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[CUSTOM] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
 ```
 
 ### Set Request ID
@@ -663,9 +681,9 @@ These metrics provide visibility into autoscaling behavior and help debug scalin
 | `ray_serve_autoscaling_target_replicas` | Gauge | `deployment`, `application` | Target number of replicas the autoscaler is trying to reach. Compare with actual replicas to identify scaling lag. |
 | `ray_serve_autoscaling_desired_replicas` | Gauge | `deployment`, `application` | Raw autoscaling decision (number of replicas) from the policy *before* applying `min_replicas`/`max_replicas` bounds. |
 | `ray_serve_autoscaling_total_requests` | Gauge | `deployment`, `application` | Total number of requests (queued + in-flight) as seen by the autoscaler. This is the input to the scaling decision. |
-| `ray_serve_autoscaling_policy_execution_time_ms` | Histogram | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
-| `ray_serve_autoscaling_replica_metrics_delay_ms` | Histogram | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
-| `ray_serve_autoscaling_handle_metrics_delay_ms` | Histogram | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
+| `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
 
@@ -698,6 +716,40 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |
 | `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
 | `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
+
+### Event loop monitoring metrics
+
+These metrics track the health of asyncio event loops in Serve components. High scheduling latency indicates the event loop is blocked, which can cause request latency issues. Use these metrics to detect blocking code in handlers or system bottlenecks.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_event_loop_scheduling_latency_ms` **[†]** | Histogram | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Event loop scheduling delay in milliseconds. Measures how long the loop was blocked beyond the expected sleep interval. Values close to zero indicate a healthy loop; high values indicate either blocking code or a large number of tasks queued on the event loop. |
+| `ray_serve_event_loop_monitoring_iterations_total` **[†]** | Counter | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of event loop monitoring iterations. Acts as a heartbeat; a stalled counter indicates the loop is completely blocked. |
+| `ray_serve_event_loop_tasks` **[†]** | Gauge | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of pending asyncio tasks on the event loop. High values may indicate task accumulation. |
+
+*\* `deployment` and `application` tags are only present for replica `main` and `user_code` loops, not for proxy or router loops.*
+
+**Tag values:**
+
+- `component`: The Serve component type.
+  - `proxy`: HTTP/gRPC proxy actor
+  - `replica`: Deployment replica actor
+  - `unknown`: When using `DeploymentHandle.remote()`
+- `loop_type`: The type of event loop being monitored.
+  - `main`: Main event loop for the actor (always present)
+  - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is the default)
+  - `router`: Separate event loop for request routing (replicas only, when `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1`, which is the default)
+- `actor_id`: The Ray actor ID of the proxy or replica
+- `deployment`: The deployment name (replicas only, for `main` and `user_code` loops)
+- `application`: The application name (replicas only, for `main` and `user_code` loops)
+
+**Interpreting scheduling latency:**
+
+- **< 10ms**: Healthy event loop
+- **10-50ms**: Acceptable under load
+- **50-100ms**: Concerning; investigate for blocking code
+- **100-500ms**: Problematic; likely blocking I/O or CPU-bound code in async handlers
+- **> 500ms**: Severe blocking; definitely impacting request latency
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
