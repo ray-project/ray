@@ -5,16 +5,13 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Optional,
-    Protocol,
-    runtime_checkable,
 )
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-@runtime_checkable
-class _QueueMetricRecorder(Protocol):
+class _QueueMetricRecorder:
     """Mixin for recording stats about a queue. Subclasses
     may choose to use the _on_dequeue and _on_enqueue methods to
     track num_blocks, nbytes, etc... If not, they should override
@@ -131,9 +128,8 @@ class BaseBundleQueue(_QueueMetricRecorder):
         ...
 
 
-@runtime_checkable
 class SupportsDequeue(_QueueMetricRecorder):
-    """Protocol for queues that support deque operations (add to front, get from back)."""
+    """Base class for queues that support deque operations (add to front, get from back)."""
 
     def add_to_front(self, bundle: RefBundle):
         self._on_enqueue(bundle)
@@ -154,9 +150,8 @@ class SupportsDequeue(_QueueMetricRecorder):
         ...
 
 
-@runtime_checkable
-class SupportsRemoval(Protocol):
-    """Protocol for storing bundles AND supporting remove(bundle)
+class SupportsRemoval(_QueueMetricRecorder):
+    """Base class for storing bundles AND supporting remove(bundle)
     and contains(bundle) operations."""
 
     def __contains__(self, bundle: RefBundle) -> bool:
