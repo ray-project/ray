@@ -406,11 +406,9 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
     # Call get_eligible_operators which should track triggered policies
     get_eligible_operators(topo, policies, ensure_liveness=False)
 
-    # Check that o2 has the correct policies tracked
+    # Check that o2 has the first triggered policy tracked
     assert o2._in_task_submission_backpressure is True
-    assert "MockPolicy1" in o2._task_submission_backpressure_policies
-    assert "MockPolicy2" not in o2._task_submission_backpressure_policies
-    assert "MockPolicy3" in o2._task_submission_backpressure_policies
+    assert o2._task_submission_backpressure_policy == "MockPolicy1"
 
     # Now test with no backpressure
     class AllowAllPolicy:
@@ -428,7 +426,7 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
 
     # Check that o2 is no longer in backpressure
     assert o2._in_task_submission_backpressure is False
-    assert o2._task_submission_backpressure_policies == []
+    assert o2._task_submission_backpressure_policy is None
 
 
 def test_output_backpressure_policy_tracking(ray_start_regular_shared):
@@ -483,18 +481,16 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     # Call process_completed_tasks which tracks output policies
     process_completed_tasks(topo, policies, max_errored_blocks=0)
 
-    # Check that o2 has output backpressure with correct policy
+    # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
-    assert "Limiting" in o2._task_output_backpressure_policies
-    assert "NonLimiting" not in o2._task_output_backpressure_policies
-    assert "NoLimit" not in o2._task_output_backpressure_policies
+    assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
     process_completed_tasks(topo, [NonLimitingPolicy()], max_errored_blocks=0)
 
     # Check that o2 is no longer in output backpressure
     assert o2._in_task_output_backpressure is False
-    assert o2._task_output_backpressure_policies == []
+    assert o2._task_output_backpressure_policy is None
 
 
 def test_summary_str_backpressure_policies(ray_start_regular_shared):
@@ -516,27 +512,24 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     summary = topo[o2].summary_str_raw(resource_manager)
     assert "backpressured" not in summary
 
-    # Set task submission backpressure with policies (using UX names)
+    # Set task submission backpressure with policy (using UX name)
     o2._in_task_submission_backpressure = True
-    o2._task_submission_backpressure_policies = [
-        "ConcurrencyCap",
-        "ResourceBudget",
-    ]
+    o2._task_submission_backpressure_policy = "ConcurrencyCap"
     summary = topo[o2].summary_str_raw(resource_manager)
-    assert "tasks(ConcurrencyCap,ResourceBudget)" in summary
+    assert "tasks(ConcurrencyCap)" in summary
 
-    # Set output backpressure with policies (using UX names)
+    # Set output backpressure with policy (using UX name)
     o2._in_task_output_backpressure = True
-    o2._task_output_backpressure_policies = ["ResourceBudget"]
+    o2._task_output_backpressure_policy = "ResourceBudget"
     summary = topo[o2].summary_str_raw(resource_manager)
-    assert "tasks(ConcurrencyCap,ResourceBudget)" in summary
+    assert "tasks(ConcurrencyCap)" in summary
     assert "outputs(ResourceBudget)" in summary
 
     # Clear backpressure
     o2._in_task_submission_backpressure = False
-    o2._task_submission_backpressure_policies = []
+    o2._task_submission_backpressure_policy = None
     o2._in_task_output_backpressure = False
-    o2._task_output_backpressure_policies = []
+    o2._task_output_backpressure_policy = None
     summary = topo[o2].summary_str_raw(resource_manager)
     assert "backpressured" not in summary
 
