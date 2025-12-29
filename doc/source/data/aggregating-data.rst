@@ -87,14 +87,14 @@ Custom Aggregations
 
 You can create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface has three key methods to implement:
 
-1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result
+1. `aggregate_batch`: Processes a single batch of data and returns a partial aggregation result
 2. `combine`: Merges two partial aggregation results into a single result
 3. `finalize`: Transforms the final accumulated result into the desired output format
 
 The aggregation process follows these steps:
 
 1. **Initialization**: For each group (if grouping) or for the entire dataset, an initial accumulator is created using `zero_factory`
-2. **Block Aggregation**: The `aggregate_block` method is applied to each block independently
+2. **Batch Aggregation**: The `aggregate_batch` method is applied to each batch independently. Batches are provided in the format specified by `batch_format`
 3. **Combination**: The `combine` method merges partial results into a single accumulator
 4. **Finalization**: The `finalize` method transforms the final accumulator into the desired output
 
@@ -106,13 +106,11 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 .. testcode::
 
     import numpy as np
+    import ray
     from ray.data.aggregate import AggregateFnV2
-    from ray.data._internal.util import is_null
-    from ray.data.block import Block, BlockAccessor, AggType, U
-    import pyarrow.compute as pc
-    from typing import List, Optional
+    from typing import Dict, Optional, Tuple
 
-    class Mean(AggregateFnV2):
+    class CustomMean(AggregateFnV2[Tuple[float, int], float]):
         """Defines mean aggregation."""
 
         def __init__(
@@ -122,40 +120,48 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
             alias_name: Optional[str] = None,
         ):
             super().__init__(
-                alias_name if alias_name else f"mean({str(on)})",
+                alias_name if alias_name else f"custom_mean({str(on)})",
                 on=on,
                 ignore_nulls=ignore_nulls,
-                # NOTE: We've to copy returned list here, as some
-                #       aggregations might be modifying elements in-place
-                zero_factory=lambda: list([0, 0]),  # noqa: C410
+                batch_format="numpy",  # Work with familiar numpy arrays
+                zero_factory=lambda: (0.0, 0),  # (sum, count) tuple
             )
 
-        def aggregate_block(self, block: Block) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            count = block_acc.count(self._target_col_name, self._ignore_nulls)
+        def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> Tuple[float, int]:
+            """Aggregate data within a single batch."""
+            column_data = batch[self._target_col_name]
+            
+            if self._ignore_nulls:
+                # Remove null values using numpy
+                valid_mask = ~np.isnan(column_data.astype(float))
+                column_data = column_data[valid_mask]
+            
+            count = len(column_data)
+            if count == 0:
+                return (0.0, 0)
+            
+            sum_val = np.sum(column_data)
+            return (sum_val, count)
 
-            if count == 0 or count is None:
-                # Empty or all null.
-                return None
+        def combine(
+            self, current: Tuple[float, int], new: Tuple[float, int]
+        ) -> Tuple[float, int]:
+            """Combine two partial results."""
+            return (current[0] + new[0], current[1] + new[1])
 
-            sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
+        def finalize(self, accumulator: Tuple[float, int]) -> Optional[float]:
+            """Calculate final mean."""
+            sum_val, count = accumulator
+            return sum_val / count if count > 0 else None
 
-            if is_null(sum_):
-                # In case of ignore_nulls=False and column containing 'null'
-                # return as is (to prevent unnecessary type conversions, when, for ex,
-                # using Pandas and returning None)
-                return sum_
-
-            return [sum_, count]
-
-        def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-            return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
-
-        def finalize(self, accumulator: AggType) -> Optional[U]:
-            if accumulator[1] == 0:
-                return np.nan
-
-            return accumulator[0] / accumulator[1]
+    # Usage example:
+    ds = ray.data.range(1000)
+    ds = ds.add_column("group", lambda x: x % 3)
+    ds = ds.add_column("value", lambda x: x * 2.5)
+    
+    result = ds.groupby("group").aggregate(CustomMean(on="value")).take_all()
+    print(result)
+    # Output: [{'group': 0, 'custom_mean(value)': 832.5}, ...]
 
 
 .. note::

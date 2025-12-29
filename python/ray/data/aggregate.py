@@ -19,6 +19,8 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -27,7 +29,9 @@ from ray.data.block import (
     BlockAccessor,
     BlockColumn,
     BlockColumnAccessor,
+    DataBatch,
     KeyType,
+    _apply_batch_format,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -166,8 +170,9 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     1. **Initialization**: For each group (if grouping) or for the entire dataset,
        an initial accumulator is created using `zero_factory`.
-    2. **Block Aggregation**: The `aggregate_block` method is applied to
-       each block independently, producing a partial aggregation result for that block.
+    2. **Batch Aggregation**: The `aggregate_batch` method is applied to
+       each batch independently, producing a partial aggregation result for that batch.
+       Batches are provided in the format specified by `batch_format`.
     3. **Combination**: The `combine` method is used to merge these partial
        results (or an existing accumulated result with a new partial result)
        into a single, combined accumulator.
@@ -187,6 +192,11 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             If `True`, nulls are skipped.
             If `False`, the presence of a null value might result in a null output,
             depending on the aggregation logic.
+        batch_format: If ``"default"`` or ``"numpy"``, batches are
+            ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+            ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+            ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
+            block format will be used.
     """
 
     def __init__(
@@ -196,6 +206,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         *,
         on: Optional[str],
         ignore_nulls: bool,
+        batch_format: Optional[str] = "default",
     ):
         if not name:
             raise ValueError(
@@ -204,6 +215,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
+        self._batch_format = _apply_batch_format(batch_format)
 
         # Extract and store the agg name (e.g., "sum" from "sum(col)")
         # This avoids string parsing later
@@ -214,7 +226,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             self._agg_name = name
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
-        _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
+        _safe_aggregate = _null_safe_aggregate(self._aggregate_block_wrapper, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self.finalize)
 
         _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
@@ -237,6 +249,13 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         For example, returns 'sum' for an aggregator named 'sum(col)'.
         """
         return self._agg_name
+
+    def _aggregate_block_wrapper(self, block: Block) -> AccumulatorType:
+        """Wrapper that converts Block to batch format and calls aggregate_batch."""
+        # Convert block to the specified batch format
+        block_accessor = BlockAccessor.for_block(block)
+        batch = block_accessor.to_batch_format(self._batch_format)
+        return self.aggregate_batch(batch)
 
     @abc.abstractmethod
     def combine(
@@ -261,21 +280,23 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         ...
 
     @abc.abstractmethod
-    def aggregate_block(self, block: Block) -> AccumulatorType:
-        """Aggregates data within a single block.
+    def aggregate_batch(self, batch: DataBatch) -> AccumulatorType:
+        """Aggregates data within a single batch.
 
-        This method processes all rows in a given `Block` and returns a partial
-        aggregation result for that block. For instance, if implementing a sum,
-        this method would sum all relevant values within the block.
+        This method processes all rows in a given batch and returns a partial
+        aggregation result for that batch. For instance, if implementing a sum,
+        this method would sum all relevant values within the batch.
 
         Args:
-            block: A `Block` of data to be aggregated.
+            batch: A batch of data in the specified batch_format:
+                - "default"/"numpy": Dict[str, numpy.ndarray] 
+                - "pandas": pandas.DataFrame
+                - "pyarrow": pyarrow.Table
 
         Returns:
-            A partial aggregation result for the input block. The type of this
-            result (`AggType`) should be consistent with the `current_accumulator`
-            and `new` arguments of the `combine` method, and the `accumulator`
-            argument of the `finalize` method.
+            A partial aggregation result for the input batch. The type should be
+            consistent with the `current_accumulator` and `new` arguments of the 
+            `combine` method, and the `accumulator` argument of the `finalize` method.
         """
         ...
 
@@ -357,19 +378,25 @@ class Count(AggregateFnV2[int, int]):
             alias_name if alias_name else f"count({on or ''})",
             on=on,
             ignore_nulls=ignore_nulls,
+            batch_format="numpy",
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> int:
-        block_accessor = BlockAccessor.for_block(block)
-
+    def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> int:
         if self._target_col_name is None:
-            # In case of global count, simply fetch number of rows
-            return block_accessor.num_rows()
+            # In case of global count, count total rows across all columns
+            # Use first column to get row count
+            first_column = next(iter(batch.values()))
+            return len(first_column)
 
-        return block_accessor.count(
-            self._target_col_name, ignore_nulls=self._ignore_nulls
-        )
+        column_data = batch[self._target_col_name]
+        if self._ignore_nulls:
+            # Count non-null values
+            valid_mask = ~np.isnan(column_data.astype(float))
+            return int(np.sum(valid_mask))
+        else:
+            # Count all values (including nulls)
+            return len(column_data)
 
     def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
@@ -413,13 +440,19 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
             alias_name if alias_name else f"sum({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            batch_format="numpy",
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
-        return BlockAccessor.for_block(block).sum(
-            self._target_col_name, self._ignore_nulls
-        )
+    def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> Union[int, float]:
+        column_data = batch[self._target_col_name]
+        
+        if self._ignore_nulls:
+            # Remove null values using numpy
+            valid_mask = ~np.isnan(column_data.astype(float))
+            column_data = column_data[valid_mask]
+            
+        return np.sum(column_data)
 
     def combine(
         self, current_accumulator: Union[int, float], new: Union[int, float]
@@ -589,26 +622,31 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            batch_format="numpy",
             # The accumulator is: [current_sum, current_count].
             # NOTE: We copy the returned list `list([0,0])` as some internal mechanisms
             # might modify accumulators in-place.
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> Optional[List[Union[int, float]]]:
-        block_acc = BlockAccessor.for_block(block)
-        count = block_acc.count(self._target_col_name, self._ignore_nulls)
-
-        if count == 0 or count is None:
-            # Empty or all null.
+    def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> Optional[List[Union[int, float]]]:
+        # batch is Dict[str, np.ndarray] in numpy format
+        column_data = batch[self._target_col_name]
+        
+        if self._ignore_nulls:
+            # Remove null values using numpy
+            valid_mask = ~np.isnan(column_data.astype(float))
+            column_data = column_data[valid_mask]
+            
+        count = len(column_data)
+        if count == 0:
             return None
-
-        sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
+            
+        sum_ = np.sum(column_data)
 
         if is_null(sum_):
             # In case of ignore_nulls=False and column containing 'null'
-            # return as is (to prevent unnecessary type conversions, when, for ex,
-            # using Pandas and returning None)
+            # return as is (to prevent unnecessary type conversions)
             return sum_
 
         return [sum_, count]
