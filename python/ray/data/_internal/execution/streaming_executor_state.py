@@ -280,10 +280,12 @@ class OpState:
             backpressure_types = []
             if self.op._in_task_submission_backpressure:
                 # The op is backpressured from submitting new tasks.
-                backpressure_types.append("tasks")
+                policy = self.op._task_submission_backpressure_policy or ""
+                backpressure_types.append(f"tasks({policy})")
             if self.op._in_task_output_backpressure:
                 # The op is backpressured from producing new outputs.
-                backpressure_types.append("outputs")
+                policy = self.op._task_output_backpressure_policy or ""
+                backpressure_types.append(f"outputs({policy})")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
@@ -436,16 +438,20 @@ def process_completed_tasks(
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
         max_bytes_to_read = None
+        # Track the first policy that limits output (returning 0 bytes)
+        limiting_policy = None
         for policy in backpressure_policies:
             policy_limit = policy.max_task_output_bytes_to_read(op)
             if policy_limit is not None:
+                if policy_limit == 0 and limiting_policy is None:
+                    limiting_policy = policy.name
                 if max_bytes_to_read is None:
                     max_bytes_to_read = policy_limit
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
         # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
 
@@ -588,8 +594,13 @@ def get_eligible_operators(
 
     for op, state in topology.items():
         # Operator is considered being in task-submission back-pressure if any
-        # back-pressure policy is violated
-        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
+        # back-pressure policy is violated. Track the first triggered policy.
+        triggered_policy = None
+        for p in backpressure_policies:
+            if not p.can_add_input(op):
+                triggered_policy = p.name
+                break
+        in_backpressure = triggered_policy is not None
 
         op_runnable = False
 
@@ -611,8 +622,7 @@ def get_eligible_operators(
         )
 
         # Signal whether op in backpressure for stats collections
-        # TODO(hchen): also report which policy triggers backpressure.
-        op.notify_in_task_submission_backpressure(in_backpressure)
+        op.notify_in_task_submission_backpressure(in_backpressure, triggered_policy)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
     # limits in case when topology is entirely idle (no active tasks running)
