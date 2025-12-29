@@ -235,11 +235,12 @@ class RefBundle:
         Returns:
             A tuple of (sliced_bundle, remaining_bundle). The needed rows must be less than the number of rows in the bundle.
         """
-        assert needed_rows > 0, "needed_rows must be positive."
         assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
 
+        if needed_rows == 0:
+            return RefBundle(blocks=(), schema=None, owns_blocks=False), self
         if needed_rows == self.num_rows():
             return self, RefBundle(blocks=(), schema=None, owns_blocks=False)
 
