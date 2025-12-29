@@ -207,8 +207,6 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
 MAX_CACHED_HANDLES = get_env_int_positive(
@@ -218,8 +216,7 @@ MAX_CACHED_HANDLES = get_env_int_positive(
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
-    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
-    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
@@ -285,11 +282,8 @@ MIGRATION_MESSAGE = (
 )
 
 # Environment variable name for to specify the encoding of the log messages
-RAY_SERVE_LOG_ENCODING = get_env_str("RAY_SERVE_LOG_ENCODING", "TEXT")
+RAY_SERVE_LOG_ENCODING = "TEXT"
 
-# Jsonify the log messages. This constant is deprecated and will be removed in the
-# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
-RAY_SERVE_ENABLE_JSON_LOGGING = get_env_bool("RAY_SERVE_ENABLE_JSON_LOGGING", "0")
 
 # Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
 # Also, redirect them to serve's log files.
