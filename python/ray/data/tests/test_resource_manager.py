@@ -464,22 +464,8 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
         assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
         # Test max_task_output_bytes_to_read.
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 500
-        )
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 500
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 500
+        assert allocator.max_task_output_bytes_to_read(o3) == 500
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -510,23 +496,9 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 138
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 257
-        )
+        assert allocator.max_task_output_bytes_to_read(o3) == 257
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -558,23 +530,9 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 50
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 145
-        )
+        assert allocator.max_task_output_bytes_to_read(o3) == 145
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
