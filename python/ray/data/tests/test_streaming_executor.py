@@ -351,6 +351,189 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
             assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
+def test_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that backpressure policies that triggered are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    # Add input to o2's input queue so it becomes eligible
+    topo[o1].output_queue.append(make_ref_bundle("dummy1"))
+
+    # Create mock backpressure policies with name property
+    class MockPolicy1:
+        @property
+        def name(self):
+            return "MockPolicy1"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy2:
+        @property
+        def name(self):
+            return "MockPolicy2"
+
+        def can_add_input(self, op):
+            return True  # Allow all
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy3:
+        @property
+        def name(self):
+            return "MockPolicy3"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    policies = [MockPolicy1(), MockPolicy2(), MockPolicy3()]
+
+    # Call get_eligible_operators which should track triggered policies
+    get_eligible_operators(topo, policies, ensure_liveness=False)
+
+    # Check that o2 has the first triggered policy tracked
+    assert o2._in_task_submission_backpressure is True
+    assert o2._task_submission_backpressure_policy == "MockPolicy1"
+
+    # Now test with no backpressure
+    class AllowAllPolicy:
+        @property
+        def name(self):
+            return "AllowAll"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    get_eligible_operators(topo, [AllowAllPolicy()], ensure_liveness=False)
+
+    # Check that o2 is no longer in backpressure
+    assert o2._in_task_submission_backpressure is False
+    assert o2._task_submission_backpressure_policy is None
+
+
+def test_output_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that output backpressure policies are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    # Create mock backpressure policies for output limiting with name property
+    class LimitingPolicy:
+        @property
+        def name(self):
+            return "Limiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None  # Block o2 output
+
+    class NonLimitingPolicy:
+        @property
+        def name(self):
+            return "NonLimiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 1000  # Allow some output
+
+    class NoLimitPolicy:
+        @property
+        def name(self):
+            return "NoLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None  # No limit
+
+    policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
+
+    # Call process_completed_tasks which tracks output policies
+    process_completed_tasks(topo, policies, max_errored_blocks=0)
+
+    # Check that o2 has the first limiting policy tracked
+    assert o2._in_task_output_backpressure is True
+    assert o2._task_output_backpressure_policy == "Limiting"
+
+    # Now test with no output backpressure
+    process_completed_tasks(topo, [NonLimitingPolicy()], max_errored_blocks=0)
+
+    # Check that o2 is no longer in output backpressure
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_summary_str_backpressure_policies(ray_start_regular_shared):
+    """Test that summary_str correctly displays backpressure policy names."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    resource_manager = mock_resource_manager()
+
+    # Test with no backpressure
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "backpressured" not in summary
+
+    # Set task submission backpressure with policy (using UX name)
+    o2._in_task_submission_backpressure = True
+    o2._task_submission_backpressure_policy = "ConcurrencyCap"
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+
+    # Set output backpressure with policy (using UX name)
+    o2._in_task_output_backpressure = True
+    o2._task_output_backpressure_policy = "ResourceBudget"
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+    assert "outputs(ResourceBudget)" in summary
+
+    # Clear backpressure
+    o2._in_task_submission_backpressure = False
+    o2._task_submission_backpressure_policy = None
+    o2._in_task_output_backpressure = False
+    o2._task_output_backpressure_policy = None
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "backpressured" not in summary
+
+
 def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
