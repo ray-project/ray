@@ -409,9 +409,8 @@ message GetWorkerPIDsReply {
 message GetAgentPIDsRequest {}
 
 message GetAgentPIDsReply {
-  // PIDs of all agents (dashboard agent and runtime env agent) managed by the local
-  // raylet.
-  repeated int32 pids = 1;
+  // A mapping from agent type to its process ID (PID).
+  map<string, int32> agent_pids = 1;
 }
 
 message KillLocalActorRequest {
