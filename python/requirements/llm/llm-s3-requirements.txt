@@ -1,0 +1,4 @@
+# Requirements for ray[llm-s3] - AWS S3 cloud storage support
+# Keep this in sync with the definition in setup.py for ray[llm-s3]
+-r llm-requirements.txt
+boto3>=1.28.0
