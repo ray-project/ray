@@ -634,9 +634,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
     def supports_fusion(self) -> bool:
         return self._supports_fusion
 
