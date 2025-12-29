@@ -233,6 +233,8 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
+  lifecycle_event_data.set_job_id(job_id_.Binary());
+
   // Task property updates
   if (!state_update_.has_value()) {
     return;
@@ -261,8 +263,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
   if (state_update_->pid_.has_value()) {
     lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
   }
-
-  lifecycle_event_data.set_job_id(job_id_.Binary());
 }
 
 void TaskStatusEvent::PopulateRpcRayEventBaseFields(

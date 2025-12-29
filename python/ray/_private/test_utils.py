@@ -20,7 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -417,6 +417,38 @@ def wait_for_dashboard_agent_available(cluster):
         lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
         is not None
     )
+
+
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):

@@ -30,7 +30,10 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_schema,
 )
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_aggregator_agent_if_enabled,
+)
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -2933,11 +2936,15 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "event_routing_config", ["default", "aggregator"], indirect=True
+    "event_routing_config", [ "default", "aggregator"], indirect=True
 )
 @pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks(shutdown_only):
-    ray.init(num_cpus=2)
+    ray_context = ray.init(num_cpus=2)
+    wait_for_aggregator_agent_if_enabled(
+        ray_context.address_info["address"],
+        ray_context.address_info["node_id"],
+    )
     job_id = ray.get_runtime_context().get_job_id()
 
     @ray.remote(max_concurrency=2)

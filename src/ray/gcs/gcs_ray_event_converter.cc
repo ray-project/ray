@@ -100,6 +100,10 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   task_info->set_task_id(event.task_id());
   task_info->set_job_id(event.job_id());
   task_info->set_parent_task_id(event.parent_task_id());
+  if (event.task_type() == rpc::TaskType::ACTOR_CREATION_TASK) {
+    const auto actor_id = TaskID::FromBinary(event.task_id()).ActorId();
+    task_info->set_actor_id(actor_id.Binary());
+  }
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
   }

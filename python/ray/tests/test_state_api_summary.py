@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
 from ray._raylet import ActorID, ObjectID, TaskID
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -318,6 +319,10 @@ def test_task_summary(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=2)
+
+    # Wait for aggregator agents on all nodes
+    for node in ray.nodes():
+        wait_for_aggregator_agent_if_enabled(cluster.address, node["NodeID"])
 
     @ray.remote
     def run_long_time_task():
