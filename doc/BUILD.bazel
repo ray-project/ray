@@ -407,7 +407,11 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        # TODO(elliot-barn): Remove this once Train supports Keras 3
+        "TF_USE_LEGACY_KERAS": "1",
+    },
 )
 
 # --------------------------------------------------------------------
@@ -431,7 +435,11 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        # TODO(elliot-barn): Remove this once Train supports Keras 3
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod

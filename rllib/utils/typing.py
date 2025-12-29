@@ -20,8 +20,8 @@ from ray.rllib.utils.annotations import OldAPIStack
 if TYPE_CHECKING:
     # Modules might be missing but supply users with type hints if they are installed.
     import jax.numpy as jnp
-    import keras
     import tensorflow as tf
+    import tf_keras as keras
     import torch
     from numpy.typing import NDArray
 

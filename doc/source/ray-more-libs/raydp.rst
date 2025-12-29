@@ -71,7 +71,7 @@ Training a Spark DataFrame with TensorFlow
   train_df, test_df = random_split(df, [0.7, 0.3])
 
   # TensorFlow code
-  from tensorflow import keras
+  from tf_keras import keras
   input_1 = keras.Input(shape=(1,))
   input_2 = keras.Input(shape=(1,))
 

@@ -1,4 +1,11 @@
 # isort: off
+import os
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# This must be set before importing TensorFlow
+# TODO(elliot-barn): Remove this once Train supports Keras 3
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 try:
     import tensorflow as tf  # noqa: F401
 except ModuleNotFoundError:
