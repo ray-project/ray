@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -78,6 +79,12 @@ struct NodeManagerConfig {
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
+  /// The port to connect the metrics agent (dashboard agent grpc port).
+  int metrics_agent_port;
+  /// The port at which metrics are exposed.
+  int metrics_export_port;
+  /// The port for the dashboard agent to listen on.
+  int dashboard_agent_listen_port;
   /// The lowest port number that workers started will bind on.
   /// If this is set to 0, workers will bind on random ports.
   int min_worker_port;
@@ -188,6 +195,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
+
+  /// Return the runtime env agent port.
+  int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
+
+  /// Return the metrics agent port.
+  int GetMetricsAgentPort() const { return metrics_agent_port_; }
+
+  /// Return the metrics export port.
+  int GetMetricsExportPort() const { return metrics_export_port_; }
+
+  /// Return the dashboard agent listen port.
+  int GetDashboardAgentListenPort() const { return dashboard_agent_listen_port_; }
 
   /// Returns debug string for class.
   ///
@@ -761,9 +780,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
+                                                       const NodeManagerConfig &config);
+
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+
+  int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                 const NodeManagerConfig &config);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -825,6 +850,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
+  int runtime_env_agent_port_{0};
+  int metrics_agent_port_{0};
+  int metrics_export_port_{0};
+  int dashboard_agent_listen_port_{0};
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
