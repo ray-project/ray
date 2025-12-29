@@ -623,9 +623,6 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
     def visit_udf(self, expr: UDFExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a UDF expression and return the result of the function call.
 
-        For callable class UDFs (_CallableClassUDF), the actor context lookup is
-        handled internally by the _CallableClassUDF.__call__ method.
-
         Args:
             expr: The UDF expression.
 
@@ -635,11 +632,9 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         args = [self.visit(arg) for arg in expr.args]
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
 
-        # Just call the function - _CallableClassUDF handles actor context internally
         result = expr.fn(*args, **kwargs)
 
         if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
-            # Use __name__ attribute which works for both regular functions and _CallableClassUDF
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "

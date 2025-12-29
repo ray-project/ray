@@ -20,7 +20,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr, _CallableClassSpec
+    from ray.data.expressions import _CallableClassSpec
 
 import numpy as np
 import pandas as pd
@@ -127,50 +127,6 @@ class _MapActorContext:
         self.udf_map_asyncio_thread = thread
 
 
-def _collect_udf_specs_from_expressions(
-    exprs: List["Expr"], compute: Optional[ComputeStrategy] = None
-) -> List[UDFSpec]:
-    """Collect UDFSpecs for callable class UDFs found in expressions.
-
-    Deduplicates by class AND constructor arguments, and applies
-    make_callable_class_single_threaded wrapping when appropriate. This ensures
-    that the same class with different constructor args (e.g., Multiplier(2) vs
-    Multiplier(3)) are treated as distinct UDFs with separate instances.
-
-    Args:
-        exprs: List of expressions to collect UDFs from
-        compute: Optional compute strategy. When ActorPoolStrategy with
-            enable_true_multi_threading=False, non-async UDFs are wrapped
-            for single-threaded execution.
-
-    Returns:
-        List of UDFSpec objects for all unique callable class UDFs found
-    """
-    from ray.data._internal.planner.plan_expression.expression_visitors import (
-        _CallableClassUDFCollector,
-    )
-
-    # Collect all _CallableClassUDF instances from expressions
-    collector = _CallableClassUDFCollector()
-    for expr in exprs:
-        collector.visit(expr)
-
-    # Deduplicate by spec key and create UDFSpec list
-    udf_specs = []
-    seen_keys = set()
-
-    # get_callable_class_udfs() now returns _CallableClassUDF instances
-    for expr_udf in collector.get_callable_class_udfs():
-        # _CallableClassUDF.get_udf_spec() handles wrapping based on compute strategy
-        udf_spec = expr_udf.get_udf_spec(compute)
-        key = udf_spec.spec.make_key()
-        if key not in seen_keys:
-            seen_keys.add(key)
-            udf_specs.append(udf_spec)
-
-    return udf_specs
-
-
 def plan_project_op(
     op: Project,
     physical_children: List[PhysicalOperator],
@@ -186,10 +142,12 @@ def plan_project_op(
 
     compute = get_compute(op._compute)
 
-    # Collect UDF specs from expressions and create init_fn if needed
-    # Pass compute strategy to properly handle enable_true_multi_threading flag
-    udf_specs = _collect_udf_specs_from_expressions(projection_exprs, compute)
-    init_fn = create_actor_context_init_fn(udf_specs) if udf_specs else None
+    # Create init_fn to initialize all callable class UDFs at actor startup
+    from ray.data.util.expression_utils import (
+        create_callable_class_udf_init_fn,
+    )
+
+    init_fn = create_callable_class_udf_init_fn(projection_exprs)
 
     def _project_block(block: Block) -> Block:
         try:
