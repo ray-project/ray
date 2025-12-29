@@ -94,9 +94,11 @@ CLUSTER_NODES_WITHOUT_HEAD = [
     ],
 )
 def test_basic(cluster_nodes):
-    with patch("ray.nodes", return_value=cluster_nodes), patch(
-        "time.time", mock_time
-    ), patch("ray.autoscaler.sdk.request_resources") as mock_request_resources:
+    with (
+        patch("ray.nodes", return_value=cluster_nodes),
+        patch("time.time", mock_time),
+        patch("ray.autoscaler.sdk.request_resources") as mock_request_resources,
+    ):
         global MOCKED_TIME
 
         MOCKED_TIME = 0
@@ -411,7 +413,7 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
 
 
 def test_double_allocation_with_multiple_request_remaining():
-    """Test showing double-allocation when multiple requesters have request_remaining=True. """
+    """Test fair allocation when multiple requesters have request_remaining=True."""
     cluster_nodes = [
         {
             "Resources": {
@@ -423,9 +425,11 @@ def test_double_allocation_with_multiple_request_remaining():
         }
     ]
 
-    with patch("ray.nodes", return_value=cluster_nodes), patch(
-        "time.time", mock_time
-    ), patch("ray.autoscaler.sdk.request_resources"):
+    with (
+        patch("ray.nodes", return_value=cluster_nodes),
+        patch("time.time", mock_time),
+        patch("ray.autoscaler.sdk.request_resources"),
+    ):
         coordinator = _AutoscalingCoordinatorActor()
 
         # Requester1: asks for CPU=2, GPU=1 with request_remaining=True
@@ -460,16 +464,20 @@ def test_double_allocation_with_multiple_request_remaining():
 
         # After allocating specific requests (req1 and req2):
         # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
-        expected_remaining = {"CPU": 5, "GPU": 3, "object_store_memory": 700}
+        # With fair allocation, each requester gets 1/2 of remaining resources
+        expected_remaining_per_requester = {
+            "CPU": 5 // 2,  # = 2
+            "GPU": 3 // 2,  # = 1
+            "object_store_memory": 700 // 2,  # = 350
+        }
 
-        # Both requesters should get their specific requests + remaining resources
-        # This is the double-allocation behavior!
-        assert res1 == req1 + [expected_remaining]
-        assert res2 == req2 + [expected_remaining]
+        # Both requesters should get their specific requests + fair share of remaining
+        assert res1 == req1 + [expected_remaining_per_requester]
+        assert res2 == req2 + [expected_remaining_per_requester]
 
-        # Verify that both got the same remaining resources (double-allocation)
-        assert expected_remaining in res1
-        assert expected_remaining in res2
+        # Verify fair allocation: both get the same fair share
+        assert expected_remaining_per_requester in res1
+        assert expected_remaining_per_requester in res2
 
 
 if __name__ == "__main__":
