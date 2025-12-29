@@ -1487,6 +1487,10 @@ def test_time_backpressure(ray_start_regular_shared, restore_data_context):
     class TimedBackpressurePolicy(BackpressurePolicy):
         COUNT = 0
 
+        @property
+        def name(self) -> str:
+            return "TimedBackpressure"
+
         def can_add_input(self, op: "PhysicalOperator") -> bool:
             if TimedBackpressurePolicy.COUNT > 1:
                 time.sleep(0.01)
