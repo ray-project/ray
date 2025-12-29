@@ -156,8 +156,8 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     # Usage example:
     ds = ray.data.range(1000)
-    ds = ds.add_column("group", lambda x: x % 3)
-    ds = ds.add_column("value", lambda x: x * 2.5)
+    ds = ds.add_column("group", lambda row: row["id"] % 3)
+    ds = ds.add_column("value", lambda row: row["id"] * 2.5)
     
     result = ds.groupby("group").aggregate(CustomMean(on="value")).take_all()
     print(result)
