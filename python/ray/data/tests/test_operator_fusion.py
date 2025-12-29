@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.execution.bundle_queue import EstimateSize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -363,7 +364,9 @@ def test_map_batches_batch_size_fusion(
         )
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
 

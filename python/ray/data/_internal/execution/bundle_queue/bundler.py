@@ -174,13 +174,15 @@ class RebundleQueue(BaseBundleQueue):
                 )
 
                 sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
-                pending_to_ready_bundles.append(sliced_bundle)
+                if sliced_bundle.num_rows():
+                    pending_to_ready_bundles.append(sliced_bundle)
                 if remaining_bundle.num_rows():
                     self._pending_bundles.appendleft(remaining_bundle)
                     self._on_enqueue(remaining_bundle)  # Enter the remaining portion
                     self._total_pending_rows += remaining_bundle.num_rows() or 0
 
-                self._merge_bundles(pending_to_ready_bundles)
+                if pending_to_ready_bundles:
+                    self._merge_bundles(pending_to_ready_bundles)
 
                 # reset the pending counts and continue converting pending to ready bundles.
                 pending_row_count_prefix_sum = 0
