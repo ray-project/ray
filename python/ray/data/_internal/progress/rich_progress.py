@@ -2,15 +2,19 @@ import logging
 import math
 import sys
 import time
+import typing
 import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, List, Optional
 
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import OpState, Topology
-from ray.data._internal.progress_bar import AbstractProgressBar, truncate_operator_name
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.progress.base_progress import (
+    BaseExecutionProgressManager,
+    BaseProgressBar,
+)
+from ray.data._internal.progress.utils import truncate_operator_name
 from ray.util.debug import log_once
 
 try:
@@ -31,6 +35,10 @@ try:
 except ImportError:
     rich = None
     needs_rich_warning = True
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +95,7 @@ class _ManagerMode(str, Enum):
             return cls.ALL
 
 
-class SubProgressBar(AbstractProgressBar):
+class RichSubProgressBar(BaseProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
 
     Updates RichExecutionProgressManager internally.
@@ -169,23 +177,23 @@ class SubProgressBar(AbstractProgressBar):
         self.enabled = False  # Progress bar is disabled on remote nodes.
 
 
-class RichExecutionProgressManager:
+class RichExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using rich."""
 
     # If the name/description of the progress bar exceeds this length,
     # it will be truncated.
     MAX_NAME_LENGTH = 100
 
-    def __init__(self, dataset_id: str, topology: Topology):
+    def __init__(self, dataset_id: str, topology: "Topology"):
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
-        self._sub_progress_bars: List[SubProgressBar] = []
+        self._sub_progress_bars: List[RichSubProgressBar] = []
 
         if not self._mode.is_enabled():
             self._live = None
             # TODO (kyuds): for sub-progress, initialize no-op
             for state in topology.values():
-                if _has_sub_progress_bars(state.op):
+                if isinstance(state.op, SubProgressBarMixin):
                     self._setup_operator_sub_progress(state)
             return
 
@@ -226,7 +234,7 @@ class RichExecutionProgressManager:
             count_str="0/?",
         )
 
-    def _setup_progress_grid(self, topology: Topology):
+    def _setup_progress_grid(self, topology: "Topology"):
         if self._mode.show_op():
             self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
         for state in topology.values():
@@ -250,19 +258,19 @@ class RichExecutionProgressManager:
                 state.progress_manager_uuid = uid
                 self._op_display[uid] = (tid, progress, stats)
 
-            if _has_sub_progress_bars(state.op):
+            if isinstance(state.op, SubProgressBarMixin):
                 self._setup_operator_sub_progress(state)
 
-    def _setup_operator_sub_progress(self, state: OpState):
-        assert _has_sub_progress_bars(
-            state.op
+    def _setup_operator_sub_progress(self, state: "OpState"):
+        assert isinstance(
+            state.op, SubProgressBarMixin
         ), f"Operator {state.op.name} doesn't support sub-progress bars."
         enabled = self._mode.show_op()
 
         sub_progress_bar_names = state.op.get_sub_progress_bar_names()
         if sub_progress_bar_names is not None:
             for name in sub_progress_bar_names:
-                name = truncate_operator_name(name, SubProgressBar.MAX_NAME_LENGTH)
+                name = truncate_operator_name(name, RichSubProgressBar.MAX_NAME_LENGTH)
                 progress = None
                 tid = None
                 total = None
@@ -281,7 +289,7 @@ class RichExecutionProgressManager:
                     )
                     self._layout_table.add_row(progress)
 
-                pg = SubProgressBar(
+                pg = RichSubProgressBar(
                     name=name,
                     total=total,
                     enabled=enabled,
@@ -344,7 +352,6 @@ class RichExecutionProgressManager:
                 self.refresh()
                 time.sleep(0.02)
                 self._live.stop()
-                logger.info(desc)
 
     # Total Progress
     def _can_update_total(self) -> bool:
@@ -367,13 +374,13 @@ class RichExecutionProgressManager:
             )
             _update_with_conditional_rate(self._total, self._total_task_id, metrics)
 
-    def update_resource_status(self, resource_status: str):
+    def update_total_resource_status(self, resource_status: str):
         if not self._can_update_total():
             return
         if self._live.is_started:
             self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
 
-    def _can_update_operator(self, op_state: OpState) -> bool:
+    def _can_update_operator(self, op_state: "OpState") -> bool:
         if not self._mode.show_op():
             return False
         uid = op_state.progress_manager_uuid
@@ -384,7 +391,9 @@ class RichExecutionProgressManager:
             return False
         return True
 
-    def update_operator_progress(self, op_state: OpState):
+    def update_operator_progress(
+        self, op_state: "OpState", resource_manager: "ResourceManager"
+    ):
         if not self._can_update_operator(op_state):
             return
         if self._start_time is None:
@@ -398,7 +407,7 @@ class RichExecutionProgressManager:
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
         # stats
-        stats_str = op_state.op_display_metrics.display_str()
+        stats_str = op_state.summary_str_raw(resource_manager)
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
 
 
@@ -460,20 +469,6 @@ def _get_progress_metrics(
     return _ProgressMetrics(
         completed=completed, total=total, rate_str=rate_str, count_str=count_str
     )
-
-
-def _has_sub_progress_bars(op: PhysicalOperator) -> bool:
-    """Determines if operator implements sub-progress bars
-
-    Args:
-        op: Operator
-    Returns:
-        whether operator implements sub-progress bars
-    """
-    # function primarily used to avoid circular imports
-    from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-
-    return isinstance(op, SubProgressBarMixin)
 
 
 def _update_with_conditional_rate(progress, tid, metrics):
