@@ -1,11 +1,12 @@
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.tests.conftest import _ray_start_cluster
+from ray.util.tpu import SlicePlacementGroup
 
 
 def test_get_current_pod_name_smoke():
@@ -89,13 +90,13 @@ def test_num_tpu_chips(mock_glob):
         ("v4-32", "2x4x4", True),
         ("v4-2048", "8x8x16", True),
         ("v4-4", "16x16x16", False),
-        ("v5p-64", "4x4x4", True),
+        ("v5p-128", "4x4x4", True),
         ("v5p-4096", "16x16x16", True),
-        ("v5p-6144", "16x16x24", True),
+        ("v5p-12288", "16x16x24", True),
         ("v5p-4", "24x24x24", False),
         ("v5litepod-16", "2x8", True),
         ("v5litepod-256", "16x16", True),
-        ("v5litepod-4", "2x2", False),
+        ("v5litepod-4", "2x2", True),
         ("v6e-16", "4x4", True),
         ("v6e-64", "8x8", True),
         ("v6e-4", "4x16", False),
@@ -141,9 +142,10 @@ def test_get_current_node_tpu_topology_from_metadata():
     "topology, accelerator_type, expected_pod_type, should_raise",
     [
         ("2x4", "TPU-V6E", "v6e-8", False),
-        ("2x2x2", "TPU-V4", "v4-8", False),
-        ("2x4x4", "TPU-V3", "v3-32", False),
-        ("4x4", "TPU-V5P", "v5p-16", False),
+        ("2x2x2", "TPU-V4", "v4-16", False),
+        ("4x8", "TPU-V3", "v3-64", False),
+        ("2x2x1", "TPU-V5P", "v5p-8", False),
+        ("4x4", "TPU-V5P", "v5p-32", False),
         ("8x16", "TPU-V6E", "v6e-128", False),
         ("", "TPU-V3", None, False),
         ("4x", "TPU-V3", None, True),
@@ -168,47 +170,82 @@ def ray_start_cpu():
 
 
 @pytest.fixture
-def ray_tpu_cluster(monkeypatch):
-    """Start a mock TPU Ray cluster."""
+def ray_tpu_cluster():
+    """
+    Simulates a Ray cluster with two multi-host TPU v4-16 slices.
+    """
+    pod_type = "v4-16"
+    topology = "2x2x2"
+
     with _ray_start_cluster() as cluster:
-        monkeypatch.setenv("TPU_NAME", "test-slice-0")
-        monkeypatch.setenv("TPU_WORKER_ID", "0")
-        monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-8")
-        monkeypatch.setenv("TPU_TOPOLOGY", "2x2x2")
-
-        # First slice - 2x2x2 with 2 TPU workers.
+        slice_0_env_common = {
+            "TPU_NAME": "test-slice-0",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_0_head_labels = {
+            "ray.io/tpu-slice-name": "test-slice-0",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
+        slice_0_worker_labels = {
+            "ray.io/tpu-slice-name": "test-slice-0",
+            "ray.io/tpu-worker-id": "1",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
         cluster.add_node(
             num_cpus=2,
-            resources={"TPU": 4, "TPU-v4-8-head": 1},
+            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+            env_vars={**slice_0_env_common, "TPU_WORKER_ID": "0"},
+            labels=slice_0_head_labels,
         )
-        monkeypatch.setenv("TPU_WORKER_ID", "1")
         cluster.add_node(
             num_cpus=2,
             resources={"TPU": 4},
+            env_vars={**slice_0_env_common, "TPU_WORKER_ID": "1"},
+            labels=slice_0_worker_labels,
         )
 
-        # Second slice - 2x2x2 with 2 TPU workers.
-        monkeypatch.setenv("TPU_NAME", "test-slice-1")
-        monkeypatch.setenv("TPU_WORKER_ID", "0")
+        slice_1_env_common = {
+            "TPU_NAME": "test-slice-1",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_1_head_labels = {
+            "ray.io/tpu-slice-name": "test-slice-1",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
+        slice_1_worker_labels = {
+            "ray.io/tpu-slice-name": "test-slice-1",
+            "ray.io/tpu-worker-id": "1",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
         cluster.add_node(
             num_cpus=2,
-            resources={"TPU": 4, "TPU-v4-8-head": 1},
+            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+            env_vars={**slice_1_env_common, "TPU_WORKER_ID": "0"},
+            labels=slice_1_head_labels,
         )
-        monkeypatch.setenv("TPU_WORKER_ID", "1")
         cluster.add_node(
             num_cpus=2,
             resources={"TPU": 4},
+            env_vars={**slice_1_env_common, "TPU_WORKER_ID": "1"},
+            labels=slice_1_worker_labels,
         )
 
         ray.init(address=cluster.address)
-
         yield cluster
         ray.shutdown()
 
 
 def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
     """Tests that the slice name can be fetched from a PG."""
-    tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-8-head": 1}])
+    tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-16-head": 1}])
     ray.get(tpu_head_pg.ready())
 
     expected_unique_slice_names = {"test-slice-0", "test-slice-1"}
@@ -220,8 +257,17 @@ def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
 
 def test_reserve_tpu_slice(ray_tpu_cluster):
     """Tests that a TPU slice can be successfully reserved."""
-    reserved_name_0 = tpu.reserve_tpu_slice(topology="2x2x2", accelerator_type="TPU-V4")
-    reserved_name_1 = tpu.reserve_tpu_slice(topology="2x2x2", accelerator_type="TPU-V4")
+    reserved_name_0, hg_pg_0 = tpu.reserve_tpu_slice(
+        topology="2x2x2", accelerator_type="TPU-V4"
+    )
+    reserved_name_1, hg_pg_1 = tpu.reserve_tpu_slice(
+        topology="2x2x2", accelerator_type="TPU-V4"
+    )
+
+    # Ensure the placement groups reserving the TPU slice using the head worker are valid.
+    assert hg_pg_0 is not None, "Expected placement group for slice 0, got None"
+    assert hg_pg_1 is not None, "Expected placement group for slice 1, got None"
+
     assert (
         reserved_name_0 != reserved_name_1
     ), f"Expected to reserve two different slices, but got the same name: {reserved_name_0}"
@@ -240,11 +286,11 @@ def test_slice_placement_group(ray_tpu_cluster):
         accelerator_version="v4",
     )
     assert slice_placement_group.chips_per_host == 4
-    assert slice_placement_group.num_workers == 2
+    assert slice_placement_group.num_hosts == 2
     assert slice_placement_group.placement_group.bundle_count == 2
     assert slice_placement_group.placement_group.bundle_specs == [
-        {"TPU": 4},
-        {"TPU": 4},
+        {"TPU": 4, "CPU": 1.0},
+        {"TPU": 4, "CPU": 1.0},
     ]
 
 
@@ -256,13 +302,69 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
         num_slices=2,
     )
     assert multi_slice_placement_group.placement_group.bundle_count == 4
-    assert multi_slice_placement_group.num_workers == 4
+    assert multi_slice_placement_group.num_hosts == 4
     assert multi_slice_placement_group.placement_group.bundle_specs == [
-        {"TPU": 4},  # slice 1
-        {"TPU": 4},
-        {"TPU": 4},  # slice 2
-        {"TPU": 4},
+        {"TPU": 4, "CPU": 1.0},  # slice 1, host 1
+        {"TPU": 4, "CPU": 1.0},  # slice 1, host 2
+        {"TPU": 4, "CPU": 1.0},  # slice 2, host 1
+        {"TPU": 4, "CPU": 1.0},  # slice 2, host 2
     ]
+
+
+@patch("ray.util.tpu.placement_group")
+@patch("ray.util.tpu.remove_placement_group")
+@patch("ray.util.tpu.reserve_tpu_slice")
+def test_slice_placement_group_partial_failure_cleanup(
+    mock_reserve, mock_remove_pg, mock_create_pg
+):
+    """
+    Verifies that if a multi-slice request fails halfway through,
+    the TPU head placement groups are cleaned up to prevent leaks.
+    """
+    fake_head_pg_1 = MagicMock(name="head_pg_1")
+    mock_reserve.side_effect = [("slice_1", fake_head_pg_1), None]
+
+    with pytest.raises(RuntimeError, match="Failed to reserve TPU slice"):
+        SlicePlacementGroup(topology="2x2x2", accelerator_version="v4", num_slices=2)
+
+    # Validate that 2 TPU util attempted to reserve two slices, failed, and
+    # correctly cleaned up the hanging TPU head placement groups.
+    assert mock_reserve.call_count == 2
+    mock_remove_pg.assert_called_once_with(fake_head_pg_1)
+    mock_create_pg.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected_version",
+    [
+        # type with "TPU-" prefix
+        ("TPU-V4", "v4"),
+        ("TPU-v4", "v4"),
+        ("TPU-V6E", "v6e"),
+        ("TPU-v5p", "v5p"),
+        # Only the TPU version - no parsing necessary.
+        ("v4", "v4"),
+        ("v3", "v3"),
+        ("v6e", "v6e"),
+        ("v5litepod", "v5litepod"),
+    ],
+)
+def test_get_tpu_version_valid(accelerator_type, expected_version):
+    assert ray.util.tpu.get_tpu_version_from_type(accelerator_type) == expected_version
+
+
+@pytest.mark.parametrize(
+    "invalid_type",
+    [
+        "A100",  # GPU type
+        "random-invalid-type",  # Random string
+        "TPU-invalid",  # TPU prefix
+        "",  # Empty string
+    ],
+)
+def test_get_tpu_version_invalid(invalid_type):
+    with pytest.raises(ValueError, match="Invalid accelerator_type"):
+        ray.util.tpu.get_tpu_version_from_type(invalid_type)
 
 
 if __name__ == "__main__":
