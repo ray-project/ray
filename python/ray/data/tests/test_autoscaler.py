@@ -333,7 +333,6 @@ def test_cluster_scaling():
 
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=MagicMock(),
         execution_id="execution_id",
     )
 
