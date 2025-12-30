@@ -166,7 +166,7 @@ bazel_container_resource_flags() {
     local cpu_headroom_pct="${BAZEL_DETECT_CPU_HEADROOM_PCT:-80}"
 
     # C++-oriented RAM budget
-    local mb_per_job="${BAZEL_DETECT_MB_PER_JOB:-1800}"
+    local mb_per_job="${BAZEL_DETECT_MB_PER_JOB:-2048}"
     local ram_reserve_mb="${BAZEL_DETECT_RAM_RESERVE_MB:-3072}"  # keep some for links/OS
 
     cpu_limit=""
