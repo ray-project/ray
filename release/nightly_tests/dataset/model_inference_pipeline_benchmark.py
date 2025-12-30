@@ -408,7 +408,7 @@ def main(args):
     ds = ray.data.read_parquet(
         config.input_path,
         columns=columns_to_load,
-    ).limit(200_000_000)
+    ).limit(15_000_000)
     ds._set_name("input_data")
 
     # Execute end-to-end pipeline
