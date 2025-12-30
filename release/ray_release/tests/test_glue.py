@@ -129,7 +129,9 @@ class GlueTest(unittest.TestCase):
             def __init__(self, cluster_manager: ClusterManager):
                 super(FakeFileManager, self).__init__(cluster_manager)
 
-            def download_from_cloud(self, key: str, target: str, delete_after_download: bool = False):
+            def download_from_cloud(
+                self, key: str, target: str, delete_after_download: bool = False
+            ):
                 with open(target, "wt") as f:
                     f.write("fake download content")
 
@@ -147,7 +149,9 @@ class GlueTest(unittest.TestCase):
                 sdk=None,
                 artifact_path: Optional[str] = None,
             ):
-                super(MockCommandRunner, self).__init__(cluster_manager, FakeFileManager(cluster_manager), this_tempdir)
+                super(MockCommandRunner, self).__init__(
+                    cluster_manager, FakeFileManager(cluster_manager), this_tempdir
+                )
                 self.return_dict = this_command_runner_return
 
         self.mock_alert_return = None
