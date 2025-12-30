@@ -12,6 +12,9 @@ except ImportError:
     PYDANTIC_INSTALLED = False
 
 
+PYDANTIC_MAJOR_VERSION = packaging.version.parse(pydantic.__version__).major
+
+
 if not PYDANTIC_INSTALLED:
     IS_PYDANTIC_2 = False
     BaseModel = None

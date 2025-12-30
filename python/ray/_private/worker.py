@@ -2044,12 +2044,16 @@ def init(
         )
 
     # Check for Pydantic v1 and emit deprecation warning
-    from ray._common.pydantic_compat import IS_PYDANTIC_2, PYDANTIC_INSTALLED
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED, PYDANTIC_MAJOR_VERSION
 
-    if PYDANTIC_INSTALLED and not IS_PYDANTIC_2 and log_once("pydantic_v1_deprecation"):
+    if (
+        PYDANTIC_INSTALLED
+        and PYDANTIC_MAJOR_VERSION == 1
+        and log_once("pydantic_v1_deprecation")
+    ):
         warnings.warn(
             "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
-            "Please upgrade to Pydantic v2 by running `pip install -U pydantic`. "
+            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
             "See https://github.com/ray-project/ray/issues/58876 for more details.",
             FutureWarning,
         )
