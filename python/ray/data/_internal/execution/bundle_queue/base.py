@@ -7,6 +7,8 @@ from typing import (
     Optional,
 )
 
+from ray.data._internal.execution.util import memory_string
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
@@ -57,6 +59,17 @@ class _QueueMetricRecorder:
     def __len__(self) -> int:
         """Return the total # bundles."""
         return self._num_bundles
+
+    def __repr__(self) -> str:
+        """Return a string representation showing queue metrics."""
+        nbytes = memory_string(self._nbytes)
+        return (
+            f"{self.__class__.__name__}("
+            f"num_bundles={self._num_bundles}, "
+            f"num_blocks={self._num_blocks}, "
+            f"num_rows={self._num_rows}, "
+            f"nbytes={nbytes})"
+        )
 
 
 class BaseBundleQueue(_QueueMetricRecorder):

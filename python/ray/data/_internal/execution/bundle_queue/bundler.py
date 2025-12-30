@@ -63,7 +63,7 @@ class EstimateSize(RebundlingStrategy):
 
     @override
     def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
-        return (
+        return num_pending_rows > 0 and (
             self._min_rows_per_bundle is None
             or num_pending_rows >= self._min_rows_per_bundle
         )
@@ -188,14 +188,18 @@ class RebundleQueue(BaseBundleQueue):
                 pending_row_count_prefix_sum = 0
                 pending_to_ready_bundles: List[RefBundle] = []
                 if not flush_remaining:
-                    break
+                    return
             else:
                 # Entire pending_bundle complies with strategy. Add it to the list of bundles that
                 # will be merged to form a ready bundle.
                 pending_to_ready_bundles.append(pending_bundle)
 
         # If we're flushing and have leftover bundles, convert them to a ready bundle
-        if flush_remaining and pending_to_ready_bundles:
+        if pending_to_ready_bundles:
+            assert flush_remaining, (
+                "There should not be anymore remaining pending bundles. "
+                "This is a bug in the Ray Data code."
+            )
             self._merge_bundles(pending_to_ready_bundles)
 
     @override
