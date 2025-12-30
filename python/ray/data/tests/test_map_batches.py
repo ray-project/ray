@@ -16,6 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.exceptions import UserCodeException
@@ -836,6 +837,65 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+@pytest.mark.parametrize("default_batch_to_block_arrow_format", [True, False])
+def test_map_batches_pandas_batch_to_block_arrow_format(
+    ray_start_regular_shared,
+    default_batch_to_block_arrow_format,
+    monkeypatch,
+):
+    """Test chained map_batches with pandas format and arrow format flag."""
+
+    # Patch class attribute since env var is evaluated at import time
+    monkeypatch.setattr(
+        BlockAccessor,
+        "_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT",
+        default_batch_to_block_arrow_format,
+    )
+
+    # Create dataset with mixed types (int, float, string)
+    num_rows = 100
+    string_pool = [f"str_{i}" for i in range(10)]
+    df = pd.DataFrame(
+        {
+            "int_col": np.random.randint(0, 1000, num_rows),
+            "float_col": np.random.randn(num_rows),
+            "str_col": np.random.choice(string_pool, num_rows),
+        }
+    )
+    ds = ray.data.from_pandas(df)
+
+    # Chain multiple map_batches with pandas format
+    batch_size = 10
+    result_ds = (
+        ds.map_batches(lambda x: x, batch_format="pandas", batch_size=batch_size)
+        .map_batches(lambda x: x, batch_format="pandas", batch_size=batch_size * 2)
+        .map_batches(lambda x: x, batch_format="pandas", batch_size=batch_size * 3)
+        .sort("int_col")
+        .materialize()
+    )
+
+    # Verify row count preserved
+    assert result_ds.count() == num_rows
+
+    # Verify result is sorted by int_col
+    result_df = result_ds.to_pandas()
+    assert result_df["int_col"].is_monotonic_increasing
+
+    # Verify iter_batches works and maintains sort order
+    total_rows = 0
+    prev_max = None
+    for batch in result_ds.iter_batches(batch_size=batch_size, batch_format="pandas"):
+        assert isinstance(batch, pd.DataFrame)
+        # Verify batch is sorted
+        assert batch["int_col"].is_monotonic_increasing
+        # Verify batches maintain order across iterations
+        if prev_max is not None:
+            assert batch["int_col"].iloc[0] >= prev_max
+        prev_max = batch["int_col"].iloc[-1]
+        total_rows += len(batch)
+    assert total_rows == num_rows
 
 
 if __name__ == "__main__":

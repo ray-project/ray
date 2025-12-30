@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
@@ -77,7 +78,7 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
-from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -6317,14 +6318,11 @@ class Dataset:
                     "ds.to_pandas(limit=None) to disable limits."
                 )
 
-        builder = PandasBlockBuilder()
-        for batch in self.iter_batches(batch_format="pandas", batch_size=None):
+        builder = ArrowBlockBuilder()
+        for batch in self.iter_batches(batch_format="pyarrow", batch_size=None):
             builder.add_block(batch)
         block = builder.build()
 
-        # `PandasBlockBuilder` creates a dataframe with internal extension types like
-        # 'TensorDtype'. We use the `to_pandas` method to convert these extension
-        # types to regular types.
         return BlockAccessor.for_block(block).to_pandas()
 
     @ConsumptionAPI(pattern="Time complexity:")
