@@ -83,8 +83,6 @@ def _load_test_configuration(
     anyscale_project: str,
     result: Result,
     smoke_test: bool = False,
-    no_terminate: bool = False,
-    test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
@@ -234,7 +232,6 @@ def _local_environment_information(
     command_runner: CommandRunner,
     build_timeout: int,
     cluster_timeout: int,
-    no_terminate: bool,
     cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
@@ -404,7 +401,6 @@ def run_release_test(
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -424,7 +420,6 @@ def run_release_test(
         smoke_test=smoke_test,
         cluster_id=cluster_id,
         cluster_env_id=cluster_env_id,
-        no_terminate=no_terminate,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
         image=image,
@@ -503,7 +498,6 @@ def run_release_test_anyscale(
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -523,8 +517,6 @@ def run_release_test_anyscale(
             anyscale_project,
             result,
             smoke_test,
-            no_terminate,
-            test_definition_root,
             log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
@@ -558,7 +550,6 @@ def run_release_test_anyscale(
             command_runner,
             build_timeout,
             cluster_timeout,
-            no_terminate,
             cluster_id,
             cluster_env_id,
         )
@@ -605,7 +596,7 @@ def run_release_test_anyscale(
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if not no_terminate and cluster_manager:
+    if cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")
         cluster_manager.terminate_cluster(wait=False)
 
