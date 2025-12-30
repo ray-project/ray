@@ -1,7 +1,5 @@
 import os
-import shutil
 import sys
-import tempfile
 
 import boto3
 from azure.storage.blob import BlobServiceClient
