@@ -901,7 +901,7 @@ class TensorFlowVariables:
 
             for k, var in self.variables.items():
                 self.placeholders[k] = tf1.placeholder(
-                    var.value().dtype,
+                    var.dtype,
                     var.get_shape().as_list(),
                     name="Placeholder_" + k,
                 )

@@ -505,7 +505,7 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
             if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
             # Note: This does not check if the float element is actually an integer
-            if isinstance(elem, np.float):
+            if isinstance(elem, float):
                 elem = np.int64(elem)
 
         return elem
