@@ -280,7 +280,9 @@ def test_read_with_map_batches_fused_successfully(
     )
 
     # # Target min-rows requirement is not set
-    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle is None
 
 
 @pytest.mark.parametrize(
@@ -416,9 +418,9 @@ def test_map_batches_with_batch_size_specified_fusion(
     assert expected_plan_str == actual_plan_str
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert (
-        expected_min_rows_per_bundle == root_op._block_ref_bundler._min_rows_per_bundle
-    )
+    strategy = root_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert expected_min_rows_per_bundle == strategy._min_rows_per_bundle
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
