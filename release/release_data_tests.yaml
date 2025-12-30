@@ -753,16 +753,17 @@
 # - Metadata column passthrough
 # - Extra output columns
 
-- name: "model_inference_pipeline_{{scaling}}"
+- name: "model_inference_pipeline{{spot_suffix}}"
   python: "3.10"
   group: data-batch-inference
 
   cluster:
-    cluster_compute: "{{scaling}}_gpu_compute.yaml"
+    cluster_compute: "fixed_size_gpu_compute{{spot_suffix}}.yaml"
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      - spot_suffix: ""
+      - spot_suffix: "_spot"
 
   run:
     timeout: 3600

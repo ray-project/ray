@@ -109,11 +109,6 @@ def parse_args():
         default=128,
         help="Max sequence length for tokenization.",
     )
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        default=False,
-    )
     return parser.parse_args()
 
 
@@ -397,12 +392,6 @@ def main(args):
     )
     print(f"  Tokenizer max length: {args.tokenizer_max_length}")
 
-    # Adjust for smoke test
-    if args.smoke_test:
-        args.inference_num_gpus = 0
-        args.inference_min_actors = 1
-        args.inference_max_actors = 2
-
     # Build pipeline configuration
     # Use TPC-H lineitem columns:
     # - column00, column01: metadata (l_orderkey, l_partkey)
@@ -455,18 +444,10 @@ def main(args):
         set(config.metadata_columns + config.feature_columns + config.text_columns)
     )
 
-    if args.smoke_test:
-        ds = ray.data.read_parquet(
-            config.input_path,
-            columns=columns_to_load,
-            override_num_blocks=10,
-        )
-        ds = ds.limit(10000)
-    else:
-        ds = ray.data.read_parquet(
-            config.input_path,
-            columns=columns_to_load,
-        )
+    ds = ray.data.read_parquet(
+        config.input_path,
+        columns=columns_to_load,
+    ).limit(10000)
     ds._set_name("input_data")
 
     # Execute end-to-end pipeline
