@@ -500,6 +500,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
+      *raylet_client_pool,
+      gcs_client,
       *memory_store,
       *task_manager,
       *actor_creator,
@@ -538,6 +540,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
+      gcs_client,
       std::move(lease_policy),
       memory_store,
       *task_manager,
@@ -549,12 +552,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       lease_request_rate_limiter,
       /*tensor_transport_getter=*/
       [](const ObjectID &object_id) {
-        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
-        // supported for actor tasks. Therefore, normal tasks should always use
-        // OBJECT_STORE.
-        return rpc::TensorTransport::OBJECT_STORE;
+        // Currently, RDT is only supported for actor tasks.
+        return std::nullopt;
       },
-      boost::asio::steady_timer(io_service_),
+      io_service_,
       *scheduler_placement_time_ms_histogram_);
 
   auto report_locality_data_callback = [this](
@@ -794,7 +795,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // for java worker or in constructor of CoreWorker for python worker.
 
   // We need init stats before using it/spawning threads.
-  stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  stats::Init(global_tags, worker_id_);
   task_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTaskByStateGaugeMetric()));
   actor_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
@@ -834,6 +835,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
+        stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
       } else {
         RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "

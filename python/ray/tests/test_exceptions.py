@@ -17,7 +17,7 @@ class FakeAuthMode(Enum):
 class TestAuthenticationError:
     """Tests for AuthenticationError exception."""
 
-    auth_doc_url = "https://docs.ray.io/en/latest/ray-security/auth.html"
+    auth_doc_url = "https://docs.ray.io/en/latest/ray-security/token-auth.html"
 
     def test_basic_creation(self):
         """Test basic AuthenticationError creation and message format."""

@@ -10,7 +10,9 @@ This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 * :ref:`Quickstart: vLLM batch inference <vllm_quickstart>`
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
+* :ref:`Multimodal batch inference <multimodal>`
 * :ref:`Batch inference with embedding models <embedding_models>`
+* :ref:`Batch inference with classification models <classification_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
 
 .. _vllm_quickstart:
@@ -56,7 +58,7 @@ Perform batch inference with LLMs
 At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
+You can use the :func:`build_processor <ray.data.llm.build_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
@@ -74,10 +76,10 @@ Here's a simple configuration example:
 
 The configuration includes detailed comments explaining:
 
-- **`concurrency`**: Number of vLLM engine replicas (typically 1 per node)
-- **`batch_size`**: Number of samples processed per batch (reduce if GPU memory is limited)
-- **`max_num_batched_tokens`**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
-- **`accelerator_type`**: Specify GPU type for optimal resource allocation
+- `concurrency`: Number of vLLM engine replicas (typically 1 per node)
+- `batch_size`: Number of samples processed per batch (reduce if GPU memory is limited)
+- `max_num_batched_tokens`: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
+- `accelerator_type`: Specify GPU type for optimal resource allocation
 
 The vLLM processor expects input in OpenAI chat format with a 'messages' column and outputs a 'generated_text' column containing model responses.
 
@@ -130,30 +132,31 @@ To do multi-LoRA batch inference, you need to set LoRA related parameters in `en
     :start-after: __lora_config_example_start__
     :end-before: __lora_config_example_end__
 
-.. _vision_language_model:
+.. _multimodal:
 
-Batch inference with vision-language-model (VLM)
+Multimodal batch inference
 --------------------------------------------------------
 
 Ray Data LLM also supports running batch inference with vision language
-models. This example shows how to prepare a dataset with images and run
-batch inference with a vision language model.
+and omni-modal models on multimodal data. To enable multimodal batch inference,
+apply the following 2 adjustments on top of the previous example:
 
-This example applies 2 adjustments on top of the previous example:
+- Set `prepare_multimodal_stage={"enabled": True}` in the `vLLMEngineProcessorConfig`
+- Prepare multimodal data inside the preprocessor.
 
-- set `has_image=True` in `vLLMEngineProcessorConfig`
-- prepare image input inside preprocessor
-
-First, install the required dependencies:
+Prior to running the examples below, install the required dependencies:
 
 .. code-block:: bash
 
-    # Install required dependencies for vision-language models
+    # Install required dependencies for downloading datasets from Hugging Face
     pip install datasets>=4.0.0
+
+Image batch inference with vision language model (VLM)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, load a vision dataset:
 
-.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
     :start-after: def load_vision_dataset():
     :end-before: def create_vlm_config():
@@ -161,25 +164,108 @@ First, load a vision dataset:
 
 Next, configure the VLM processor with the essential settings:
 
-.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
 
-For a more comprehensive VLM configuration with advanced options:
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses. Within the preprocessor,
+structure image data as part of an OpenAI-compatible message. Both image URL and
+`PIL.Image.Image` object are supported.
 
-.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
-    :start-after: def create_vlm_config():
-    :end-before: def run_vlm_example():
-    :dedent: 0
+    :start-after: __image_message_format_example_start__
+    :end-before: __image_message_format_example_end__
+
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __vlm_preprocess_example_start__
+    :end-before: __vlm_preprocess_example_end__
 
 Finally, run the VLM inference:
 
-.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
     :start-after: def run_vlm_example():
-    :end-before: # __vlm_example_end__
+    :end-before: # __vlm_run_example_end__
+    :dedent: 0
+
+Video batch inference with vision language model (VLM)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, load a video dataset:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: def load_video_dataset():
+    :end-before: def create_vlm_video_config():
+    :dedent: 0
+
+Next, configure the VLM processor with the essential settings:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_config_example_start__
+    :end-before: __vlm_video_config_example_end__
+
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses. Within the preprocessor,
+structure video data as part of an OpenAI-compatible message.
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_preprocess_example_start__
+    :end-before: __vlm_video_preprocess_example_end__
+
+Finally, run the VLM inference:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: def run_vlm_video_example():
+    :end-before: # __vlm_video_run_example_end__
+    :dedent: 0
+
+Audio batch inference with omni-modal model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, load an audio dataset:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: def load_audio_dataset():
+    :end-before: def create_omni_audio_config():
+    :dedent: 0
+
+Next, configure the omni-modal processor with the essential settings:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_config_example_start__
+    :end-before: __omni_audio_config_example_end__
+
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the omni-modal model and extract model responses. Within the preprocessor,
+structure audio data as part of an OpenAI-compatible message. Both audio URL and audio
+binary data are supported.
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __audio_message_format_example_start__
+    :end-before: __audio_message_format_example_end__
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_preprocess_example_start__
+    :end-before: __omni_audio_preprocess_example_end__
+
+Finally, run the omni-modal inference:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: def run_omni_audio_example():
+    :end-before: # __omni_audio_run_example_end__
     :dedent: 0
 
 .. _embedding_models:
@@ -212,6 +298,39 @@ For a complete embedding configuration example, see:
     :language: python
     :start-after: __embedding_config_example_start__
     :end-before: __embedding_config_example_end__
+
+.. _classification_models:
+
+Batch inference with classification models
+------------------------------------------
+
+Ray Data LLM supports batch inference with sequence classification models, such as content classifiers and sentiment analyzers:
+
+.. literalinclude:: doc_code/working-with-llms/classification_example.py
+    :language: python
+    :start-after: __classification_example_start__
+    :end-before: __classification_example_end__
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'lol that was so funny haha', 'edu_score': -0.05}
+    {'text': 'Photosynthesis converts light energy...', 'edu_score': 1.73}
+    {'text': "Newton's laws describe...", 'edu_score': 2.52}
+
+Key differences for classification models:
+
+- Set ``task_type="classify"`` (or ``task_type="score"`` for scoring models)
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access classification logits through ``row["embeddings"]``
+
+For a complete classification configuration example, see:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __classification_config_example_start__
+    :end-before: __classification_config_example_end__
 
 .. _openai_compatible_api_endpoint:
 

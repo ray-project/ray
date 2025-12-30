@@ -1251,7 +1251,7 @@
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_llm_processor.html#ray.data.llm.build_llm_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself."
+    "Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_processor.html#ray.data.llm.build_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself."
    ]
   },
   {
@@ -1260,7 +1260,7 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "from ray.data.llm import build_llm_processor"
+    "from ray.data.llm import build_processor"
    ]
   },
   {
@@ -1301,7 +1301,7 @@
     }
    ],
    "source": [
-    "processor = build_llm_processor(\n",
+    "processor = build_processor(\n",
     "    config,\n",
     "    preprocess=lambda row: dict(\n",
     "        model=lora_path,  # REMOVE this line if doing inference with just the base model\n",

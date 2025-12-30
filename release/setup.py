@@ -13,7 +13,7 @@ setup(
     description="The Ray OSS release testing package",
     url="https://github.com/ray-project/ray",
     install_requires=[
-        # Keep this in sync with requirements_buildkite.in
+        # Keep this in sync with requirements_py310.in
         "aioboto3",
         "anyscale >= 0.26.1",
         "aws_requests_auth",
@@ -33,7 +33,7 @@ setup(
         "pydantic >= 2.5.0",
         "PyGithub",
         "requests",
-        "twine == 6.1.0",
+        "twine == 6.2.0",
         "docker >= 7.1.0",
     ],
 )
