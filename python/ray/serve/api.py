@@ -327,8 +327,10 @@ def deployment(
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
-    bundle_label_selector: Default[List[Dict[str, str]]] = DEFAULT.VALUE,
-    fallback_strategy: Default[List[Dict[str, Any]]] = DEFAULT.VALUE,
+    placement_group_bundle_label_selector: Default[
+        List[Dict[str, str]]
+    ] = DEFAULT.VALUE,
+    placement_group_fallback_strategy: Default[List[Dict[str, Any]]] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -379,9 +381,9 @@ def deployment(
             This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
-        bundle_label_selector: A list of label selectors to apply to the
+        placement_group_bundle_label_selector: A list of label selectors to apply to the
             placement group on a per-bundle level.
-        fallback_strategy: If specified, expresses soft constraints through a list
+        placement_group_fallback_strategy: If specified, expresses soft constraints through a list
             of decorator options to fall back on when scheduling on a node.
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
@@ -501,13 +503,15 @@ def deployment(
                 if placement_group_strategy is not DEFAULT.VALUE
                 else None
             ),
-            bundle_label_selector=(
-                bundle_label_selector
-                if bundle_label_selector is not DEFAULT.VALUE
+            placement_group_bundle_label_selector=(
+                placement_group_bundle_label_selector
+                if placement_group_bundle_label_selector is not DEFAULT.VALUE
                 else None
             ),
-            fallback_strategy=(
-                fallback_strategy if fallback_strategy is not DEFAULT.VALUE else None
+            placement_group_fallback_strategy=(
+                placement_group_fallback_strategy
+                if placement_group_fallback_strategy is not DEFAULT.VALUE
+                else None
             ),
             max_replicas_per_node=(
                 max_replicas_per_node

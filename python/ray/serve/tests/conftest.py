@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
+from unittest import mock
 
 import httpx
 import pytest
@@ -355,7 +356,7 @@ def _get_node_id():
 
 # Test fixture to start a Serve instance in a RayCluster with two labeled nodes
 @pytest.fixture
-def serve_instance_with_labeled_nodes():
+def serve_instance_with_labeled_nodes(request):
     cluster = Cluster()
     # Unlabeled default node.
     node0_config = {
@@ -380,9 +381,16 @@ def serve_instance_with_labeled_nodes():
     cluster.add_node(**node2_config)
     node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
 
-    serve.start()
-    yield _get_global_client(), node_1_id, node_2_id
+    # Check if the test passed a parameter to the fixture.
+    use_compaction = getattr(request, "param", None)
+    env_vars = {}
+    if use_compaction is not None:
+        env_vars = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": use_compaction}
 
-    serve.shutdown()
+    with mock.patch.dict(os.environ, env_vars):
+        serve.start()
+        yield _get_global_client(), node_1_id, node_2_id
+        serve.shutdown()
+
     ray.shutdown()
     cluster.shutdown()

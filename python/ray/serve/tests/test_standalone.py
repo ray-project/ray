@@ -8,7 +8,6 @@ import random
 import socket
 import sys
 import time
-from unittest import mock
 
 import httpx
 import pytest
@@ -953,99 +952,82 @@ def test_serve_start_proxy_location(ray_shutdown, options):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_compaction", ["0", "1"])
-async def test_serve_label_selector_api(
-    serve_instance_with_labeled_nodes, use_compaction
-):
+@pytest.mark.parametrize("serve_instance_with_labeled_nodes", ["0", "1"], indirect=True)
+async def test_serve_label_selector_api(serve_instance_with_labeled_nodes):
     """
     Verifies that label selectors work correctly for both Actors and Placement Groups.
     This test also verifies that label selectors are respected when scheduling with a
     preferred node ID for resource compaction.
     """
-    serve_instance, node_1_id, node_2_id = serve_instance_with_labeled_nodes
+    serve_instance, us_west_node_id, us_east_node_id = serve_instance_with_labeled_nodes
 
-    # Restart Serve with the specific scheduler feature flag for this iteration
-    serve.shutdown()
-    with mock.patch.dict(
-        os.environ, {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": use_compaction}
-    ):
-        serve.start()
+    # Validate a Serve deplyoment utilizes a label_selector when passed to the Ray Actor options.
+    @serve.deployment(ray_actor_options={"label_selector": {"region": "us-west"}})
+    class DeploymentActor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
-        # Validate a Serve deplyoment utilizes a label_selector when passed to the Ray Actor options.
-        @serve.deployment(ray_actor_options={"label_selector": {"region": "us-west"}})
-        class DeploymentActor:
-            def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
+    handle = serve.run(DeploymentActor.bind(), name="actor_app")
+    assert await handle.get_node_id.remote() == us_west_node_id
+    serve.delete("actor_app")
 
-        handle = serve.run(DeploymentActor.bind(), name="actor_app")
-        assert await handle.get_node_id.remote() == node_1_id
-        serve.delete("actor_app")
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and PACK strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="PACK",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGPack:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
-        # Validate placement_group scheduling strategy with bundle_label_selector
-        # and PACK strategy.
-        @serve.deployment(
-            placement_group_bundles=[{"CPU": 1}],
-            placement_group_strategy="PACK",
-            bundle_label_selector=[{"gpu-type": "H100"}],
-        )
-        class DeploymentPGPack:
-            def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
+    handle_pack = serve.run(DeploymentPGPack.bind(), name="pg_pack_app")
+    assert await handle_pack.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_pack_app")
 
-        handle_pack = serve.run(DeploymentPGPack.bind(), name="pg_pack_app")
-        assert await handle_pack.get_node_id.remote() == node_2_id
-        serve.delete("pg_pack_app")
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and SPREAD strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="SPREAD",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGSpread:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
-        # Validate placement_group scheduling strategy with bundle_label_selector
-        # and SPREAD strategy.
-        @serve.deployment(
-            placement_group_bundles=[{"CPU": 1}],
-            placement_group_strategy="SPREAD",
-            bundle_label_selector=[{"gpu-type": "H100"}],
-        )
-        class DeploymentPGSpread:
-            def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
-
-        handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
-        assert await handle_spread.get_node_id.remote() == node_2_id
-        serve.delete("pg_spread_app")
+    handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
+    assert await handle_spread.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_spread_app")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_compaction", ["0", "1"])
-async def test_serve_fallback_strategy_api(
-    serve_instance_with_labeled_nodes, use_compaction
-):
+@pytest.mark.parametrize("serve_instance_with_labeled_nodes", ["0", "1"], indirect=True)
+async def test_serve_fallback_strategy_api(serve_instance_with_labeled_nodes):
     """
     Verifies that fallback strategies allow scheduling on alternative nodes when
     primary constraints fail.
     """
-    serve_instance, node_1_id, node_2_id = serve_instance_with_labeled_nodes
+    serve_instance, _, h100_node_id = serve_instance_with_labeled_nodes
 
-    serve.shutdown()
-    with mock.patch.dict(
-        os.environ, {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": use_compaction}
-    ):
-        serve.start()
+    # Fallback strategy specified for Ray Actor in Serve deployment.
+    @serve.deployment(
+        ray_actor_options={
+            "label_selector": {"region": "unavailable"},
+            "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
+        }
+    )
+    class FallbackDeployment:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
-        # Fallback strategy specified for Ray Actor in Serve deployment.
-        @serve.deployment(
-            ray_actor_options={
-                "label_selector": {"region": "unavailable"},
-                "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
-            }
-        )
-        class FallbackDeployment:
-            def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
+    # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
+    # when support is added.
 
-        # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
-        # when support is added.
-
-        handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
-        assert await handle.get_node_id.remote() == node_2_id
-        serve.delete("fallback_app")
+    handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
+    assert await handle.get_node_id.remote() == h100_node_id
+    serve.delete("fallback_app")
 
 
 if __name__ == "__main__":
