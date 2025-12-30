@@ -39,10 +39,8 @@ from ray.data._internal.logical.operators.one_to_one_operator import Download, L
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.planner.checkpoint.plan_read_op import (
+from ray.data._internal.planner.checkpoint import (
     plan_read_op_with_checkpoint_filter,
-)
-from ray.data._internal.planner.checkpoint.plan_write_op import (
     plan_write_op_with_checkpoint_writer,
 )
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
@@ -62,7 +60,6 @@ LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 PlanLogicalOpFn = Callable[
     [LogicalOperatorType, List[PhysicalOperator], DataContext], PhysicalOperator
 ]
-_CHECKPOINT_FILTER_OPS = Read  # Currently only Read is supported for checkpointing
 
 
 def plan_input_data_op(
@@ -171,6 +168,8 @@ class Planner:
         StreamingSplit: plan_streaming_split_op,
         Download: plan_download_op,
     }
+    # Operators that support checkpoint filtering. Subclasses can override.
+    _CHECKPOINT_FILTER_OPS = (Read,)
 
     def __init__(self):
         self._supports_checkpointing = False
@@ -179,21 +178,23 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
-        if checkpoint_config is not None and _supports_checkpointing(logical_plan):
+        if checkpoint_config is not None and self._check_supports_checkpointing(
+            logical_plan
+        ):
             self._supports_checkpointing = True
 
-            checkpoint_callback = LoadCheckpointCallback(checkpoint_config)
+            checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
             add_execution_callback(checkpoint_callback, logical_plan.context)
             load_checkpoint = checkpoint_callback.load_checkpoint
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = _get_plan_fns_for_checkpointing(
+            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
                 load_checkpoint
             )
 
         elif checkpoint_config is not None:
-            assert not _supports_checkpointing(logical_plan)
+            assert not self._check_supports_checkpointing(logical_plan)
             warnings.warn(
                 "You've enabled checkpointing, but the logical plan doesn't support "
                 "checkpointing. Checkpointing will be disabled."
@@ -265,6 +266,44 @@ class Planner:
         op_map[physical_op] = logical_op
         return physical_op, op_map
 
+    def _create_checkpoint_callback(self, checkpoint_config) -> LoadCheckpointCallback:
+        """Factory method to create the LoadCheckpointCallback.
+
+        Subclasses can override this to use a different callback implementation.
+        """
+        return LoadCheckpointCallback(checkpoint_config)
+
+    def _get_plan_fns_for_checkpointing(
+        self,
+        load_checkpoint: Callable[[], ObjectRef],
+    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        plan_fns = {
+            Read: functools.partial(
+                plan_read_op_with_checkpoint_filter,
+                load_checkpoint=load_checkpoint,
+            ),
+            Write: plan_write_op_with_checkpoint_writer,
+        }
+        return plan_fns
+
+    def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
+        """Check if the logical plan supports checkpointing.
+
+        Subclasses can override _CHECKPOINT_FILTER_OPS to support more operators.
+        """
+        if not isinstance(logical_plan.dag, (Write, StreamingSplit)):
+            return False
+
+        def _all_paths_contain_checkpoint_filter(op: LogicalOperator) -> bool:
+            if isinstance(op, self._CHECKPOINT_FILTER_OPS):
+                return True
+            return all(
+                _all_paths_contain_checkpoint_filter(input_dep)
+                for input_dep in op.input_dependencies
+            )
+
+        return _all_paths_contain_checkpoint_filter(logical_plan.dag)
+
 
 def find_plan_fn(
     logical_op: LogicalOperator, plan_fns: Dict[Type[LogicalOperator], PlanLogicalOpFn]
@@ -288,33 +327,3 @@ def find_plan_fn(
         if isinstance(logical_op, op_type):
             return plan_fn
     return None
-
-
-def _supports_checkpointing(logical_plan: LogicalPlan) -> bool:
-    # TODO: Add useful warnings and error messages if we don't support checkpointing.
-    if not isinstance(logical_plan.dag, (Write, StreamingSplit)):
-        return False
-
-    def _all_paths_contain_checkpoint_filter(op: LogicalOperator) -> bool:
-        if isinstance(op, _CHECKPOINT_FILTER_OPS):
-            return True
-
-        return all(
-            _all_paths_contain_checkpoint_filter(input_dep)
-            for input_dep in op.input_dependencies
-        )
-
-    return _all_paths_contain_checkpoint_filter(logical_plan.dag)
-
-
-def _get_plan_fns_for_checkpointing(
-    load_checkpoint: Callable[[], ObjectRef],
-) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
-    plan_fns = {
-        Read: functools.partial(
-            plan_read_op_with_checkpoint_filter,
-            load_checkpoint=load_checkpoint,
-        ),
-        Write: plan_write_op_with_checkpoint_writer,
-    }
-    return plan_fns

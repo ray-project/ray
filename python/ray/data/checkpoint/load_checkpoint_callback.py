@@ -21,8 +21,17 @@ class LoadCheckpointCallback(ExecutionCallback):
         assert config is not None
         self._config = config
 
-        self._ckpt_filter = BatchBasedCheckpointFilter(config)
+        self._ckpt_filter = self._create_checkpoint_filter(config)
         self._checkpoint_ref: Optional[ObjectRef[Block]] = None
+
+    def _create_checkpoint_filter(
+        self, config: CheckpointConfig
+    ) -> BatchBasedCheckpointFilter:
+        """Factory method to create the checkpoint filter.
+
+        Subclasses can override this to use a different filter implementation.
+        """
+        return BatchBasedCheckpointFilter(config)
 
     def before_execution_starts(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config

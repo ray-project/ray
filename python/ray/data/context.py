@@ -834,7 +834,7 @@ class DataContext:
     def checkpoint_config(
         self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
     ) -> None:
-        """Set the check point configuration."""
+        """Set the checkpoint configuration."""
         if value is None:
             self._checkpoint_config = None
         elif isinstance(value, dict):

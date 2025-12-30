@@ -495,7 +495,7 @@ def test_recovery_skips_checkpointed_rows(
         fn_constructor_args=[coordinator_actor, max_num_items, ctx.checkpoint_config],
         concurrency=1,
         batch_size=None,
-        num_cpus=1.1,  # Use a different num_cpus to avoid operater fusion.
+        num_cpus=1.1,  # Use a different num_cpus to avoid operator fusion.
     )
 
     # Should fail in the middle.

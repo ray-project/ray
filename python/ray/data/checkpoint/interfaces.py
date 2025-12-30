@@ -68,7 +68,7 @@ class CheckpointConfig:
             restoration when reading from `checkpoint_path`.
     """
 
-    DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "ANYSCALE_ARTIFACT_STORAGE"
+    DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "RAY_DATA_CHECKPOINT_PATH_BUCKET"
     DEFAULT_CHECKPOINT_PATH_DIR = "ray_data_checkpoint"
 
     def __init__(
@@ -118,7 +118,7 @@ class CheckpointConfig:
         if artifact_storage is None:
             raise InvalidCheckpointingConfig(
                 f"`{self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR}` env var is not set, "
-                "please explictly set `CheckpointConfig.checkpoint_path`."
+                "please explicitly set `CheckpointConfig.checkpoint_path`."
             )
         return f"{artifact_storage}/{self.DEFAULT_CHECKPOINT_PATH_DIR}"
 

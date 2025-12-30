@@ -119,6 +119,9 @@ class CheckpointLoader:
         # Post-process the block
         checkpoint_block_ref: ObjectRef[Block] = self._postprocess_block(block_ref)
 
+        # Validate the loaded checkpoint
+        self._validate_loaded_checkpoint(schema, metadata)
+
         logger.info(
             "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
             type(self).__name__,
@@ -139,6 +142,12 @@ class CheckpointLoader:
     def _postprocess_block(self, block_ref: ObjectRef[Block]) -> ObjectRef[Block]:
         """Combine the block so it has fewer chunks."""
         return _combine_chunks.remote(block_ref)
+
+    def _validate_loaded_checkpoint(
+        self, schema: Schema, metadata: BlockMetadata
+    ) -> None:
+        """Validate the loaded checkpoint. Subclasses can override for custom validation."""
+        pass
 
 
 class IdColumnCheckpointLoader(CheckpointLoader):
