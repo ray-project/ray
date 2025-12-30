@@ -232,25 +232,17 @@ def _local_environment_information(
     command_runner: CommandRunner,
     build_timeout: int,
     cluster_timeout: int,
-    cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
     # Start cluster
-    if cluster_id:
-        buildkite_group(":rocket: Using existing cluster")
-        # Re-use existing cluster ID for development
-        cluster_manager.cluster_id = cluster_id
-        cluster_manager.cluster_name = get_cluster_name(cluster_id)
-    else:
-        buildkite_group(":gear: Building cluster environment")
+    buildkite_group(":gear: Building cluster environment")
+    if cluster_env_id:
+        cluster_manager.cluster_env_id = cluster_env_id
 
-        if cluster_env_id:
-            cluster_manager.cluster_env_id = cluster_env_id
+    cluster_manager.build_configs(timeout=build_timeout)
 
-        cluster_manager.build_configs(timeout=build_timeout)
-
-        if isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
+    if isinstance(command_runner, AnyscaleJobRunner):
+        command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
     result.cluster_url = cluster_manager.get_cluster_url()
     result.cluster_id = cluster_manager.cluster_id
@@ -399,8 +391,6 @@ def run_release_test(
     anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -418,8 +408,6 @@ def run_release_test(
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
         image=image,
@@ -496,8 +484,6 @@ def run_release_test_anyscale(
     result: Result,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -522,13 +508,16 @@ def run_release_test_anyscale(
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
         # If image is provided, create/reuse a custom cluster environment
-        if image and not cluster_env_id:
+        if image:
             cluster_env_id = create_cluster_env_from_image(
                 image, test.get_name(), test.get_byod_runtime_env()
             )
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
+        else:
+            cluster_env_id = None
+
         (
             prepare_cmd,
             prepare_timeout,
@@ -550,7 +539,6 @@ def run_release_test_anyscale(
             command_runner,
             build_timeout,
             cluster_timeout,
-            cluster_id,
             cluster_env_id,
         )
 
