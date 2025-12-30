@@ -152,6 +152,42 @@ cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
         const CRayStatus &status() const
         T &value()
 
+cdef extern from "ray/common/status.h" namespace "ray::StatusT" nogil:
+    cdef cppclass CStatusTIOError "ray::StatusT::IOError":
+        CStatusTIOError(const c_string &msg)
+        c_string message() const
+
+    cdef cppclass CStatusTTimedOut "ray::StatusT::TimedOut":
+        CStatusTTimedOut(const c_string &msg)
+        c_string message() const
+
+    cdef cppclass CStatusTInvalid "ray::StatusT::Invalid":
+        CStatusTInvalid(const c_string &msg)
+        c_string message() const
+
+cdef extern from "ray/common/status.h" namespace "ray" nogil:
+    cdef cppclass CWaitForPersistedPortResult "ray::StatusSetOr<int, ray::StatusT::IOError, ray::StatusT::TimedOut, ray::StatusT::Invalid>":
+        c_bool has_value()
+        c_bool has_error()
+        int &value()
+        c_string message()
+
+cdef extern from "ray/util/port_persistence.h" namespace "ray" nogil:
+    c_string GetPortFileName "ray::GetPortFileName"(
+        const CNodeID &node_id,
+        const c_string &port_name)
+    CRayStatus PersistPort "ray::PersistPort"(
+        const c_string &dir,
+        const CNodeID &node_id,
+        const c_string &port_name,
+        int port)
+    CWaitForPersistedPortResult WaitForPersistedPort "ray::WaitForPersistedPort"(
+        const c_string &dir,
+        const CNodeID &node_id,
+        const c_string &port_name,
+        int timeout_ms,
+        int poll_interval_ms)
+
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
                                  const CTaskID &parent_task_id,
@@ -722,6 +758,8 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string object_store_socket_name() const
         c_string raylet_socket_name() const
         int metrics_export_port() const
+        int metrics_agent_port() const
+        int dashboard_agent_listen_port() const
         int runtime_env_agent_port() const
         CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
@@ -825,6 +863,12 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyNodeZone
     cdef const char[] kLabelKeyNodeGroup
     cdef const char[] kLabelKeyTpuTopology
+    # Port names for local port discovery
+    cdef const char[] kRuntimeEnvAgentPortName
+    cdef const char[] kMetricsAgentPortName
+    cdef const char[] kMetricsExportPortName
+    cdef const char[] kDashboardAgentListenPortName
+    cdef const char[] kGcsServerPortName
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
