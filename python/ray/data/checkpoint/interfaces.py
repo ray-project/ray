@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ray.data.datasource import PathPartitionFilter
 
 
+@PublicAPI(stability="alpha")
 class CheckpointBackend(Enum):
     """Supported backends for storing and reading checkpoint files.
 
@@ -157,6 +158,7 @@ class CheckpointConfig:
             ) from e
 
 
+@PublicAPI(stability="alpha")
 class InvalidCheckpointingConfig(Exception):
     """Exception which indicates that the checkpointing
     configuration is invalid."""
@@ -164,6 +166,7 @@ class InvalidCheckpointingConfig(Exception):
     pass
 
 
+@PublicAPI(stability="alpha")
 class InvalidCheckpointingOperators(Exception):
     """Exception which indicates that the DAG is not eligible for checkpointing,
     due to one or more incompatible operators."""
