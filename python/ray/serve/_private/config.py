@@ -904,6 +904,8 @@ class ReplicaConfig:
             "ray_actor_options": self.ray_actor_options,
             "placement_group_bundles": self.placement_group_bundles,
             "placement_group_strategy": self.placement_group_strategy,
+            "placement_group_bundle_label_selector": self.placement_group_bundle_label_selector,
+            "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
             "max_replicas_per_node": self.max_replicas_per_node,
         }
 
