@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._private.ray_constants import env_bool, env_float
+from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -52,14 +53,14 @@ class ResourceManager:
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is enabled.
+    # when `OpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
         "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
     )
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is not enabled.
+    # when `OpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION = 0.25
 
     def __init__(
@@ -88,12 +89,9 @@ class ResourceManager:
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
 
-        self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-
-        if data_context.op_resource_reservation_enabled:
-            self._op_resource_allocator = ReservationOpResourceAllocator(
-                self, data_context.op_resource_reservation_ratio
-            )
+        self._op_resource_allocator: Optional[
+            "OpResourceAllocator"
+        ] = create_resource_allocator(self, data_context)
 
         self._object_store_memory_limit_fraction = (
             data_context.override_object_store_memory_limit_fraction
