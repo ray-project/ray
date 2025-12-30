@@ -330,7 +330,6 @@ def deployment(
     placement_group_bundle_label_selector: Default[
         List[Dict[str, str]]
     ] = DEFAULT.VALUE,
-    placement_group_fallback_strategy: Default[List[Dict[str, Any]]] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -383,8 +382,6 @@ def deployment(
             specified via `placement_group_bundles`. Defaults to `PACK`.
         placement_group_bundle_label_selector: A list of label selectors to apply to the
             placement group on a per-bundle level.
-        placement_group_fallback_strategy: If specified, expresses soft constraints through a list
-            of decorator options to fall back on when scheduling on a node.
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
@@ -506,11 +503,6 @@ def deployment(
             placement_group_bundle_label_selector=(
                 placement_group_bundle_label_selector
                 if placement_group_bundle_label_selector is not DEFAULT.VALUE
-                else None
-            ),
-            placement_group_fallback_strategy=(
-                placement_group_fallback_strategy
-                if placement_group_fallback_strategy is not DEFAULT.VALUE
                 else None
             ),
             max_replicas_per_node=(
