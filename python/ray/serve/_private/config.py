@@ -654,7 +654,7 @@ class ReplicaConfig:
             # Other options
             "runtime_env",
             "label_selector",
-            "placement_group_fallback_strategy",
+            "fallback_strategy",
         }
 
         for option in self.ray_actor_options:
@@ -726,7 +726,7 @@ class ReplicaConfig:
                 bundles=self.placement_group_bundles,
                 strategy=self.placement_group_strategy or "PACK",
                 lifetime="detached",
-                placement_group_bundle_label_selector=self.placement_group_bundle_label_selector,
+                bundle_label_selector=self.placement_group_bundle_label_selector,
             )
 
             resource_error_prefix = (

@@ -952,7 +952,6 @@ def test_serve_start_proxy_location(ray_shutdown, options):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("serve_instance_with_labeled_nodes", ["0", "1"], indirect=True)
 async def test_serve_label_selector_api(serve_instance_with_labeled_nodes):
     """
     Verifies that label selectors work correctly for both Actors and Placement Groups.
@@ -1003,7 +1002,6 @@ async def test_serve_label_selector_api(serve_instance_with_labeled_nodes):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("serve_instance_with_labeled_nodes", ["0", "1"], indirect=True)
 async def test_serve_fallback_strategy_api(serve_instance_with_labeled_nodes):
     """
     Verifies that fallback strategies allow scheduling on alternative nodes when
