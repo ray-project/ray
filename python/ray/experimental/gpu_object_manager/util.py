@@ -1,3 +1,4 @@
+import inspect
 import threading
 from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
@@ -108,6 +109,15 @@ def register_tensor_transport_on_actors(
 
     transport_name = transport_name.upper()
     transport_manager_class, devices = transport_manager_info[transport_name]
+
+    # Get the module the class was defined in.
+    module = inspect.getmodule(transport_manager_class)
+    # If the class doesn't have a module, it will pickled by value anyways.
+    if module is not None:
+        # If the class has a module, cloudpickle will pickle by ref. We need to
+        # tell it to pickle classes in this module by value, so this custom class
+        # can be deserialized on the actor.
+        ray.cloudpickle.register_pickle_by_value(module)
 
     def register_transport_on_actor(self):
         from ray.experimental.gpu_object_manager.util import (

@@ -133,7 +133,6 @@ def test_register_and_use_custom_transport(ray_start_regular):
         def sum(self, data):
             return data.sum().item()
 
-    ray.cloudpickle.register_pickle_by_value(sys.modules[__name__])
     actors = [Actor.remote() for _ in range(2)]
     register_tensor_transport_on_actors("shared_memory", actors)
     ref = actors[0].echo.remote(torch.tensor([1, 2, 3]))

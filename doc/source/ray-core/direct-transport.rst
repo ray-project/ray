@@ -328,9 +328,7 @@ from the process where you submit the actor tasks that will use the tensor trans
 Then, call `register_tensor_transport_on_actors <ray.experimental.register_tensor_transport_on_actors>` with the transport name and the actors that will use the tensor transport (the source and destination actors).
 See this example `test file <https://github.com/ray-project/ray/blob/master/python/ray/tests/gpu_objects/test_gpu_objects_gloo.py>`__  for a full working custom transport example.
 
-Current drawbacks:
-- If the actor restarts, you will need to register the transport again on the actor through `register_tensor_transport_on_actors`.
-- You might need to serialize your class by value if the module your transport manager class is in is not importable on the actor. You can do this using `ray.cloudpickle.register_pickle_by_value` as shown in the example below.
+Note that if the actor restarts, you need to register the transport again on the actor through `register_tensor_transport_on_actors`.
 
 .. code-block:: python
 
@@ -355,11 +353,6 @@ Current drawbacks:
    class CustomTransport(TensorTransportManager):
       ...
 
-
-   # Force cloudpickle to serialize all classes from this module by value,
-   # not by module reference. This is needed because the file may not be
-   # importable as a module in the actor's environment.
-   ray.cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
    register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
    register_tensor_transport_on_actors("CUSTOM", [actor1, actor2])
