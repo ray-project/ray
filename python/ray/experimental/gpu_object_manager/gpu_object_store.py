@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
 from ray._raylet import ObjectRef
-from ray.experimental.gpu_object_manager.types import (
+from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )

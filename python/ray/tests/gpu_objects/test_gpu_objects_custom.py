@@ -9,13 +9,11 @@ import torch
 
 import ray
 from ray.experimental import (
+    CommunicatorMetadata,
     TensorTransportManager,
+    TensorTransportMetadata,
     register_tensor_transport,
     register_tensor_transport_on_actors,
-)
-from ray.experimental.gpu_object_manager.types import (
-    CommunicatorMetadata,
-    TensorTransportMetadata,
 )
 
 

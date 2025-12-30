@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
-    from ray.experimental.gpu_object_manager.types import (
+    from ray.experimental.gpu_object_manager.tensor_transport_manager import (
         CommunicatorMetadata,
         TensorTransportMetadata,
     )

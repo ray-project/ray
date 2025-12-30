@@ -3,7 +3,9 @@ from ray.experimental.gpu_object_manager.gpu_object_manager import (
     wait_tensor_freed,
 )
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+    CommunicatorMetadata,
     TensorTransportManager,
+    TensorTransportMetadata,
 )
 from ray.experimental.gpu_object_manager.util import (
     register_tensor_transport,
@@ -16,4 +18,6 @@ __all__ = [
     "register_tensor_transport",
     "register_tensor_transport_on_actors",
     "TensorTransportManager",
+    "TensorTransportMetadata",
+    "CommunicatorMetadata",
 ]
