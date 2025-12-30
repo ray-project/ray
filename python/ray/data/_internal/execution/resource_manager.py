@@ -324,11 +324,7 @@ class ResourceManager:
         return self._op_resource_allocator
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(
-            op,
-            task_resource_usage=self._op_usages,
-            output_object_store_usage=self._mem_op_outputs,
-        )
+        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the budget for the given operator, or None if the operator
@@ -506,13 +502,7 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def max_task_output_bytes_to_read(
-        self,
-        op: PhysicalOperator,
-        *,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        output_object_store_usage: Dict[PhysicalOperator, int],
-    ) -> Optional[int]:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
         ...
@@ -758,13 +748,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
-    def max_task_output_bytes_to_read(
-        self,
-        op: PhysicalOperator,
-        *,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        output_object_store_usage: Dict[PhysicalOperator, int],
-    ) -> Optional[int]:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
         res = self._op_budgets[op].object_store_memory
