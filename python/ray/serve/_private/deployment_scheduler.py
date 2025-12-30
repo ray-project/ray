@@ -729,7 +729,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     # Actor: Use Actor label selector
                     if "label_selector" in scheduling_request.actor_options:
                         primary_labels = [
-                            scheduling_request.actor_options["label_selector"]
+                            scheduling_request.actor_options["label_selector"] or {}
                         ]
 
                 strategies_to_try.append(
@@ -753,7 +753,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     for fallback in scheduling_request.actor_options[
                         "fallback_strategy"
                     ]:
-                        fallback_labels = [fallback.get("label_selector", {})]
+                        fallback_labels = [fallback.get("label_selector", {}) or {}]
                         strategies_to_try.append(
                             (scheduling_request.required_resources, fallback_labels)
                         )
