@@ -98,9 +98,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
   }
 
   bool CheckHealth() {
-    auto channel =
-        grpc::CreateChannel(BuildAddress("127.0.0.1", config_.grpc_server_port),
-                            grpc::InsecureChannelCredentials());
+    auto channel = rpc::BuildChannel("127.0.0.1", config_.grpc_server_port);
     auto stub = grpc::health::v1::Health::NewStub(channel);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + 1s);

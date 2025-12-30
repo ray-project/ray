@@ -1,4 +1,5 @@
 import logging
+import os
 from types import ModuleType
 from typing import Dict, List, Optional
 
@@ -83,11 +84,14 @@ def get_token_auth_middleware(
 
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
-
     if not auth_utils.is_token_auth_enabled():
+        mode = os.environ.get("RAY_AUTH_MODE", "").lower()
+        if mode not in ("token", "k8s"):
+            return {}
+    try:
+        from ray._raylet import AuthenticationTokenLoader
+    except ImportError:
         return {}
-
-    from ray._raylet import AuthenticationTokenLoader
 
     # Check if user provided their own Authorization header (case-insensitive)
     has_user_auth = any(

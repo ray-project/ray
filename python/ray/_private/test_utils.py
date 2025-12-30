@@ -1516,13 +1516,17 @@ class RayletKiller(NodeKillerBase):
             self.killed.add(node_id)
 
     def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
         from grpc._channel import _InactiveRpcError
 
+        from ray._private.grpc_utils import init_grpc_channel
         from ray.core.generated import node_manager_pb2_grpc
 
         raylet_address = build_address(ip, port)
-        channel = grpc.insecure_channel(raylet_address)
+        channel = init_grpc_channel(
+            raylet_address,
+            ray_constants.GLOBAL_GRPC_OPTIONS,
+            asynchronous=False,
+        )
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
             stub.ShutdownRaylet(
@@ -1919,15 +1923,19 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
-    import grpc
     from grpc._channel import _InactiveRpcError
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(
+        raylet_address,
+        ray_constants.GLOBAL_GRPC_OPTIONS,
+        asynchronous=False,
+    )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
         stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))

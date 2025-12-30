@@ -1623,10 +1623,11 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     assert wait_until_server_available(ray_context["webui_url"]) is True
     webui_url = format_web_url(ray_context["webui_url"])
     blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+    headers = _merge_auth_headers()
 
     async def make_blocking_call():
         async with aiohttp.ClientSession() as session:
-            async with session.get(blocking_url) as resp:
+            async with session.get(blocking_url, headers=headers) as resp:
                 resp.raise_for_status()
                 return await resp.text()
 
