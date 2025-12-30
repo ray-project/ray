@@ -21,11 +21,14 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 from benchmark import Benchmark, BenchmarkMetric
+from transformers import AutoModel, AutoTokenizer
 
 import ray
 from ray.data import Dataset, ActorPoolStrategy
+
+# Default HuggingFace model for inference
+DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 @dataclass
@@ -52,6 +55,7 @@ class PipelineConfig:
     text_columns: List[str]
     extra_output_columns: Dict[str, Any]
     tokenizer_max_length: int = 128
+    model_name: str = DEFAULT_MODEL_NAME
 
 
 def parse_args():
@@ -109,25 +113,18 @@ def parse_args():
         default=128,
         help="Max sequence length for tokenization.",
     )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=DEFAULT_MODEL_NAME,
+        help="HuggingFace model name for inference.",
+    )
     return parser.parse_args()
 
 
 # =============================================================================
 # Preprocessing Function (Pandas)
 # =============================================================================
-
-# Tokenizer is loaded once per worker and cached
-_tokenizer = None
-
-
-def get_tokenizer():
-    """Lazily load and cache the tokenizer."""
-    global _tokenizer
-    if _tokenizer is None:
-        from transformers import AutoTokenizer
-
-        _tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    return _tokenizer
 
 
 def preprocessing_task_pandas(
@@ -136,15 +133,15 @@ def preprocessing_task_pandas(
     feature_columns: List[str],
     text_columns: List[str],
     metadata_prefix: str = "metadata_",
-    max_length: int = 128,
 ) -> pd.DataFrame:
     """
-    Preprocessing task using Pandas with real tokenization.
+    Preprocessing task using Pandas.
 
-    Mimics production preprocessing with actual tokenization.
-    Renames metadata columns with prefix and applies transformations.
+    Mimics production preprocessing with:
+    - Metadata columns passed through with prefix
+    - Text columns passed through for model tokenization
+    - Feature columns normalized
     """
-    tokenizer = get_tokenizer()
     result = {}
 
     # Pass through metadata columns with prefix
@@ -152,19 +149,10 @@ def preprocessing_task_pandas(
         if col in batch.columns:
             result[f"{metadata_prefix}{col}"] = batch[col]
 
-    # Process text columns with tokenization
+    # Pass through text columns (tokenization happens in inference actor)
     for col in text_columns:
         if col in batch.columns:
-            texts = batch[col].fillna("").astype(str).tolist()
-            encoded = tokenizer(
-                texts,
-                padding="max_length",
-                truncation=True,
-                max_length=max_length,
-                return_tensors="np",
-            )
-            result[f"input_ids_{col}"] = list(encoded["input_ids"])
-            result[f"attention_mask_{col}"] = list(encoded["attention_mask"])
+            result[f"text_{col}"] = batch[col].fillna("").astype(str)
 
     # Process feature columns (numeric)
     # Cast to float64 to handle DECIMAL types from Parquet which become object dtype
@@ -183,73 +171,66 @@ def preprocessing_task_pandas(
 
 
 # =============================================================================
-# Inference Model and Actor
+# Inference Actor with HuggingFace Model
 # =============================================================================
-
-
-class InferenceModel(nn.Module):
-    """
-    Simple MLP model for inference benchmarking.
-
-    Architecture mirrors production inference patterns with embedding layers
-    for token inputs and dense layers for feature processing.
-    """
-
-    def __init__(self, input_dim: int, hidden_dim: int = 256, output_dim: int = 10):
-        super().__init__()
-        self.feature_net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.feature_net(x)
 
 
 class InferenceActor:
     """
-    Stateful inference actor that performs actual GPU computation.
+    Stateful inference actor that performs GPU inference using HuggingFace models.
 
-    Loads model weights on initialization and performs inference on batches
-    using PyTorch on the configured device (GPU or CPU).
+    Downloads model weights on initialization and performs inference on batches
+    using the configured device (GPU or CPU).
     Supports metadata passthrough and extra output columns.
     """
 
     def __init__(
         self,
-        model_ref: ray.ObjectRef,
+        model_name: str,
+        text_columns: List[str],
         metadata_columns: List[str],
         extra_output_columns: Dict[str, Any],
+        max_length: int = 128,
         device: str = "cuda",
     ):
-        self.model_config = ray.get(model_ref)
+        self.model_name = model_name
+        self.text_columns = text_columns
         self.metadata_columns = metadata_columns
         self.extra_output_columns = extra_output_columns
+        self.max_length = max_length
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         self._init_model()
 
     def _init_model(self):
-        """Initialize model on the appropriate device."""
-        input_dim = self.model_config["input_dim"]
-        hidden_dim = self.model_config["hidden_dim"]
-        output_dim = self.model_config["output_dim"]
-
-        self.model = InferenceModel(input_dim, hidden_dim, output_dim)
-        self.model.load_state_dict(self.model_config["state_dict"])
+        """Download and initialize HuggingFace model on the appropriate device."""
+        print(f"Loading HuggingFace model: {self.model_name}")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.model = AutoModel.from_pretrained(self.model_name)
         self.model.to(self.device)
         self.model.eval()
+        print(f"Model loaded on device: {self.device}")
+
+    def _mean_pooling(self, model_output, attention_mask):
+        """Apply mean pooling to get sentence embeddings."""
+        token_embeddings = model_output.last_hidden_state
+        input_mask_expanded = (
+            attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        )
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(
+            input_mask_expanded.sum(1), min=1e-9
+        )
 
     @torch.inference_mode()
     def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         """
-        Run inference on a batch using actual GPU computation.
+        Run inference on a batch using HuggingFace model.
 
-        Performs real neural network forward pass with:
-        - Feature processing through MLP layers on GPU
+        Performs:
+        - Text concatenation from configured columns
+        - Tokenization using HuggingFace tokenizer
+        - Model inference on GPU
+        - Mean pooling to get embeddings
         - Metadata column passthrough
         - Extra output columns addition
         """
@@ -261,47 +242,42 @@ class InferenceActor:
             if col.startswith("metadata_"):
                 result[col] = batch[col].values
 
-        # Gather numeric features
-        feature_cols = [c for c in batch.columns if c.startswith("feature_")]
+        # Concatenate text columns into single text for each row
+        text_col_names = [f"text_{col}" for col in self.text_columns]
+        available_text_cols = [c for c in text_col_names if c in batch.columns]
 
-        # Gather tokenized text (input_ids columns)
-        input_ids_cols = [c for c in batch.columns if c.startswith("input_ids_")]
-
-        # Build feature matrix from numeric features
-        if feature_cols:
-            features = batch[feature_cols].values.astype(np.float32)
+        if available_text_cols:
+            texts = (
+                batch[available_text_cols].astype(str).agg(" ".join, axis=1).tolist()
+            )
         else:
-            features = np.zeros((batch_size, 1), dtype=np.float32)
+            texts = [""] * batch_size
 
-        # Process tokenized inputs (embedding-style aggregation)
-        if input_ids_cols:
-            token_features = []
-            for col in input_ids_cols:
-                # Each row is an array of token ids - compute mean as feature
-                token_means = (
-                    np.stack(batch[col].values).mean(axis=1).astype(np.float32)
-                )
-                token_features.append(token_means)
-            token_features = np.column_stack(token_features)
-            features = np.concatenate([features, token_features], axis=1)
+        # Tokenize with HuggingFace tokenizer
+        encoded = self.tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+        )
 
-        # Pad or truncate features to match model input dimension
-        input_dim = self.model_config["input_dim"]
-        if features.shape[1] < input_dim:
-            padding = np.zeros((batch_size, input_dim - features.shape[1]), np.float32)
-            features = np.concatenate([features, padding], axis=1)
-        elif features.shape[1] > input_dim:
-            features = features[:, :input_dim]
+        # Move to device
+        input_ids = encoded["input_ids"].to(self.device)
+        attention_mask = encoded["attention_mask"].to(self.device)
 
-        # Move to GPU and run actual inference
-        features_tensor = torch.from_numpy(features).to(self.device)
-        predictions_tensor = self.model(features_tensor)
+        # Run model inference
+        model_output = self.model(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Get embeddings via mean pooling
+        embeddings = self._mean_pooling(model_output, attention_mask)
 
         # Move results back to CPU
-        predictions = predictions_tensor.cpu().numpy()
+        embeddings_np = embeddings.cpu().numpy()
 
-        result["predictions"] = [pred.tolist() for pred in predictions]
-        result["prediction_confidence"] = predictions.max(axis=1)
+        # Store embeddings as list of arrays
+        result["embeddings"] = [emb.tolist() for emb in embeddings_np]
+        result["embedding_dim"] = np.full(batch_size, embeddings_np.shape[1])
 
         # Add extra output columns (static values from config)
         for col_name, col_value in self.extra_output_columns.items():
@@ -330,7 +306,6 @@ def preprocess_dataset(
             feature_columns=config.feature_columns,
             text_columns=config.text_columns,
             metadata_prefix="metadata_",
-            max_length=config.tokenizer_max_length,
         ),
         batch_format="pandas",
         batch_size=config.preprocessing_config.batch_size,
@@ -342,16 +317,17 @@ def preprocess_dataset(
 
 def infer_dataset(
     dataset: Dataset,
-    model_ref: ray.ObjectRef,
     config: PipelineConfig,
 ) -> Dataset:
     """Run inference on dataset using configured inference actor."""
     inferred = dataset.map_batches(
         InferenceActor,
         fn_constructor_kwargs=dict(
-            model_ref=model_ref,
+            model_name=config.model_name,
+            text_columns=config.text_columns,
             metadata_columns=config.metadata_columns,
             extra_output_columns=config.extra_output_columns,
+            max_length=config.tokenizer_max_length,
             device="cuda" if config.inference_config.num_gpus > 0 else "cpu",
         ),
         batch_format="pandas",
@@ -369,12 +345,11 @@ def infer_dataset(
 
 def execute_pipeline(
     dataset: Dataset,
-    model_ref: ray.ObjectRef,
     config: PipelineConfig,
 ) -> Dataset:
     """Execute full end-to-end pipeline."""
     preprocessed = preprocess_dataset(dataset, config)
-    return infer_dataset(preprocessed, model_ref, config)
+    return infer_dataset(preprocessed, config)
 
 
 # =============================================================================
@@ -391,6 +366,7 @@ def main(args):
         f"  Inference actors: min={args.inference_min_actors}, max={args.inference_max_actors}"
     )
     print(f"  Tokenizer max length: {args.tokenizer_max_length}")
+    print(f"  Model: {args.model_name}")
 
     # Build pipeline configuration
     # Use TPC-H lineitem columns:
@@ -419,23 +395,8 @@ def main(args):
             "pipeline_id": "benchmark_run",
         },
         tokenizer_max_length=args.tokenizer_max_length,
+        model_name=args.model_name,
     )
-
-    # Create model and put config in object store
-    # Input dim: 4 feature columns + 2 text columns (mean of token ids each)
-    # We use a larger input_dim to handle variable feature sizes with padding
-    input_dim = 128
-    hidden_dim = 256
-    output_dim = 10
-
-    model = InferenceModel(input_dim, hidden_dim, output_dim)
-    model_config = {
-        "input_dim": input_dim,
-        "hidden_dim": hidden_dim,
-        "output_dim": output_dim,
-        "state_dict": model.state_dict(),
-    }
-    model_ref = ray.put(model_config)
 
     start_time = time.time()
 
@@ -447,11 +408,11 @@ def main(args):
     ds = ray.data.read_parquet(
         config.input_path,
         columns=columns_to_load,
-    ).limit(10_000_000)
+    ).limit(200_000_000)
     ds._set_name("input_data")
 
     # Execute end-to-end pipeline
-    output_ds = execute_pipeline(ds, model_ref, config)
+    output_ds = execute_pipeline(ds, config)
 
     # Consume output
     total_rows = 0
