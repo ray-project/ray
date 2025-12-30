@@ -1,5 +1,9 @@
+import typing
 from abc import ABC, abstractmethod
 from typing import List, Optional
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 class SubProgressBarMixin(ABC):
@@ -17,12 +21,11 @@ class SubProgressBarMixin(ABC):
         ...
 
     @abstractmethod
-    def set_sub_progress_bar(self, name, pg):
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         """
         Sets sub-progress bars
 
         name: name of sub-progress bar
-        pg: SubProgressBar instance (progress_manager.py)
+        pg: a progress bar. Can be sub-progress bars for rich, tqdm, etc.
         """
-        # Skipping type-checking for circular imports
         ...

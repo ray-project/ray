@@ -126,7 +126,7 @@ steps:
         --build-name servebuild-py3.10
         --python-version 3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - servebuild-multipy
       - forge
 
@@ -201,7 +201,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --only-tags ha_integration --python-version 3.10 --build-name servebuild-py3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - servebuild-multipy

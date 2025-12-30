@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 from click.exceptions import ClickException
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import exponential_backoff_retry
@@ -35,12 +34,10 @@ class CommandRunner(abc.ABC):
     def __init__(
         self,
         cluster_manager: ClusterManager,
-        file_manager: FileManager,
         working_dir: str,
         artifact_path: Optional[str] = None,
     ):
         self.cluster_manager = cluster_manager
-        self.file_manager = file_manager
         self.working_dir = working_dir
 
     @property
