@@ -426,6 +426,11 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        if self._resource_manager is not None:
+            self._resource_manager.set_external_consumer_bytes(num_bytes)
+
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
         stats = self._initial_stats or DatasetStats(metadata={}, parent=None)
