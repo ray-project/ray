@@ -318,6 +318,12 @@ class NodeManagerTest : public ::testing::Test {
     node_manager_config.store_socket_name = "test_store_socket";
     node_manager_config.resource_config = ResourceSet(
         absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
+    // Set non-zero ports to skip waiting for agents reporting ports back.
+    // we don't actually start the agents in this test.
+    node_manager_config.metrics_agent_port = 44386;
+    node_manager_config.metrics_export_port = 63802;
+    node_manager_config.dashboard_agent_listen_port = 52365;
+    node_manager_config.runtime_env_agent_port = 37429;
 
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
@@ -447,7 +453,7 @@ class NodeManagerTest : public ::testing::Test {
         *placement_group_resource_manager_,
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_),
-        fake_memory_manager_worker_eviction_total_gauge_);
+        fake_memory_manager_worker_eviction_total_count_);
   }
 
   instrumented_io_context io_service_;
@@ -484,7 +490,7 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
   ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
   ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
-  ray::observability::FakeGauge fake_memory_manager_worker_eviction_total_gauge_;
+  ray::observability::FakeCounter fake_memory_manager_worker_eviction_total_count_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
