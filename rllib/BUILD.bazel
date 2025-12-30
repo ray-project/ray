@@ -1776,7 +1776,7 @@ py_test(
 )
 
 py_test(
-    name = "test_env_runner_failures",
+    name = "test_algo_env_runner_failures",
     size = "large",
     srcs = ["algorithms/tests/test_env_runner_failures.py"],
     tags = [
