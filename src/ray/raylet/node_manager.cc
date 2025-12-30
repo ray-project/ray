@@ -3152,13 +3152,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                 memory_manager_worker_eviction_total_count_.Record(
                     1,
                     {{"Type", "MemoryManager.TaskEviction.Total"},
-                      {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+                     {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
               } else {
                 const auto &ray_lease = worker_to_kill->GetGrantedLease();
                 memory_manager_worker_eviction_total_count_.Record(
                     1,
                     {{"Type", "MemoryManager.ActorEviction.Total"},
-                      {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+                     {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
               }
             }
           }
