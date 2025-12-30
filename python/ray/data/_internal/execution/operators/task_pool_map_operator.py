@@ -188,7 +188,9 @@ class TaskPoolMapOperator(MapOperator):
                 cpu=per_task.cpu * self._max_concurrency,
                 gpu=per_task.gpu * self._max_concurrency,
                 memory=per_task.memory * self._max_concurrency,
-                object_store_memory=obj_store_per_task * self._max_concurrency,
+                # Set the max `object_store_memory` requirement to 'inf', because we
+                # don't know how much data each task can output.
+                object_store_memory=float("inf"),
             )
         else:
             max_resource_usage = ExecutionResources.for_limits()
