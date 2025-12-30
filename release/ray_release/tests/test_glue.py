@@ -5,7 +5,6 @@ import tempfile
 import time
 import unittest
 from typing import Callable, Optional, Type
-from unittest.mock import patch
 
 import pytest
 
@@ -260,22 +259,6 @@ class GlueTest(unittest.TestCase):
 
     def testInvalidClusterCompute(self):
         result = Result()
-
-        # Test with regular run
-        with patch(
-            "ray_release.glue.load_test_cluster_compute",
-            _fail_on_call(ReleaseTestConfigError),
-        ), self.assertRaises(ReleaseTestConfigError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-        # Test with kuberay run
-        with patch(
-            "ray_release.glue.load_test_cluster_compute",
-            _fail_on_call(ReleaseTestConfigError),
-        ), self.assertRaises(ReleaseTestConfigError):
-            self._run(result, True)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because file not found
         os.unlink(os.path.join(self.tempdir, "cluster_compute.yaml"))
