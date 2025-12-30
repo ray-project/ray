@@ -34,9 +34,6 @@ from ray._private.client_mode_hook import (
     client_mode_hook,
     client_mode_should_convert,
 )
-from ray._private.custom_types import (
-    TensorTransportEnum,
-)
 from ray._private.inspect_util import (
     is_class_method,
     is_function_or_method,
@@ -386,7 +383,7 @@ def method(
     retry_exceptions: Optional[Union[bool, list, tuple]] = None,
     _generator_backpressure_num_objects: Optional[int] = None,
     enable_task_events: Optional[bool] = None,
-    tensor_transport: Optional[TensorTransportEnum] = None,
+    tensor_transport: Optional[str] = None,
 ) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
     ...
 
@@ -435,14 +432,13 @@ def method(*args, **kwargs):
             single-threaded and runs all actor tasks on the same thread.
             See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
         tensor_transport: [Alpha] The tensor transport protocol to
-            use for the actor method. The valid values are "OBJECT_STORE"
-            (default), "NCCL", "GLOO", or "NIXL" (case-insensitive). If a
-            non-object store transport is specified, Ray will store a
-            *reference* instead of a copy of any torch.Tensors found inside
+            use for the actor method. If a tensor transport is specified,
+            Ray will store a *reference* instead of a copy of any torch.Tensors found inside
             values returned by this task, and the tensors will be sent directly
-            to other tasks using the specified transport. NCCL and GLOO
-            transports require first creating a collective with the involved
-            actors using
+            to other tasks using the specified transport. The object store will be used
+            when this is None (default). "NIXL", "NCCL", and "GLOO" (case-insensitive) are
+            the three transports supported by default. The NCCL and GLOO transports
+            require first creating a collective with the involved actors using
             :func:`ray.experimental.collective.create_collective_group`.
             See :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
             details.
@@ -653,11 +649,6 @@ class ActorMethod:
         # cases, it should call the function that was passed into the decorator
         # and return the resulting ObjectRefs.
         self._decorator = decorator
-
-        # If the task call doesn't specify a tensor transport option, use `OBJECT_STORE`
-        # as the default transport for this actor method.
-        if tensor_transport is None:
-            tensor_transport = TensorTransportEnum.OBJECT_STORE.name
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
@@ -826,11 +817,10 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
-
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+        if tensor_transport is not None:
             if num_returns != 1:
                 raise ValueError(
                     f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
@@ -886,9 +876,8 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         object_refs = invocation(args, kwargs)
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
-            # Currently, we only support transfer tensor out-of-band when
-            # num_returns is 1.
+        if tensor_transport is not None:
+            # Currently, we only support RDT when num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
             object_ref = object_refs
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
@@ -996,9 +985,9 @@ class _ActorClassMethodMetadata(object):
             getattr(
                 method,
                 "__ray_tensor_transport__",
-                TensorTransportEnum.OBJECT_STORE.name,
+                None,
             )
-            != TensorTransportEnum.OBJECT_STORE.name
+            is not None
             for _, method in actor_methods
         )
 
@@ -1918,8 +1907,8 @@ class ActorHandle(Generic[T]):
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
             actor's default value (`_ray_enable_task_events`).
-        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their tensor transport protocol settings.
-            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
+        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their
+            tensor transport protocol.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -2169,12 +2158,6 @@ class ActorHandle(Generic[T]):
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
-        tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
-        if (
-            tensor_transport is not None
-            and tensor_transport != TensorTransportEnum.OBJECT_STORE.name
-        ):
-            tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -2189,7 +2172,7 @@ class ActorHandle(Generic[T]):
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            tensor_transport_enum.value,
+            tensor_transport,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

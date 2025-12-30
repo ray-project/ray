@@ -4,5 +4,5 @@ dockerfile: ci/docker/ray-dashboard.Dockerfile
 srcs:
   - python/ray/dashboard/client/
 build_args:
-  - HOSTTYPE=x86_64
+  - HOSTTYPE
   - MANYLINUX_VERSION=251216.3835fc5
