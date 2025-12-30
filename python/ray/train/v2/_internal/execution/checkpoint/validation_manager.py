@@ -1,6 +1,6 @@
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 VALIDATION_TASK_POLL_INTERVAL_S = 1
+MAX_IN_FLIGHT_VALIDATIONS = 1
 
 
 @ray.remote
@@ -45,7 +46,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
     ):
         self._checkpoint_manager = checkpoint_manager
 
-        # Map from validation task to checkpoint
+        # _TrainingReports that we will validate
+        self._training_report_queue = deque()
+
+        # Map from in flight validation task to checkpoint
         self._pending_validations = OrderedDict()
 
         # Map from validation task to checkpoint
@@ -63,17 +67,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
             training_report.validation_spec
             and training_report.validation_spec.validate_fn
         ):
-            # TODO: rate limit this by using a queue?
-            # TODO: figure out where to place run_validate_fn task:
-            # head node is faster but want to avoid putting too much there
-            # TODO: provide option to run this on gpu
-            validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
-            )
-            self._pending_validations[validate_task] = training_report.checkpoint
-            logger.info(
-                f"Launched async validation task for checkpoint {training_report.checkpoint}"
-            )
+            self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
         """Poll/process validations, update checkpoint manager, return num pending validations."""
@@ -89,8 +83,9 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._pending_validations.pop(task)
         if done_checkpoints:
             logger.info(
-                f"Finished async validation task(s) for checkpoint(s) {done_checkpoints}. "
-                f"Remaining pending validations for checkpoint(s): {list(self._pending_validations.values())}"
+                f"Finished async validation task(s) for checkpoint(s): {done_checkpoints}.\n"
+                f"Running validations for checkpoint(s): {list(self._pending_validations.values())}.\n"
+                f"Staged validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}."
             )
 
         # Process next finished validation
@@ -101,6 +96,27 @@ class ValidationManager(ControllerCallback, ReportCallback):
             checkpoint_to_metrics = self._process_finished_validation(task, checkpoint)
             self._checkpoint_manager.update_checkpoints_with_metrics(
                 checkpoint_to_metrics
+            )
+        return len(self._pending_validations)
+
+    def _kick_off_validations(self) -> int:
+        """Kick off validations and return the number of pending validations."""
+        # TODO: figure out where to place run_validate_fn task:
+        # TODO: provide option to run this on gpu?
+        num_validations_to_start = max(
+            MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
+        )
+        num_validations_to_start = min(
+            num_validations_to_start, len(self._training_report_queue)
+        )
+        for _ in range(num_validations_to_start):
+            training_report = self._training_report_queue.popleft()
+            validate_task = run_validate_fn.remote(
+                training_report.validation_spec, training_report.checkpoint
+            )
+            self._pending_validations[validate_task] = training_report.checkpoint
+            logger.info(
+                f"Launched async validation task for checkpoint {training_report.checkpoint}"
             )
         return len(self._pending_validations)
 
@@ -119,7 +135,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         return checkpoint_to_metrics
 
     def before_controller_shutdown(self):
-        while self._poll_validations() != 0:
+        while self._poll_validations() != 0 or self._kick_off_validations() != 0:
             time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
         tasks = list(self._finished_validations.keys())
@@ -139,3 +155,4 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: figure out if there's a better place to poll validations
         # TODO: consider cleaning up validation tasks in before_controller_abort
         self._poll_validations()
+        self._kick_off_validations()

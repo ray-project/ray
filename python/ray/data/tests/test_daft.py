@@ -20,8 +20,8 @@ def ray_start(request):
     os.environ["RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT"] = "1"
 
     import ray
-    import ray.air.util.tensor_extensions.arrow as arrow_module
-    from ray.air.util.tensor_extensions.arrow import _SerializationFormat
+    import ray.data._internal.tensor_extensions.arrow as arrow_module
+    from ray.data._internal.tensor_extensions.arrow import _SerializationFormat
 
     # Force the serialization format to JSON after import
     arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat.JSON

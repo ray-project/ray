@@ -28,7 +28,6 @@ from ray_release.exception import (
     TestCommandError,
     TestCommandTimeout,
 )
-from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
     command_runner_to_cluster_manager,
     run_release_test,
@@ -103,12 +102,10 @@ class GlueTest(unittest.TestCase):
 
         self.cluster_manager_return = {}
         self.command_runner_return = {}
-        self.file_manager_return = {}
 
         this_instances = self.instances
         this_cluster_manager_return = self.cluster_manager_return
         this_command_runner_return = self.command_runner_return
-        this_file_manager_return = self.file_manager_return
 
         class MockClusterManager(MockReturn, FullClusterManager):
             def __init__(
@@ -135,20 +132,12 @@ class GlueTest(unittest.TestCase):
             def __init__(
                 self,
                 cluster_manager: ClusterManager,
-                file_manager: FileManager,
                 working_dir,
                 sdk=None,
                 artifact_path: Optional[str] = None,
             ):
-                super(MockCommandRunner, self).__init__(
-                    cluster_manager, file_manager, this_tempdir
-                )
+                super(MockCommandRunner, self).__init__(cluster_manager, this_tempdir)
                 self.return_dict = this_command_runner_return
-
-        class MockFileManager(MockReturn, FileManager):
-            def __init__(self, cluster_manager: ClusterManager):
-                super(MockFileManager, self).__init__(cluster_manager)
-                self.return_dict = this_file_manager_return
 
         self.mock_alert_return = None
 
