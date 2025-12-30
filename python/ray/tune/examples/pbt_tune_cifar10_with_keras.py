@@ -175,13 +175,13 @@ class Cifar10Model(Trainable):
         return {"mean_accuracy": accuracy}
 
     def save_checkpoint(self, checkpoint_dir):
-        file_path = checkpoint_dir + "/model"
+        file_path = checkpoint_dir + "/model.h5"
         self.model.save(file_path)
 
     def load_checkpoint(self, checkpoint_dir):
         # See https://stackoverflow.com/a/42763323
         del self.model
-        file_path = checkpoint_dir + "/model"
+        file_path = checkpoint_dir + "/model.h5"
         self.model = load_model(file_path)
 
     def cleanup(self):
