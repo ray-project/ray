@@ -21,6 +21,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util import log_once
@@ -305,6 +306,10 @@ class BlockAccessor:
     as a top-level Ray object, without a wrapping class (issue #17186).
     """
 
+    _DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
+        "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", False
+    )
+
     def num_rows(self) -> int:
         """Return the number of rows contained in this block."""
         raise NotImplementedError
@@ -467,6 +472,17 @@ class BlockAccessor:
                 "allowed in Ray 2.5. Return a dict of field -> array, "
                 "e.g., `{'data': array}` instead of `array`."
             )
+
+        elif cls._DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT:
+            import pandas as pd
+
+            assert block_type is None or block_type == BlockType.ARROW
+
+            if isinstance(batch, pd.DataFrame):
+                return cls.for_block(batch).to_arrow()
+
+            elif isinstance(batch, collections.abc.Mapping):
+                return cls.batch_to_arrow_block(batch)
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
