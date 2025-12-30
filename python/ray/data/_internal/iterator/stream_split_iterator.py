@@ -190,20 +190,6 @@ class SplitCoordinator:
                 )
                 yield output_iterator
 
-                # HACK: Clear the set of files to restore from after the first epoch
-                # to avoid loading the mid-epoch state on every subsequent epoch.
-                # https://anyscale1.atlassian.net/browse/DATA-1388
-                from ray.data.datasource import PartitionStyle, PathPartitionFilter
-
-                checkpoint_config = self._base_dataset.context.checkpoint_config
-                if checkpoint_config:
-                    checkpoint_config.checkpoint_path_partition_filter = (
-                        PathPartitionFilter.of(
-                            filter_fn=lambda _: False,
-                            style=PartitionStyle.HIVE,
-                        )
-                    )
-
         self._next_epoch = gen_epochs()
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.

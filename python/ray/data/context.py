@@ -478,7 +478,8 @@ class DataContext:
             allocation per partition for hash shuffle operator actors.
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
-        use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
+            aggregations.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
