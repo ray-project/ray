@@ -13,6 +13,7 @@ from ray._common.utils import try_to_create_directory
 from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
+from ray._private.utils import get_all_node_info_with_retry
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
@@ -29,23 +30,18 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
-    # No timeout as we want to wait until the head node is ready.
-    node_infos = gcs_client.get_all_node_info(
-        node_selectors=[head_node_selector]
-    ).values()
-
-    if not node_infos:
-        raise Exception(
-            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
-        )
+    # We need to wait until head node's raylet is registered in GCS.
+    node_infos = get_all_node_info_with_retry(
+        gcs_client,
+        node_selectors=[head_node_selector],
+    )
 
     node_info = next(iter(node_infos))
-    if node_info is not None:
-        temp_dir = getattr(node_info, "temp_dir", None)
-        if temp_dir is None:
-            raise Exception(
-                "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-            )
+    temp_dir = getattr(node_info, "temp_dir", None)
+    if temp_dir is None:
+        raise Exception(
+            "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+        )
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 

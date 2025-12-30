@@ -34,6 +34,7 @@ from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
+    get_all_node_info_with_retry,
     is_in_test,
     open_log,
     try_to_symlink,
@@ -261,22 +262,15 @@ class Node:
                 head_node_selector = GetAllNodeInfoRequest.NodeSelector()
                 head_node_selector.is_head_node = True
 
-                node_infos = (
-                    self.get_gcs_client()
-                    .get_all_node_info(
-                        timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-                        node_selectors=[head_node_selector],
-                    )
-                    .values()
+                node_infos = get_all_node_info_with_retry(
+                    self.get_gcs_client(),
+                    timeout_per_retry=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                    node_selectors=[head_node_selector],
                 )
             except Exception as e:
                 logger.exception(f"Failed to get head node info: {repr(e)}")
                 raise e
 
-            if not node_infos:
-                raise Exception(
-                    "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
-                )
             node_info = next(iter(node_infos))
             self._head_temp_dir = getattr(node_info, "temp_dir", None)
             if self._head_temp_dir is None:
