@@ -18,14 +18,17 @@ set -ex
 
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
+
+if [[ "${ARROW_VERSION-}" == "9.*" ]]; then
+  pip install numpy==1.26.4 pandas==1.5.3
+fi
+
 if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   # Older versions of Arrow Mongo require an older version of NumPy.
   pip install numpy==1.23.5
 fi
 
-if [[ "${ARROW_VERSION-}" == "9.*" ]]; then
-  pip install numpy==1.26.4 pandas==1.5.3
-fi
+pip install tensorflow-datasets==4.9.9
 
 # Install MongoDB
 sudo apt-get purge -y mongodb*

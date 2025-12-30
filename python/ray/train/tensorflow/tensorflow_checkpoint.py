@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 # TODO(elliot-barn): Switch to Keras 3 (tf.keras) when supported; remove tf_keras dependency
-from tf_keras import keras
+import tf_keras as keras
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
