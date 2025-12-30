@@ -571,9 +571,6 @@ def run_release_test_anyscale(
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if hasattr(command_runner, "cleanup"):
-        command_runner.cleanup()
-
     reset_signal_handling()
 
     time_taken = time.monotonic() - start_time
