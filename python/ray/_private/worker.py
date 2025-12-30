@@ -2468,7 +2468,7 @@ def connect(
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash: The hash of the runtime env for this worker.
         worker_id: The worker ID assigned by raylet when starting the worker
-            process (hex string). None for drivers.
+            process (hex string). Nil for drivers.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
