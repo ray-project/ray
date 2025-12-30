@@ -509,10 +509,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Log metrics of newly completed operators.
         for op, state in topology.items():
             if op.completed() and not self._has_op_completed[op]:
-                log_str = (
-                    f"Operator {op} completed. "
-                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
-                )
+                metrics_dict = op._metrics.as_dict(skip_internal_metrics=True)
+                metrics_table = _format_metrics_table(metrics_dict)
+                log_str = f"Operator {op} completed. Operator Metrics:\n{metrics_table}"
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
@@ -729,6 +728,29 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
         )
 
 
+def _format_metrics_table(metrics_dict: dict) -> str:
+    """Format metrics dict in a tabular format."""
+    if not metrics_dict:
+        return "(no metrics)"
+
+    # Calculate column widths
+    key_width = max(len(str(k)) for k in metrics_dict.keys())
+    val_width = max(len(str(v)) for v in metrics_dict.values())
+    key_width = max(key_width, len("metric"))
+    val_width = max(val_width, len("value"))
+
+    # Build table
+    lines = []
+    lines.append(f"┌{'─' * (key_width + 2)}┬{'─' * (val_width + 2)}┐")
+    lines.append(f"│ {'metric':<{key_width}} ┆ {'value':<{val_width}} │")
+    lines.append(f"╞{'═' * (key_width + 2)}╪{'═' * (val_width + 2)}╡")
+    for k, v in metrics_dict.items():
+        lines.append(f"│ {str(k):<{key_width}} ┆ {str(v):<{val_width}} │")
+    lines.append(f"└{'─' * (key_width + 2)}┴{'─' * (val_width + 2)}┘")
+
+    return "\n".join(lines)
+
+
 def _log_op_metrics(topology: Topology) -> None:
     """Logs the metrics of each operator.
 
@@ -737,7 +759,8 @@ def _log_op_metrics(topology: Topology) -> None:
     """
     log_str = "Operator Metrics:\n"
     for op in topology:
-        log_str += f"{op.name}: {op.metrics.as_dict(skip_internal_metrics=True)}\n"
+        metrics_dict = op.metrics.as_dict(skip_internal_metrics=True)
+        log_str += f"{op.name}:\n{_format_metrics_table(metrics_dict)}\n"
     logger.debug(log_str)
 
 
