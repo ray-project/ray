@@ -670,7 +670,7 @@ def test_min_max_resource_requirements(restore_data_context):
             min_size=1,
             max_size=2,
         ),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_gpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
 
@@ -679,10 +679,10 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # min_resource_usage: 1 actor * (1 cpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 cpu, 3 obj_store_mem)
-    assert min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-    assert max_resource_usage_bound == ExecutionResources(cpu=2, object_store_memory=6)
+    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 gpu, 3 obj_store_mem)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources(gpu=2, object_store_memory=6)
 
 
 def test_min_max_resource_requirements_unbounded(restore_data_context):
@@ -694,7 +694,7 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
         compute_strategy=ray.data.ActorPoolStrategy(),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_gpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
 
@@ -704,7 +704,7 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
     ) = op.min_max_resource_requirements()
 
     # Unbounded pools should return infinite max resources
-    assert min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
     assert max_resource_usage_bound == ExecutionResources.for_limits()
 
 
