@@ -1,6 +1,7 @@
 import itertools
 import math
 import random
+import threading
 import time
 from typing import Any, List, Tuple
 from unittest.mock import patch
@@ -960,51 +961,77 @@ def test_streaming_train_test_split_wrong_params(
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
-def test_iter_batches_reports_prefetched_bytes(
+def test_streaming_split_reports_and_clears_prefetched_bytes(
     ray_start_regular_shared_2_cpus, prefetch_batches
 ):
-    """Test that iter_batches reports prefetched bytes to executor."""
-    from unittest.mock import MagicMock
+    """Test streaming_split reports and clears prefetched bytes.
 
-    ds = ray.data.range(100, override_num_blocks=10)
+    Verifies that:
+    1. Prefetched bytes are tracked during iteration
+    2. When StopIteration is raised in SplitCoordinator.get(), the
+       prefetched bytes are cleared to avoid stale backpressure data
+    """
+    ds = ray.data.range(20, override_num_blocks=4)
+    splits = ds.streaming_split(2, equal=True)
 
-    # Create a mock executor to capture set_external_consumer_bytes calls
-    mock_executor = MagicMock()
-    reported_bytes = []
+    # Get the coordinator actor to check prefetched bytes
+    coord = splits[0]._coord_actor
 
-    def capture_bytes(num_bytes):
-        reported_bytes.append(num_bytes)
+    results = []
 
-    mock_executor.set_external_consumer_bytes = capture_bytes
+    def consume(split, idx):
+        count = 0
+        for batch in split.iter_batches(
+            batch_size=5, prefetch_batches=prefetch_batches
+        ):
+            count += len(batch["id"])
+        results.append((idx, count))
 
-    # Patch the dataset's _execute_to_iterator to return our mock executor
-    original_execute = ds._execute_to_iterator
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
 
-    def patched_execute():
-        bundle_iter, stats, executor = original_execute()
-        return bundle_iter, stats, mock_executor
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
-    ds._execute_to_iterator = patched_execute
+    # Verify both splits consumed all data (epoch completed via StopIteration)
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Expected 20 total rows, got {total_rows}"
 
-    # Create iterator and consume batches
-    iterator = ds.iterator()
-    batches = list(
-        iterator.iter_batches(batch_size=10, prefetch_batches=prefetch_batches)
-    )
+    # Verify client prefetched bytes are cleared after epoch end
+    # (cleared when StopIteration is raised in SplitCoordinator.get())
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} has stale prefetched bytes: {bytes_val}"
 
-    assert len(batches) == 10
+    # Run a second epoch to verify cleared bytes don't cause issues
+    results.clear()
 
-    # Verify exact number of callbacks:
-    # - 10 batches (callback after each yield_batch_context)
-    # - 1 epoch end (callback with 0)
-    # Total: 11 callbacks
-    assert len(reported_bytes) == 11, f"Expected 11, got {len(reported_bytes)}"
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
 
-    # All values should be non-negative
-    assert all(b >= 0 for b in reported_bytes), f"Negative: {reported_bytes}"
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
-    # Last reported value should be 0 (epoch end clears prefetched bytes)
-    assert reported_bytes[-1] == 0
+    # Second epoch should also consume all data
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Second epoch: expected 20 rows, got {total_rows}"
+
+    # Verify prefetched bytes cleared again after second epoch
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
 
 
 if __name__ == "__main__":

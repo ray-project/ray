@@ -280,6 +280,11 @@ class SplitCoordinator:
                 [block], schema=schema, owns_blocks=next_bundle.owns_blocks
             )
         except StopIteration:
+            # Clear stale prefetched bytes when epoch ends to avoid incorrect
+            # backpressure decisions from stale data.
+            with self._lock:
+                self._client_prefetched_bytes[output_split_idx] = 0
+                self._report_prefetched_bytes_to_executor()
             return None
         finally:
             # Track overhead time in the instance variable
@@ -304,6 +309,11 @@ class SplitCoordinator:
         if self._executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
             self._executor.set_external_consumer_bytes(total_bytes)
+
+    def get_client_prefetched_bytes(self) -> Dict[int, int]:
+        """Get prefetched bytes for each client (for testing)."""
+        with self._lock:
+            return dict(self._client_prefetched_bytes)
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""
