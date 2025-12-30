@@ -355,6 +355,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 min_worker_port=0,
                 max_worker_port=0,
                 dashboard_port=None,
+                dashboard_agent_listen_port=0,
                 num_cpus=resources.pop("CPU", 0),
                 num_gpus=resources.pop("GPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
