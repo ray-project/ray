@@ -2044,10 +2044,10 @@ def init(
         )
 
     # Check for Pydantic v1 and emit deprecation warning
-    from ray._common.pydantic_compat import PYDANTIC_INSTALLED, PYDANTIC_MAJOR_VERSION
+    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
 
     if (
-        PYDANTIC_INSTALLED
+        PYDANTIC_MAJOR_VERSION
         and PYDANTIC_MAJOR_VERSION == 1
         and log_once("pydantic_v1_deprecation")
     ):
