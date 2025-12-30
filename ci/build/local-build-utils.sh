@@ -103,12 +103,91 @@ setup_build_env() {
     export WANDA_BIN="${WANDA_BIN:-$(command -v wanda || echo /home/ubuntu/rayci/bin/wanda)}"
 }
 
+# ---------------------------
+# Shared CLI / DX helpers
+# ---------------------------
+
+# Normalize python version input (accept py3.10, python3.10, 3.10)
+normalize_python_version() {
+    local v="$1"
+    v="${v#python}"
+    v="${v#py}"
+    echo "$v"
+}
+
+# Return 0 if arg looks like 3.x
+is_python_version() {
+    local v
+    v="$(normalize_python_version "$1")"
+    [[ "$v" =~ ^3\.[0-9]+$ ]]
+}
+
+# Parse strict positionals:
+#   []                       -> default py + default value
+#   [PY]                     -> set py, value = default
+#   [PY VALUE]               -> set py + value
+# Disallow:
+#   [VALUE]                  -> error (must provide python first if specifying value)
+#   >2 positionals           -> error
+#
+# Usage:
+#   parse_strict_py_value_required_for_value positionals VALUE_VAR DEFAULT_PY DEFAULT_VALUE NORMALIZE_FN_OR_EMPTY USAGE_FN
+parse_strict_py_value_required_for_value() {
+    local pos_name="$1"; shift
+    local value_var="$1"; shift
+    local default_py="$1"; shift
+    local default_value="$1"; shift
+    local normalize_fn="$1"; shift    # may be empty string
+    local usage_fn="$1"; shift        # function name, e.g. usage
+
+    local -a pos=("${!pos_name}")
+
+    PYTHON_VERSION="${PYTHON_VERSION:-$default_py}"
+    local value="${!value_var:-$default_value}"
+
+    if [[ ${#pos[@]} -eq 0 ]]; then
+        :
+    elif [[ ${#pos[@]} -eq 1 ]]; then
+        if ! is_python_version "${pos[0]}"; then
+            error "If you want to specify ${value_var}, you must provide a Python version first (e.g. '3.10 ${default_value}')."
+            "$usage_fn"
+        fi
+        PYTHON_VERSION="$(normalize_python_version "${pos[0]}")"
+    elif [[ ${#pos[@]} -eq 2 ]]; then
+        if ! is_python_version "${pos[0]}"; then
+            error "If you provide a second positional argument, the first must be a Python version (e.g. 3.10)."
+            "$usage_fn"
+        fi
+        PYTHON_VERSION="$(normalize_python_version "${pos[0]}")"
+        value="${pos[1]}"
+    else
+        error "Too many positional arguments."
+        "$usage_fn"
+    fi
+
+    if [[ -n "${normalize_fn}" ]]; then
+        value="$("$normalize_fn" "$value")"
+    fi
+
+    printf -v "$value_var" '%s' "$value"
+}
+
+# Print config helper (used by multiple scripts)
+# Usage:
+#   print_config_block "Repo root:${REPO_ROOT}" "Python:${PYTHON_VERSION}" ...
+print_config_block() {
+    echo "Resolved build config:"
+    for kv in "$@"; do
+        local key="${kv%%:*}"
+        local val="${kv#*:}"
+        printf "  %-13s %s\n" "${key}:" "${val}"
+    done
+    echo
+}
+
 # Emit Bazel flags tuned to the container's cgroup CPU + memory limits.
 # In the future, we should use mnemonics for ensuring CppCompile and CppLink
 # targets do not exceed memory limits, rather than a blanket --jobs flag.
-# 
-# Something like:
-# https://github.com/ray-project/ray/blob/63fbbcac443ef21fb6ad6c15ed6330ef714bd411/ci/build/local-build-utils.sh#L160-L161
 #
 # Output example:
 #   --jobs=4 --local_cpu_resources=4 --local_ram_resources=6144
