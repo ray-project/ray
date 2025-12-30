@@ -193,7 +193,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         """
         # Set queue size via output_queue_bytes (no ineligible downstream ops)
         op_state.output_queue_bytes.return_value = queue_size
-        rm.get_downstream_ineligible_ops.return_value = []
+        rm._get_downstream_ineligible_ops.return_value = []
 
         # Set downstream capacity on the first output dependency
         if op.output_dependencies:

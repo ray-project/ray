@@ -56,7 +56,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         # Also account the downstream ineligible operators' memory usage.
         op_outputs_usage += sum(
             self._resource_manager.get_op_usage(next_op).object_store_memory
-            for next_op in self._resource_manager.get_downstream_ineligible_ops(op)
+            for next_op in self._resource_manager._get_downstream_ineligible_ops(op)
         )
         return op_outputs_usage
 
