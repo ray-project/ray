@@ -376,13 +376,12 @@ def test_basic_reconstruction_actor_lineage_disabled(
     wait_for_pid_to_exit(pid)
 
     if reconstruction_enabled:
-        # Actor has no max_task_retries, so retries are disabled
+        # Actor has no max_task_retries by default, so retries are disabled
         with pytest.raises(
             ray.exceptions.ObjectReconstructionFailedRetriesDisabledError
         ):
             ray.get(obj)
     else:
-        # lineage_pinning_enabled=False
         with pytest.raises(
             ray.exceptions.ObjectReconstructionFailedLineageDisabledError
         ):

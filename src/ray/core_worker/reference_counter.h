@@ -442,10 +442,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// (see task_manager.h).
     bool owned_by_us_ = false;
 
-    /// The lineage eligibility of this object. This indicates whether the object
-    /// is eligible for reconstruction via lineage replay. Being ELIGIBLE does not
-    /// guarantee successful reconstruction - See
-    /// https://github.com/ray-project/ray/pull/59625 for details.
+    /// Whether the object is eligible for lineage reconstruction, determined before
+    /// task resubmission. See https://github.com/ray-project/ray/pull/59625.
     LineageEligibility lineage_eligibility_ = LineageEligibility::ELIGIBLE;
 
     /// The number of tasks that depend on this object that may be retried in

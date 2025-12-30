@@ -31,8 +31,8 @@ namespace ray {
 namespace core {
 
 /// Lineage eligibility for object reconstruction.
-/// Being ELIGIBLE means we can attempt reconstruction, not that it will succeed.
-/// See https://github.com/ray-project/ray/pull/59625 for details.
+/// Determined before task resubmission. See
+/// https://github.com/ray-project/ray/pull/59625.
 enum class LineageEligibility {
   /// Eligible - lineage is available for reconstruction attempt.
   ELIGIBLE,

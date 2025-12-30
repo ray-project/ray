@@ -618,8 +618,8 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    # Test that the retry task fails because the producer task was previously cancelled
-    # and the object cannot be reconstructed.
+    # Test that the retry task fails with a TaskCancelledError because it was previously
+    # cancelled.
     with pytest.raises(ObjectReconstructionFailedTaskCancelledError):
         ray.get(consumer.remote([producer_ref]))
 
