@@ -2,6 +2,7 @@ import argparse
 import copy
 import optparse
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -333,6 +334,20 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser.add_argument("--directory")
     parser.add_argument("-m", "--module")
     _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
+
+    # Pin the worker Python for `uv run` unless the driver already specified one.
+    #
+    # Without this, uv may resolve a different Python than the Ray driver (e.g. 3.12 instead of 3.11),
+    # which causes Ray to fail with a Python version mismatch. (See https://github.com/ray-project/ray/issues/59639)
+    # order of precedence:
+    # 1. options.python (driver specified)
+    # 2. env_vars["UV_PYTHON"]
+    # 3. current os.environ["UV_PYTHON"]
+    # 4. platform.python_version() (since uv run uses the same Python as the driver)
+    if not options.python:
+        env_vars = runtime_env.get("env_vars") or {}
+        uv_python = env_vars.get("UV_PYTHON") or os.environ.get("UV_PYTHON") or platform.python_version()
+        remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
