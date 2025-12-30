@@ -3,7 +3,6 @@ import os
 import random
 import string
 import time
-import traceback
 from typing import List, Optional, Tuple
 
 from google.cloud import storage as gcs_storage
@@ -44,7 +43,7 @@ from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, ResultStatus, handle_exception
+from ray_release.result import Result, ResultStatus, update_result_from_exception
 from ray_release.signal_handling import (
     reset_signal_handling,
     setup_signal_handling,
@@ -477,15 +476,7 @@ def run_release_test_kuberay(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
-
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
+        update_result_from_exception(result, pipeline_exception)
         raise pipeline_exception
     return result
 
@@ -620,20 +611,8 @@ def run_release_test_anyscale(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
 
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
-        try:
-            raise pipeline_exception
-        except Exception:
-            if not result.last_logs:
-                result.last_logs = traceback.format_exc()
+        update_result_from_exception(result, pipeline_exception, with_last_logs=True)
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:
