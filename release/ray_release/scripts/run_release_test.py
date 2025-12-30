@@ -77,16 +77,6 @@ from ray_release.result import Result
     help="Global config to use for test execution.",
 )
 @click.option(
-    "--no-terminate",
-    default=False,
-    type=bool,
-    is_flag=True,
-    help=(
-        "Do not terminate cluster after test. "
-        "Will switch `anyscale_job` run type to `job` (Ray Job)."
-    ),
-)
-@click.option(
     "--test-definition-root",
     default=None,
     type=str,
@@ -113,7 +103,6 @@ def main(
     cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -172,7 +161,6 @@ def main(
             smoke_test=smoke_test,
             cluster_id=cluster_id,
             cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
             test_definition_root=test_definition_root,
             log_streaming_limit=log_streaming_limit,
             image=image,

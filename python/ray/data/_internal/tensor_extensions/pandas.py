@@ -43,7 +43,7 @@ from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
@@ -292,6 +292,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     base = None
 
     def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
+        """
+        Create a new TensorDtype.
+
+        Args:
+            shape: The shape of the tensor elements.
+            dtype: The dtype of the tensor elements.
+        """
         self._shape = shape
         self._dtype = dtype
 
@@ -731,10 +738,14 @@ class TensorArray(
             Any,
         ],
     ):
-        """
+        """Initialize a TensorArray from a sequence of ndarrays.
+
         Args:
-            values: A NumPy ndarray or sequence of NumPy ndarrays of equal
-                shape.
+            values: (Union[np.ndarray, ABCSeries, Sequence[Union[np.ndarray, TensorArrayElement]],
+                TensorArrayElement, Any]): A NumPy ndarray or sequence of NumPy ndarrays of equal shape.
+
+        Raises:
+            TypeError: If values is not a numpy.ndarray or sequence of numpy.ndarray.
         """
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
@@ -1018,7 +1029,7 @@ class TensorArray(
         extension array to object dtype. This uses the helper method
         :func:`pandas.api.extensions.take`.
 
-        .. code-block:: python
+        .. testcode::
 
            def take(self, indices, allow_fill=False, fill_value=None):
                from pandas.core.algorithms import take
@@ -1392,7 +1403,7 @@ class TensorArray(
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data._internal.tensor_extensions.arrow import (
             ArrowTensorArray,
             ArrowVariableShapedTensorArray,
         )
