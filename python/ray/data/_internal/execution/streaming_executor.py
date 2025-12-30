@@ -426,6 +426,11 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        if self._resource_manager is not None:
+            self._resource_manager.set_external_consumer_bytes(num_bytes)
+
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
         stats = self._initial_stats or DatasetStats(metadata={}, parent=None)
@@ -508,7 +513,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Log metrics of newly completed operators.
         for op, state in topology.items():
-            if op.completed() and not self._has_op_completed[op]:
+            if op.has_completed() and not self._has_op_completed[op]:
                 metrics_dict = op._metrics.as_dict(skip_internal_metrics=True)
                 metrics_table = _format_metrics_table(metrics_dict)
                 log_str = f"Operator {op} completed. Operator Metrics:\n{metrics_table}"
@@ -517,7 +522,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
-        return not all(op.completed() for op in topology)
+        return not all(op.has_completed() for op in topology)
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
