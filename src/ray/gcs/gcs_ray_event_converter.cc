@@ -110,6 +110,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   if (event.has_call_site()) {
     task_info->set_call_site(event.call_site());
   }
+  if (!event.label_selector().empty()) {
+    task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
+  }
 
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_task_func()),
@@ -146,6 +149,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_is_debugger_paused()) {
     task_state_update->set_is_debugger_paused(event.is_debugger_paused());
   }
+  if (event.has_actor_repr_name()) {
+    task_state_update->set_actor_repr_name(event.actor_repr_name());
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
@@ -178,6 +184,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   }
   if (event.has_call_site()) {
     task_info->set_call_site(event.call_site());
+  }
+  if (!event.label_selector().empty()) {
+    task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
   }
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),

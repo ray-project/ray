@@ -44,4 +44,6 @@ message TaskLifecycleEvent {
   bytes job_id = 8;
   // Whether the task is paused by the debugger.
   optional bool is_debugger_paused = 9;
+  // Actor task repr name, if applicable.
+  optional string actor_repr_name = 10;
 }

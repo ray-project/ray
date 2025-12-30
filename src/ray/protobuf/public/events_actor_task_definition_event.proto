@@ -44,4 +44,6 @@ message ActorTaskDefinitionEvent {
   string serialized_runtime_env = 13;
   // Human readable stacktrace of the actor task invocation.
   optional string call_site = 14;
+  // The key-value label constraints of the node to schedule this actor task on.
+  map<string, string> label_selector = 15;
 }

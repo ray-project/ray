@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/grpc_util.h"
+#include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
 namespace core {
@@ -206,6 +207,11 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   if (!call_site.empty()) {
     definition_event_data.set_call_site(call_site);
   }
+  const auto &label_selector = task_spec_->GetMessage().label_selector();
+  if (label_selector.label_constraints_size() > 0) {
+    *definition_event_data.mutable_label_selector() =
+        ray::LabelSelector(label_selector).ToStringMap();
+  }
 
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
@@ -246,6 +252,10 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
 
   if (state_update_->error_info_.has_value()) {
     lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update_->error_info_);
+  }
+
+  if (!state_update_->actor_repr_name_.empty()) {
+    lifecycle_event_data.set_actor_repr_name(state_update_->actor_repr_name_);
   }
 
   if (state_update_->node_id_.has_value()) {
