@@ -1,6 +1,5 @@
 import abc
 import logging
-import math
 import time
 import uuid
 import warnings
@@ -21,6 +20,7 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
+import math
 
 import ray
 from ray.actor import ActorHandle
