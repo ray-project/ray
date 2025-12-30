@@ -25,7 +25,7 @@ from ray.data.context import DataContext
 class TestDownstreamCapacityBackpressurePolicy:
     def _mock_operator(
         self,
-        op_class=PhysicalOperator,
+        op_class: type = PhysicalOperator,
         num_tasks_running: int = 5,
         obj_store_mem_internal_inqueue: int = 1000,
         obj_store_mem_pending_task_inputs: int = 1000,
@@ -36,8 +36,14 @@ class TestDownstreamCapacityBackpressurePolicy:
 
         Args:
             op_class: The operator class to mock.
+            num_tasks_running: Number of tasks running.
+            obj_store_mem_internal_inqueue: Object store memory in internal queue.
+            obj_store_mem_pending_task_inputs: Object store memory for pending inputs.
             throttling_disabled: If True, operator is ineligible for backpressure.
             has_execution_finished: If True, operator is ineligible for backpressure.
+
+        Returns:
+            A mock operator with the specified configuration.
         """
         mock_operator = MagicMock(spec=op_class)
         mock_operator.metrics = MagicMock(spec=OpRuntimeMetrics)

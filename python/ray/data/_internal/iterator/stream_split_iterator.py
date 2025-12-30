@@ -233,6 +233,9 @@ class SplitCoordinator:
             output_split_idx: The output split index for this client.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
+
+        Returns:
+            The next RefBundle for this split, or None if the epoch is done.
         """
         start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
