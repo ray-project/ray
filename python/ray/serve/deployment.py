@@ -218,9 +218,6 @@ class Deployment:
         placement_group_bundle_label_selector: Default[
             List[Dict[str, str]]
         ] = DEFAULT.VALUE,
-        placement_group_fallback_strategy: Default[
-            List[Dict[str, Any]]
-        ] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -352,10 +349,9 @@ class Deployment:
                 self._replica_config.placement_group_bundle_label_selector
             )
 
-        if placement_group_fallback_strategy is DEFAULT.VALUE:
-            placement_group_fallback_strategy = (
-                self._replica_config.placement_group_fallback_strategy
-            )
+        placement_group_fallback_strategy = (
+            self._replica_config.placement_group_fallback_strategy
+        )
 
         if max_replicas_per_node is DEFAULT.VALUE:
             max_replicas_per_node = self._replica_config.max_replicas_per_node
