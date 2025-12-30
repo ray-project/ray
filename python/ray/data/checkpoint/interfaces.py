@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 import pyarrow
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.datasource import PathPartitionFilter
@@ -158,7 +158,7 @@ class CheckpointConfig:
             ) from e
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class InvalidCheckpointingConfig(Exception):
     """Exception which indicates that the checkpointing
     configuration is invalid."""
@@ -166,7 +166,7 @@ class InvalidCheckpointingConfig(Exception):
     pass
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class InvalidCheckpointingOperators(Exception):
     """Exception which indicates that the DAG is not eligible for checkpointing,
     due to one or more incompatible operators."""
