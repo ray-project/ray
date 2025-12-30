@@ -596,10 +596,6 @@ def run_release_test_anyscale(
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if cluster_manager:
-        buildkite_group(":earth_africa: Terminating cluster")
-        cluster_manager.terminate_cluster(wait=False)
-
     if hasattr(command_runner, "cleanup"):
         command_runner.cleanup()
 
