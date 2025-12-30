@@ -111,7 +111,7 @@ RLlib offers a unified top-level API to configure and customize an agent’s
 exploration behavior, including the decisions, like how and whether, to sample
 actions from distributions, stochastically or deterministically.
 Set up the behavior using built-in Exploration classes.
-See `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
+See `this package <https://github.com/ray-project/ray/tree/master/rllib/utils/exploration>`__),
 which you specify and further configure inside
 ``AlgorithmConfig().env_runners(..)``.
 Besides using one of the available classes, you can sub-class any of
