@@ -773,6 +773,12 @@ class _CallableClassUDF:
         self._return_dtype = return_dtype
         # Instance created by init() at actor startup
         self._instance = None
+        # Cache the spec to avoid creating new instances on each access
+        self._callable_class_spec = _CallableClassSpec(
+            cls=cls,
+            args=ctor_args,
+            kwargs=ctor_kwargs,
+        )
 
     @property
     def __name__(self) -> str:
@@ -786,11 +792,7 @@ class _CallableClassUDF:
         Used for deduplication when the same UDF appears multiple times
         in an expression tree.
         """
-        return _CallableClassSpec(
-            cls=self._cls,
-            args=self._ctor_args,
-            kwargs=self._ctor_kwargs,
-        )
+        return self._callable_class_spec
 
     def init(self) -> None:
         """Initialize the UDF instance. Called at actor startup via init_fn.
@@ -824,9 +826,7 @@ class _CallableClassUDF:
         from ray.data.util.expression_utils import _call_udf_instance_with_async_bridge
 
         # Call instance directly, handling async if needed
-        return _call_udf_instance_with_async_bridge(
-            self._instance, None, *args, **kwargs
-        )
+        return _call_udf_instance_with_async_bridge(self._instance, *args, **kwargs)
 
 
 @DeveloperAPI(stability="alpha")

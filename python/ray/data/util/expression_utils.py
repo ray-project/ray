@@ -12,8 +12,9 @@ def create_callable_class_udf_init_fn(
     """Create an init_fn to initialize all callable class UDFs in expressions.
 
     This function collects all _CallableClassUDF instances from the given expressions,
-    deduplicates them by their callable_class_spec key, and returns an init_fn that
-    initializes each unique UDF at actor startup.
+    groups them by their callable_class_spec key, and returns an init_fn that
+    initializes each group at actor startup. UDFs with the same key (same class and
+    constructor args) share a single instance to ensure all are properly initialized.
 
     Args:
         exprs: List of expressions to collect callable class UDFs from.
@@ -35,25 +36,30 @@ def create_callable_class_udf_init_fn(
     if not callable_class_udfs:
         return None
 
-    # Deduplicate by callable_class_spec key
-    seen_keys = set()
-    unique_udfs = []
+    # Group UDFs by callable_class_spec key.
+    # Multiple _CallableClassUDF objects may have the same key (same class + args).
+    # We need to initialize ALL of them, sharing a single instance per key.
+    udfs_by_key = {}
     for udf in callable_class_udfs:
         key = udf.callable_class_spec.make_key()
-        if key not in seen_keys:
-            seen_keys.add(key)
-            unique_udfs.append(udf)
+        if key not in udfs_by_key:
+            udfs_by_key[key] = []
+        udfs_by_key[key].append(udf)
 
     def init_fn():
-        for udf in unique_udfs:
-            udf.init()
+        for udfs_with_same_key in udfs_by_key.values():
+            # Initialize the first UDF to create the instance
+            first_udf = udfs_with_same_key[0]
+            first_udf.init()
+            # Share the instance with all other UDFs that have the same key
+            for other_udf in udfs_with_same_key[1:]:
+                other_udf._instance = first_udf._instance
 
     return init_fn
 
 
 def _call_udf_instance_with_async_bridge(
     instance: Any,
-    async_loop: Optional[Any],
     *args,
     **kwargs,
 ) -> Any:
@@ -64,7 +70,6 @@ def _call_udf_instance_with_async_bridge(
 
     Args:
         instance: The callable instance to call
-        async_loop: The async event loop (if available)
         *args: Positional arguments
         **kwargs: Keyword arguments
 
@@ -77,13 +82,7 @@ def _call_udf_instance_with_async_bridge(
     # Check if the instance's __call__ is async
     if inspect.iscoroutinefunction(instance.__call__):
         # Async coroutine: bridge from sync to async
-        if async_loop is not None:
-            future = asyncio.run_coroutine_threadsafe(
-                instance(*args, **kwargs), async_loop
-            )
-            return future.result()
-        else:
-            return asyncio.run(instance(*args, **kwargs))
+        return asyncio.run(instance(*args, **kwargs))
     elif inspect.isasyncgenfunction(instance.__call__):
         # Async generator: collect results
         async def _collect():
@@ -107,11 +106,7 @@ def _call_udf_instance_with_async_bridge(
                 )
                 return results[-1]
 
-        if async_loop is not None:
-            future = asyncio.run_coroutine_threadsafe(_collect(), async_loop)
-            return future.result()
-        else:
-            return asyncio.run(_collect())
+        return asyncio.run(_collect())
     else:
         # Synchronous instance - direct call
         return instance(*args, **kwargs)
