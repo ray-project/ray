@@ -162,8 +162,12 @@ class Cifar10Model(Trainable):
         aug_gen.fit(x_train)
         batch_size = self.config.get("batch_size", 64)
         gen = aug_gen.flow(x_train, y_train, batch_size=batch_size)
-        self.model.fit_generator(
-            generator=gen, epochs=self.config.get("epochs", 1), validation_data=None
+        steps_per_epoch = max(1, int(np.ceil(len(x_train) / batch_size)))
+        self.model.fit(
+            gen,
+            epochs=self.config.get("epochs", 1),
+            steps_per_epoch=steps_per_epoch,
+            verbose=0,
         )
 
         # loss, accuracy

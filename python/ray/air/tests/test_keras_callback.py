@@ -87,7 +87,7 @@ class TestReportCheckpointCallback:
         callback = ReportCheckpointCallback(
             checkpoint_on=["epoch_end", "train_batch_end"]
         )
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 0})
@@ -106,7 +106,7 @@ class TestReportCheckpointCallback:
         callback = ReportCheckpointCallback(
             report_metrics_on=["epoch_end", "train_batch_end"]
         )
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 1})
@@ -127,7 +127,7 @@ class TestReportCheckpointCallback:
         callback = ReportCheckpointCallback(
             report_metrics_on="train_batch_end", checkpoint_on="epoch_end"
         )
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 1})
@@ -151,7 +151,7 @@ class TestReportCheckpointCallback:
         # This tests `ReportCheckpointCallback`. The test simulates the end of an epoch,
         # and asserts that the temporary checkpoint directory is deleted afterwards.
         callback = ReportCheckpointCallback()
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_epoch_end(0, {"loss": 0})
 

@@ -376,7 +376,7 @@ comm==0.2.0
     #   ipywidgets
 configobj==5.0.8
     # via everett
-configspace==0.7.1 ; python_version < "3.12"
+configspace==1.2.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
@@ -443,7 +443,7 @@ decorator==5.1.1
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
-deepspeed==0.18.3
+deepspeed==0.17.5
     # via -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
