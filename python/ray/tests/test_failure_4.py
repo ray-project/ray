@@ -2,7 +2,6 @@ import subprocess
 import sys
 import time
 
-import grpc
 import numpy as np
 import pytest
 from grpc._channel import _InactiveRpcError
@@ -12,6 +11,7 @@ import ray._private.ray_constants as ray_constants
 from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import (
     get_error_message,
@@ -355,7 +355,9 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
     # Kill a raylet gracefully.
     def kill_raylet(ip, port, graceful=True):
         raylet_address = build_address(ip, port)
-        channel = grpc.insecure_channel(raylet_address)
+        channel = init_grpc_channel(
+            raylet_address, options=ray_constants.GLOBAL_GRPC_OPTIONS
+        )
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         print(f"Sending a shutdown request to {build_address(ip, port)}")
         try:
@@ -456,7 +458,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     # Prepare requests.
     gcs_server_addr = cluster.gcs_address
     options = ray_constants.GLOBAL_GRPC_OPTIONS
-    channel = grpc.insecure_channel(gcs_server_addr, options)
+    channel = init_grpc_channel(gcs_server_addr, options=options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
     r = gcs_service_pb2.DrainNodeRequest()
     for worker_id in worker_node_ids:

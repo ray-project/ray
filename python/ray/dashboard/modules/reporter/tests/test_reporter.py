@@ -21,6 +21,7 @@ from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
+    get_auth_headers,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
@@ -966,7 +967,11 @@ def test_get_task_traceback_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/task/traceback", params=params)
+        resp = requests.get(
+            f"{webui_url}/task/traceback",
+            params=params,
+            headers=get_auth_headers(),
+        )
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -1014,7 +1019,11 @@ def test_get_memory_profile_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        resp = requests.get(
+            f"{webui_url}/memory_profile",
+            params=params,
+            headers=get_auth_headers(),
+        )
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert resp.status_code == 200
@@ -1067,7 +1076,11 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/traceback", params=params)
+            resp = requests.get(
+                f"{webui_url}/task/traceback",
+                params=params,
+                headers=get_auth_headers(),
+            )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1106,7 +1119,11 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
+            resp = requests.get(
+                f"{webui_url}/task/cpu_profile",
+                params=params,
+                headers=get_auth_headers(),
+            )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1144,7 +1161,9 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
     # Make sure the API works.
     def verify():
         resp = requests.get(
-            f"{webui_url}/memory_profile", params=missing_node_id_params
+            f"{webui_url}/memory_profile",
+            params=missing_node_id_params,
+            headers=get_auth_headers(),
         )
         content = resp.content.decode("utf-8")
         assert "task's node id is required" in content, content
@@ -1158,7 +1177,7 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     url = f"{webui_url}/api/v0/cluster_metadata"
 
-    resp = requests.get(url)
+    resp = requests.get(url, headers=get_auth_headers())
     assert resp.status_code == 200
     resp_data = resp.json()["data"]
     meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=True)

@@ -24,6 +24,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    get_auth_headers,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
@@ -757,16 +758,23 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_file = tmp_path / package_name
     create_package(str(pkg_dir), package_file, include_gitignore=True)
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = requests.get(
+        url.format(protocol=protocol, package_name=package_name),
+        headers=get_auth_headers(),
+    )
     assert resp.status_code == 404
 
     resp = requests.put(
         url.format(protocol=protocol, package_name=package_name),
         data=package_file.read_bytes(),
+        headers=get_auth_headers(),
     )
     assert resp.status_code == 200
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = requests.get(
+        url.format(protocol=protocol, package_name=package_name),
+        headers=get_auth_headers(),
+    )
     assert resp.status_code == 200
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)

@@ -22,6 +22,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    get_auth_headers,
     get_current_unused_port,
     run_string_as_driver_nonblocking,
     wait_until_server_available,
@@ -521,7 +522,9 @@ async def test_job_log_in_multiple_node(
         job_check_status.append(False)
 
     async def _check_all_jobs_log():
-        response = requests.get(webui_url + "/nodes?view=summary")
+        response = requests.get(
+            webui_url + "/nodes?view=summary", headers=get_auth_headers()
+        )
         response.raise_for_status()
         summary = response.json()
         assert summary["result"] is True, summary["msg"]

@@ -14,6 +14,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
+    get_auth_headers,
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
@@ -33,7 +34,9 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/test/dump")
+            response = requests.get(
+                webui_url + "/test/dump", headers=get_auth_headers()
+            )
             response.raise_for_status()
             try:
                 dump_info = response.json()
@@ -76,7 +79,10 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/nodes?view=hostnamelist")
+            response = requests.get(
+                webui_url + "/nodes?view=hostnamelist",
+                headers=get_auth_headers(),
+            )
             response.raise_for_status()
             hostname_list = response.json()
             assert hostname_list["result"] is True, hostname_list["msg"]
@@ -84,7 +90,9 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(hostname_list) == 1
 
             hostname = hostname_list[0]
-            response = requests.get(webui_url + f"/nodes/{node_id}")
+            response = requests.get(
+                webui_url + f"/nodes/{node_id}", headers=get_auth_headers()
+            )
             response.raise_for_status()
             detail = response.json()
             assert detail["result"] is True, detail["msg"]
@@ -102,7 +110,9 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
                     actor_worker_pids.add(worker["pid"])
             assert actor_worker_pids == actor_pids
 
-            response = requests.get(webui_url + "/nodes?view=summary")
+            response = requests.get(
+                webui_url + "/nodes?view=summary", headers=get_auth_headers()
+            )
             response.raise_for_status()
             summary = response.json()
             assert summary["result"] is True, summary["msg"]
@@ -160,7 +170,9 @@ def test_multi_nodes_info(
 
     def _check_nodes():
         try:
-            response = requests.get(webui_url + "/nodes?view=summary")
+            response = requests.get(
+                webui_url + "/nodes?view=summary", headers=get_auth_headers()
+            )
             response.raise_for_status()
             summary = response.json()
             assert summary["result"] is True, summary["msg"]
@@ -168,7 +180,10 @@ def test_multi_nodes_info(
             assert len(summary) == 4
             for node_info in summary:
                 node_id = node_info["raylet"]["nodeId"]
-                response = requests.get(webui_url + f"/nodes/{node_id}")
+                response = requests.get(
+                    webui_url + f"/nodes/{node_id}",
+                    headers=get_auth_headers(),
+                )
                 response.raise_for_status()
                 detail = response.json()
                 assert detail["result"] is True, detail["msg"]
@@ -202,9 +217,11 @@ def test_multi_node_churn(
         nonlocal success
         while True:
             try:
-                resp = requests.get(webui_url)
+                resp = requests.get(webui_url, headers=get_auth_headers())
                 resp.raise_for_status()
-                resp = requests.get(webui_url + "/nodes?view=summary")
+                resp = requests.get(
+                    webui_url + "/nodes?view=summary", headers=get_auth_headers()
+                )
                 resp.raise_for_status()
                 summary = resp.json()
                 assert summary["result"] is True, summary["msg"]
@@ -260,7 +277,10 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
     def _check_workers():
         try:
-            resp = requests.get(webui_url + "/test/dump?key=node_physical_stats")
+            resp = requests.get(
+                webui_url + "/test/dump?key=node_physical_stats",
+                headers=get_auth_headers(),
+            )
             resp.raise_for_status()
             result = resp.json()
             assert result["result"] is True
@@ -300,7 +320,9 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
 
     def _check_worker_pids():
         try:
-            response = requests.get(webui_url + f"/nodes/{node_id}")
+            response = requests.get(
+                webui_url + f"/nodes/{node_id}", headers=get_auth_headers()
+            )
             response.raise_for_status()
             dump_info = response.json()
             assert dump_info["result"] is True

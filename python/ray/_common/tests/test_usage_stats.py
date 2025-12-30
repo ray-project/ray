@@ -21,6 +21,7 @@ from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabled
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
+    get_auth_headers,
     run_string_as_driver,
     wait_until_server_available,
 )
@@ -726,7 +727,9 @@ def test_usage_stats_enabled_endpoint(
         webui_url = context["webui_url"]
         assert wait_until_server_available(webui_url)
         webui_url = format_web_url(webui_url)
-        response = requests.get(f"{webui_url}/usage_stats_enabled")
+        response = requests.get(
+            f"{webui_url}/usage_stats_enabled", headers=get_auth_headers()
+        )
         assert response.status_code == 200
         assert response.json()["result"] is True
         assert response.json()["data"]["usageStatsEnabled"] is False
@@ -746,7 +749,7 @@ def test_get_cluster_id(ray_start_cluster, reset_usage_stats):
     webui_url = context["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/cluster_id")
+    response = requests.get(f"{webui_url}/cluster_id", headers=get_auth_headers())
     assert response.status_code == 200
     assert response.json()["result"] is True
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)

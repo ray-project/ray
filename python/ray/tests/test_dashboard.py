@@ -10,7 +10,7 @@ import requests
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import get_auth_headers, run_string_as_driver
 
 import psutil
 
@@ -67,7 +67,7 @@ def test_port_auto_increment(shutdown_only):
 
     def dashboard_available():
         try:
-            requests.get("http://" + url).status_code == 200
+            requests.get("http://" + url, headers=get_auth_headers()).status_code == 200
             return True
         except Exception:
             return False
@@ -79,12 +79,13 @@ def test_port_auto_increment(shutdown_only):
 import ray
 from ray._common.test_utils import wait_for_condition
 import requests
+from ray._private.test_utils import get_auth_headers
 ray.init()
 url = ray._private.worker.get_dashboard_url()
 assert url != "{url}"
 def dashboard_available():
     try:
-        requests.get("http://"+url).status_code == 200
+        requests.get("http://"+url, headers=get_auth_headers()).status_code == 200
         return True
     except:
         return False
@@ -132,7 +133,11 @@ def test_dashboard(shutdown_only):
     while True:
         try:
             node_info_url = f"http://{dashboard_url}/nodes"
-            resp = requests.get(node_info_url, params={"view": "summary"})
+            resp = requests.get(
+                node_info_url,
+                params={"view": "summary"},
+                headers=get_auth_headers(),
+            )
             resp.raise_for_status()
             summaries = resp.json()
             assert summaries["result"] is True

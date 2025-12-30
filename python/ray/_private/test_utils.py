@@ -975,6 +975,17 @@ def format_web_url(url):
     return url
 
 
+def get_auth_headers(headers=None):
+    """Return merged auth headers for dashboard HTTP requests when enabled."""
+    headers = dict(headers or {})
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
+    headers.update(get_auth_headers_if_auth_enabled(headers))
+    return headers
+
+
 def client_test_enabled() -> bool:
     return ray._private.client_mode_hook.is_client_mode_enabled
 
@@ -1899,7 +1910,9 @@ def get_resource_usage(gcs_address, timeout=10):
 # Gets the load metrics report assuming gcs is local.
 def get_load_metrics_report(webui_url):
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = requests.get(
+        f"{webui_url}/api/cluster_status", headers=get_auth_headers()
+    )
     response.raise_for_status()
     return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 

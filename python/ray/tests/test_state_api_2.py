@@ -13,7 +13,7 @@ import requests
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.profiling import chrome_tracing_dump
-from ray._private.test_utils import check_call_subprocess
+from ray._private.test_utils import check_call_subprocess, get_auth_headers
 from ray.util.state import (
     get_actor,
     list_actors,
@@ -171,7 +171,9 @@ def test_timeline_request(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        resp = requests.get(f"{dashboard_url}/api/v0/tasks/timeline")
+        resp = requests.get(
+            f"{dashboard_url}/api/v0/tasks/timeline", headers=get_auth_headers()
+        )
         resp.raise_for_status()
         assert resp.json(), "No result has returned"
         return True
