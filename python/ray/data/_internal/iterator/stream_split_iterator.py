@@ -4,10 +4,12 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces import (
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -73,21 +75,31 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
-            future: ObjectRef[
-                Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            # Initial get with 0 prefetched bytes.
+            future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
+                cur_epoch, self._output_split_idx, 0
+            )
             while True:
                 block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
+                    # Calculate prefetched bytes: BatchIterator's current prefetch
+                    # plus the block we just received (which will be added to
+                    # BatchIterator's sliding window when we yield it).
+                    prefetched_bytes = (
+                        self._iter_stats.iter_prefetched_bytes
+                        + block_ref_and_md.size_bytes()
+                    )
                     future = self._coord_actor.get.remote(
-                        cur_epoch, self._output_split_idx
+                        cur_epoch,
+                        self._output_split_idx,
+                        prefetched_bytes,
                     )
                     yield RefBundle(
                         blocks=block_ref_and_md.blocks,
@@ -96,7 +108,9 @@ class StreamSplitDataIterator(DataIterator):
                     )
 
         self._base_dataset._plan._run_index += 1
-        return gen_blocks(), self._iter_stats, False
+        # Return None for executor since StreamSplitDataIterator has its own
+        # mechanism for reporting prefetched bytes via SplitCoordinator.
+        return gen_blocks(), self._iter_stats, False, None
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -161,6 +175,10 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
 
+        # Track prefetched bytes reported by each client (from BatchIterator).
+        # Guarded by self._lock.
+        self._client_prefetched_bytes: Dict[int, int] = {}
+
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
@@ -171,6 +189,20 @@ class SplitCoordinator:
                     self._executor, dataset._plan
                 )
                 yield output_iterator
+
+                # HACK: Clear the set of files to restore from after the first epoch
+                # to avoid loading the mid-epoch state on every subsequent epoch.
+                # https://anyscale1.atlassian.net/browse/DATA-1388
+                from ray.data.datasource import PartitionStyle, PathPartitionFilter
+
+                checkpoint_config = self._base_dataset.context.checkpoint_config
+                if checkpoint_config:
+                    checkpoint_config.checkpoint_path_partition_filter = (
+                        PathPartitionFilter.of(
+                            filter_fn=lambda _: False,
+                            style=PartitionStyle.HIVE,
+                        )
+                    )
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
@@ -200,10 +232,21 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(self, epoch_id: int, output_split_idx: int) -> Optional[RefBundle]:
+    def get(
+        self,
+        epoch_id: int,
+        output_split_idx: int,
+        client_prefetched_bytes: int = 0,
+    ) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
+
+        Args:
+            epoch_id: The epoch ID from start_epoch().
+            output_split_idx: The output split index for this client.
+            client_prefetched_bytes: The prefetched bytes reported by the
+                client's BatchIterator, used for resource accounting.
         """
         start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
@@ -238,6 +281,11 @@ class SplitCoordinator:
                 self._next_bundle[output_split_idx] = next_bundle
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
+                # Update client prefetched bytes and report to resource manager.
+                self._client_prefetched_bytes[
+                    output_split_idx
+                ] = client_prefetched_bytes
+                self._report_prefetched_bytes_to_executor()
 
             return RefBundle(
                 [block], schema=schema, owns_blocks=next_bundle.owns_blocks
@@ -247,6 +295,26 @@ class SplitCoordinator:
         finally:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
+
+    def _get_total_prefetched_bytes(self) -> int:
+        """Get the total prefetched bytes including coordinator buffer and clients.
+
+        Must be called while holding self._lock.
+        """
+        # Bytes buffered in the coordinator.
+        total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
+        # Bytes prefetched by each client's BatchIterator.
+        total += sum(self._client_prefetched_bytes.values())
+        return total
+
+    def _report_prefetched_bytes_to_executor(self) -> None:
+        """Report total prefetched bytes to the executor's resource manager.
+
+        Must be called while holding self._lock.
+        """
+        if self._executor is not None:
+            total_bytes = self._get_total_prefetched_bytes()
+            self._executor.set_external_consumer_bytes(total_bytes)
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""

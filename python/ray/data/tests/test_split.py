@@ -959,6 +959,54 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+@pytest.mark.parametrize("prefetch_batches", [0, 2])
+def test_iter_batches_reports_prefetched_bytes(
+    ray_start_regular_shared_2_cpus, prefetch_batches
+):
+    """Test that iter_batches reports prefetched bytes to executor."""
+    from unittest.mock import MagicMock
+
+    ds = ray.data.range(100, override_num_blocks=10)
+
+    # Create a mock executor to capture set_external_consumer_bytes calls
+    mock_executor = MagicMock()
+    reported_bytes = []
+
+    def capture_bytes(num_bytes):
+        reported_bytes.append(num_bytes)
+
+    mock_executor.set_external_consumer_bytes = capture_bytes
+
+    # Patch the dataset's _execute_to_iterator to return our mock executor
+    original_execute = ds._execute_to_iterator
+
+    def patched_execute():
+        bundle_iter, stats, executor = original_execute()
+        return bundle_iter, stats, mock_executor
+
+    ds._execute_to_iterator = patched_execute
+
+    # Create iterator and consume batches
+    iterator = ds.iterator()
+    batches = list(
+        iterator.iter_batches(batch_size=10, prefetch_batches=prefetch_batches)
+    )
+
+    assert len(batches) == 10
+
+    # Verify exact number of callbacks:
+    # - 10 batches (callback after each yield_batch_context)
+    # - 1 epoch end (callback with 0)
+    # Total: 11 callbacks
+    assert len(reported_bytes) == 11, f"Expected 11, got {len(reported_bytes)}"
+
+    # All values should be non-negative
+    assert all(b >= 0 for b in reported_bytes), f"Negative: {reported_bytes}"
+
+    # Last reported value should be 0 (epoch end clears prefetched bytes)
+    assert reported_bytes[-1] == 0
+
+
 if __name__ == "__main__":
     import sys
 

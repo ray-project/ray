@@ -212,6 +212,7 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
+            self._options,
             self._resource_manager,
             execution_id=self._dataset_id,
         )
@@ -425,6 +426,11 @@ class StreamingExecutor(Executor, threading.Thread):
             return self._final_stats
         else:
             return self._generate_stats()
+
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        if self._resource_manager is not None:
+            self._resource_manager.set_external_consumer_bytes(num_bytes)
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
