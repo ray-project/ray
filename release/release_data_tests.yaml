@@ -762,8 +762,7 @@
 
   matrix:
     setup:
-      - spot_suffix: ""
-      - spot_suffix: "_spot"
+      spot_suffix: ["", "_spot"]
 
   run:
     timeout: 3600
