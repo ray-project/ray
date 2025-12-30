@@ -11,6 +11,9 @@ from typing import (
     Dict,
     Generic,
     List,
+    Optional,
+    Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -29,6 +32,9 @@ if TYPE_CHECKING:
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
 T = TypeVar("T")
+
+UDFCallable = Callable[..., "UDFExpr"]
+Decorated = Union[UDFCallable, Type[T]]
 
 
 @DeveloperAPI(stability="alpha")
@@ -139,11 +145,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
@@ -681,6 +685,150 @@ class UnaryExpr(Expr):
         )
 
 
+@dataclass(frozen=True)
+class _CallableClassSpec:
+    """Specification for a callable class UDF.
+
+    This dataclass captures the class type and constructor arguments needed
+    to instantiate a callable class UDF on an actor. It consolidates the
+    callable class metadata that was previously spread across multiple fields.
+
+    Attributes:
+        cls: The original callable class type
+        args: Positional arguments for the constructor
+        kwargs: Keyword arguments for the constructor
+    """
+
+    cls: type
+    args: Tuple[Any, ...] = ()
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def make_key(self) -> Tuple:
+        """Create a hashable key for UDF instance lookup.
+
+        The key uniquely identifies a UDF by its class and constructor arguments.
+        This ensures that the same class with different constructor args
+        (e.g., Multiplier(2) vs Multiplier(3)) are treated as distinct UDFs.
+
+        Returns:
+            A hashable tuple that uniquely identifies this UDF configuration.
+        """
+        try:
+            key = (
+                id(self.cls),
+                self.args,
+                tuple(sorted(self.kwargs.items())),
+            )
+            # Verify the key is actually hashable (args may contain lists)
+            hash(key)
+            return key
+        except TypeError:
+            # Fallback for unhashable args/kwargs - use repr for comparison
+            return (id(self.cls), repr(self.args), repr(self.kwargs))
+
+
+class _CallableClassUDF:
+    """A wrapper that makes callable class UDFs appear as regular functions.
+
+    This class wraps callable class UDFs for use in expressions. It provides
+    an `init()` method that should be called at actor startup via `init_fn`
+    to instantiate the underlying class before any blocks are processed.
+
+    Key responsibilities:
+    1. Store the callable class and constructor arguments
+    2. Provide init() for actor startup initialization
+    3. Handle async bridging for coroutine/async generator UDFs
+    4. Reuse the same instance across all calls (actor semantics)
+
+    Example:
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x):
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> add_five = AddOffset(5)  # Creates _CallableClassUDF internally
+        >>> expr = add_five(col("value"))  # Creates UDFExpr with fn=_CallableClassUDF
+    """
+
+    def __init__(
+        self,
+        cls: type,
+        ctor_args: Tuple[Any, ...],
+        ctor_kwargs: Dict[str, Any],
+        return_dtype: DataType,
+    ):
+        """Initialize the _CallableClassUDF wrapper.
+
+        Args:
+            cls: The original callable class
+            ctor_args: Constructor positional arguments
+            ctor_kwargs: Constructor keyword arguments
+            return_dtype: The return data type for schema inference
+        """
+        self._cls = cls
+        self._ctor_args = ctor_args
+        self._ctor_kwargs = ctor_kwargs
+        self._return_dtype = return_dtype
+        # Instance created by init() at actor startup
+        self._instance = None
+        # Cache the spec to avoid creating new instances on each access
+        self._callable_class_spec = _CallableClassSpec(
+            cls=cls,
+            args=ctor_args,
+            kwargs=ctor_kwargs,
+        )
+
+    @property
+    def __name__(self) -> str:
+        """Return the original class name for error messages."""
+        return self._cls.__name__
+
+    @property
+    def callable_class_spec(self) -> _CallableClassSpec:
+        """Return the callable class spec for this UDF.
+
+        Used for deduplication when the same UDF appears multiple times
+        in an expression tree.
+        """
+        return self._callable_class_spec
+
+    def init(self) -> None:
+        """Initialize the UDF instance. Called at actor startup via init_fn.
+
+        This ensures the callable class is instantiated before any blocks
+        are processed, matching the behavior of map_batches callable classes.
+        """
+        if self._instance is None:
+            self._instance = self._cls(*self._ctor_args, **self._ctor_kwargs)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Call the UDF instance.
+
+        Args:
+            *args: Evaluated expression arguments (PyArrow arrays, etc.)
+            **kwargs: Evaluated expression keyword arguments
+
+        Returns:
+            The result of calling the UDF instance
+
+        Raises:
+            RuntimeError: If init() was not called before __call__
+        """
+        if self._instance is None:
+            raise RuntimeError(
+                f"_CallableClassUDF '{self._cls.__name__}' was not initialized. "
+                f"init() must be called before __call__. This typically happens "
+                f"via init_fn at actor startup."
+            )
+
+        from ray.data.util.expression_utils import _call_udf_instance_with_async_bridge
+
+        # Call instance directly, handling async if needed
+        return _call_udf_instance_with_async_bridge(self._instance, *args, **kwargs)
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
@@ -693,15 +841,16 @@ class UDFExpr(Expr):
     as a PyArrow Array containing multiple values from that column across the batch.
 
     Args:
-        fn: The user-defined function to call
+        fn: The user-defined function to call. For callable classes, this is an
+            _CallableClassUDF instance that handles lazy instantiation internally.
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
+        >>> from ray.data.datatype import DataType
         >>>
         >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
@@ -709,17 +858,52 @@ class UDFExpr(Expr):
         >>>
         >>> # Use in expressions
         >>> expr = add_one(col("value"))
+
+        >>> # Callable class example
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> # Use callable class
+        >>> add_five = AddOffset(5)
+        >>> expr = add_five(col("value"))
     """
 
-    fn: Callable[..., BatchColumn]
+    fn: Callable[..., BatchColumn]  # Can be regular function OR _CallableClassUDF
     args: List[Expr]
     kwargs: Dict[str, Expr]
 
+    @property
+    def callable_class_spec(self) -> Optional[_CallableClassSpec]:
+        """Return callable_class_spec if fn is an _CallableClassUDF, else None.
+
+        This property maintains backward compatibility with code that checks
+        for callable_class_spec.
+        """
+        if isinstance(self.fn, _CallableClassUDF):
+            return self.fn.callable_class_spec
+        return None
+
     def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, UDFExpr):
+            return False
+
+        # For callable class UDFs (_CallableClassUDF), compare the callable_class_spec.
+        # For regular function UDFs, compare fn directly.
+        if isinstance(self.fn, _CallableClassUDF):
+            if not isinstance(other.fn, _CallableClassUDF):
+                return False
+            if self.fn.callable_class_spec != other.fn.callable_class_spec:
+                return False
+        else:
+            if self.fn != other.fn:
+                return False
+
         return (
-            isinstance(other, UDFExpr)
-            and self.fn == other.fn
-            and len(self.args) == len(other.args)
+            len(self.args) == len(other.args)
             and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
             and self.kwargs.keys() == other.kwargs.keys()
             and all(
@@ -730,9 +914,19 @@ class UDFExpr(Expr):
 
 
 def _create_udf_callable(
-    fn: Callable[..., BatchColumn], return_dtype: DataType
+    fn: Callable[..., BatchColumn],
+    return_dtype: DataType,
 ) -> Callable[..., UDFExpr]:
-    """Create a callable that generates UDFExpr when called with expressions."""
+    """Create a callable that generates UDFExpr when called with expressions.
+
+    Args:
+        fn: The user-defined function to wrap. Can be a regular function
+            or an _CallableClassUDF instance (for callable classes).
+        return_dtype: The return data type of the UDF
+
+    Returns:
+        A callable that creates UDFExpr instances when called with expressions
+    """
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
@@ -801,6 +995,14 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
+        >>> # Callable class UDF
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
         >>> # Use in dataset operations
         >>> ds = ray.data.from_items([
         ...     {"value": 5, "first": "John", "last": "Doe"},
@@ -813,12 +1015,63 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         >>> # Multi-column transformation (each column becomes a PyArrow Array)
         >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
         >>>
+        >>> # Callable class usage
+        >>> add_five = AddOffset(5)
+        >>> ds_with_offset = ds.with_column("value_plus_five", add_five(col("value")))
+        >>>
         >>> # Can also be used in complex expressions
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func, return_dtype)
+    def decorator(
+        func_or_class: Union[Callable[..., BatchColumn], Type[T]]
+    ) -> Decorated:
+        # Check if this is a callable class (has __call__ method defined)
+        if isinstance(func_or_class, type) and issubclass(func_or_class, Callable):
+            # Wrapper that delays instantiation and returns expressions instead of executing.
+            # Without this, MyClass(args) would instantiate on the driver and
+            # instance(col(...)) would try to execute rather than building an expression.
+            class ExpressionAwareCallableClass:
+                """Intercepts callable class instantiation to delay until actor execution.
+
+                Allows natural syntax like:
+                    add_five = AddOffset(5)
+                    ds.with_column("result", add_five(col("x")))
+
+                When instantiated, creates an _CallableClassUDF that is completely
+                self-contained - it handles lazy instantiation and async bridging
+                internally. From the planner's perspective, this is just a regular
+                callable function.
+                """
+
+                def __init__(self, *args, **kwargs):
+                    # Create an _CallableClassUDF that is self-contained.
+                    # It lazily instantiates the class on first call (on the worker)
+                    # and handles async bridging internally.
+                    self._expr_udf = _CallableClassUDF(
+                        cls=func_or_class,
+                        ctor_args=args,
+                        ctor_kwargs=kwargs,
+                        return_dtype=return_dtype,
+                    )
+
+                def __call__(self, *call_args, **call_kwargs):
+                    # Create UDFExpr with fn=_CallableClassUDF
+                    # The _CallableClassUDF is self-contained - no external setup needed
+                    return _create_udf_callable(
+                        self._expr_udf,
+                        return_dtype,
+                    )(*call_args, **call_kwargs)
+
+            # Preserve the original class name and module for better error messages
+            ExpressionAwareCallableClass.__name__ = func_or_class.__name__
+            ExpressionAwareCallableClass.__qualname__ = func_or_class.__qualname__
+            ExpressionAwareCallableClass.__module__ = func_or_class.__module__
+
+            return ExpressionAwareCallableClass
+        else:
+            # Regular function
+            return _create_udf_callable(func_or_class, return_dtype)
 
     return decorator
 
