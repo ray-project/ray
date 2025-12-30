@@ -400,15 +400,16 @@ class _AutoscalingCoordinatorActor:
         # Allocate remaining resources.
         # NOTE: to handle the case where multiple datasets are running concurrently,
         # we divide remaining resources equally to all requesters with `request_remaining=True`.
-        remaining_resource_requesters = [req for req in ongoing_reqs if req.request_remaining]
+        remaining_resource_requesters = [
+            req for req in ongoing_reqs if req.request_remaining
+        ]
         num_remaining_requesters = len(remaining_resource_requesters)
         if num_remaining_requesters > 0:
             for node_resource in cluster_node_resources:
                 # Divide remaining resources equally among requesters.
                 # NOTE: Integer division may leave some resources unallocated.
                 divided_resource = {
-                    k: v // num_remaining_requesters
-                    for k, v in node_resource.items()
+                    k: v // num_remaining_requesters for k, v in node_resource.items()
                 }
                 for ongoing_req in remaining_resource_requesters:
                     if any(v > 0 for v in divided_resource.values()):

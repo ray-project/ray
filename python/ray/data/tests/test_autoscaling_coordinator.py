@@ -245,8 +245,6 @@ def test_double_allocation_with_multiple_request_remaining():
         assert res2 == req2 + [expected_remaining_per_requester]
 
 
-
-
 @pytest.fixture
 def cluster():
     """Initialize a Ray cluster with a 0 CPU head node and no workers."""
