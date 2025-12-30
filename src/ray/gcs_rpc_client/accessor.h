@@ -200,8 +200,7 @@ class NodeInfoAccessor {
   virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
       int64_t timeout_ms,
       std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
-      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
-          std::nullopt);
+      const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors = {});
 
   /// Subscribe to critical node information changes. This method transmits only address
   /// and liveness information for each node, excluding other node metadata.
@@ -380,6 +379,15 @@ class TaskInfoAccessor {
   /// \param callback Callback that will be called when add is complete.
   virtual void AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
                                      StatusCallback callback);
+
+  /// Add ray events to GCS asynchronously.
+  ///
+  /// \param request The AddEventsRequest containing ray events data to be added to GCS.
+  /// \param callback Callback that will be called when add is complete.
+  /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
+  virtual void AsyncAddEvents(rpc::events::AddEventsRequest &&request,
+                              const StatusCallback &callback,
+                              int64_t timeout_ms = -1);
 
   /// Get all info/events of all tasks stored in GCS asynchronously.
   ///

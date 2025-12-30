@@ -27,7 +27,7 @@ from ray_release.exception import (
     TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.job_manager import AnyscaleJobManager
+from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import (
     AZURE_CLOUD_STORAGE,
@@ -73,9 +73,9 @@ class AnyscaleJobRunner(CommandRunner):
     ):
         super().__init__(
             cluster_manager=cluster_manager,
-            file_manager=file_manager,
             working_dir=working_dir,
         )
+        self.file_manager = file_manager
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 

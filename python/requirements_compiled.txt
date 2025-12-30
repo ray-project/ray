@@ -746,7 +746,7 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.1.1
+gymnasium==1.2.2 ; python_version >= "3.10"
     # via
     #   -r python/requirements.txt
     #   minigrid
@@ -832,7 +832,6 @@ imageio==2.34.2
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   moviepy
-    #   scikit-image
 imageio-ffmpeg==0.4.5
     # via -r python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
@@ -1016,8 +1015,6 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lazy-loader==0.4
-    # via scikit-image
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==18.1.1
@@ -1223,7 +1220,6 @@ networkx==3.2.1
     # via
     #   cfn-lint
     #   hyperopt
-    #   scikit-image
     #   torch
 nevergrad==1.0.12
     # via -r python/requirements/ml/tune-requirements.txt
@@ -1308,7 +1304,6 @@ numpy==2.2.6
     #   pymoo
     #   pyro-ppl
     #   raydp
-    #   scikit-image
     #   scikit-learn
     #   scipy
     #   shimmy
@@ -1321,7 +1316,6 @@ numpy==2.2.6
     #   tensordict
     #   tensorflow
     #   tensorflow-probability
-    #   tifffile
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
@@ -1419,7 +1413,9 @@ orjson==3.9.15
     #   gradio
     #   tensordict
 ormsgpack==1.7.0
-    # via -r python/requirements/ml/rllib-requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/ml/rllib-requirements.txt
 overrides==7.7.0
     # via jupyter-server
 packaging==24.2
@@ -1449,7 +1445,6 @@ packaging==24.2
     #   keras
     #   knack
     #   kombu
-    #   lazy-loader
     #   lightning-utilities
     #   matplotlib
     #   mlflow-skinny
@@ -1465,7 +1460,6 @@ packaging==24.2
     #   pytest-sugar
     #   pytorch-lightning
     #   ray
-    #   scikit-image
     #   semgrep
     #   snowflake-connector-python
     #   sphinx
@@ -1540,7 +1534,6 @@ pillow==10.4.0 ; platform_system != "Windows"
     #   gradio
     #   imageio
     #   matplotlib
-    #   scikit-image
     #   tensorboard
     #   torchvision
 pkginfo==1.9.6
@@ -2050,8 +2043,6 @@ safetensors==0.4.3
     #   transformers
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.24.0
-    # via -r python/requirements.txt
 scikit-learn==1.5.2
     # via
     #   -r python/requirements/test-requirements.txt
@@ -2082,7 +2073,6 @@ scipy==1.14.1
     #   open-spiel
     #   pymars
     #   pymoo
-    #   scikit-image
     #   scikit-learn
     #   statsforecast
     #   statsmodels
@@ -2297,8 +2287,6 @@ threadpoolctl==3.1.0
     #   -r python/requirements/test-requirements.txt
     #   botorch
     #   scikit-learn
-tifffile==2024.7.21
-    # via scikit-image
 timm==0.9.2
     # via -r python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.3.0

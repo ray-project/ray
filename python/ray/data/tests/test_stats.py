@@ -2289,8 +2289,8 @@ def test_data_context_with_custom_classes_serialization(ray_start_cluster):
 
         driver_script = f"""
 import sys
-import os
-os.chdir(r"{working_dir}")
+# Add working_dir to sys.path so we can import test_custom_module
+sys.path.insert(0, r"{working_dir}")
 
 import ray
 import ray.data
@@ -2318,21 +2318,20 @@ ray.shutdown()
     ds.take(1)
 
     # Job 2: Run job that imports custom exception from module
-    working_dir = os.path.abspath(tempfile.mkdtemp())
-    ray_address = ray.get_runtime_context().gcs_address
-    driver_script = create_driver_script_with_dependency(working_dir, ray_address)
+    with tempfile.TemporaryDirectory() as working_dir:
+        ray_address = ray.get_runtime_context().gcs_address
+        driver_script = create_driver_script_with_dependency(working_dir, ray_address)
 
-    # This should succeed without ModuleNotFoundError if the fix is applied
-    run_string_as_driver(driver_script)
+        # This should succeed without ModuleNotFoundError if the fix is applied
+        run_string_as_driver(driver_script)
 
-    # Verify StatsActor can retrieve datasets without errors
-    # Should have exactly 2 datasets: one from Job 1 and one from Job 2
-    stats_actor = get_or_create_stats_actor()
-    datasets = ray.get(stats_actor.get_datasets.remote())
-    assert len(datasets) == 2, (
-        f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
-        f"but found {len(datasets)}"
-    )
+        # Verify StatsActor can retrieve datasets without errors
+        stats_actor = get_or_create_stats_actor()
+        datasets = ray.get(stats_actor.get_datasets.remote())
+        assert len(datasets) == 2, (
+            f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
+            f"but found {len(datasets)}"
+        )
 
 
 if __name__ == "__main__":
