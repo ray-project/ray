@@ -34,3 +34,4 @@ certifi>=2025.1.31
 h11>=0.16.0
 google-cloud-logging
 packaging==25.0
+anyscale>=0.26.74
