@@ -243,6 +243,7 @@ class SplitCoordinator:
                 "Invalid iterator: the dataset has moved on to another epoch."
             )
 
+        returned_normally = False
         try:
             # Ensure there is at least one bundle.
             with self._lock:
@@ -276,17 +277,19 @@ class SplitCoordinator:
                 ] = client_prefetched_bytes
                 self._report_prefetched_bytes_to_executor()
 
+            returned_normally = True
             return RefBundle(
                 [block], schema=schema, owns_blocks=next_bundle.owns_blocks
             )
         except StopIteration:
-            # Clear stale prefetched bytes when epoch ends to avoid incorrect
-            # backpressure decisions from stale data.
-            with self._lock:
-                self._client_prefetched_bytes[output_split_idx] = 0
-                self._report_prefetched_bytes_to_executor()
             return None
         finally:
+            # Clear prefetched bytes on any exit (StopIteration or other
+            # exceptions) to avoid stale backpressure data.
+            if not returned_normally:
+                with self._lock:
+                    self._client_prefetched_bytes[output_split_idx] = 0
+                    self._report_prefetched_bytes_to_executor()
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
