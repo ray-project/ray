@@ -12,15 +12,12 @@ from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import (
     LAST_LOGS_LENGTH,
     create_cluster_env_from_image,
-    get_cluster_name,
     get_custom_cluster_env_name,
 )
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cloud_util import archive_directory
-from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
@@ -84,7 +81,7 @@ def _load_test_configuration(
     result: Result,
     smoke_test: bool = False,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
-) -> Tuple[ClusterManager, CommandRunner, str]:
+) -> Tuple[MinimalClusterManager, AnyscaleJobRunner, str]:
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
@@ -147,7 +144,7 @@ def _load_test_configuration(
 def _setup_cluster_environment(
     test: Test,
     result: Result,
-    cluster_manager: ClusterManager,
+    cluster_manager: MinimalClusterManager,
     cluster_env_id: Optional[str],
     test_definition_root: Optional[str] = None,
 ) -> Tuple[str, int, int, int, int]:
@@ -228,8 +225,8 @@ def _setup_cluster_environment(
 
 def _local_environment_information(
     result: Result,
-    cluster_manager: ClusterManager,
-    command_runner: CommandRunner,
+    cluster_manager: MinimalClusterManager,
+    command_runner: AnyscaleJobRunner,
     build_timeout: int,
     cluster_timeout: int,
     cluster_env_id: Optional[str],
@@ -241,8 +238,7 @@ def _local_environment_information(
 
     cluster_manager.build_configs(timeout=build_timeout)
 
-    if isinstance(command_runner, AnyscaleJobRunner):
-        command_runner.job_manager.cluster_startup_timeout = cluster_timeout
+    command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
     result.cluster_url = cluster_manager.get_cluster_url()
     result.cluster_id = cluster_manager.cluster_id
@@ -250,7 +246,7 @@ def _local_environment_information(
 
 def _prepare_remote_environment(
     test: Test,
-    command_runner: CommandRunner,
+    command_runner: AnyscaleJobRunner,
     prepare_cmd: bool,
     prepare_timeout: int,
 ) -> None:
@@ -301,7 +297,7 @@ def _upload_working_dir_to_gcs(working_dir: str) -> str:
 def _running_test_script(
     test: Test,
     smoke_test: bool,
-    command_runner: CommandRunner,
+    command_runner: AnyscaleJobRunner,
     command_timeout: int,
 ) -> None:
     command = test["run"]["script"]
@@ -338,7 +334,7 @@ def _running_test_script(
 
 def _fetching_results(
     result: Result,
-    command_runner: CommandRunner,
+    command_runner: AnyscaleJobRunner,
     artifact_path: Optional[str],
     smoke_test: bool,
     start_time_unix: int,

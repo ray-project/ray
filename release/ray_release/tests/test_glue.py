@@ -12,7 +12,7 @@ import pytest
 from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.command_runner import CommandRunner
+from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.exception import (
     CommandError,
     CommandTimeout,
@@ -26,6 +26,7 @@ from ray_release.exception import (
     TestCommandError,
     TestCommandTimeout,
 )
+from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.glue import (
     command_runner_to_cluster_manager,
     run_release_test,
@@ -124,17 +125,29 @@ class GlueTest(unittest.TestCase):
                 self.return_dict = this_cluster_manager_return
                 this_instances["cluster_manager"] = self
 
-        class MockCommandRunner(MockReturn, CommandRunner):
+        class FakeFileManager(JobFileManager):
+            def __init__(self, cluster_manager: ClusterManager):
+                super(FakeFileManager, self).__init__(cluster_manager)
+
+            def download_from_cloud(self, key: str, target: str, delete_after_download: bool = False):
+                with open(target, "wt") as f:
+                    f.write("fake download content")
+
+            def delete(self, key: str, recursive: bool = False):
+                pass
+
+        class MockCommandRunner(MockReturn, AnyscaleJobRunner):
             return_dict = self.cluster_manager_return
 
             def __init__(
                 self,
                 cluster_manager: ClusterManager,
+                file_manager: JobFileManager,
                 working_dir,
                 sdk=None,
                 artifact_path: Optional[str] = None,
             ):
-                super(MockCommandRunner, self).__init__(cluster_manager, this_tempdir)
+                super(MockCommandRunner, self).__init__(cluster_manager, FakeFileManager(cluster_manager), this_tempdir)
                 self.return_dict = this_command_runner_return
 
         self.mock_alert_return = None
@@ -445,4 +458,4 @@ class GlueTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-s", "-v", __file__]))

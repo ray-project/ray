@@ -132,5 +132,5 @@ class CommandRunner(abc.ABC):
     def fetch_metrics(self) -> Dict[str, Any]:
         raise NotImplementedError
 
-    def fetch_artifact(self, artifact_path):
+    def fetch_artifact(self):
         raise NotImplementedError
