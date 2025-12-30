@@ -1229,6 +1229,7 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
 )
 async def test_reporter_dashboard_and_runtime_env_agent(ray_start_with_dashboard):
     dashboard_agent = MagicMock()
+    dashboard_agent.session_dir = "/tmp/ray/session_1234"
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.ip = "127.0.0.1"
     dashboard_agent.node_manager_port = (
