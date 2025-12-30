@@ -39,13 +39,12 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 
 class NixlTensorTransport(TensorTransportManager):
-    def __init__(self, tensor_transport_backend: str):
+    def __init__(self):
         # This is lazily initialized because it requires NIXL to actually be installed and we want to allow an owner that is just coordinating to not need to have NIXL installed.
         self._nixl_agent = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
 
-    @property
     def tensor_transport_backend(self) -> str:
         return "NIXL"
 

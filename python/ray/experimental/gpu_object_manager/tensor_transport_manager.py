@@ -16,9 +16,10 @@ if TYPE_CHECKING:
 
 
 class TensorTransportManager(ABC):
-    """Interface with which to implement custom tensor transports."""
+    """
+    Interface with which to implement custom tensor transports.
+    """
 
-    @property
     @abstractmethod
     def tensor_transport_backend(self) -> str:
         """The tensor transport backend, e.g., NCCL.

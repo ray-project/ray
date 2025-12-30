@@ -3,7 +3,8 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
 import ray
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
-    CollectiveTensorTransport,
+    GLOOTensorTransport,
+    NCCLTensorTransport,
 )
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
@@ -68,8 +69,8 @@ def register_tensor_transport(
 
 
 register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
-register_tensor_transport("GLOO", ["cpu"], CollectiveTensorTransport)
-register_tensor_transport("NCCL", ["cuda"], CollectiveTensorTransport)
+register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
+register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport)
 
 
 def get_tensor_transport_manager(
@@ -96,7 +97,7 @@ def get_tensor_transport_manager(
 
         transport_managers[transport_name] = transport_manager_info[
             transport_name
-        ].transport_manager_class(transport_name)
+        ].transport_manager_class()
         return transport_managers[transport_name]
 
 

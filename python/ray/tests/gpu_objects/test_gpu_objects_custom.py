@@ -31,12 +31,13 @@ class ShmCommunicatorMetadata(CommunicatorMetadata):
 
 
 class SharedMemoryTransport(TensorTransportManager):
-    def __init__(self, backend_name):
+    def __init__(self):
         self.shared_memory_objects: Dict[str, shm.SharedMemory] = {}
 
     def tensor_transport_backend(self) -> str:
         return "shared_memory"
 
+    @staticmethod
     def is_one_sided() -> bool:
         return True
 
