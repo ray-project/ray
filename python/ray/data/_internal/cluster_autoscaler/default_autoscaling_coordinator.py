@@ -390,11 +390,8 @@ class _AutoscalingCoordinatorActor:
         )
         # Allocate resources to ongoing requests.
         # TODO(hchen): Optimize the following triple loop.
-        remaining_resource_requesters = []
         for ongoing_req in ongoing_reqs:
             ongoing_req.allocated_resources = []
-            if ongoing_req.request_remaining:
-                remaining_resource_requesters.append(ongoing_req)
             for req in ongoing_req.requested_resources:
                 for node_resource in cluster_node_resources:
                     if self._maybe_subtract_resources(node_resource, req):
@@ -403,6 +400,7 @@ class _AutoscalingCoordinatorActor:
         # Allocate remaining resources.
         # NOTE: to handle the case where multiple datasets are running concurrently,
         # we divide remaining resources equally to all requesters with `request_remaining=True`.
+        remaining_resource_requesters = [req for req in ongoing_reqs if req.request_remaining]
         num_remaining_requesters = len(remaining_resource_requesters)
         if num_remaining_requesters > 0:
             for node_resource in cluster_node_resources:
