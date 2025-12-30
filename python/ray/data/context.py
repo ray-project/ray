@@ -373,9 +373,8 @@ class DataContext:
         large_args_threshold: Size in bytes after which point task arguments are
             considered large. Choose a value so that the data transfer overhead is
             significant in comparison to task scheduling (i.e., low tens of ms).
-        use_polars_sort: Whether to use Polars for tabular dataset sorts, groupbys, and
+        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        use_polars_join: Whether to use Polars for join operations.
         eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
@@ -478,8 +477,7 @@ class DataContext:
             allocation per partition for hash shuffle operator actors.
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
-        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
-            aggregations.
+        use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
