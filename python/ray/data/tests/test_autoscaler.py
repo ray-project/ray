@@ -63,7 +63,7 @@ def test_actor_pool_scaling():
 
     op = MagicMock(
         spec=InternalQueueOperatorMixin,
-        completed=MagicMock(return_value=False),
+        has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
         internal_input_queue_num_blocks=MagicMock(return_value=1),
@@ -148,7 +148,7 @@ def test_actor_pool_scaling():
 
     # Should scale down since if the op is completed, or
     # the op has no more inputs.
-    with patch(op, "completed", True):
+    with patch(op, "has_completed", True):
         # NOTE: We simulate actor pool dipping below min size upon
         #       completion (to verify that it will be able to scale to 0)
         with patch(actor_pool, "current_size", 5):
@@ -237,7 +237,7 @@ def autoscaler_max_upscaling_delta_setup():
 
     op = MagicMock(
         spec=InternalQueueOperatorMixin,
-        completed=MagicMock(return_value=False),
+        has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
         metrics=MagicMock(average_num_inputs_per_task=1),
     )
