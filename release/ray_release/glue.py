@@ -399,8 +399,6 @@ def run_release_test(
     anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -418,8 +416,6 @@ def run_release_test(
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
         image=image,
@@ -521,14 +517,16 @@ def run_release_test_anyscale(
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
+        cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
-        if image and not cluster_env_id:
+        if image:
             cluster_env_id = create_cluster_env_from_image(
                 image, test.get_name(), test.get_byod_runtime_env()
             )
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
+
         (
             prepare_cmd,
             prepare_timeout,
