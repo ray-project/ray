@@ -13,7 +13,6 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
-    get_ineligible_op_usage,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -748,7 +747,7 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
         # Ineligible: o1 (finished), o2 (finished), o3 (throttling disabled)
-        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
+        ineligible_usage = resource_manager.get_ineligible_op_usage()
 
         # Expected: o1 + o2 + o3 = (0+1+2, 0+10+20)
         assert ineligible_usage == ExecutionResources(cpu=3, object_store_memory=3)
@@ -809,7 +808,7 @@ class TestReservationOpResourceAllocator:
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
+        ineligible_usage = resource_manager.get_ineligible_op_usage()
 
         # Ineligible: o1, o2, o3, o4, o5, o7 -> sum = 2+3+5 = 10
         assert ineligible_usage == ExecutionResources(cpu=10, object_store_memory=10)
