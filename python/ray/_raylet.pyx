@@ -1111,6 +1111,7 @@ cdef report_streaming_generator_output(
     output: object,
     generator_index: int64_t,
     interrupt_signal_event: Optional[threading.Event],
+    py_tensor_transport: object,
 ):
     """Report a given generator output to a caller.
 
@@ -1126,6 +1127,10 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+
+    if py_tensor_transport is not None:
+        c_tensor_transport = optional[c_string](<c_string>py_tensor_transport)
 
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
@@ -1137,7 +1142,8 @@ cdef report_streaming_generator_output(
         context.return_size,
         generator_index,
         context.is_async,
-        &return_obj)
+        &return_obj,
+        c_tensor_transport)
 
     # Del output here so that we can GC the memory
     # usage asap.
@@ -1228,7 +1234,7 @@ cdef report_streaming_generator_exception(
             context.attempt_number,
             context.waiter))
 
-cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
+cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context, py_tensor_transport: object):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
 
@@ -1256,7 +1262,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     try:
         for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
+            report_streaming_generator_output(context, output, gen_index, None, py_tensor_transport)
             gen_index += 1
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
@@ -1272,7 +1278,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
 
 async def execute_streaming_generator_async(
-        context: StreamingGeneratorExecutionContext):
+        context: StreamingGeneratorExecutionContext, py_tensor_transport: object):
     """Execute a given generator and report the
         result to the given caller_address in a streaming (ie as
         soon as become available) fashion.
@@ -1332,6 +1338,7 @@ async def execute_streaming_generator_async(
                     output,
                     cur_generator_index,
                     interrupt_signal_event,
+                    py_tensor_transport,
                 )
                 cur_generator_index += 1
         except Exception as e:
@@ -1377,7 +1384,8 @@ cdef create_generator_return_obj(
         return_size,
         generator_index,
         is_async,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *return_object):
+        c_pair[CObjectID, shared_ptr[CRayObject]] *return_object,
+        optional[c_string] c_tensor_transport):
     """Create a generator return object based on a given output.
 
     Args:
@@ -1412,7 +1420,8 @@ cdef create_generator_return_obj(
         worker, [output],
         caller_address,
         &intermediate_result,
-        generator_id.Binary())
+        generator_id.Binary(),
+        c_tensor_transport)
 
     return_object[0] = intermediate_result.back()
 
@@ -1803,6 +1812,13 @@ cdef void execute_task(
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
+                        # Note that the report RPCs are called inside an
+                        # event loop thread.
+                        # 1. 先在外部处理好转换逻辑
+                        py_tensor_transport = None
+                        if c_tensor_transport.has_value():
+                            # 转换为 Python 的 bytes 对象
+                            py_tensor_transport = c_tensor_transport.value()
 
                         if is_async_gen:
                             if generator_backpressure_num_objects != -1:
@@ -1810,16 +1826,15 @@ cdef void execute_task(
                                     "_generator_backpressure_num_objects is "
                                     "not supported for an async actor."
                                 )
-                            # Note that the report RPCs are called inside an
-                            # event loop thread.
+
                             core_worker.run_async_func_or_coro_in_event_loop(
-                                execute_streaming_generator_async(context),
+                                execute_streaming_generator_async(context, py_tensor_transport),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
                                 task_id=task_id,
                                 task_name=task_name)
                         else:
-                            execute_streaming_generator_sync(context)
+                            execute_streaming_generator_sync(context, py_tensor_transport)
 
                         # Streaming generator output is not used, so set it to None.
                         outputs = None

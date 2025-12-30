@@ -628,7 +628,8 @@ class TaskManager : public TaskManagerInterface {
   StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
                                   const rpc::ReturnObject &return_object,
                                   const NodeID &worker_node_id,
-                                  bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
+                                  bool store_in_plasma,
+                                  std::optional<std::string>) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
