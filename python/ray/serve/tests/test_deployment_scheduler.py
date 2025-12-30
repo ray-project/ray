@@ -285,48 +285,82 @@ class TestPackScheduling:
 
         serve.shutdown()
 
-    def test_e2e_labels_and_fallback_strategy(self, serve_instance_with_labeled_nodes):
-        """Test that scheduler respects labels and tries fallback strategies
-        when selecting the best node for bin-packing."""
 
-        (
-            serve_client,
-            us_east_node_id,
-            us_west_node_id,
-        ) = serve_instance_with_labeled_nodes
+@pytest.mark.asyncio
+async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
+    """
+    Verifies that label selectors work correctly for both Actors and Placement Groups.
+    This test also verifies that label selectors are respected when scheduling with a
+    preferred node ID for resource compaction.
+    """
+    serve_instance, us_west_node_id, us_east_node_id = serve_instance_with_labeled_nodes
 
-        @serve.deployment
-        def GetNodeId():
+    # Validate a Serve deplyoment utilizes a label_selector when passed to the Ray Actor options.
+    @serve.deployment(ray_actor_options={"label_selector": {"region": "us-west"}})
+    class DeploymentActor:
+        def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
-        # Validate the label_selector constraint is respected.
-        # For a request of 1 CPU and "us-west", we pick the node that matches the label
-        # (n2) even though a better fit exists (n1).
-        app_primary = GetNodeId.options(
-            ray_actor_options={"label_selector": {"region": "us-west"}}
-        ).bind()
+    handle = serve.run(DeploymentActor.bind(), name="actor_app")
+    assert await handle.get_node_id.remote() == us_west_node_id
+    serve.delete("actor_app")
 
-        handle_primary = serve.run(
-            app_primary, name="app_primary", route_prefix="/primary"
-        )
-        assert handle_primary.remote().result() == us_west_node_id
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and PACK strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="PACK",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGPack:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
-        # Validate fallback strategy is used when selecting a node. If the
-        # label constraints and resources of the primary strategy are infeasible,
-        # we try each fallback strategy in-order.
-        app_fallback = GetNodeId.options(
-            ray_actor_options={
-                "label_selector": {"region": "us-north"},  # Invalid label
-                "fallback_strategy": [
-                    {"label_selector": {"region": "us-east"}}  # Valid fallback
-                ],
-            }
-        ).bind()
+    handle_pack = serve.run(DeploymentPGPack.bind(), name="pg_pack_app")
+    assert await handle_pack.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_pack_app")
 
-        handle_fallback = serve.run(
-            app_fallback, name="app_fallback", route_prefix="/fallback"
-        )
-        assert handle_fallback.remote().result() == us_west_node_id
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and SPREAD strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="SPREAD",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGSpread:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
+    assert await handle_spread.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_spread_app")
+
+
+@pytest.mark.asyncio
+async def test_e2e_serve_fallback_strategy(serve_instance_with_labeled_nodes):
+    """
+    Verifies that fallback strategies allow scheduling on alternative nodes when
+    primary constraints fail.
+    """
+    serve_instance, _, h100_node_id = serve_instance_with_labeled_nodes
+
+    # Fallback strategy specified for Ray Actor in Serve deployment.
+    @serve.deployment(
+        ray_actor_options={
+            "label_selector": {"region": "unavailable"},
+            "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
+        }
+    )
+    class FallbackDeployment:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
+    # when support is added.
+
+    handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
+    assert await handle.get_node_id.remote() == h100_node_id
+    serve.delete("fallback_app")
 
 
 if __name__ == "__main__":
