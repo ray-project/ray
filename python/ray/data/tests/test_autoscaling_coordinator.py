@@ -189,6 +189,64 @@ def test_basic(cluster_nodes):
         assert res2 == []
 
 
+def test_double_allocation_with_multiple_request_remaining():
+    """Test fair allocation when multiple requesters have request_remaining=True."""
+    cluster_nodes = [
+        {
+            "Resources": {
+                "CPU": 10,
+                "GPU": 5,
+                "object_store_memory": 1000,
+            },
+            "Alive": True,
+        }
+    ]
+
+    with (
+        patch("ray.nodes", return_value=cluster_nodes),
+        patch("time.time", mock_time),
+        patch("ray.autoscaler.sdk.request_resources"),
+    ):
+        coordinator = _AutoscalingCoordinatorActor()
+
+        # Requester1: asks for CPU=2, GPU=1 with request_remaining=True
+        req1 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
+        coordinator.request_resources(
+            requester_id="requester1",
+            resources=req1,
+            expire_after_s=100,
+            request_remaining=True,
+        )
+
+        # Requester2: asks for CPU=3, GPU=1 with request_remaining=True
+        req2 = [{"CPU": 3, "GPU": 1, "object_store_memory": 200}]
+        coordinator.request_resources(
+            requester_id="requester2",
+            resources=req2,
+            expire_after_s=100,
+            request_remaining=True,
+        )
+
+        # Get allocated resources
+        res1 = coordinator.get_allocated_resources("requester1")
+        res2 = coordinator.get_allocated_resources("requester2")
+
+        # After allocating specific requests (req1 and req2):
+        # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
+        # With fair allocation, each requester gets 1/2 of remaining resources
+        expected_remaining_per_requester = {
+            "CPU": 5 // 2,  # = 2
+            "GPU": 3 // 2,  # = 1
+            "object_store_memory": 700 // 2,  # = 350
+        }
+
+        # Both requesters should get their specific requests + fair share of remaining
+        assert res1 == req1 + [expected_remaining_per_requester]
+        assert res2 == req2 + [expected_remaining_per_requester]
+
+
+
+
 @pytest.fixture
 def cluster():
     """Initialize a Ray cluster with a 0 CPU head node and no workers."""
@@ -410,70 +468,6 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
     )
 
     assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
-
-
-def test_double_allocation_with_multiple_request_remaining():
-    """Test fair allocation when multiple requesters have request_remaining=True."""
-    cluster_nodes = [
-        {
-            "Resources": {
-                "CPU": 10,
-                "GPU": 5,
-                "object_store_memory": 1000,
-            },
-            "Alive": True,
-        }
-    ]
-
-    with (
-        patch("ray.nodes", return_value=cluster_nodes),
-        patch("time.time", mock_time),
-        patch("ray.autoscaler.sdk.request_resources"),
-    ):
-        coordinator = _AutoscalingCoordinatorActor()
-
-        # Requester1: asks for CPU=2, GPU=1 with request_remaining=True
-        req1 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
-        coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1,
-            expire_after_s=100,
-            request_remaining=True,
-        )
-
-        # Requester2: asks for CPU=3, GPU=1 with request_remaining=True
-        req2 = [{"CPU": 3, "GPU": 1, "object_store_memory": 200}]
-        coordinator.request_resources(
-            requester_id="requester2",
-            resources=req2,
-            expire_after_s=100,
-            request_remaining=True,
-        )
-
-        # Get allocated resources
-        res1 = coordinator.get_allocated_resources("requester1")
-        res2 = coordinator.get_allocated_resources("requester2")
-
-        def _remove_head_node_resources(res):
-            for r in res:
-                if HEAD_NODE_RESOURCE_LABEL in r:
-                    del r[HEAD_NODE_RESOURCE_LABEL]
-
-        _remove_head_node_resources(res1)
-        _remove_head_node_resources(res2)
-
-        # After allocating specific requests (req1 and req2):
-        # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
-        # With fair allocation, each requester gets 1/2 of remaining resources
-        expected_remaining_per_requester = {
-            "CPU": 5 // 2,  # = 2
-            "GPU": 3 // 2,  # = 1
-            "object_store_memory": 700 // 2,  # = 350
-        }
-
-        # Both requesters should get their specific requests + fair share of remaining
-        assert res1 == req1 + [expected_remaining_per_requester]
-        assert res2 == req2 + [expected_remaining_per_requester]
 
 
 if __name__ == "__main__":
