@@ -307,7 +307,7 @@ class BlockAccessor:
     """
 
     _DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
-        "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", False
+        "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
     )
 
     def num_rows(self) -> int:
