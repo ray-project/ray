@@ -127,19 +127,15 @@ class CollectiveTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
-        tensors,
+        tensors: List["torch.Tensor"],
         obj_id: str,
-        tensor_transport_metadata: CollectiveTransportMetadata,
-        communicator_metadata: CollectiveCommunicatorMetadata,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         from ray.util.collective.collective import recv
 
-        assert isinstance(
-            tensor_transport_metadata, CollectiveTransportMetadata
-        ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
-        assert isinstance(
-            communicator_metadata, CollectiveCommunicatorMetadata
-        ), "metadata must be a CollectiveCommunicatorMetadata object for non-NIXL transport"
+        assert isinstance(tensor_transport_metadata, CollectiveTransportMetadata)
+        assert isinstance(communicator_metadata, CollectiveCommunicatorMetadata)
 
         for tensor in tensors:
             recv(
@@ -151,10 +147,17 @@ class CollectiveTensorTransport(TensorTransportManager):
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: CollectiveTransportMetadata,
-        communicator_metadata: CollectiveCommunicatorMetadata,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         import ray.util.collective as collective
+
+        assert isinstance(
+            tensor_transport_metadata, CollectiveTransportMetadata
+        ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
+        assert isinstance(
+            communicator_metadata, CollectiveCommunicatorMetadata
+        ), "metadata must be a CollectiveCommunicatorMetadata object for non-NIXL transport"
 
         device = tensors[0].device if tensors else None
 
@@ -170,14 +173,14 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
+        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
     ):
         pass
 
     def abort_transport(
         self,
         obj_id: str,
-        communicator_metadata: CollectiveCommunicatorMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         raise NotImplementedError(
             "Collective transport does not support abort_transport for now."

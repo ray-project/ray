@@ -1,6 +1,7 @@
 import threading
 from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
+import ray
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
@@ -97,6 +98,33 @@ def get_tensor_transport_manager(
             transport_name
         ].transport_manager_class(transport_name)
         return transport_managers[transport_name]
+
+
+def register_tensor_transport_on_actors(
+    transport_name: str, actors: List["ray.actor.ActorHandle"]
+):
+    global transport_manager_info
+
+    transport_name = transport_name.upper()
+    transport_manager_class, devices = transport_manager_info[transport_name]
+
+    def register_transport_on_actor(self):
+        from ray.experimental.gpu_object_manager.util import (
+            register_tensor_transport,
+            transport_manager_info,
+        )
+
+        if transport_name not in transport_manager_info:
+            register_tensor_transport(transport_name, devices, transport_manager_class)
+
+    ray.get(
+        [
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                register_transport_on_actor
+            )
+            for actor in actors
+        ]
+    )
 
 
 def device_match_transport(device: "torch.device", tensor_transport: str) -> bool:

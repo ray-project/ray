@@ -321,15 +321,48 @@ Advanced: Registering a new tensor transport
 --------------------------------------------
 
 Ray allows users to register new tensor transports for use in RDT at runtime.
-To implement a new tensor transport, you need to implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>` defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
-Then you can give `register_tensor_transport` the transport name, supported devices for the transport, and the class that implements `TensorTransportManager`.
-NIXL, NCCL, and GLOO are registered through this API as well, see `nixl_tensor_transport.py <https://github.com/ray-project/ray/blob/00b1f9d5d3aa37a01c74ea29ef0f8c7d7a31e368/python/ray/experimental/gpu_object_manager/nixl_tensor_transport.py>`__ for a reference example.
+To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
+defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
+Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport, and the class that implements `TensorTransportManager`.
+from the process where you submit the actor tasks that will use the tensor transport.
+Then, call `register_tensor_transport_on_actors <ray.experimental.register_tensor_transport_on_actors>` with the transport name and the actors that will use the tensor transport (the source and destination actors).
+See this example `test file <https://github.com/ray-project/ray/blob/master/python/ray/tests/gpu_objects/test_gpu_objects_gloo.py>`__  for a full working custom transport example.
+
+Current drawbacks:
+- If the actor restarts, you will need to register the transport again on the actor through `register_tensor_transport_on_actors`.
+- You might need to serialize your class by value if the module your transport manager class is in is not importable on the actor. You can do this using `ray.cloudpickle.register_pickle_by_value` as shown in the example below.
 
 .. code-block:: python
 
-   from ray.experimental import register_tensor_transport
+   import sys
+   import ray
+   from ray.experimental import (
+      register_tensor_transport,
+      register_tensor_transport_on_actors,
+      TensorTransportManager,
+      TensorTransportMetadata,
+      CommunicatorMetadata,
+   )
 
-   register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
+   @dataclass
+   class CustomTransportMetadata(TensorTransportMetadata):
+      pass
+
+   @dataclass
+   class CustomCommunicatorMetadata(CommunicatorMetadata):
+      pass
+
+   class CustomTransport(TensorTransportManager):
+      ...
+
+
+   # Force cloudpickle to serialize all classes from this module by value,
+   # not by module reference. This is needed because the file may not be
+   # importable as a module in the actor's environment.
+   ray.cloudpickle.register_pickle_by_value(sys.modules[__name__])
+
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
+   register_tensor_transport_on_actors("CUSTOM", [actor1, actor2])
 
 
 Advanced: RDT Internals

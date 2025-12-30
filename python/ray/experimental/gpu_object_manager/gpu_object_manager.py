@@ -201,7 +201,7 @@ class GPUObjectManager:
 
         tensor_transport_manager = get_tensor_transport_manager(ref_info.backend)
         if tensor_transport_manager.can_abort_transport():
-            if not tensor_transport_manager.is_one_sided():
+            if not tensor_transport_manager.__class__.is_one_sided():
                 # This is dead code until we implement a NCCL abort since NIXL
                 # is the only abortable transport for now and is one-sided.
                 ref_info.src_actor.__ray_call__.options(
@@ -489,7 +489,7 @@ class GPUObjectManager:
             )
 
             send_ref = None
-            if not tensor_transport_manager.is_one_sided():
+            if not tensor_transport_manager.__class__.is_one_sided():
                 # Send tensors stored in the `src_actor`'s GPU object store to the
                 # destination rank `dst_rank`.
                 # NOTE: We put this task on the background thread to avoid tasks

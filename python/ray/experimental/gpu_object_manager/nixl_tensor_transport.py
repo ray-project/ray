@@ -151,20 +151,16 @@ class NixlTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
-        tensors,
+        tensors: List["torch.Tensor"],
         obj_id: str,
-        tensor_transport_metadata: NixlTransportMetadata,
-        communicator_metadata: NixlCommunicatorMetadata,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         if not tensors:
             return
 
-        assert isinstance(
-            tensor_transport_metadata, NixlTransportMetadata
-        ), "metadata must be a NixlTransportMetadata object for NIXL transport"
-        assert isinstance(
-            communicator_metadata, NixlCommunicatorMetadata
-        ), "metadata must be a NixlCommunicatorMetadata object for NIXL transport"
+        assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
+        assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
 
         nixl_serialized_descs = tensor_transport_metadata.nixl_serialized_descs
         remote_nixl_agent_meta = tensor_transport_metadata.nixl_agent_meta
@@ -227,18 +223,19 @@ class NixlTensorTransport(TensorTransportManager):
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: NixlTransportMetadata,
-        communicator_metadata: NixlCommunicatorMetadata,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: NixlTransportMetadata
+        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
     ):
         from ray._private.worker import global_worker
 
+        assert isinstance(tensor_transport_meta, NixlTransportMetadata)
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         count = gpu_object_store.remove_managed_meta_nixl(obj_id)
         if count == 0:
@@ -249,7 +246,7 @@ class NixlTensorTransport(TensorTransportManager):
     def abort_transport(
         self,
         obj_id: str,
-        communicator_metadata: NixlCommunicatorMetadata,
+        communicator_metadata: CommunicatorMetadata,
     ):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
