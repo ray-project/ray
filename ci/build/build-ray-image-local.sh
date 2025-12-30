@@ -1,10 +1,4 @@
 #!/bin/bash
-#
-# [WIP] Local development script for building Ray docker images using wanda.
-#
-# This script is for local iteration and testing of wanda-based image builds.
-# It requires the wanda binary to be installed (see WANDA_BIN below).
-#
 # ============================================================================
 # IMAGE BUILD HIERARCHY
 # ============================================================================
@@ -59,180 +53,235 @@
 #   │   • Ready for: docker run rayproject/ray:nightly-py3.10-cpu             │
 #   └─────────────────────────────────────────────────────────────────────────┘
 #
-# ============================================================================
-# USAGE
-# ============================================================================
-#
-# Examples (from repo root):
-#   ci/build/build-ray-image-local.sh                      # Build CPU image for Python 3.10
-#   ci/build/build-ray-image-local.sh 3.11                 # Build CPU image for Python 3.11
-#   ci/build/build-ray-image-local.sh 3.10 cpu             # Build CPU image (default)
-#   ci/build/build-ray-image-local.sh 3.10 gpu             # Build GPU image (CUDA 12.1.1)
-#   ci/build/build-ray-image-local.sh 3.10 cuda 11.8.0-cudnn8  # Build specific CUDA version
-#
 set -euo pipefail
 
-# Source shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/local-build-utils.sh"
 
-# Default GPU platform (matches GPU_PLATFORM in ci/ray_ci/docker_container.py)
-GPU_PLATFORM="12.1.1-cudnn8"
+DEFAULT_CUDA_PLATFORM="cu12.1.1-cudnn8"
 
 usage() {
-    echo "Usage: $0 [PYTHON_VERSION] [IMAGE_TYPE] [CUDA_VERSION]"
-    echo ""
-    echo "Image types:"
-    echo "  cpu (default)  - Build ray CPU docker image"
-    echo "  gpu            - Build ray GPU docker image (CUDA ${GPU_PLATFORM})"
-    echo "  cuda           - Build ray CUDA docker image (requires CUDA_VERSION as next arg)"
-    echo ""
-    echo "Examples:"
-    echo "  $0 3.10                        # Build CPU image"
-    echo "  $0 3.10 cpu                    # Build CPU image"
-    echo "  $0 3.10 gpu                    # Build GPU image (default CUDA)"
-    echo "  $0 3.10 cuda 11.8.0-cudnn8     # Build specific CUDA version"
-    exit 1
+  cat <<EOF
+Usage:
+  $0 [PYTHON_VERSION] [PLATFORM]
+
+PLATFORM:
+  cpu (default)
+  cu<CUDA_VERSION>  (e.g. cu12.1.1-cudnn8, cu11.8.0-cudnn8)
+
+Examples:
+  $0                          # Build CPU image for Python 3.10
+  $0 3.11                     # Build CPU image for Python 3.11
+  $0 3.10 cpu                 # Build CPU image
+  $0 3.10 ${DEFAULT_CUDA_PLATFORM}   # Build CUDA image
+
+Flags:
+  --py <3.x>                 Set Python version
+  --platform <cpu|cu...>     Set platform
+  --print-config             Print resolved config and exit
+  --skip-wheel               Skip building the Ray wheel (assume it exists)
+  --skip-deps                Skip building ray-core/dashboard/java
+  --only-wheel               Only build the Ray wheel
+  --only-base                Only build the base image
+  --only-image               Only build the final image (assumes wheel + base exist)
+  --default-cuda             Print default CUDA platform and exit
+  -h|--help                  Show help
+EOF
+  exit 1
 }
 
-# Handle help early
-if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    usage
+normalize_platform() {
+  local p="$1"
+  if [[ "$p" == "cpu" ]]; then echo "cpu"; return 0; fi
+  if [[ "$p" =~ ^cu.+$ ]]; then echo "$p"; return 0; fi
+  if [[ "$p" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?-cudnn[0-9]+$ ]]; then echo "cu${p}"; return 0; fi
+  echo "$p"
+}
+
+validate_platform() {
+  local p="$1"
+  if [[ "$p" == "cpu" || "$p" =~ ^cu.+$ ]]; then return 0; fi
+  error "Invalid platform '$p'. Expected 'cpu' or 'cu<cuda_version>' (e.g. ${DEFAULT_CUDA_PLATFORM})."
+  exit 1
+}
+
+if [[ "${1:-}" == "--default-cuda" ]]; then echo "${DEFAULT_CUDA_PLATFORM}"; exit 0; fi
+if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then usage; fi
+
+PRINT_CONFIG=0
+SKIP_WHEEL=0
+SKIP_DEPS=0
+ONLY_WHEEL=0
+ONLY_BASE=0
+ONLY_IMAGE=0
+
+PYTHON_VERSION="3.10"
+PLATFORM="cpu"
+CUDA_VERSION=""
+
+positionals=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --py)
+      [[ $# -ge 2 ]] || { error "--py requires a value"; usage; }
+      PYTHON_VERSION="$(normalize_python_version "$2")"
+      shift 2
+      ;;
+    --platform)
+      [[ $# -ge 2 ]] || { error "--platform requires a value"; usage; }
+      PLATFORM="$(normalize_platform "$2")"
+      shift 2
+      ;;
+    --print-config) PRINT_CONFIG=1; shift ;;
+    --skip-wheel) SKIP_WHEEL=1; shift ;;
+    --skip-deps) SKIP_DEPS=1; shift ;;
+    --only-wheel) ONLY_WHEEL=1; shift ;;
+    --only-base) ONLY_BASE=1; shift ;;
+    --only-image) ONLY_IMAGE=1; shift ;;
+    --default-cuda) echo "${DEFAULT_CUDA_PLATFORM}"; exit 0 ;;
+    -h|--help) usage ;;
+    *) positionals+=("$1"); shift ;;
+  esac
+done
+
+parse_strict_py_value_required_for_value positionals PLATFORM "3.10" "cpu" normalize_platform usage
+validate_platform "${PLATFORM}"
+[[ "${PLATFORM}" =~ ^cu.+$ ]] && CUDA_VERSION="${PLATFORM#cu}"
+
+only_count=$((ONLY_WHEEL + ONLY_BASE + ONLY_IMAGE))
+if [[ "$only_count" -gt 1 ]]; then
+  error "--only-wheel, --only-base, and --only-image are mutually exclusive."
+  exit 1
 fi
 
-# Setup environment
 setup_build_env
-
-# Parse arguments
-if [[ "${1:-}" =~ ^3\.[0-9]+$ ]]; then
-    PYTHON_VERSION="$1"
-    shift
-else
-    PYTHON_VERSION="3.10"
-fi
-IMAGE_TYPE="${1:-cpu}"
-CUDA_VERSION="${2:-}"
-
-# Handle gpu as alias for cuda with default version
-if [[ "$IMAGE_TYPE" == "gpu" ]]; then
-    IMAGE_TYPE="cuda"
-    CUDA_VERSION="$GPU_PLATFORM"
-fi
-
-# Validate cuda requires version
-if [[ "$IMAGE_TYPE" == "cuda" && -z "$CUDA_VERSION" ]]; then
-    echo "Error: cuda image type requires CUDA_VERSION argument"
-    usage
-fi
-
-# Configuration
 export PYTHON_VERSION
-
-# Check prerequisites
 check_wanda_prerequisites "$WANDA_BIN"
 
-echo "Building Ray docker image for Python ${PYTHON_VERSION}..."
-echo "    Image type: ${IMAGE_TYPE}"
-[[ "$IMAGE_TYPE" == "cuda" ]] && echo "    CUDA version: ${CUDA_VERSION}"
+print_config_block \
+  "Python:${PYTHON_VERSION}" \
+  "Platform:${PLATFORM}" \
+  "CUDA version:${CUDA_VERSION:-}" \
+  "Wanda:${WANDA_BIN:-<unset>}" \
+  "Skip wheel:${SKIP_WHEEL}" \
+  "Skip deps:${SKIP_DEPS}" \
+  "Only wheel:${ONLY_WHEEL}" \
+  "Only base:${ONLY_BASE}" \
+  "Only image:${ONLY_IMAGE}"
 
-# Build common wheel dependencies (these are cached by wanda)
+[[ "${PRINT_CONFIG}" -eq 1 ]] && exit 0
+
 build_wheel_deps() {
-    header "Building ray-core..."
-    $WANDA_BIN ci/docker/ray-core.wanda.yaml
+  if [[ "${SKIP_DEPS}" -eq 1 ]]; then
+    header "Skipping wheel deps (ray-core/dashboard/java) due to --skip-deps"
+    return 0
+  fi
 
-    header "Building ray-dashboard..."
-    $WANDA_BIN ci/docker/ray-dashboard.wanda.yaml
+  header "Building ray-core..."
+  "$WANDA_BIN" ci/docker/ray-core.wanda.yaml
 
-    header "Building ray-java..."
-    $WANDA_BIN ci/docker/ray-java.wanda.yaml
+  header "Building ray-dashboard..."
+  "$WANDA_BIN" ci/docker/ray-dashboard.wanda.yaml
 
-    # Tag images locally so the @ references in wanda.yaml files work
-    header "Tagging images for local wanda access..."
-    docker tag "cr.ray.io/rayproject/ray-core-py${PYTHON_VERSION}:latest" "ray-core-py${PYTHON_VERSION}:latest"
-    docker tag "cr.ray.io/rayproject/ray-java-build:latest" "ray-java-build:latest"
-    docker tag "cr.ray.io/rayproject/ray-dashboard:latest" "ray-dashboard:latest"
+  header "Building ray-java..."
+  "$WANDA_BIN" ci/docker/ray-java.wanda.yaml
+
+  header "Tagging images for local wanda access..."
+  docker tag "cr.ray.io/rayproject/ray-core-py${PYTHON_VERSION}:latest" "ray-core-py${PYTHON_VERSION}:latest"
+  docker tag "cr.ray.io/rayproject/ray-java-build:latest" "ray-java-build:latest"
+  docker tag "cr.ray.io/rayproject/ray-dashboard:latest" "ray-dashboard:latest"
 }
 
-# Build ray wheel (required for images)
 build_ray_wheel() {
-    build_wheel_deps
+  if [[ "${SKIP_WHEEL}" -eq 1 ]]; then
+    header "Skipping ray-wheel build due to --skip-wheel"
+    return 0
+  fi
 
-    header "Building ray-wheel..."
-    $WANDA_BIN ci/docker/ray-wheel.wanda.yaml
+  build_wheel_deps
 
-    # Tag for local image reference
-    docker tag "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray-wheel-py${PYTHON_VERSION}:latest"
+  header "Building ray-wheel..."
+  "$WANDA_BIN" ci/docker/ray-wheel.wanda.yaml
+  docker tag "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray-wheel-py${PYTHON_VERSION}:latest"
 }
 
-# Build CPU base image
 build_cpu_base() {
-    export REQUIREMENTS_FILE="ray_base_deps_py${PYTHON_VERSION}.lock"
-
-    header "Building CPU base image..."
-    $WANDA_BIN docker/base-deps/cpu.wanda.yaml
-
-    # Tag for local access
-    local BASE_IMAGE="ray-py${PYTHON_VERSION}-cpu-base"
-    docker tag "cr.ray.io/rayproject/${BASE_IMAGE}:latest" "${BASE_IMAGE}:latest"
+  export REQUIREMENTS_FILE="ray_base_deps_py${PYTHON_VERSION}.lock"
+  header "Building CPU base image..."
+  "$WANDA_BIN" docker/base-deps/cpu.wanda.yaml
+  local BASE_IMAGE="ray-py${PYTHON_VERSION}-cpu-base"
+  docker tag "cr.ray.io/rayproject/${BASE_IMAGE}:latest" "${BASE_IMAGE}:latest"
 }
 
-# Build CUDA base image
 build_cuda_base() {
-    local cuda_version="$1"
-    export CUDA_VERSION="${cuda_version}"
-    export REQUIREMENTS_FILE="ray_base_deps_py${PYTHON_VERSION}.lock"
-
-    header "Building CUDA ${cuda_version} base image..."
-    $WANDA_BIN docker/base-deps/cuda.wanda.yaml
-
-    # Tag for local access
-    local BASE_IMAGE="ray-py${PYTHON_VERSION}-cu${cuda_version}-base"
-    docker tag "cr.ray.io/rayproject/${BASE_IMAGE}:latest" "${BASE_IMAGE}:latest"
+  local cuda_version="$1"
+  export CUDA_VERSION="${cuda_version}"
+  export REQUIREMENTS_FILE="ray_base_deps_py${PYTHON_VERSION}.lock"
+  header "Building CUDA ${cuda_version} base image..."
+  "$WANDA_BIN" docker/base-deps/cuda.wanda.yaml
+  local BASE_IMAGE="ray-py${PYTHON_VERSION}-cu${cuda_version}-base"
+  docker tag "cr.ray.io/rayproject/${BASE_IMAGE}:latest" "${BASE_IMAGE}:latest"
 }
 
-# Build CPU docker image
 build_image_cpu() {
-    # Ensure ray wheel is built first
+  if [[ "${ONLY_IMAGE}" -ne 1 ]]; then
     build_ray_wheel
-
-    # Build base image
     build_cpu_base
+  fi
 
-    header "Building ray CPU image..."
-    $WANDA_BIN ci/docker/ray-image-cpu.wanda.yaml
+  header "Building ray CPU image..."
+  "$WANDA_BIN" ci/docker/ray-image-cpu.wanda.yaml
 
-    header "Ray CPU image build complete!"
-    echo "    Image: cr.ray.io/rayproject/ray:nightly-py${PYTHON_VERSION}-cpu"
+  local REMOTE="cr.ray.io/rayproject/ray:nightly-py${PYTHON_VERSION}-cpu"
+  local LOCAL="ray:nightly-py${PYTHON_VERSION}-cpu"
+  docker tag "${REMOTE}" "${LOCAL}"
+
+  header "Ray CPU image build complete!"
+  echo "  Remote: ${REMOTE}"
+  echo "  Local:  ${LOCAL}"
 }
 
-# Build CUDA docker image
 build_image_cuda() {
-    local cuda_version="$1"
+  local cuda_version="$1"
 
-    # Ensure ray wheel is built first
+  if [[ "${ONLY_IMAGE}" -ne 1 ]]; then
     build_ray_wheel
-
-    # Build base image
     build_cuda_base "$cuda_version"
+  fi
 
-    export CUDA_VERSION="${cuda_version}"
-    header "Building ray CUDA ${cuda_version} image..."
-    $WANDA_BIN ci/docker/ray-image-cuda.wanda.yaml
+  export CUDA_VERSION="${cuda_version}"
+  header "Building ray CUDA ${cuda_version} image..."
+  "$WANDA_BIN" ci/docker/ray-image-cuda.wanda.yaml
 
-    header "Ray CUDA image build complete!"
-    echo "    Image: cr.ray.io/rayproject/ray:nightly-py${PYTHON_VERSION}-cu${cuda_version}"
+  local REMOTE="cr.ray.io/rayproject/ray:nightly-py${PYTHON_VERSION}-cu${cuda_version}"
+  local LOCAL="ray:nightly-py${PYTHON_VERSION}-cu${cuda_version}"
+  docker tag "${REMOTE}" "${LOCAL}"
+
+  header "Ray CUDA image build complete!"
+  echo "  Remote: ${REMOTE}"
+  echo "  Local:  ${LOCAL}"
 }
 
-# Main build logic
-case "$IMAGE_TYPE" in
-    cpu)
-        build_image_cpu
-        ;;
-    cuda)
-        build_image_cuda "$CUDA_VERSION"
-        ;;
-    *)
-        echo "Unknown image type: $IMAGE_TYPE"
-        usage
-        ;;
-esac
+if [[ "${ONLY_WHEEL}" -eq 1 ]]; then
+  build_ray_wheel
+  header "Wheel build complete!"
+  exit 0
+fi
+
+if [[ "${ONLY_BASE}" -eq 1 ]]; then
+  if [[ "${PLATFORM}" == "cpu" ]]; then
+    build_cpu_base
+    header "CPU base image build complete!"
+  else
+    build_cuda_base "${CUDA_VERSION}"
+    header "CUDA base image build complete!"
+  fi
+  exit 0
+fi
+
+if [[ "${PLATFORM}" == "cpu" ]]; then
+  build_image_cpu
+else
+  build_image_cuda "${CUDA_VERSION}"
+fi
