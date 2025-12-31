@@ -272,7 +272,7 @@ enum ErrorType {
   OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE = 30;
   // The object cannot be reconstructed because the reference has gone out of
   // scope (no longer tracked by the reference counter).
-  OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE = 31;
+  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 31;
   // The object cannot be reconstructed because the task that would produce it
   // was cancelled.
   OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 32;

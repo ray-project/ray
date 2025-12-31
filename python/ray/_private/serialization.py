@@ -38,15 +38,7 @@ from ray.exceptions import (
     ObjectFetchTimedOutError,
     ObjectFreedError,
     ObjectLostError,
-    ObjectReconstructionFailedBorrowedError,
-    ObjectReconstructionFailedLineageDisabledError,
-    ObjectReconstructionFailedLineageEvictedError,
-    ObjectReconstructionFailedLocalModeError,
-    ObjectReconstructionFailedMaxAttemptsExceededError,
-    ObjectReconstructionFailedOutOfScopeError,
-    ObjectReconstructionFailedPutError,
-    ObjectReconstructionFailedRetriesDisabledError,
-    ObjectReconstructionFailedTaskCancelledError,
+    ObjectReconstructionFailedError,
     ObjectRefStreamEndOfStreamError,
     OutOfDiskError,
     OutOfMemoryError,
@@ -522,52 +514,6 @@ class SerializationContext:
                 return OwnerDiedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"
-            ):
-                return ObjectReconstructionFailedMaxAttemptsExceededError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"
-            ):
-                return ObjectReconstructionFailedLineageEvictedError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_PUT"):
-                return ObjectReconstructionFailedPutError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED"
-            ):
-                return ObjectReconstructionFailedRetriesDisabledError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_BORROWED"):
-                return ObjectReconstructionFailedBorrowedError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE"):
-                return ObjectReconstructionFailedLocalModeError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE"):
-                return ObjectReconstructionFailedOutOfScopeError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED"
-            ):
-                return ObjectReconstructionFailedTaskCancelledError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED"
-            ):
-                return ObjectReconstructionFailedLineageDisabledError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 # TODO(sang): Assert instead once actor also reports error messages.
@@ -594,6 +540,13 @@ class SerializationContext:
                 else:
                     actor_id = None
                 return ActorUnavailableError(error_info.error_message, actor_id)
+            elif ErrorType.Name(error_type).startswith("OBJECT_UNRECONSTRUCTABLE_"):
+                return ObjectReconstructionFailedError(
+                    object_ref.hex(),
+                    reason=error_type,
+                    owner_address=object_ref.owner_address(),
+                    call_site=object_ref.call_site(),
+                )
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

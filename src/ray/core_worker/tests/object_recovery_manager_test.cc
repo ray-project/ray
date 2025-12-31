@@ -234,7 +234,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
   // Ref went out of scope.
   object_id = ObjectID::FromRandom();
   ASSERT_EQ(manager_.RecoverObject(object_id),
-            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND);
   ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 }

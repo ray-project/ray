@@ -98,7 +98,7 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
                              ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE) ||
              meta_str ==
                  std::to_string(
-                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE) ||
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND) ||
              meta_str ==
                  std::to_string(
                      ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED) ||

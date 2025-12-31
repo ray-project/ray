@@ -46,8 +46,8 @@ enum class LineageEligibility {
   INELIGIBLE_LINEAGE_EVICTED,
   /// Lineage pinning is disabled system-wide, reconstruction not supported.
   INELIGIBLE_LINEAGE_DISABLED,
-  /// Object reference not found in table (has gone out of scope).
-  INELIGIBLE_OUT_OF_SCOPE,
+  /// Object reference not found in table.
+  INELIGIBLE_REF_NOT_FOUND,
 };
 
 /// Convert LineageEligibility to the corresponding ErrorType for reporting to users.
@@ -66,8 +66,8 @@ inline std::optional<rpc::ErrorType> ToErrorType(LineageEligibility eligibility)
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
   case LineageEligibility::INELIGIBLE_LINEAGE_DISABLED:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED;
-  case LineageEligibility::INELIGIBLE_OUT_OF_SCOPE:
-    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE;
+  case LineageEligibility::INELIGIBLE_REF_NOT_FOUND:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND;
   }
   // Should not reach here, but return OBJECT_LOST as fallback.
   return rpc::ErrorType::OBJECT_LOST;

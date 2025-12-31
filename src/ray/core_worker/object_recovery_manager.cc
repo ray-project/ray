@@ -35,10 +35,8 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
   bool ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
       object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
-    // References that have gone out of scope cannot be recovered.
-    RAY_LOG(INFO).WithField(object_id)
-        << "Cannot recover object: reference has gone out of scope";
-    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE;
+    RAY_LOG(INFO).WithField(object_id) << "Cannot recover object: reference not found";
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND;
   }
 
   if (!owned_by_us) {

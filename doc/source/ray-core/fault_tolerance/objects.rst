@@ -86,20 +86,10 @@ different error types:
   first created the ``ObjectRef`` via ``.remote()`` or ``ray.put()``, has died.
   The owner stores critical object metadata and an object cannot be retrieved
   if this process is lost.
-- ``ObjectReconstructionFailed*Error``: These errors are thrown if an object, or
-  another object that this object depends on, cannot be reconstructed. The
-  specific error type indicates the reason:
-  ``ObjectReconstructionFailedMaxAttemptsExceededError``,
-  ``ObjectReconstructionFailedLineageEvictedError``,
-  ``ObjectReconstructionFailedPutError``,
-  ``ObjectReconstructionFailedRetriesDisabledError``,
-  ``ObjectReconstructionFailedBorrowedError``,
-  ``ObjectReconstructionFailedLocalModeError``,
-  ``ObjectReconstructionFailedOutOfScopeError``,
-  ``ObjectReconstructionFailedTaskCancelledError``,
-  ``ObjectReconstructionFailedLineageDisabledError``.
-  See :ref:`above <fault-tolerance-objects-reconstruction>` for more details
-  on lineage reconstruction limitations.
+- ``ObjectReconstructionFailedError``: This error is thrown if an object, or
+  another object that this object depends on, cannot be reconstructed due to
+  one of the limitations described :ref:`above
+  <fault-tolerance-objects-reconstruction>`.
 - ``ReferenceCountingAssertionError``: The object has already been deleted,
   so it cannot be retrieved. Ray implements automatic memory management through
   distributed reference counting, so this error should not happen in general.
@@ -109,3 +99,6 @@ different error types:
   system-level bug. The timeout period can be configured using the
   ``RAY_fetch_fail_timeout_milliseconds`` environment variable (default 10
   minutes).
+- ``ObjectLostError``: The object was successfully created, but no copy is
+  reachable.  This is a generic error thrown when lineage reconstruction is
+  disabled and all copies of the object are lost from the cluster.

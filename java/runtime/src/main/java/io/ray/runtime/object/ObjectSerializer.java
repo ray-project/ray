@@ -49,7 +49,7 @@ public class ObjectSerializer {
   private static final byte[] UNRECONSTRUCTABLE_LOCAL_MODE_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_OUT_OF_SCOPE_EXCEPTION_META =
-      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE.getNumber()).getBytes();
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_TASK_CANCELLED_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_LINEAGE_DISABLED_EXCEPTION_META =
@@ -60,6 +60,8 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OWNER_DIED.getNumber()).getBytes();
   private static final byte[] OBJECT_DELETED_META =
       String.valueOf(ErrorType.OBJECT_DELETED.getNumber()).getBytes();
+  private static final byte[] OBJECT_FREED_META =
+      String.valueOf(ErrorType.OBJECT_FREED.getNumber()).getBytes();
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
@@ -119,7 +121,8 @@ public class ObjectSerializer {
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_DISABLED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
           || Bytes.indexOf(meta, OWNER_DIED_META) == 0
-          || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {
+          || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0
+          || Bytes.indexOf(meta, OBJECT_FREED_META) == 0) {
         // TODO: Differentiate object errors.
         return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {

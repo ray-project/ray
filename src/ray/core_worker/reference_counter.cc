@@ -1646,7 +1646,7 @@ LineageEligibility ReferenceCounter::GetLineageEligibility(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return LineageEligibility::INELIGIBLE_OUT_OF_SCOPE;
+    return LineageEligibility::INELIGIBLE_REF_NOT_FOUND;
   }
   return it->second.lineage_eligibility_;
 }
