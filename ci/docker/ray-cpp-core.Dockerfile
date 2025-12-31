@@ -31,7 +31,6 @@ export RAY_BUILD_ENV="manylinux_py${PY_BIN}"
 sudo ln -sf "/opt/python/${PY_BIN}/bin/python3" /usr/local/bin/python3
 sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
 
-echo "build:ci --remote_cache=${BUILDKITE_BAZEL_CACHE_URL:-}" >> "$HOME/.bazelrc"
 if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
