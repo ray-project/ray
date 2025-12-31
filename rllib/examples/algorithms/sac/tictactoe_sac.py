@@ -44,26 +44,27 @@ from torch import nn
 
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=500_000, default_reward=-0.5)
 parser.set_defaults(
-    num_agents=2,
+    num_env_runners=4,
+    num_envs_per_env_runner=6,
+    num_learners=1,
+    num_agents=5,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
-register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     SACConfig()
-    .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
+    .environment(TicTacToe)
     .training(
         initial_alpha=1.001,
         # Use a smaller learning rate for the policy.

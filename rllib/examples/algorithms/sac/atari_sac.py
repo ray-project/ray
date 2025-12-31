@@ -59,6 +59,9 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     env="ale_py:ALE/Pong-v5",
+    num_env_runners=4,
+    num_envs_per_env_runner=6,
+    num_learners=1,
 )
 args = parser.parse_args()
 

@@ -53,7 +53,12 @@ parser = add_rllib_example_script_args(
     default_reward=800.0,
     default_timesteps=1_000_000,
 )
-parser.set_defaults(env="Humanoid-v4")
+parser.set_defaults(
+    env="Humanoid-v4",
+    num_env_runners=4,
+    num_envs_per_env_runner=16,
+    num_learners=1,
+)
 args = parser.parse_args()
 
 config = (
