@@ -177,7 +177,8 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
-        and not np.isnan(mem_size)
+        and np.size(mem_size) > 0
+        and not np.isnan(np.asarray(mem_size)).any()
         and target_max_block_size is not None
     ):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))

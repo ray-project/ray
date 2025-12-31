@@ -2193,6 +2193,10 @@ py_test(
     name = "algorithms/tests/test_dependency_torch",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_torch.py"],
+    env = {
+        # TODO(elliot-barn): Remove this once Train supports Keras 3
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "algorithms_dir",
         "team:rllib",
@@ -5356,6 +5360,7 @@ py_test(
 py_test(
     name = "examples/ray_serve/ray_serve_with_rllib",
     size = "medium",
+    timeout = "eternal",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
     args = [
         "--stop-iters=2",

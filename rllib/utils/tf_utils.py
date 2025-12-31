@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
+
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 

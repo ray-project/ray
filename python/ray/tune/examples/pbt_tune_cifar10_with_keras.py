@@ -126,7 +126,10 @@ class Cifar10Model(Trainable):
             weight_decay=self.config.get("decay", 1e-4),
         )
         model.compile(
-            loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
+            loss="categorical_crossentropy",
+            optimizer=opt,
+            metrics=["accuracy"],
+            run_eagerly=True,
         )
         self.model = model
 

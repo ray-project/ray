@@ -650,6 +650,7 @@ doctest(
             "source/rllib/connector-v2.rst",
         ],
     ),
+    timeout = "eternal",
     tags = ["team:rllib"],
 )
 

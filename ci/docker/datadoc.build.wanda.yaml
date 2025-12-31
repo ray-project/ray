@@ -1,4 +1,4 @@
-name: "data9build-py$PYTHON"
+name: "datadocbuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
@@ -14,4 +14,4 @@ build_args:
   - ARROW_VERSION=9.*
   - DOCTEST=1
 tags:
-  - cr.ray.io/rayproject/data9build-py$PYTHON
+  - cr.ray.io/rayproject/datadocbuild-py$PYTHON
