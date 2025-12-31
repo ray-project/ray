@@ -37,10 +37,12 @@ class WorkerGroupState:
 
     def shutdown(self):
         _shutdown_workers(self.workers)
-        _shutdown_placement_group(self.placement_group)
         _shutdown_sync_actor(self.sync_actor)
+
         if self.slice_placement_group:
             self.slice_placement_group.shutdown()
+        else:
+            _shutdown_placement_group(self.placement_group)
 
 
 class WorkerGroupStateBuilder:
@@ -109,15 +111,18 @@ class WorkerGroupStateBuilder:
         if self.workers:
             _shutdown_workers(self.workers)
             self.workers = None
-        if self.placement_group:
-            _shutdown_placement_group(self.placement_group)
-            self.placement_group = None
+
         if self.sync_actor:
             _shutdown_sync_actor(self.sync_actor)
             self.sync_actor = None
+
         if self.slice_placement_group:
             self.slice_placement_group.shutdown()
             self.slice_placement_group = None
+            self.placement_group = None
+        elif self.placement_group:
+            _shutdown_placement_group(self.placement_group)
+            self.placement_group = None
 
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
