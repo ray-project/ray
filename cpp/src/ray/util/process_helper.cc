@@ -152,7 +152,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
-  if (!ConfigInternal::Instance().worker_id.empty()) {
+  if (ConfigInternal::Instance().worker_type != WorkerType::DRIVER) {
     options.worker_id = WorkerID::FromHex(ConfigInternal::Instance().worker_id);
   }
   options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
