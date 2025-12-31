@@ -264,7 +264,6 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
             use_tpu=True,
             accelerator_type="TPU-V4",
             topology="2x2x2",
-            num_slices=1,
             num_workers=2,
         ),
         run_config=RunConfig(
@@ -311,7 +310,6 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
             use_tpu=True,
             accelerator_type="TPU-V4",
             topology="2x2x2",
-            num_slices=2,
             num_workers=4,
         ),
         run_config=RunConfig(
@@ -368,7 +366,6 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
             use_tpu=True,
             accelerator_type="TPU-V4",
             topology="2x2x2",
-            num_slices=2,
             resources_per_worker={"TPU": 1},  # 1 CPU added by default per-bundle.
             num_workers=16,
         ),
@@ -413,14 +410,9 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
 
 def test_tpu_multi_slice_under_subscription(ray_tpu_multi_host, tmp_path):
     """
-    Tests multi-slice execution where the number of workers requested is less
-    than the total physical capacity of the slices.
-
-    For example, if the cluster has 2 slices with a capacity of 8 workers per slice
-    (16 total) and the user requests num_slices=2 but only num_workers=4, all 4
-    workers will be placed on the first slice. This test validates that all workers
-    correctly report the same MEGASCALE_SLICE_ID, rather than being split across multiple
-    logical slice IDs.
+    Tests that if the number of workers requested fits within a single slice,
+    ScalingConfig automatically sets num_slices=1, and we run without
+    multi-slice coordination variables.
     """
     actor_name = "test_tpu_multi_slice_under_subscription"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -431,7 +423,6 @@ def test_tpu_multi_slice_under_subscription(ray_tpu_multi_host, tmp_path):
             use_tpu=True,
             accelerator_type="TPU-V4",
             topology="2x2x2",
-            num_slices=2,
             resources_per_worker={
                 "TPU": 1
             },  # 1 TPU per worker. Capacity is 8 per slice.
@@ -455,12 +446,10 @@ def test_tpu_multi_slice_under_subscription(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 1
     assert list(slices_used)[0] in ["slice-A", "slice-B"]
 
-    # Verify ID assignment matches physical placement.
-    slice_ids = {r["MEGASCALE_SLICE_ID"] for r in reports}
-    assert slice_ids == {"0"}
-
-    # Verify MEGASCALE_NUM_SLICES is still reported as 2.
-    assert all(r["MEGASCALE_NUM_SLICES"] == "2" for r in reports)
+    # Running in single-slice mode.
+    for r in reports:
+        assert r.get("MEGASCALE_SLICE_ID") is None
+        assert r.get("MEGASCALE_NUM_SLICES") is None
 
 
 def test_scaling_config_validation():

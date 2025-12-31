@@ -1,4 +1,5 @@
 import logging
+import math
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -78,14 +79,10 @@ class ScalingConfig(ScalingConfigV1):
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
     accelerator_type: Optional[str] = None
-    num_slices: int = 1
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
-
-        if self.num_slices < 1:
-            raise ValueError(f"`num_slices` must be >= 1. Received {self.num_slices}.")
 
         if self.use_tpu and self.num_workers is None:
             raise ValueError(
@@ -193,6 +190,36 @@ class ScalingConfig(ScalingConfigV1):
     def num_tpus_per_worker(self):
         """The number of TPUs to set per worker."""
         return self._resources_per_worker_not_none.get("TPU", 0)
+
+    @property
+    def num_slices(self) -> int:
+        if not self.use_tpu:
+            return 1
+
+        if self.num_workers is None or self.num_workers <= 1:
+            return 1
+
+        if not self.topology or not self.accelerator_type:
+            return 1
+
+        try:
+            # Calculate how many slices we need to fit the requested number of workers
+            # in a TPU slice of the specified topology.
+            workers_per_slice, _ = get_tpu_worker_resources(
+                topology=self.topology,
+                accelerator_type=self.accelerator_type,
+                resources_per_unit=self.resources_per_worker,
+                num_slices=1,
+            )
+
+            if workers_per_slice == 0:
+                return 1
+
+            return math.ceil(self.num_workers / workers_per_slice)
+        except Exception:
+            # Fallback to 1 if calculation fails; validation in will raise
+            # proper errors if configuration is invalid.
+            return 1
 
 
 @dataclass

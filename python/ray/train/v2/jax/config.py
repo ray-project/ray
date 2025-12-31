@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class JaxConfig(BackendConfig):
     use_tpu: bool = False
     use_gpu: bool = False
-    num_slices: int = 1
 
     @property
     def backend_cls(self):
@@ -117,27 +116,20 @@ class _JaxBackend(Backend):
 
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
-        num_slices = backend_config.num_slices
+
+        scaling_config = worker_group._train_run_context.scaling_config
+        num_slices = scaling_config.num_slices if backend_config.use_tpu else 1
 
         # Calculate the number of workers per slice for multi-slice env setup.
         if backend_config.use_tpu and num_slices > 1:
-            scaling_config = worker_group._train_run_context.scaling_config
-
-            if not scaling_config.topology or not scaling_config.accelerator_type:
-                raise ValueError(
-                    "When `num_slices > 1` for TPU, you must specify `topology` and "
-                    "`accelerator_type` in `ScalingConfig`."
-                )
-
             # Handle the case where a user requests less workers than the total
             # capacity of the TPU slice.
-            total_capacity, _ = get_tpu_worker_resources(
+            workers_per_slice, _ = get_tpu_worker_resources(
                 topology=scaling_config.topology,
                 accelerator_type=scaling_config.accelerator_type,
                 resources_per_unit=scaling_config.resources_per_worker,
-                num_slices=num_slices,
+                num_slices=1,
             )
-            workers_per_slice = total_capacity // num_slices
         else:
             # Assume even distribution based on the requested number of workers.
             workers_per_slice = max(1, len(worker_group) // num_slices)
