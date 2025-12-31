@@ -16,16 +16,16 @@ class CheckpointBackend(Enum):
     """Supported backends for storing and reading checkpoint files.
 
     Currently, only one type of backend is supported:
-        * Batch-based backends: CLOUD_OBJECT_STORAGE and FILE_STORAGE.
+
+    * Batch-based backends: CLOUD_OBJECT_STORAGE and FILE_STORAGE.
 
     Their differences are as follows:
-    1. Writing checkpoints:
-       * Batch-based backends write a checkpoint file for each block.
-    2. Loading checkpoints and filtering input data:
-       * Batch-based backends load all checkpoint data into memory prior to
-         dataset execution. The checkpoint data is then passed to each
-         read task to perform filtering.
 
+    1. Writing checkpoints: Batch-based backends write a checkpoint file
+       for each block.
+    2. Loading checkpoints and filtering input data: Batch-based backends
+       load all checkpoint data into memory prior to dataset execution.
+       The checkpoint data is then passed to each read task to perform filtering.
     """
 
     CLOUD_OBJECT_STORAGE = "CLOUD_OBJECT_STORAGE"
