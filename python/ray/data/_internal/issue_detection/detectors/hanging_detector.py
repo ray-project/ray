@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ DEFAULT_OP_TASK_STATS_MIN_COUNT = 10
 DEFAULT_OP_TASK_STATS_STD_FACTOR = 10
 # Default detection time interval.
 DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -147,6 +150,15 @@ class HangingExecutionIssueDetector(IssueDetector):
                     bytes_output = task_info.bytes_outputs
                     prev_state_value = self._state_map[operator.id].get(task_idx, None)
 
+                    task_state = None
+                    try:
+                        task_state = ray.util.state.get_task(task_info.task_id.hex())
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to grab task state with task_index={task_idx}: {e}"
+                        )
+                        pass
+
                     if (
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
@@ -154,7 +166,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
-                            task_state=ray.util.state.get_task(task_info.task_id.hex()),
+                            task_state=task_state,
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
