@@ -62,7 +62,8 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    prompt: str
+    # Either prompt or prompt_token_ids must be provided.
+    prompt: Optional[str] = None
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
@@ -340,7 +341,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -521,7 +522,7 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = request.prompt
+                request_output.prompt = request.prompt if request.prompt is not None else ""
                 return request_output
 
         raise RuntimeError(
@@ -628,6 +629,34 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "throughput. Please increase max_concurrent_batches to at least "
                 f"{math.ceil(max_num_seqs / batch_size)}."
             )
+
+    def validate_inputs(self, inputs: List[Dict[str, Any]]):
+        """Validate the inputs to make sure the required keys are present.
+        
+        Overrides base class to handle the requirement for prompt/tokenized_prompt.
+
+        Args:
+            inputs: The inputs.
+
+        Raises:
+            ValueError: If the required keys are not found.
+        """
+        for inp in inputs:
+            input_keys = set(inp.keys())
+
+            if "prompt" not in input_keys and "tokenized_prompt" not in input_keys:
+                raise ValueError(
+                    "Either 'prompt' (text) or 'tokenized_prompt' (tokens) "
+                    f"must be provided. Input keys: {input_keys}"
+                )
+
+        original_expected_keys = self.expected_input_keys.copy()
+        self.expected_input_keys = self.expected_input_keys - {"prompt", "tokenized_prompt"}
+
+        try:
+            super().validate_inputs(inputs)
+        finally:
+            self.expected_input_keys = original_expected_keys
 
     def normalize_engine_kwargs(
         self,
@@ -883,7 +912,10 @@ class vLLMEngineStage(StatefulStage):
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
+        ret = {
+            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+        }
         if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
@@ -895,7 +927,6 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         ret = {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
