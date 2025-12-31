@@ -28,7 +28,9 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   pip install numpy==1.23.5
 fi
 
-pip install tensorflow-datasets==4.9.9
+if [[ "${DOCTEST-}" == "1" ]]; then
+  pip install tensorflow-datasets==4.9.9
+fi
 
 # Install MongoDB
 sudo apt-get purge -y mongodb*
