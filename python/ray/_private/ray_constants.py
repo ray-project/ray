@@ -379,9 +379,6 @@ REDIS_DEFAULT_USERNAME = ""
 
 REDIS_DEFAULT_PASSWORD = ""
 
-# The default ip address to bind to.
-NODE_DEFAULT_IP = "127.0.0.1"
-
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
@@ -508,16 +505,6 @@ ENABLE_RAY_CLUSTER = env_bool(
 SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
-
-# The allowed cached ports in Ray. Refer to Port configuration for more details:
-# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
-RAY_ALLOWED_CACHED_PORTS = {
-    "metrics_agent_port",
-    "metrics_export_port",
-    "dashboard_agent_listen_port",
-    "runtime_env_agent_port",
-    "gcs_server_port",  # the `port` option for gcs port.
-}
 
 # Turn this on if actor task log's offsets are expected to be recorded.
 # With this enabled, actor tasks' log could be queried with task id.

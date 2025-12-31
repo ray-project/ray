@@ -221,7 +221,7 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override {
+      std::shared_ptr<const AuthenticationToken> auth_token) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 
