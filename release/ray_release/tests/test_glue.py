@@ -218,8 +218,6 @@ class GlueTest(unittest.TestCase):
         if until == "cluster_env":
             return
 
-        self.cluster_manager_return["cluster_id"] = "valid"
-
         if until == "cluster_start":
             return
 

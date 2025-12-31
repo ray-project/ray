@@ -232,15 +232,9 @@ def _local_environment_information(
 ) -> None:
     # Start cluster
     buildkite_group(":gear: Building cluster environment")
-    if cluster_env_id:
-        cluster_manager.cluster_env_id = cluster_env_id
-
+    cluster_manager.cluster_env_id = cluster_env_id
     cluster_manager.build_configs(timeout=build_timeout)
-
     command_runner.job_manager.cluster_startup_timeout = cluster_timeout
-
-    result.cluster_url = cluster_manager.get_cluster_url()
-    result.cluster_id = cluster_manager.cluster_id
 
 
 def _prepare_remote_environment(
@@ -494,6 +488,7 @@ def run_release_test_anyscale(
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
+        cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
         if image:
             cluster_env_id = create_cluster_env_from_image(
@@ -502,8 +497,6 @@ def run_release_test_anyscale(
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
-        else:
-            cluster_env_id = None
 
         (
             prepare_cmd,
@@ -561,11 +554,9 @@ def run_release_test_anyscale(
         pipeline_exception = e
         metrics = {}
 
-    # Obtain the cluster URL again as it is set after the
+    # Obtain the cluster info again as it is set after the
     # command was run in case of anyscale jobs
     if isinstance(command_runner, AnyscaleJobRunner):
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
