@@ -30,7 +30,7 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
 fi
 
 if [[ "${DOCTEST-}" == "1" ]]; then
-  pip install tensorflow-datasets==4.9.9
+  pip install tensorflow-datasets==4.9.9 protobuf==5.29.5
 fi
 
 # Install MongoDB
