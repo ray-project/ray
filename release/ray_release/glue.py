@@ -3,7 +3,6 @@ import os
 import random
 import string
 import time
-import traceback
 from typing import List, Optional, Tuple
 
 from google.cloud import storage as gcs_storage
@@ -44,7 +43,7 @@ from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, ResultStatus, handle_exception
+from ray_release.result import Result, ResultStatus, update_result_from_exception
 from ray_release.signal_handling import (
     reset_signal_handling,
     setup_signal_handling,
@@ -68,7 +67,10 @@ def _get_extra_tags_from_env() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_ORGANIZATION_SLUG",
         "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_BUILD_ID",
+        "BUILDKITE_BUILD_NUMBER",
         "BUILDKITE_SOURCE",
         "RELEASE_FREQUENCY",
     )
@@ -80,8 +82,6 @@ def _load_test_configuration(
     anyscale_project: str,
     result: Result,
     smoke_test: bool = False,
-    no_terminate: bool = False,
-    test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
@@ -117,6 +117,8 @@ def _load_test_configuration(
     # We don't need other attributes as they can be derived from the name
     extra_tags["test_name"] = str(test["name"])
     extra_tags["test_smoke_test"] = str(result.smoke_test)
+    extra_tags["release_test_team"] = str(test.get("team", ""))
+    extra_tags["release_test_env"] = str(test.get("env", ""))
     result.extra_tags = extra_tags
 
     artifact_path = test["run"].get("artifact_path", None)
@@ -229,7 +231,6 @@ def _local_environment_information(
     command_runner: CommandRunner,
     build_timeout: int,
     cluster_timeout: int,
-    no_terminate: bool,
     cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
@@ -397,9 +398,6 @@ def run_release_test(
     anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -417,9 +415,6 @@ def run_release_test(
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
-        no_terminate=no_terminate,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
         image=image,
@@ -477,15 +472,7 @@ def run_release_test_kuberay(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
-
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
+        update_result_from_exception(result, pipeline_exception)
         raise pipeline_exception
     return result
 
@@ -498,7 +485,6 @@ def run_release_test_anyscale(
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -518,20 +504,20 @@ def run_release_test_anyscale(
             anyscale_project,
             result,
             smoke_test,
-            no_terminate,
-            test_definition_root,
             log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
+        cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
-        if image and not cluster_env_id:
+        if image:
             cluster_env_id = create_cluster_env_from_image(
                 image, test.get_name(), test.get_byod_runtime_env()
             )
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
+
         (
             prepare_cmd,
             prepare_timeout,
@@ -553,7 +539,6 @@ def run_release_test_anyscale(
             command_runner,
             build_timeout,
             cluster_timeout,
-            no_terminate,
             cluster_id,
             cluster_env_id,
         )
@@ -600,10 +585,6 @@ def run_release_test_anyscale(
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if not no_terminate and cluster_manager:
-        buildkite_group(":earth_africa: Terminating cluster")
-        cluster_manager.terminate_cluster(wait=False)
-
     if hasattr(command_runner, "cleanup"):
         command_runner.cleanup()
 
@@ -628,20 +609,8 @@ def run_release_test_anyscale(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
 
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
-        try:
-            raise pipeline_exception
-        except Exception:
-            if not result.last_logs:
-                result.last_logs = traceback.format_exc()
+        update_result_from_exception(result, pipeline_exception, with_last_logs=True)
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:

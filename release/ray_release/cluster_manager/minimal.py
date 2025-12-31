@@ -261,11 +261,5 @@ class MinimalClusterManager(ClusterManager):
         if self.cluster_compute_id:
             self.sdk.delete_cluster_compute(self.cluster_compute_id)
 
-    def start_cluster(self, timeout: float = 600.0):
-        pass
-
-    def terminate_cluster_ex(self, wait: bool = False):
-        pass
-
     def get_cluster_address(self) -> str:
         return f"anyscale://{self.project_name}/{self.cluster_name}"
