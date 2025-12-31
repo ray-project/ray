@@ -151,9 +151,8 @@ anyio==3.7.1 \
     #   jupyter-server
     #   starlette
     #   watchfiles
-anyscale==0.26.67 \
-    --hash=sha256:91ce1a9844145033cc2a51950577231fb368452b70935b4b73268003150b4b17 \
-    --hash=sha256:c17c3b9cccd530637d3d2c07cb44fe4bcf7b0c5618ad845033e9e126aadd9727
+anyscale==0.26.74 \
+    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
     # via -r docker/base-extra/requirements.in
 argon2-cffi==23.1.0 \
     --hash=sha256:879c3e79a2729ce768ebb7d36d4609e3a78a4ca2ec3a9f12286ca057e3d0db08 \
