@@ -111,11 +111,10 @@ All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02
 See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 
 **Tuned examples:**
-`PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-dqn.yaml>`__,
-`Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-rainbow.yaml>`__,
-`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dqn.yaml>`__,
-`with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-duel-ddqn.yaml>`__,
-`with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dist-dqn.yaml>`__.
+`Cartpole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/cartpole_dqn.py>`__,
+`Atari (Pong-v5) with Rainbow <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari_rainbow.py>`__,
+`with LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py>`__,
+`Multi-Agent <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/tictactoe.py>`__,
 
 .. hint::
     For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
@@ -195,10 +194,8 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 
 **Tuned examples:**
-`Atari (Pong-v5) <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/atari_appo.py>`__
-`MuJoCo (Humanoid-v4) <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/mujoco_appo.py>`__
-`Using an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py>`__
-`Multi-Agent <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/tictactoe_appo.py>`__
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
+`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
 
 **APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 

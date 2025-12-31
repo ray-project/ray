@@ -1,18 +1,11 @@
 """Example showing how to run DQN on the CartPole environment.
 
-This example demonstrates DQN (Deep Q-Network) with modern enhancements on the
+This example demonstrates DQN (Deep Q-Network) on the
 classic CartPole-v1 control task. CartPole is a simple environment where the
 goal is to balance a pole on a moving cart by applying left/right forces.
 
 This example:
 - uses the CartPole-v1 environment with discrete actions (left/right)
-- configures prioritized experience replay with 50K capacity buffer (alpha=0.6,
-  beta=0.4) for more efficient learning from important transitions
-- enables double DQN to reduce overestimation bias in Q-value estimates
-- uses dueling network architecture to separately estimate state value and
-  action advantages
-- applies variable n-step returns (randomly sampling between 2-5 steps) for
-  improved credit assignment
 - schedules epsilon from 1.0 to 0.02 over 10,000 steps for exploration decay
 - scales learning rate with sqrt of number of learners for multi-GPU training
 
@@ -65,14 +58,12 @@ config = (
         lr=0.0005 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=32,
         replay_buffer_config={
-            "type": "PrioritizedEpisodeReplayBuffer",
+            "type": "EpisodeReplayBuffer",
             "capacity": 50_000,
-            "alpha": 0.6,
-            "beta": 0.4,
         },
-        n_step=(2, 5),
-        double_q=True,
-        dueling=True,
+        n_step=1,
+        double_q=False,
+        dueling=False,
         epsilon=[(0, 1.0), (25_000, 0.02)],
     )
     .rl_module(
