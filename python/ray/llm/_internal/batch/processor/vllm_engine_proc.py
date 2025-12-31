@@ -183,10 +183,18 @@ def build_vllm_engine_processor(
         )
 
     if prepare_multimodal_stage_cfg.enabled:
+        base_model_config_kwargs = (
+            prepare_multimodal_stage_cfg.model_config_kwargs or {}
+        )
+        # Respect the model source from the processor
+        model_config_kwargs = {
+            **base_model_config_kwargs,
+            "model": processor_defaults.get("model_source"),
+        }
         stages.append(
             PrepareMultimodalStage(
                 fn_constructor_kwargs=dict(
-                    model=prepare_multimodal_stage_cfg.model_source,
+                    model_config_kwargs=model_config_kwargs,
                     chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
                     apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
                 ),

@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -167,6 +167,35 @@ class TaskPoolMapOperator(MapOperator):
 
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
+
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns min/max resource requirements for this operator.
+
+        - Min: resources needed for one task (minimum to make progress)
+        - Max: resources for max_concurrency tasks (if set), else infinite
+        """
+        per_task = self.per_task_resource_allocation()
+        obj_store_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+
+        min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
+
+        if self._max_concurrency is not None:
+            max_resource_usage = ExecutionResources(
+                cpu=per_task.cpu * self._max_concurrency,
+                gpu=per_task.gpu * self._max_concurrency,
+                memory=per_task.memory * self._max_concurrency,
+                # Set the max `object_store_memory` requirement to 'inf', because we
+                # don't know how much data each task can output.
+                object_store_memory=float("inf"),
+            )
+        else:
+            max_resource_usage = ExecutionResources.for_limits()
+
+        return min_resource_usage, max_resource_usage
 
     def all_inputs_done(self):
         super().all_inputs_done()
