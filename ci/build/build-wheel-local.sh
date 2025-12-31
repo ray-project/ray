@@ -132,12 +132,16 @@ fi
 export BUILDKITE_COMMIT
 export PYTHON_VERSION
 
+setup_docker_platform
+
 print_config_block \
   "Repo root:${REPO_ROOT}" \
   "Python:${PYTHON_VERSION}" \
   "Target:${TARGET}" \
   "Wanda:${WANDA_BIN:-<unset>}" \
   "Commit:${BUILDKITE_COMMIT}" \
+  "Host OS:${HOST_OS}" \
+  "Docker platform:${DOCKER_DEFAULT_PLATFORM:-<auto>} ${DOCKER_PLATFORM_NOTE}" \
   "Out dir:${OUT_DIR}" \
   "Skip deps:${SKIP_DEPS}" \
   "Skip extract:${SKIP_EXTRACT}" \

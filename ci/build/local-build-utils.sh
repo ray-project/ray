@@ -103,6 +103,28 @@ setup_build_env() {
     export WANDA_BIN="${WANDA_BIN:-$(command -v wanda || echo /home/ubuntu/rayci/bin/wanda)}"
 }
 
+# Detect host OS and set Docker/Wanda platform for cross-platform builds.
+# On macOS (darwin), we must target linux/* since Ray images are Linux-based,
+# and base images (e.g., ubuntu:22.04) do not have darwin/* variants.
+# Sets: HOST_OS, HOST_ARCH, DOCKER_DEFAULT_PLATFORM, WANDA_PLATFORM, DOCKER_PLATFORM_NOTE
+setup_docker_platform() {
+    HOST_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    HOST_ARCH="$(uname -m)"
+    if [[ "$HOST_OS" == "darwin" ]]; then
+        local target_platform
+        if [[ "$HOST_ARCH" == "arm64" ]]; then
+            target_platform="linux/arm64"
+        else
+            target_platform="linux/amd64"
+        fi
+        export DOCKER_DEFAULT_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-$target_platform}"
+        export WANDA_PLATFORM="${WANDA_PLATFORM:-$target_platform}"
+        DOCKER_PLATFORM_NOTE="(auto-set for macOS ${HOST_ARCH})"
+    else
+        DOCKER_PLATFORM_NOTE=""
+    fi
+}
+
 # ---------------------------
 # Shared CLI / DX helpers
 # ---------------------------
