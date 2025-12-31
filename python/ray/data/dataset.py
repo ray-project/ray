@@ -29,7 +29,7 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -145,6 +145,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -1147,9 +1148,6 @@ class Dataset:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-        # Don't feel like we really need this
-        from ray.data._internal.compute import TaskPoolStrategy
-
         compute = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
@@ -1274,7 +1272,6 @@ class Dataset:
             )
 
         # Construct the plan and project operation
-        from ray.data._internal.compute import TaskPoolStrategy
 
         compute = TaskPoolStrategy(size=concurrency)
 
@@ -1560,7 +1557,6 @@ class Dataset:
 
         if expr is not None:
             _check_fn_params_incompatible("expr")
-            from ray.data._internal.compute import TaskPoolStrategy
 
             # Check if expr is a string (deprecated) or Expr object
             if isinstance(expr, str):
@@ -5353,7 +5349,7 @@ class Dataset:
             self._logical_plan.dag,
             datasink,
             ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
+            compute=TaskPoolStrategy(concurrency),
         )
         logical_plan = LogicalPlan(write_op, self.context)
 
@@ -5373,7 +5369,7 @@ class Dataset:
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
-            iter_, stats = self._write_ds._execute_to_iterator()
+            iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -6772,13 +6768,15 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+    def _execute_to_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         bundle_iter, stats, executor = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats
+        return bundle_iter, stats, executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.

@@ -89,6 +89,12 @@ class ResourceManager:
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
 
+        # Bytes buffered by external consumers (iterators) consuming Batches
+        # (including the prefetched blocks). For example,
+        # - ds.iter_batches -> one iterator
+        # - streaming_split -> multiple iterators
+        self._external_consumer_bytes: int = 0
+
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
         ] = create_resource_allocator(self, data_context)
@@ -133,6 +139,14 @@ class ResourceManager:
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
                 )
+
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        self._external_consumer_bytes = num_bytes
+
+    def get_external_consumer_bytes(self) -> int:
+        """Get the bytes buffered by external consumers."""
+        return self._external_consumer_bytes
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"
@@ -429,6 +443,10 @@ class ResourceManager:
         )
         return op_outputs_usage
 
+    def is_materializing_op(self, op: PhysicalOperator) -> bool:
+        """Check if the operator is a materializing operator."""
+        return isinstance(op, MATERIALIZING_OPERATORS)
+
     def has_materializing_downstream_op(self, op: PhysicalOperator) -> bool:
         """Check if the operator has a downstream materializing operator."""
         return any(
@@ -436,10 +454,32 @@ class ResourceManager:
             for next_op in op.output_dependencies
         )
 
+    def get_available_object_store_budget_fraction(
+        self, op: PhysicalOperator
+    ) -> Optional[float]:
+        """Get available object store memory budget fraction for the operator. Returns None if not available."""
+        op_usage = self.get_op_usage(op)
+        op_budget = self.get_budget(op)
+        if op_usage is None or op_budget is None:
+            return None
+        total_mem = op_usage.object_store_memory + op_budget.object_store_memory
+        if total_mem == 0:
+            return None
+        return op_budget.object_store_memory / total_mem
+
+    def get_utilized_object_store_budget_fraction(
+        self, op: PhysicalOperator
+    ) -> Optional[float]:
+        """Get utilized object store memory budget fraction for the operator. Returns None if not available."""
+        available_fraction = self.get_available_object_store_budget_fraction(op)
+        if available_fraction is None:
+            return None
+        return 1 - available_fraction
+
 
 def _get_first_pending_shuffle_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if _is_shuffle_op(op) and not op.completed():
+        if _is_shuffle_op(op) and not op.has_completed():
             return idx
 
     return -1
