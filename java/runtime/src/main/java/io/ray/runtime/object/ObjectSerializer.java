@@ -48,7 +48,7 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_LOCAL_MODE_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE.getNumber()).getBytes();
-  private static final byte[] UNRECONSTRUCTABLE_OUT_OF_SCOPE_EXCEPTION_META =
+  private static final byte[] UNRECONSTRUCTABLE_REF_NOT_FOUND_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_TASK_CANCELLED_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.getNumber()).getBytes();
@@ -116,7 +116,7 @@ public class ObjectSerializer {
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_RETRIES_DISABLED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_BORROWED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LOCAL_MODE_EXCEPTION_META) == 0
-          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_OUT_OF_SCOPE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_REF_NOT_FOUND_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_TASK_CANCELLED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_DISABLED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, OBJECT_LOST_META) == 0

@@ -754,12 +754,7 @@ class OwnerDiedError(ObjectLostError):
 
 @PublicAPI
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed.
-
-    Attributes:
-        reason: ErrorType enum value indicating why reconstruction failed.
-        reason_message: Human-readable explanation.
-    """
+    """Indicates that the object cannot be reconstructed."""
 
     REASON_MESSAGES = {
         ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED: (
@@ -815,6 +810,15 @@ class ObjectReconstructionFailedError(ObjectLostError):
         owner_address: Optional[Address] = None,
         call_site: str = "",
     ):
+        """Initialize ObjectReconstructionFailedError.
+
+        Args:
+            object_ref_hex: Hex string of the object reference.
+            reason: ErrorType enum value indicating why reconstruction failed.
+            reason_message: Human-readable explanation of the failure.
+            owner_address: Address of the object's owner.
+            call_site: Call site where the object was created.
+        """
         super().__init__(object_ref_hex, owner_address, call_site)
         self.reason = reason
         self.reason_message = reason_message or self.REASON_MESSAGES.get(
