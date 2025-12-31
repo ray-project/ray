@@ -252,8 +252,6 @@ class MinimalClusterManager(ClusterManager):
             ) from e
 
     def delete_configs(self):
-        if self.cluster_id:
-            self.sdk.delete_cluster(self.cluster_id)
         if self.cluster_env_build_id:
             self.sdk.delete_cluster_environment_build(self.cluster_env_build_id)
         if self.cluster_env_id:
