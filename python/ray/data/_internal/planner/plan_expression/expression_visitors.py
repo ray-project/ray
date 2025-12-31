@@ -12,6 +12,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    _CallableClassUDF,
     _ExprVisitor,
 )
 
@@ -116,6 +117,46 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
+class _CallableClassUDFCollector(_ExprVisitorBase):
+    """Visitor that collects all callable class UDFs from expression trees.
+
+    This visitor traverses expression trees and collects _CallableClassUDF instances
+    that wrap callable classes (as opposed to regular functions).
+    """
+
+    def __init__(self):
+        """Initialize with an empty list of _CallableClassUDF instances."""
+        self._expr_udfs: List[_CallableClassUDF] = []
+
+    def get_callable_class_udfs(self) -> List[_CallableClassUDF]:
+        """Get the list of collected _CallableClassUDF instances.
+
+        Returns:
+            List of _CallableClassUDF instances that wrap callable classes.
+        """
+        return self._expr_udfs
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        """Visit a column expression (no UDFs to collect)."""
+        pass
+
+    def visit_udf(self, expr: UDFExpr) -> None:
+        """Visit a UDF expression and collect it if it's a callable class.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            None (only collects UDFs as a side effect).
+        """
+        # Check if fn is an _CallableClassUDF (indicates callable class)
+        if isinstance(expr.fn, _CallableClassUDF):
+            self._expr_udfs.append(expr.fn)
+
+        # Continue visiting child expressions
+        super().visit_udf(expr)
+
+
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
@@ -193,7 +234,10 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
         return UDFExpr(
-            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
+            fn=expr.fn,
+            data_type=expr.data_type,
+            args=new_args,
+            kwargs=new_kwargs,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:
