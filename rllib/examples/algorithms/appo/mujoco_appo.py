@@ -33,8 +33,11 @@ To run with default settings on HalfCheetah:
 To run on a different MuJoCo environment:
 `python mujoco_appo.py --env=Hopper-v4`
 
-To scale up training with more env runners:
-`python mujoco_appo.py --num-env-runners=16`
+To scale up with distributed learning using multiple learners and env-runners:
+`python mujoco_appo.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python mujoco_appo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -68,8 +71,9 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     env="Humanoid-v4",
-    num_env_runners=5,
-    num_envs_per_env_runner=32,
+    num_env_runners=4,
+    num_envs_per_env_runner=16,
+    num_learners=1,
 )
 args = parser.parse_args()
 

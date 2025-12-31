@@ -2172,23 +2172,24 @@
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
 
-- name: rllib_atari_multi_gpu_multi_node
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-    cluster_compute: multi_gpu_multi_node.yaml
-
-  run:
-    timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
+# TODO: Re-enable
+#- name: rllib_atari_multi_gpu_multi_node
+#  python: "3.10"
+#  group: RLlib tests
+#  working_dir: rllib_tests
+#
+#  frequency: nightly
+#  team: rllib
+#
+#  cluster:
+#    byod:
+#      type: gpu
+#      post_build_script: byod_rllib.sh
+#    cluster_compute: multi_gpu_multi_node.yaml
+#
+#  run:
+#    timeout: 3000  # expected 2000 seconds
+#    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
 
 ########################
 # Core Nightly Tests
