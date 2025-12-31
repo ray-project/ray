@@ -48,18 +48,6 @@ from ray_release.result import Result
     help="Report results to database",
 )
 @click.option(
-    "--cluster-id",
-    default=None,
-    type=str,
-    help="Cluster ID of existing cluster to be re-used.",
-)
-@click.option(
-    "--cluster-env-id",
-    default=None,
-    type=str,
-    help="Cluster env ID of existing cluster env to be re-used.",
-)
-@click.option(
     "--env",
     default=None,
     # Get the names without suffixes of all files in "../environments"
@@ -99,8 +87,6 @@ def main(
     test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
     test_definition_root: Optional[str] = None,
@@ -159,8 +145,6 @@ def main(
             result=result,
             reporters=reporters,
             smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
             test_definition_root=test_definition_root,
             log_streaming_limit=log_streaming_limit,
             image=image,
