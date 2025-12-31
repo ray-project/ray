@@ -159,11 +159,18 @@ setup_build_env
 export PYTHON_VERSION
 check_wanda_prerequisites "$WANDA_BIN"
 
+REPO_ROOT="$(get_repo_root)"
+cd "$REPO_ROOT"
+
+setup_docker_platform
+
 print_config_block \
   "Python:${PYTHON_VERSION}" \
   "Platform:${PLATFORM}" \
   "CUDA version:${CUDA_VERSION:-}" \
   "Wanda:${WANDA_BIN:-<unset>}" \
+  "Host OS:${HOST_OS}" \
+  "Docker platform:${DOCKER_DEFAULT_PLATFORM:-<auto>} ${DOCKER_PLATFORM_NOTE}" \
   "Skip wheel:${SKIP_WHEEL}" \
   "Skip deps:${SKIP_DEPS}" \
   "Only wheel:${ONLY_WHEEL}" \

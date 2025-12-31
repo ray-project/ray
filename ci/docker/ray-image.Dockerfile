@@ -26,7 +26,6 @@ FROM ${BASE_IMAGE}
 ARG PYTHON_VERSION=3.10
 
 COPY --from=wheel-source /*.whl /tmp/
-
 COPY python/requirements_compiled.txt /tmp/
 
 # Install Ray wheel with all extras
@@ -50,13 +49,9 @@ $HOME/anaconda3/bin/pip --no-cache-dir install \
     -c /tmp/requirements_compiled.txt \
     "${WHEEL_FILE}[all]"
 
-# Clean up (ignore errors from immutable files in buildkit)
-rm -f /tmp/*.whl /tmp/requirements_compiled.txt || true
-
 # Save pip freeze for debugging/reproducibility
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
-echo "Ray installation complete!"
 echo "Ray version: $($HOME/anaconda3/bin/python -c 'import ray; print(ray.__version__)')"
 EOF
 
