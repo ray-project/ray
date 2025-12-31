@@ -31,7 +31,6 @@ from ray.data.datasource.file_datasink import (
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
@@ -53,7 +52,6 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "DeltaSharingDatasource",
     "DummyOutputDatasink",
-    "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",
     "FileMetadataProvider",

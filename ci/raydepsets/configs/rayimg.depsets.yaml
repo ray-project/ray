@@ -1,7 +1,4 @@
 build_arg_sets:
-  py39:
-    PYTHON_VERSION: "3.9"
-    PYTHON_SHORT: "39"
   py310:
     PYTHON_VERSION: "3.10"
     PYTHON_SHORT: "310"
@@ -25,7 +22,6 @@ depsets:
       - --unsafe-package ray
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
       - py311
       - py312
@@ -49,7 +45,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
       - py311
       - py312
@@ -71,7 +66,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
       - py311
       - py312
@@ -93,7 +87,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
 
   - name: ray_ml_base_extra_testdeps_${PYTHON_SHORT}
@@ -112,7 +105,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
 
   - name: ray_ml_base_extra_testdeps_cuda_${PYTHON_SHORT}
@@ -132,7 +124,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
 
   # First layer of the ray release images. Contains all base layer python dependencies
@@ -148,7 +139,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
       - py311
       - py312
@@ -168,7 +158,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
-      - py39
       - py310
       - py311
       - py312

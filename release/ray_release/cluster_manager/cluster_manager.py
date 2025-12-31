@@ -9,7 +9,6 @@ from ray_release.aws import (
 )
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.exception import CloudInfoError
-from ray_release.logger import logger
 from ray_release.test import Test
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
 
@@ -123,18 +122,6 @@ class ClusterManager(abc.ABC):
         raise NotImplementedError
 
     def delete_configs(self):
-        raise NotImplementedError
-
-    def start_cluster(self, timeout: float = 600.0):
-        raise NotImplementedError
-
-    def terminate_cluster(self, wait: bool = False):
-        try:
-            self.terminate_cluster_ex(wait=False)
-        except Exception as e:
-            logger.exception(f"Could not terminate cluster: {e}")
-
-    def terminate_cluster_ex(self, wait: bool = False):
         raise NotImplementedError
 
     def get_cluster_address(self) -> str:
