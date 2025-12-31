@@ -193,7 +193,11 @@ class TaskPoolMapOperator(MapOperator):
                 object_store_memory=float("inf"),
             )
         else:
-            max_resource_usage = ExecutionResources.for_limits()
+            # Use infinite limits, but cap GPU to 0 if this operator doesn't use GPUs.
+            # This prevents non-GPU operators from hoarding GPU budget.
+            max_resource_usage = ExecutionResources.for_limits(
+                gpu=None if per_task.gpu else 0
+            )
 
         return min_resource_usage, max_resource_usage
 

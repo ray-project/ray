@@ -720,6 +720,116 @@ class TestReservationOpResourceAllocator:
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
         assert allocator._op_budgets[o3].gpu == 6
 
+    def test_gpu_not_reserved_for_non_gpu_operators(self, restore_data_context):
+        """Test that GPU budget is not reserved for operators that don't use GPUs.
+
+        This tests a realistic inference pipeline DAG:
+            Read (CPU) -> Infer1 (GPU) -> Infer2 (GPU) -> Write (CPU)
+
+        Non-GPU operators (Read, Write) should have 0 GPUs reserved, ensuring
+        all GPUs are available for GPU operators (Infer1, Infer2).
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+
+        # Read: CPU-only operator (unbounded, gpu=0 in max since it doesn't use GPUs)
+        read_op = mock_map_op(o1, name="Read")
+        read_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=1, gpu=0, object_store_memory=0),
+                ExecutionResources.for_limits(gpu=0),
+            )
+        )
+
+        # Infer1: GPU operator with max_actors=4
+        infer1_op = mock_map_op(read_op, ray_remote_args={"num_gpus": 1}, name="Infer1")
+        infer1_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
+                ExecutionResources(cpu=0, gpu=4, object_store_memory=float("inf")),
+            )
+        )
+
+        # Infer2: GPU operator with max_actors=4
+        infer2_op = mock_map_op(
+            infer1_op, ray_remote_args={"num_gpus": 1}, name="Infer2"
+        )
+        infer2_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
+                ExecutionResources(cpu=0, gpu=4, object_store_memory=float("inf")),
+            )
+        )
+
+        # Write: CPU-only operator (unbounded, gpu=0 in max since it doesn't use GPUs)
+        write_op = mock_map_op(infer2_op, name="Write")
+        write_op.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources(cpu=1, gpu=0, object_store_memory=0),
+                ExecutionResources.for_limits(gpu=0),
+            )
+        )
+
+        topo = build_streaming_topology(write_op, ExecutionOptions())
+
+        global_limits = ExecutionResources(cpu=8, gpu=8, object_store_memory=10_000_000)
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            read_op: ExecutionResources.zero(),
+            infer1_op: ExecutionResources.zero(),
+            infer2_op: ExecutionResources.zero(),
+            write_op: ExecutionResources.zero(),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys(
+            [o1, read_op, infer1_op, infer2_op, write_op], 0
+        )
+        resource_manager._mem_op_outputs = dict.fromkeys(
+            [o1, read_op, infer1_op, infer2_op, write_op], 0
+        )
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        # Non-GPU operators should have 0 GPUs reserved
+        assert allocator._op_reserved[read_op].gpu == 0, (
+            f"Read (non-GPU) should have 0 GPUs reserved, "
+            f"got {allocator._op_reserved[read_op].gpu}"
+        )
+        assert allocator._op_reserved[write_op].gpu == 0, (
+            f"Write (non-GPU) should have 0 GPUs reserved, "
+            f"got {allocator._op_reserved[write_op].gpu}"
+        )
+
+        # GPU operators should have GPUs reserved
+        assert allocator._op_reserved[infer1_op].gpu > 0, (
+            f"Infer1 (GPU) should have GPUs reserved, "
+            f"got {allocator._op_reserved[infer1_op].gpu}"
+        )
+        assert allocator._op_reserved[infer2_op].gpu > 0, (
+            f"Infer2 (GPU) should have GPUs reserved, "
+            f"got {allocator._op_reserved[infer2_op].gpu}"
+        )
+
+        # All 8 GPUs should be available (reserved for GPU ops + shared pool)
+        total_gpu_reserved = sum(
+            allocator._op_reserved[op].gpu
+            for op in [read_op, infer1_op, infer2_op, write_op]
+        )
+        shared_gpu = allocator._total_shared.gpu
+        assert total_gpu_reserved + shared_gpu == 8, (
+            f"All 8 GPUs should be available, "
+            f"got {total_gpu_reserved} reserved + {shared_gpu} shared = "
+            f"{total_gpu_reserved + shared_gpu}"
+        )
+
     def test_get_ineligible_op_usage(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 

@@ -478,7 +478,11 @@ class ActorPoolMapOperator(MapOperator):
         # If max_actors is infinite (unbounded pool), return infinite resources.
         # Otherwise, compute the max resources based on max_actors.
         if math.isinf(max_actors):
-            max_resource_usage = ExecutionResources.for_limits()
+            # Use infinite limits, but cap GPU to 0 if this operator doesn't use GPUs.
+            # This prevents non-GPU operators from hoarding GPU budget.
+            max_resource_usage = ExecutionResources.for_limits(
+                gpu=None if num_gpus_per_actor else 0
+            )
         else:
             max_resource_usage = ExecutionResources(
                 cpu=num_cpus_per_actor * max_actors,
