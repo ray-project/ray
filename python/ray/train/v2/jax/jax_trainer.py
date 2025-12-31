@@ -51,7 +51,6 @@ class JaxTrainer(DataParallelTrainer):
                 scaling_config=ScalingConfig(
                     accelerator_type="TPU-V6E",
                     topology="4x4",
-                    num_slices=1,
                 ),
                 run_config=RunConfig(
                     name="maxtext_jaxtrainer",
@@ -130,7 +129,6 @@ class JaxTrainer(DataParallelTrainer):
             jax_config = JaxConfig(
                 use_tpu=scaling_config.use_tpu,
                 use_gpu=scaling_config.use_gpu,
-                num_slices=scaling_config.num_slices,
             )
         super(JaxTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
