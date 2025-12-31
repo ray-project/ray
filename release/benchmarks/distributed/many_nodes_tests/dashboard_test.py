@@ -12,7 +12,6 @@ import os
 from collections import defaultdict
 from ray.util.state import list_nodes
 from ray._private.test_utils import get_system_metric_for_component
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.metrics.metrics_head import (

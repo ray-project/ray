@@ -41,7 +41,6 @@ from ray.serve.schema import (
     Target,
 )
 from ray.util import metrics
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
