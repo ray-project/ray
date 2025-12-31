@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/grpc_util.h"
+#include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
 namespace core {
@@ -193,11 +194,24 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.set_serialized_runtime_env(
       task_spec_->RuntimeEnvInfo().serialized_runtime_env());
   definition_event_data.set_job_id(job_id_.Binary());
-  definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
+  // NOTE: we set the parent task id of a task to the submitter task id, where the
+  // submitter  task id is:
+  // - For concurrent actors: the actor creation task's task id.
+  // - Otherwise: the CoreWorker main thread's task id.
+  definition_event_data.set_parent_task_id(task_spec_->SubmitterTaskId().Binary());
   definition_event_data.set_placement_group_id(
       task_spec_->PlacementGroupBundleId().first.Binary());
   const auto &labels = task_spec_->GetMessage().labels();
   definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
+  const auto &call_site = task_spec_->GetMessage().call_site();
+  if (!call_site.empty()) {
+    definition_event_data.set_call_site(call_site);
+  }
+  const auto &label_selector = task_spec_->GetMessage().label_selector();
+  if (label_selector.label_constraints_size() > 0) {
+    *definition_event_data.mutable_label_selector() =
+        ray::LabelSelector(label_selector).ToStringMap();
+  }
 
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
@@ -229,6 +243,8 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
+  lifecycle_event_data.set_job_id(job_id_.Binary());
+
   // Task property updates
   if (!state_update_.has_value()) {
     return;
@@ -236,6 +252,10 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
 
   if (state_update_->error_info_.has_value()) {
     lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update_->error_info_);
+  }
+
+  if (!state_update_->actor_repr_name_.empty()) {
+    lifecycle_event_data.set_actor_repr_name(state_update_->actor_repr_name_);
   }
 
   if (state_update_->node_id_.has_value()) {
@@ -258,7 +278,10 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
     lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
   }
 
-  lifecycle_event_data.set_job_id(job_id_.Binary());
+  if (state_update_->is_debugger_paused_.has_value()) {
+    lifecycle_event_data.set_is_debugger_paused(
+        state_update_->is_debugger_paused_.value());
+  }
 }
 
 void TaskStatusEvent::PopulateRpcRayEventBaseFields(
