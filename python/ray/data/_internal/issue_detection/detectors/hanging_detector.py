@@ -1,13 +1,15 @@
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
+import ray
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueDetector,
     IssueType,
 )
+from ray.util.state.common import TaskState
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.op_runtime_metrics import (
@@ -30,6 +32,7 @@ DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 class HangingExecutionState:
     operator_id: str
     task_idx: int
+    task_state: Optional[TaskState]
     bytes_output: int
     start_time_hanging: float
 
@@ -96,8 +99,17 @@ class HangingExecutionIssueDetector(IssueDetector):
                 op_name = self._op_id_to_name.get(state.operator_id, state.operator_id)
                 duration = time.perf_counter() - state.start_time_hanging
                 avg_duration = op_task_stats_map[state.operator_id].mean()
+
+                node_id = None
+                pid = None
+                attempt_number = None
+                if state.task_state is not None:
+                    node_id = state.task_state.node_id
+                    pid = state.task_state.worker_pid
+                    attempt_number = state.task_state.attempt_number
+
                 message = (
-                    f"A task of operator {op_name} with task index "
+                    f"(pid={pid})(node_id={node_id})(attempt={attempt_number}) A task of operator {op_name} with task index "
                     f"{state.task_idx} has been running for {duration:.2f}s, which is longer"
                     f" than the average task duration of this operator ({avg_duration:.2f}s)."
                     f" If this message persists, please check the stack trace of the "
@@ -142,6 +154,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
+                            task_state=ray.util.state.get_task(task_info.task_id.hex()),
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
