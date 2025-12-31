@@ -161,6 +161,7 @@ The Serve Controller runs on the Ray head node and is responsible for a variety 
 including receiving autoscaling metrics from other Ray Serve components.
 If the Serve Controller becomes overloaded
 (symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
-you can increase the interval between cycles of the control loop
-by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
-This setting gives the Controller more time to process requests and may help alleviate the overload.
+you can tune the following environment variables:
+
+- `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
+- `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.

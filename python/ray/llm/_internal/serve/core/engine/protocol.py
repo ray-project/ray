@@ -40,10 +40,6 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
-
-    @abc.abstractmethod
     async def chat(
         self,
         request: "ChatCompletionRequest",
@@ -182,6 +178,10 @@ class LLMEngine(abc.ABC):
     # to sleep during training and wake up during rollouts.
     ##############################################################
 
+    @abc.abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
@@ -208,6 +208,53 @@ class LLMEngine(abc.ABC):
 
         Returns:
             True if the engine is sleeping, False otherwise.
+        """
+        return False
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        raise NotImplementedError("collective_rpc is not implemented for this engine")
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause the engine.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        pass
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume the engine.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        pass
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
         """
         return False
 

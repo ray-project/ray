@@ -28,8 +28,11 @@ How to run this script
 To run with default settings (3 env runners):
 `python stateless_cartpole_appo_with_lstm.py`
 
-To adjust the number of env runners:
-`python stateless_cartpole_appo_with_lstm.py --num-env-runners=4`
+To scale up with distributed learning using multiple learners and env-runners:
+`python stateless_cartpole_appo_with_lstm.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python stateless_cartpole_appo_with_lstm.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -70,8 +73,9 @@ parser = add_rllib_example_script_args(
     default_timesteps=5_000_000,
 )
 parser.set_defaults(
-    num_env_runners=5,
+    num_env_runners=4,
     num_envs_per_env_runner=16,
+    num_learners=1,
 )
 args = parser.parse_args()
 

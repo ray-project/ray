@@ -195,8 +195,10 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 
 **Tuned examples:**
-`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
-`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
+`Atari (Pong-v5) <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/atari_appo.py>`__
+`MuJoCo (Humanoid-v4) <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/mujoco_appo.py>`__
+`Using an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py>`__
+`Multi-Agent <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/tictactoe_appo.py>`__
 
 **APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
