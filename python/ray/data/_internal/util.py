@@ -797,9 +797,13 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Handle null values - replace them with sentinel values
+        # Handle null values. Nulls sort last.
+        # Filter nulls (None or nan) to avoid TypeError in searchsorted.
+        col_vals = col_vals[~pd.isna(col_vals)]
+
+        # If desired_val is None, return position where nulls start.
         if desired_val is None:
-            desired_val = NULL_SENTINEL
+            return left + len(col_vals)
 
         prevleft = left
         if descending[i] is True:

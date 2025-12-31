@@ -8,7 +8,9 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    Quantile,
     Unique,
+    ValueCounter,
     ZeroPercentage,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -557,6 +559,54 @@ class TestUnique:
         answer = ["a", "b", "c"]
 
         assert Counter(result["unique(id)"]) == Counter(answer)
+
+    def test_unique_with_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test Unique with groupby exercises combine() path."""
+        # Create data with a proper groupby key
+        data = [{"group": i % 2, "value": i} for i in range(50)]
+        ds = ray.data.from_items(data)
+
+        # Groupby forces multiple blocks to be combined
+        result = ds.groupby("group").aggregate(Unique(on="value")).take_all()
+
+        assert len(result) == 2
+        for row in result:
+            assert "unique(value)" in row
+            # Each group should have 25 unique values
+            assert len(row["unique(value)"]) == 25
+
+
+class TestQuantile:
+    """Test cases for Quantile aggregation."""
+
+    def test_quantile_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test Quantile with groupby exercises combine() path."""
+        data = [{"group": i % 2, "value": i} for i in range(100)]
+        ds = ray.data.from_items(data)
+
+        result = ds.groupby("group").aggregate(Quantile(on="value", q=0.5)).take_all()
+
+        assert len(result) == 2
+        for row in result:
+            assert "quantile(value)" in row
+
+
+class TestValueCounter:
+    """Test cases for ValueCounter aggregation."""
+
+    def test_value_counter_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test ValueCounter with groupby exercises combine() path."""
+        data = [{"group": i % 3, "category": chr(ord("A") + i % 5)} for i in range(100)]
+        ds = ray.data.from_items(data)
+
+        result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+
+        assert len(result) == 3
+        for row in result:
+            assert "value_counter(category)" in row
+            vc = row["value_counter(category)"]
+            assert "values" in vc
+            assert "counts" in vc
 
 
 if __name__ == "__main__":

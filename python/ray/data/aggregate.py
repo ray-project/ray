@@ -854,21 +854,25 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
             return current_accumulator
 
         if isinstance(current_accumulator, List) and (not isinstance(new, List)):
-            if new is not None and new != "":
+            if new is not None and not (isinstance(new, str) and new == ""):
                 current_accumulator.append(new)
             return current_accumulator
 
         if isinstance(new, List) and (not isinstance(current_accumulator, List)):
-            if current_accumulator is not None and current_accumulator != "":
+            if current_accumulator is not None and not (
+                isinstance(current_accumulator, str) and current_accumulator == ""
+            ):
                 new.append(current_accumulator)
             return new
 
         ls = []
 
-        if current_accumulator is not None and current_accumulator != "":
+        if current_accumulator is not None and not (
+            isinstance(current_accumulator, str) and current_accumulator == ""
+        ):
             ls.append(current_accumulator)
 
-        if new is not None and new != "":
+        if new is not None and not (isinstance(new, str) and new == ""):
             ls.append(new)
 
         return ls
@@ -883,6 +887,10 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
         return ls
 
     def finalize(self, accumulator: List[Any]) -> Optional[Any]:
+        # Convert numpy array to list if needed (from Arrow deserialization)
+        if isinstance(accumulator, np.ndarray):
+            accumulator = accumulator.tolist()
+
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
@@ -892,7 +900,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
                 # Return the first null encountered to preserve column type.
                 return nulls[0]
 
-        if not accumulator:
+        if len(accumulator) == 0:
             # If the list is empty (e.g., all values were null and ignored, or no values),
             # quantile is undefined.
             return None
@@ -1095,7 +1103,6 @@ class ValueCounter(AggregateFnV2):
         current_accumulator: Dict[str, List],
         new_accumulator: Dict[str, List],
     ) -> Dict[str, List]:
-
         values = current_accumulator["values"]
         counts = current_accumulator["counts"]
 
@@ -1186,6 +1193,27 @@ def _null_safe_finalize(
     return _safe_finalize
 
 
+def _convert_numpy_to_python(val: AccumulatorType) -> AccumulatorType:
+    """Convert numpy arrays to Python lists for combine() compatibility.
+
+    Arrow blocks return numpy arrays for list columns, but aggregates expect
+    Python lists. This helper ensures accumulators are in the expected format.
+    Handles nested numpy arrays recursively.
+    """
+    if isinstance(val, np.ndarray):
+        # Use tolist() which recursively converts nested arrays to lists
+        return val.tolist()
+    if isinstance(val, list):
+        # Handle lists that may contain numpy arrays (e.g., after partial tolist)
+        return [v.tolist() if isinstance(v, np.ndarray) else v for v in val]
+    if isinstance(val, dict):
+        # Handle dict accumulators like ValueCounter
+        return {
+            k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in val.items()
+        }
+    return val
+
+
 def _null_safe_combine(
     combine: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
     ignore_nulls: bool,
@@ -1221,6 +1249,9 @@ def _null_safe_combine(
             elif is_null(new):
                 return cur
             else:
+                # Convert numpy arrays to Python types before combining
+                cur = _convert_numpy_to_python(cur)
+                new = _convert_numpy_to_python(new)
                 return combine(cur, new)
 
     else:
@@ -1233,6 +1264,9 @@ def _null_safe_combine(
             elif is_null(cur):
                 return cur
             else:
+                # Convert numpy arrays to Python types before combining
+                cur = _convert_numpy_to_python(cur)
+                new = _convert_numpy_to_python(new)
                 return combine(cur, new)
 
     return _safe_combine

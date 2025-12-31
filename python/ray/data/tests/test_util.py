@@ -364,6 +364,31 @@ def test_find_partition_index_with_nulls():
     assert find_partition_index(table, (None,), sort_key) == 3
 
 
+def test_find_partition_index_with_nulls_object_dtype():
+    # Test object dtype columns with None values (e.g., from Pandas DataFrames).
+    # This tests the fix for TypeError when None appears in object arrays.
+    import pandas as pd
+
+    # Pandas DataFrame with object dtype containing None
+    df = pd.DataFrame({"value": ["a", "b", "c", None, None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+
+    # Insert "b" -> belongs after "a", before "b" => index 1
+    assert find_partition_index(df, ("b",), sort_key) == 1
+    # Insert "d" -> belongs after "c", before nulls => index 3
+    assert find_partition_index(df, ("d",), sort_key) == 3
+    # Insert None -> belongs where nulls start (index 3)
+    assert find_partition_index(df, (None,), sort_key) == 3
+
+    # Test with mixed float/None in object dtype (edge case)
+    df_mixed = pd.DataFrame({"value": [1.0, 2.0, 3.0, None, None]}, dtype=object)
+    sort_key = SortKey(key=["value"], descending=[False])
+
+    assert find_partition_index(df_mixed, (2.0,), sort_key) == 1
+    assert find_partition_index(df_mixed, (4.0,), sort_key) == 3
+    assert find_partition_index(df_mixed, (None,), sort_key) == 3
+
+
 def test_find_partition_index_duplicates():
     table = pa.table({"value": [2, 2, 2, 2, 2]})
     sort_key = SortKey(key=["value"], descending=[False])

@@ -376,17 +376,24 @@ class BlockAccessor:
         """Randomly shuffle this block."""
         raise NotImplementedError
 
-    def to_pandas(self) -> "pandas.DataFrame":
-        """Convert this block into a Pandas dataframe."""
+    def to_pandas(self, copy: bool = False) -> "pandas.DataFrame":
+        """Convert this block into a Pandas dataframe.
+
+        Args:
+            copy: Whether to ensure the returned DataFrame is a copy
+                (not a zero-copy view).
+        """
         raise NotImplementedError
 
     def to_numpy(
-        self, columns: Optional[Union[str, List[str]]] = None
+        self, columns: Optional[Union[str, List[str]]] = None, copy: bool = False
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         """Convert this block (or columns of block) into a NumPy ndarray.
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+            copy: Whether to ensure the returned arrays are copies
+                (not zero-copy views).
         """
         raise NotImplementedError
 
@@ -398,15 +405,24 @@ class BlockAccessor:
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
-    def to_default(self) -> Block:
-        """Return the default data format for this accessor."""
+    def to_default(self, copy: bool = False) -> Block:
+        """Return the default data format for this accessor.
+
+        Args:
+            copy: Whether to ensure the returned batch is a copy
+                (not a zero-copy view).
+        """
         return self.to_block()
 
-    def to_batch_format(self, batch_format: Optional[str]) -> DataBatch:
+    def to_batch_format(
+        self, batch_format: Optional[str], ensure_copy: bool = False
+    ) -> DataBatch:
         """Convert this block into the provided batch format.
 
         Args:
             batch_format: The batch format to convert this block to.
+            ensure_copy: Whether to ensure the returned batch is a copy
+                (not a zero-copy view).
 
         Returns:
             This block formatted as the provided batch format.
@@ -414,13 +430,13 @@ class BlockAccessor:
         if batch_format is None:
             return self.to_block()
         elif batch_format == "default" or batch_format == "native":
-            return self.to_default()
+            return self.to_default(copy=ensure_copy)
         elif batch_format == "pandas":
-            return self.to_pandas()
+            return self.to_pandas(copy=ensure_copy)
         elif batch_format == "pyarrow":
             return self.to_arrow()
         elif batch_format == "numpy":
-            return self.to_numpy()
+            return self.to_numpy(copy=ensure_copy)
         else:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "

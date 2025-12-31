@@ -206,6 +206,7 @@ class BatchIterator:
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
             num_threadpool_workers=num_threadpool_workers,
+            ensure_copy=self._ensure_copy,
         )
 
     def _finalize_batches(
@@ -326,6 +327,7 @@ def _format_in_threadpool(
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -340,6 +342,7 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+        ensure_copy: Whether to ensure batches are copies (not zero-copy views).
     """
 
     def threadpool_computations_format_collate(
@@ -347,7 +350,7 @@ def _format_in_threadpool(
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter, batch_format=batch_format, stats=stats
+            batch_iter, batch_format=batch_format, stats=stats, ensure_copy=ensure_copy
         )
 
         # Step 4b: Apply the collate function if applicable.

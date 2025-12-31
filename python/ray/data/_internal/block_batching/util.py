@@ -184,6 +184,7 @@ def format_batches(
     batch_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -191,6 +192,7 @@ def format_batches(
         batch_iter: An iterator over batches.
         batch_format: The batch format to use.
         stats: An optional stats object to record formatting times.
+        ensure_copy: Whether to ensure batches are copies (not zero-copy views).
 
     Returns:
         An iterator over batch index and the formatted batch.
@@ -198,7 +200,7 @@ def format_batches(
     for batch in batch_iter:
         with stats.iter_format_batch_s.timer() if stats else nullcontext():
             formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
-                batch_format
+                batch_format, ensure_copy=ensure_copy
             )
         yield dataclasses.replace(batch, data=formatted_batch)
 
