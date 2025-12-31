@@ -365,31 +365,31 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            # Handle new structured_output parameter (preferred)
-            if "structured_output" in sampling_params:
-                structured_output_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("structured_output")
+            structured_outputs_config = None
+            # Handle new structured_outputs parameter (preferred)
+            if "structured_outputs" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("structured_outputs")
                 )
                 # Remove guided_decoding if present to avoid passing it to SamplingParams
                 sampling_params.pop("guided_decoding", None)
-                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **structured_output_config
-                )
             # Handle legacy guided_decoding parameter for backward compatibility
+            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
             elif "guided_decoding" in sampling_params:
-                guided_decoding_config = maybe_convert_ndarray_to_list(
+                structured_outputs_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("guided_decoding")
                 )
                 # Log deprecation warning only once to avoid log spam
                 if not self._guided_decoding_warning_logged:
                     logger.warning(
                         "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_output' in sampling_params instead."
+                        "Please use 'structured_outputs' in sampling_params instead."
                     )
                     self._guided_decoding_warning_logged = True
-                # Convert old guided_decoding format to new API (supported in vLLM >= 0.9.0)
+
+            if structured_outputs_config:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **guided_decoding_config
+                    **structured_outputs_config
                 )
             else:
                 structured_outputs = None
