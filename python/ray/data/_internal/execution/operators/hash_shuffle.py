@@ -938,7 +938,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             self.reduce_metrics.on_task_submitted(
-                partition_id, data_task.get_task_id(), empty_bundle
+                partition_id, empty_bundle, task_id=data_task.get_task_id()
             )
 
     def _do_shutdown(self, force: bool = False) -> None:
