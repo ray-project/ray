@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -171,9 +171,6 @@ class WorkerGroup(BaseWorkerGroup):
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
-        # For multi-host TPU accelerators, store slice PG handle for clean-up.
-        self._slice_placement_group_handle: Optional[SlicePlacementGroup] = None
-
         # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
@@ -279,7 +276,7 @@ class WorkerGroup(BaseWorkerGroup):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            pg = self._create_placement_group(
+            pg, slice_pg = self._create_placement_group(
                 self._train_run_context.scaling_config, worker_group_context
             )
 
@@ -298,13 +295,17 @@ class WorkerGroup(BaseWorkerGroup):
                 ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
             except GetTimeoutError as timeout_exc:
                 remove_placement_group(pg)
-                self._cleanup_slice_pg()
+                if slice_pg:
+                    slice_pg.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
             worker_group_state_builder.with_placement_group(pg)
+
+            if slice_pg:
+                worker_group_state_builder.with_slice_placement_group(slice_pg)
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
@@ -453,7 +454,7 @@ class WorkerGroup(BaseWorkerGroup):
         self,
         scaling_config: ScalingConfig,
         worker_group_context: WorkerGroupContext,
-    ) -> PlacementGroup:
+    ) -> Tuple[PlacementGroup, Optional[SlicePlacementGroup]]:
         """Creates and returns the placement group for the worker group.
 
         If TPU resources are requested, this uses `SlicePlacementGroup` to reserve
@@ -483,32 +484,25 @@ class WorkerGroup(BaseWorkerGroup):
                     strategy=worker_group_context.placement_strategy,
                 )
 
-                self._slice_placement_group_handle = spg_handle
-                return spg_handle.placement_group
+                return spg_handle.placement_group, spg_handle
 
             except Exception as e:
-                self._cleanup_slice_pg()
                 raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
 
-        return placement_group(
-            # TODO: support heterogeneous workers and placement
-            bundles=[worker_group_context.resources_per_worker]
-            * worker_group_context.num_workers,
-            strategy=worker_group_context.placement_strategy,
-            bundle_label_selector=worker_group_context.label_selector,
+        return (
+            placement_group(
+                # TODO: support heterogeneous workers and placement
+                bundles=[worker_group_context.resources_per_worker]
+                * worker_group_context.num_workers,
+                strategy=worker_group_context.placement_strategy,
+                bundle_label_selector=worker_group_context.label_selector,
+            ),
+            None,
         )
 
     #####################################################################################
     # Shutdown Worker Group
     #####################################################################################
-
-    def _cleanup_slice_pg(self):
-        """Removes the internal slice placement group used to reserve slices."""
-        # TODO(lehui): ensure the slice placement group is shut down by PG cleaner.
-        if self._slice_placement_group_handle:
-            self._slice_placement_group_handle.shutdown()
-            self._slice_placement_group_handle = None
-            return
 
     def shutdown(self):
         """Shutdown all the workers in this worker group."""
@@ -523,7 +517,6 @@ class WorkerGroup(BaseWorkerGroup):
 
                 self._worker_group_state.shutdown()
 
-            self._cleanup_slice_pg()
             self._clear_state()
 
             logger.debug("Worker group shutdown successful.")
@@ -544,7 +537,6 @@ class WorkerGroup(BaseWorkerGroup):
         # TODO: Add shutdown callback hooks
 
         self._worker_group_state.shutdown()
-        self._cleanup_slice_pg()
         self._clear_state()
 
         for callback in self._callbacks:
