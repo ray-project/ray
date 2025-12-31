@@ -63,14 +63,6 @@ def get_project_name(
     return sdk.project_name_by_id(project_id)
 
 
-def get_cluster_name(cluster_id: str, sdk: Optional["AnyscaleSDK"] = None) -> str:
-    # TODO(aslonnie): remove this; new SDK does not have cluster concept any more.
-    sdk = sdk or get_anyscale_sdk()
-
-    result = sdk.get_cluster(cluster_id)
-    return result.result.name
-
-
 def get_custom_cluster_env_name(image: str, test_name: str) -> str:
     # TODO(aslonnie): remove this; new SDK does not need creating cluster envs anymore.
     image_normalized = image.replace("/", "_").replace(":", "_").replace(".", "_")
