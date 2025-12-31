@@ -4,7 +4,7 @@ from typing import Any, List
 
 import numpy as np
 
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
     is_ndarray_like,
 )
