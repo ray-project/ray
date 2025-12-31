@@ -12,5 +12,6 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - ARROW_VERSION=9.*
+  - DOCTEST=1
 tags:
   - cr.ray.io/rayproject/data9build-py$PYTHON
