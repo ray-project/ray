@@ -874,9 +874,13 @@ class ActorMethod:
 
         object_refs = invocation(args, kwargs)
         if tensor_transport is not None:
-            # Currently, we only support transfer tensor out-of-band when
-            # num_returns is 1.
-            object_ref = object_refs if isinstance(object_refs, ObjectRef) else object_refs._generator_ref
+            # Supports both single ObjectRef and streaming generator
+            # of ObjectRefs.
+            object_ref = (
+                object_refs
+                if isinstance(object_refs, ObjectRef)
+                else object_refs._generator_ref
+            )
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
                 object_ref, self._actor, tensor_transport
@@ -2182,7 +2186,7 @@ class ActorHandle(Generic[T]):
                 add_gpu_object_ref = partial(
                     ray._private.worker.global_worker.gpu_object_manager.add_gpu_object_ref,
                     src_actor=self,
-                    tensor_transport=tensor_transport
+                    tensor_transport=tensor_transport,
                 )
             else:
                 add_gpu_object_ref = None

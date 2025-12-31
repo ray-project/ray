@@ -1814,10 +1814,11 @@ cdef void execute_task(
                         context.initialize(outputs)
                         # Note that the report RPCs are called inside an
                         # event loop thread.
-                        # 1. 先在外部处理好转换逻辑
+
+
+                        # Transfer py_tensor_transport into c_tensor_transport.
                         py_tensor_transport = None
                         if c_tensor_transport.has_value():
-                            # 转换为 Python 的 bytes 对象
                             py_tensor_transport = c_tensor_transport.value()
 
                         if is_async_gen:

@@ -548,11 +548,12 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
-                                             const rpc::ReturnObject &return_object,
-                                             const NodeID &worker_node_id,
-                                             bool store_in_plasma,
-                                             std::optional<std::string> tensor_transport) {
+StatusOr<bool> TaskManager::HandleTaskReturn(
+    const ObjectID &object_id,
+    const rpc::ReturnObject &return_object,
+    const NodeID &worker_node_id,
+    bool store_in_plasma,
+    std::optional<std::string> tensor_transport) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
   RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
@@ -594,7 +595,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
                      metadata_buffer,
                      nested_refs,
                      /*copy_data=*/false,
-                     tensor_transport);//reference_counter_.GetTensorTransport(object_id)
+                     tensor_transport);
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
       if (!s.ok()) {
@@ -958,11 +959,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    StatusOr<bool> direct_or = HandleTaskReturn(object_id,
-                                                return_object,
-                                                NodeID::FromBinary(worker_addr.node_id()),
-                                                store_in_plasma_ids.contains(object_id),
-                                                reference_counter_.GetTensorTransport(object_id));
+    StatusOr<bool> direct_or =
+        HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(worker_addr.node_id()),
+                         store_in_plasma_ids.contains(object_id),
+                         reference_counter_.GetTensorTransport(object_id));
     if (!direct_or.ok()) {
       RAY_LOG(WARNING).WithField(object_id)
           << "Failed to handle task return: " << direct_or.status();
@@ -1103,12 +1105,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
-          StatusOr<bool> res =
-              HandleTaskReturn(generator_return_id,
-                               return_object,
-                               NodeID::FromBinary(worker_addr.node_id()),
-                               store_in_plasma_ids.contains(generator_return_id),
-                               reference_counter_.GetTensorTransport(object_id));
+          StatusOr<bool> res = HandleTaskReturn(
+              generator_return_id,
+              return_object,
+              NodeID::FromBinary(worker_addr.node_id()),
+              store_in_plasma_ids.contains(generator_return_id),
+              reference_counter_.GetTensorTransport(generator_return_id));
           if (!res.ok()) {
             RAY_LOG(WARNING).WithField(generator_return_id)
                 << "Failed to handle generator return during app error propagation: "
