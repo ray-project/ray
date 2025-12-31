@@ -38,7 +38,7 @@ class RebundlingStrategy(abc.ABC):
                 `can_build_ready_bundle(num_pending_rows)` to be `True` for the first time.
 
         Returns:
-            the # of rows needed from the last pending bundle.
+            The # of rows needed from the last pending bundle. This should be > 0, unless bundle.num_rows() is None.
         """
         ...
 
@@ -172,17 +172,22 @@ class RebundleQueue(BaseBundleQueue):
                     num_pending_rows=pending_row_count_prefix_sum,
                     pending_bundle=pending_bundle,
                 )
+                assert rows_needed > 0, (
+                    "A refbundle has zero row-count but triggered building a ready bundle"
+                    "This is a bug in the Ray Data code."
+                )
 
-                sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
-                if sliced_bundle.num_rows():
+                if rows_needed < pending_bundle.num_rows():
+                    sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
                     pending_to_ready_bundles.append(sliced_bundle)
-                if remaining_bundle.num_rows():
                     self._pending_bundles.appendleft(remaining_bundle)
                     self._on_enqueue(remaining_bundle)  # Enter the remaining portion
                     self._total_pending_rows += remaining_bundle.num_rows() or 0
+                else:
+                    assert rows_needed == pending_bundle.num_rows()
+                    pending_to_ready_bundles.append(pending_bundle)
 
-                if pending_to_ready_bundles:
-                    self._merge_bundles(pending_to_ready_bundles)
+                self._merge_bundles(pending_to_ready_bundles)
 
                 # reset the pending counts and continue converting pending to ready bundles.
                 pending_row_count_prefix_sum = 0

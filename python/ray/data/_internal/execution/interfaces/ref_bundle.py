@@ -233,16 +233,15 @@ class RefBundle:
             needed_rows: Number of rows to take from the head of the bundle.
 
         Returns:
-            A tuple of (sliced_bundle, remaining_bundle).
+            A tuple of (sliced_bundle, remaining_bundle). The needed rows must be less than the number of rows in the bundle.
         """
+        assert needed_rows > 0, "needed_rows must be positive."
         assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
-
-        if needed_rows == 0:
-            return RefBundle(blocks=(), schema=self.schema, owns_blocks=False), self
-        if needed_rows == self.num_rows():
-            return self, RefBundle(blocks=(), schema=self.schema, owns_blocks=False)
+        assert (
+            needed_rows < self.num_rows()
+        ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {self.num_rows()} rows."
 
         block_slices = []
         for metadata, block_slice in zip(self.metadata, self.slices):
