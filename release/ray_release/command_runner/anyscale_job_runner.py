@@ -394,7 +394,7 @@ class AnyscaleJobRunner(CommandRunner):
             _join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
-    def fetch_artifact(self):
+    def fetch_artifact(self) -> None:
         """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster
         head node.
 
@@ -431,9 +431,3 @@ class AnyscaleJobRunner(CommandRunner):
         return self._fetch_json(
             _join_cloud_storage_paths(self.path_in_bucket, self.output_json),
         )
-
-    def cleanup(self):
-        # We piggy back on s3 retention policy for clean up instead of doing this
-        # ourselves. We find many cases where users want the data to be available
-        # for a short-while for debugging purpose.
-        pass
