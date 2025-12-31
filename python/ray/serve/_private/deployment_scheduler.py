@@ -560,7 +560,6 @@ class DeploymentScheduler(ABC):
         deployment_id = replica_id.deployment_id
         placement_group = None
 
-        actor_options = copy.deepcopy(scheduling_request.actor_options)
         scheduling_strategy = default_scheduling_strategy
         if scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
@@ -605,6 +604,7 @@ class DeploymentScheduler(ABC):
             )
             target_node_id = None
 
+        actor_options = copy.deepcopy(scheduling_request.actor_options)
         if scheduling_request.max_replicas_per_node is not None:
             if "resources" not in actor_options:
                 actor_options["resources"] = {}
