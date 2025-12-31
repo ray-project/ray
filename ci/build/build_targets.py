@@ -293,6 +293,9 @@ def build_env(
     if not env.get("BUILDKITE_COMMIT"):
         env["BUILDKITE_COMMIT"] = get_git_commit()
 
+    # Use read-only cache for local builds
+    env.setdefault("BUILDKITE_CACHE_READONLY", "true")
+
     # Platform variables (for cross-platform builds on macOS)
     _, target_platform = detect_platform()
     if target_platform:
