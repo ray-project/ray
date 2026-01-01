@@ -77,8 +77,18 @@ def wait_until_grpc_channel_ready(
             ports.append(node_info_dict[node_id].metrics_agent_port)
         return ports
 
-    wait_for_condition(lambda: get_ports() is not None)
-    grpc_ports = get_ports()
+    # Use nonlocal to avoid race condition between condition check and assignment
+    grpc_ports = None
+
+    def are_ports_ready():
+        nonlocal grpc_ports
+        ports = get_ports()
+        if ports is None:
+            return False
+        grpc_ports = ports
+        return True
+
+    wait_for_condition(are_ports_ready)
     targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
 
     # wait for the dashboard agent grpc port to be ready
