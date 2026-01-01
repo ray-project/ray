@@ -60,20 +60,25 @@ def wait_until_grpc_channel_ready(
     # get the grpc port from GcsNodeInfo
     gcs_client = GcsClient(address=gcs_address)
 
-    def get_agent_grpc_port(node_id_hex: str) -> int:
-        node_id = NodeID.from_hex(node_id_hex)
+    def get_ports():
+        """Fetch all node info once and return ports for all requested nodes."""
         node_info_dict = gcs_client.get_all_node_info(
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
             state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
         )
-        if node_id not in node_info_dict:
-            return -1
-        return node_info_dict[node_id].metrics_agent_port
+        ports = []
+        for node_id_hex in node_ids:
+            node_id = NodeID.from_hex(node_id_hex)
+            if (
+                node_id not in node_info_dict
+                or node_info_dict[node_id].metrics_agent_port <= 0
+            ):
+                return None
+            ports.append(node_info_dict[node_id].metrics_agent_port)
+        return ports
 
-    wait_for_condition(
-        lambda: all(get_agent_grpc_port(node_id) > 0 for node_id in node_ids)
-    )
-    grpc_ports = [get_agent_grpc_port(node_id) for node_id in node_ids]
+    wait_for_condition(lambda: get_ports() is not None)
+    grpc_ports = get_ports()
     targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
 
     # wait for the dashboard agent grpc port to be ready

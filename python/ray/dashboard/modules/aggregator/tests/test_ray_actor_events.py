@@ -5,9 +5,10 @@ import sys
 import pytest
 
 import ray
-import ray.dashboard.consts as dashboard_consts
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import GcsClient
+from ray._private.test_utils import (
+    wait_for_condition,
+    wait_for_dashboard_agent_available,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 _ACTOR_EVENT_PORT = 12346
@@ -16,27 +17,6 @@ _ACTOR_EVENT_PORT = 12346
 @pytest.fixture(scope="session")
 def httpserver_listen_address():
     return ("127.0.0.1", _ACTOR_EVENT_PORT)
-
-
-def wait_for_dashboard_agent_available(cluster):
-    from ray import NodeID
-    from ray.core.generated import gcs_pb2
-
-    gcs_client = GcsClient(address=cluster.address)
-    node_id = NodeID.from_hex(cluster.head_node.node_id)
-
-    def is_dashboard_agent_ready():
-        node_info_dict = gcs_client.get_all_node_info(
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-            state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
-        )
-        if node_id not in node_info_dict:
-            return False
-        node_info = node_info_dict[node_id]
-        # Dashboard agent is ready when metrics_agent_port is set (grpc port)
-        return node_info.metrics_agent_port > 0
-
-    wait_for_condition(is_dashboard_agent_ready)
 
 
 def test_ray_actor_events(ray_start_cluster, httpserver):
