@@ -100,7 +100,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   RAY_CHECK(false) << "Memory monitor currently supports only linux";
 #endif
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
-  
+
   if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
     if (cgroup_total_bytes < system_total_bytes) {
       // Cgroup limit is less than system memory, use cgroup data
