@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -810,6 +811,8 @@ class Dataset:
         self,
         column_name: str,
         expr: Expr,
+        *,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -818,6 +821,10 @@ class Dataset:
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
         and user-defined functions (UDFs).
+
+        For callable class UDFs, Ray Data automatically uses actor semantics to maintain
+        state across batches. You can customize the compute strategy to control parallelism
+        and resource allocation.
 
         Examples:
             >>> import ray
@@ -841,9 +848,32 @@ class Dataset:
             {'id': 0, 'id_plus_one': 1}
             {'id': 1, 'id_plus_one': 2}
 
+            >>> # Using a callable class UDF (automatically uses actors)
+            >>> @udf(return_dtype=DataType.int32())
+            ... class AddOffset:
+            ...     def __init__(self, offset):
+            ...         self.offset = offset
+            ...     def __call__(self, x):
+            ...         return pc.add(x, self.offset)
+            >>>
+            >>> add_five = AddOffset(5)
+            >>> ds.with_column("id_plus_five", add_five(col("id"))).show(2)
+            {'id': 0, 'id_plus_five': 5}
+            {'id': 1, 'id_plus_five': 6}
+
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
+            compute: The compute strategy to use for the projection operation.
+                If not specified and the expression contains callable class UDFs,
+                Ray Data automatically uses ``ActorPoolStrategy`` for actor semantics.
+                Otherwise, uses ``TaskPoolStrategy``.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size
+                  actor pool of ``n`` workers.
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use
+                  an autoscaling actor pool from ``m`` to ``n`` workers.
+
             **ray_remote_args: Additional resource requirements to request from
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
@@ -870,6 +900,7 @@ class Dataset:
             project_op = Project(
                 self._logical_plan.dag,
                 exprs=[StarExpr(), expr.alias(column_name)],
+                compute=compute,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1116,9 +1147,6 @@ class Dataset:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-        # Don't feel like we really need this
-        from ray.data._internal.compute import TaskPoolStrategy
-
         compute = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
@@ -1243,7 +1271,6 @@ class Dataset:
             )
 
         # Construct the plan and project operation
-        from ray.data._internal.compute import TaskPoolStrategy
 
         compute = TaskPoolStrategy(size=concurrency)
 
@@ -1529,7 +1556,6 @@ class Dataset:
 
         if expr is not None:
             _check_fn_params_incompatible("expr")
-            from ray.data._internal.compute import TaskPoolStrategy
 
             # Check if expr is a string (deprecated) or Expr object
             if isinstance(expr, str):
@@ -5322,7 +5348,7 @@ class Dataset:
             self._logical_plan.dag,
             datasink,
             ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
+            compute=TaskPoolStrategy(concurrency),
         )
         logical_plan = LogicalPlan(write_op, self.context)
 
@@ -5342,7 +5368,7 @@ class Dataset:
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
-            iter_, stats = self._write_ds._execute_to_iterator()
+            iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -6744,13 +6770,15 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+    def _execute_to_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         bundle_iter, stats, executor = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats
+        return bundle_iter, stats, executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
