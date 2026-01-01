@@ -1,5 +1,4 @@
 import logging
-from enum import Enum
 from typing import Optional
 
 import ray
@@ -33,16 +32,9 @@ from ray.train.v2._internal.logging.logging import (
     get_train_application_controller_log_path,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2._internal.util import TrainingFramework
 
 logger = logging.getLogger(__name__)
-
-
-class TrainingFramework(Enum):
-    TORCH = "torch"
-    JAX = "jax"
-    TENSORFLOW = "tensorflow"
-    XGBOOST = "xgboost"
-    LIGHTGBM = "lightgbm"
 
 
 def _get_framework_version(framework: Optional[str]):

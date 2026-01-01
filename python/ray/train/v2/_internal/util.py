@@ -4,6 +4,7 @@ import logging
 import time
 import traceback
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -216,6 +217,14 @@ def get_callable_name(fn: Callable) -> str:
 
     # Fallback to the class name for objects that implement __call__
     return fn.__class__.__name__
+
+
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
 
 
 def construct_user_exception_with_traceback(

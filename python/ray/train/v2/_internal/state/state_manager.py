@@ -13,11 +13,14 @@ from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    CheckpointConfig as CheckpointConfigSchema,
     DatasetsDetails,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfiguration,
     RunStatus,
-    RuntimeConfiguration,
-    TrainingExecutionConfiguration,
+    RuntimeConfig as RuntimeConfigSchema,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -25,7 +28,7 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
 from ray.train.v2._internal.state.util import (
-    construct_data_config_dict,
+    construct_data_config,
     current_time_ns,
     mark_workers_dead,
     update_train_run_aborted,
@@ -64,20 +67,41 @@ class TrainStateManager:
 
         datasets_details = DatasetsDetails(
             datasets=list(datasets.keys()),
-            data_config=construct_data_config_dict(dataset_config),
+            data_config=construct_data_config(dataset_config),
         )
 
-        runtime_configuration = RuntimeConfiguration(
-            failure_config=run_config.failure_config.to_dict(),
+        runtime_config = RuntimeConfigSchema(
+            failure_config=FailureConfigSchema(
+                max_failures=run_config.failure_config.max_failures,
+                fail_fast=run_config.failure_config.fail_fast,
+            ),
             worker_runtime_env=run_config.worker_runtime_env,
-            checkpoint_config=run_config.checkpoint_config.to_dict(),
+            checkpoint_config=CheckpointConfigSchema(
+                num_to_keep=run_config.checkpoint_config.num_to_keep,
+                checkpoint_score_attribute=run_config.checkpoint_config.checkpoint_score_attribute,
+                checkpoint_score_order=run_config.checkpoint_config.checkpoint_score_order,
+            ),
             storage_path=run_config.storage_path,
         )
 
-        training_execution_config = TrainingExecutionConfiguration(
+        scaling_config = ScalingConfigSchema(
+            trainer_resources=scaling_config.trainer_resources,
+            num_workers=scaling_config.num_workers,
+            use_gpu=scaling_config.use_gpu,
+            resources_per_worker=scaling_config.resources_per_worker,
+            placement_strategy=scaling_config.placement_strategy,
+            accelerator_type=scaling_config.accelerator_type,
+            use_tpu=scaling_config.use_tpu,
+            topology=scaling_config.topology,
+            bundle_label_selector=scaling_config.bundle_label_selector,
+        )
+
+        run_configuration = RunConfiguration(
             train_loop_config=train_loop_config,
             backend_config=backend_config.to_dict(),
-            scaling_config=scaling_config.to_dict(),
+            scaling_config=scaling_config,
+            datasets_details=datasets_details,
+            runtime_config=runtime_config,
         )
 
         run = TrainRun(
@@ -90,9 +114,7 @@ class TrainStateManager:
             start_time_ns=current_time_ns(),
             controller_log_file_path=controller_log_file_path,
             framework_versions={"ray": ray.__version__},
-            datasets_details=datasets_details,
-            runtime_configuration=runtime_configuration,
-            training_execution_config=training_execution_config,
+            run_configuration=run_configuration,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -268,7 +290,7 @@ class TrainStateManager:
 
     def get_train_run_framework(self, run_id: str) -> Dict[str, str]:
         run = self._runs[run_id]
-        return run.training_execution_config.backend_config["framework"]
+        return run.run_configuration.backend_config["framework"]
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)

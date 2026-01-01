@@ -12,7 +12,7 @@ from ray.train.constants import (
     DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
-from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
+from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)

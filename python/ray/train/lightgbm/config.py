@@ -8,7 +8,7 @@ from ray._common.network_utils import build_address
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.train.backend import Backend, BackendConfig
-from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
+from ray.train.v2._internal.util import TrainingFramework
 
 logger = logging.getLogger(__name__)
 

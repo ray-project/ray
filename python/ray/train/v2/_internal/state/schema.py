@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -215,43 +215,121 @@ class DecoratedTrainRunAttempt(TrainRunAttempt):
 
 
 @DeveloperAPI
+class DataConfig(BaseModel):
+    """Configuration for dataset splitting and execution options within Ray Train."""
+
+    datasets_to_split: Union[Literal["all"], List[str]] = Field(
+        description="Which datasets to split; either 'all' or a list of dataset names.",
+    )
+    execution_options: Optional[Dict] = Field(description="Data execution options")
+    enable_shard_locality: bool = Field(
+        description="Whether to enable shard locality optimization."
+    )
+
+
+@DeveloperAPI
 class DatasetsDetails(BaseModel):
     """Datasets details for a Train run, including dataset names and data config."""
 
-    datasets: List[str] = Field(description="A list of dataset names for a Train run.")
-    data_config: Dict[str, Any] = Field(description="The data config for a Train run.")
+    datasets: Optional[List[str]] = Field(
+        description="A list of dataset names for a Train run."
+    )
+    data_config: Optional[DataConfig] = Field(
+        description="The data config for a Train run."
+    )
 
 
 @DeveloperAPI
-class RuntimeConfiguration(BaseModel):
+class ScalingConfig(BaseModel):
+    """Scaling config for a Train run."""
+
+    trainer_resources: Optional[Dict[str, float]] = Field(
+        description="Ressources for the Train run's"
+    )
+    num_workers: Union(int, Dict[str, List]) = Field(
+        description="The number of workers for the Train run."
+    )
+    use_gpu: Union(bool, Dict[str, List]) = Field(
+        description="Whether to use GPUs for the Train run."
+    )
+    resources_per_worker: Optional[Dict] = Field(
+        description="The resources per worker for a Train run."
+    )
+    placement_strategy: Union(str, Dict[str, List]) = Field(
+        description="The placement strategy for the Train run."
+    )
+    accelerator_type: Optional[str] = Field(
+        description="The accelerator type for the Train run."
+    )
+    use_tpu: bool = Field(description="Whether to use TPUs for the Train run.")
+    topology: Optional[str] = Field(description="The topology for the Train run.")
+    bundle_label_selector: Optional[
+        Union[Dict[str, str], List[Dict[str, str]]]
+    ] = Field(description="The bundle label selector for the Train run.")
+
+
+@DeveloperAPI
+class FailureConfig(BaseModel):
+    """Failure config for a Train run."""
+
+    max_failures: int = Field(
+        description="The maximum number of failures for a Train run."
+    )
+    fail_fast: Union(bool, str) = Field(
+        description="Whether to fail fast for a Train run."
+    )
+
+
+@DeveloperAPI
+class CheckpointConfig(BaseModel):
+    """Checkpoint config for a Train run."""
+
+    num_to_keep: Optional[int] = Field(
+        description="The number of most recent checkpoints to keep. Older checkpoints may be deleted."
+    )
+    checkpoint_score_attribute: Optional[str] = Field(
+        description="Attribute used to score and rank checkpoints; can be a metric key or attribute."
+    )
+    checkpoint_score_order: Literal["max", "min"] = Field(
+        description="Order to rank checkpoint scores, 'max' for higher-is-better, 'min' for lower-is-better."
+    )
+
+
+@DeveloperAPI
+class RuntimeConfig(BaseModel):
     """Runtime configuration parameters for a Train run, encompassing failure,
     runtime environment, checkpoint settings, and storage path."""
 
-    failure_config: Dict[str, Any] = Field(
+    failure_config: Optional[FailureConfig] = Field(
         description="The failure config for a Train run."
     )
-    worker_runtime_env: Dict[str, Any] = Field(
+    worker_runtime_env: Optional[Dict[str, Any]] = Field(
         description="The worker runtime env for a Train run."
     )
-    checkpoint_config: Dict[str, Any] = Field(
+    checkpoint_config: Optional[CheckpointConfig] = Field(
         description="The checkpoint config for a Train run."
     )
-    storage_path: str = Field(description="The storage path for a Train run.")
+    storage_path: Optional[str] = Field(description="The storage path for a Train run.")
 
 
 @DeveloperAPI
-class TrainingExecutionConfiguration(BaseModel):
-    """Configuration parameters for executing the training loop,
-    including details about the training configs, scaling configs, and backend settings."""
+class RunConfiguration(BaseModel):
+    """The configuration for a Train run, including train loop config, backend config, scaling config, datasets details, and runtime configuration."""
 
     train_loop_config: Optional[Dict[str, Any]] = Field(
-        description="The train loop config for a Train run."
+        description="The user defined train loop config for a Train run."
     )
     backend_config: Dict[str, Any] = Field(
         description="The backend config for a Train run. Can vary with the framework (e.g. TorchConfig)"
     )
-    scaling_config: Dict[str, Any] = Field(
+    scaling_config: Optional[ScalingConfig] = Field(
         description="The scaling config for this Train run."
+    )
+    datasets_details: DatasetsDetails = Field(
+        description="Datasets details for this Train run, including dataset names and data config."
+    )
+    runtime_config: Optional[RuntimeConfig] = Field(
+        description="Runtime configuration for this Train run, including failure, runtime environment, checkpoint settings, and storage path."
     )
 
 
@@ -286,14 +364,9 @@ class TrainRun(BaseModel):
         description="The relevant framework versions for this Train run,"
         "including the Ray version and training framework version."
     )
-    datasets_details: DatasetsDetails = Field(
-        description="Datasets details for this Train run, including dataset names and data config."
-    )
-    runtime_configuration: RuntimeConfiguration = Field(
-        description="Runtime configuration for this Train run, including failure, runtime environment, checkpoint settings, and storage path."
-    )
-    training_execution_config: TrainingExecutionConfiguration = Field(
-        description="Training execution configuration for this Train run, including train loop config and backend config."
+    run_configuration: RunConfiguration = Field(
+        description="The configuration for this Train run, including"
+        "train loop config, backend config, scaling config, datasets details, and runtime configuration."
     )
 
 

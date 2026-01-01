@@ -1,9 +1,9 @@
 import time
-from typing import Any, Dict
 
 from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    DataConfig as DataConfigSchema,
     RunAttemptStatus,
     RunStatus,
     TrainRun,
@@ -53,7 +53,7 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
     return actor_state and actor_state.state != "DEAD"
 
 
-def construct_data_config_dict(data_config: DataConfig) -> Dict[str, Any]:
+def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     exec_options = data_config._execution_options
     if isinstance(exec_options, dict):
         execution_options = {
@@ -62,8 +62,8 @@ def construct_data_config_dict(data_config: DataConfig) -> Dict[str, Any]:
     else:
         execution_options = exec_options.to_dict() if exec_options is not None else None
 
-    return {
-        "datasets_to_split": data_config._datasets_to_split,
-        "execution_options": execution_options,
-        "enable_shard_locality": data_config._enable_shard_locality,
-    }
+    return DataConfigSchema(
+        datasets_to_split=data_config._datasets_to_split,
+        execution_options=execution_options,
+        enable_shard_locality=data_config._enable_shard_locality,
+    )
