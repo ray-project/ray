@@ -54,24 +54,26 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
 def wait_until_grpc_channel_ready(
     gcs_address: str, node_ids: list[str], timeout: int = 5
 ):
-    # get the grpc port
+    from ray import NodeID
+    from ray.core.generated import gcs_pb2
+
+    # get the grpc port from GcsNodeInfo
     gcs_client = GcsClient(address=gcs_address)
 
-    def get_dashboard_agent_address(node_id: str):
-        return gcs_client.internal_kv_get(
-            f"{ray.dashboard.consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+    def get_agent_grpc_port(node_id_hex: str) -> int:
+        node_id = NodeID.from_hex(node_id_hex)
+        node_info_dict = gcs_client.get_all_node_info(
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+            state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
         )
+        if node_id not in node_info_dict:
+            return -1
+        return node_info_dict[node_id].metrics_agent_port
 
     wait_for_condition(
-        lambda: all(
-            get_dashboard_agent_address(node_id) is not None for node_id in node_ids
-        )
+        lambda: all(get_agent_grpc_port(node_id) > 0 for node_id in node_ids)
     )
-    grpc_ports = [
-        json.loads(get_dashboard_agent_address(node_id))[2] for node_id in node_ids
-    ]
+    grpc_ports = [get_agent_grpc_port(node_id) for node_id in node_ids]
     targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
 
     # wait for the dashboard agent grpc port to be ready

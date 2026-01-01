@@ -119,19 +119,26 @@ def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     An helper function to get the gRPC stub for the event aggregator agent.
     Should only be used in tests.
     """
+    from ray import NodeID
+    from ray.core.generated import gcs_pb2
 
-    gcs_address = gcs_address
     gcs_client = GcsClient(address=gcs_address)
+    node_id = NodeID.from_hex(head_node_id)
 
-    def get_addr():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+    def get_agent_info():
+        node_info_dict = gcs_client.get_all_node_info(
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+            state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
         )
+        if node_id not in node_info_dict:
+            return None
+        node_info = node_info_dict[node_id]
+        if node_info.metrics_agent_port <= 0:
+            return None
+        return (node_info.node_manager_address, node_info.metrics_agent_port)
 
-    wait_for_condition(lambda: get_addr() is not None)
-    ip, _, grpc_port = json.loads(get_addr())
+    wait_for_condition(lambda: get_agent_info() is not None)
+    ip, grpc_port = get_agent_info()
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
