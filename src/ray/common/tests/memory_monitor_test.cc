@@ -495,7 +495,7 @@ TEST_F(MemoryMonitorTest, TestGetMemoryBytesUsesCGroupWhenLimitUnlimited) {
   auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
 
   ASSERT_LE(used_bytes, total_bytes);
-  
+
   if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
     struct sysinfo info;
     ASSERT_EQ(sysinfo(&info), 0) << "Failed to get system info";
