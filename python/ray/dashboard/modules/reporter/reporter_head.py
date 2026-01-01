@@ -8,7 +8,6 @@ from urllib.parse import urlencode
 
 import aiohttp.web
 
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID

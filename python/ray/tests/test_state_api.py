@@ -16,7 +16,6 @@ from click.testing import CliRunner
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.state as global_state
-import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
@@ -1827,7 +1826,9 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     client = state_source_client(cluster.address)
 
     [node] = ray.nodes()
-    ip, port = node["NodeManagerAddress"], int(node["NodeManagerPort"])
+    ip = node["NodeManagerAddress"]
+    port = int(node["NodeManagerPort"])
+    runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
 
     @ray.remote
     def long_running_task(obj):  # noqa
