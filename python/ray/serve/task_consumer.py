@@ -154,7 +154,6 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
             def __del__(self):
                 self._adapter.stop_consumer()
-                self._adapter.shutdown()
 
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)

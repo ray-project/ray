@@ -20,7 +20,6 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
 
     _start_consumer_received: bool = False
     _stop_consumer_received: bool = False
-    _shutdown_received: bool = False
 
     def __init__(self, config: TaskProcessorConfig):
         self._config = config
@@ -45,9 +44,6 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
 
     def stop_consumer(self, timeout: float = 10.0):
         self._stop_consumer_received = True
-
-    def shutdown(self):
-        self._shutdown_received = True
 
     def cancel_task_sync(self, task_id) -> bool:
         pass
