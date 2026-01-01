@@ -1630,6 +1630,15 @@ Integration tests
 """
 
 
+def is_dashboard_agent_ready(node_id_hex: str) -> bool:
+    """Wait for the dashboard agent to be ready by checking MetricsAgentPort."""
+    nodes = ray.nodes()
+    for node in nodes:
+        if node["NodeID"] == node_id_hex:
+            return node.get("MetricsAgentPort", 0) > 0
+    return False
+
+
 @pytest.mark.asyncio
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
@@ -1705,14 +1714,6 @@ async def test_state_data_source_client(ray_start_cluster):
     Test runtime env
     """
     wait_for_condition(lambda: len(ray.nodes()) == 2)
-
-    def is_dashboard_agent_ready(node_id_hex: str) -> bool:
-        # Wait for the dashboard agent to be ready by checking metricsAgentPort
-        nodes = ray.nodes()
-        for node in nodes:
-            if node["NodeID"] == node_id_hex:
-                return node.get("MetricsAgentPort", 0) > 0
-        return False
 
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -1865,18 +1866,9 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     Test runtime env
     """
-
-    def is_dashboard_agent_ready_v2(node_id_hex: str) -> bool:
-        # Wait for the dashboard agent to be ready by checking metricsAgentPort
-        nodes = ray.nodes()
-        for node in nodes:
-            if node["NodeID"] == node_id_hex:
-                return node.get("MetricsAgentPort", 0) > 0
-        return False
-
     for node in ray.nodes():
         node_id = node["NodeID"]
-        wait_for_condition(lambda nid=node_id: is_dashboard_agent_ready_v2(nid))
+        wait_for_condition(lambda nid=node_id: is_dashboard_agent_ready(nid))
 
     @ray.remote
     class Actor:
