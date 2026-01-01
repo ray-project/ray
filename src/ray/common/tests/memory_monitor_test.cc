@@ -482,7 +482,6 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   ASSERT_TRUE(usage.contains(1));
 }
 
-
 TEST_F(MemoryMonitorTest, TestGetMemoryBytesUsesCGroupWhenLimitUnlimited) {
   auto &monitor = MakeMemoryMonitor(
       0,
@@ -491,10 +490,10 @@ TEST_F(MemoryMonitorTest, TestGetMemoryBytesUsesCGroupWhenLimitUnlimited) {
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
          float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-  
+
   auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
   auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
-  
+
   ASSERT_LE(used_bytes, total_bytes);
   
   if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
