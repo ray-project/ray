@@ -102,6 +102,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
 
   if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
+    // If system memory data is invalid, use cgroup data
+    if (system_total_bytes == kNull || system_used_bytes == kNull) {
+      return {cgroup_used_bytes, cgroup_total_bytes};
+    }
     if (cgroup_total_bytes < system_total_bytes) {
       // Cgroup limit is less than system memory, use cgroup data
       return {cgroup_used_bytes, cgroup_total_bytes};
