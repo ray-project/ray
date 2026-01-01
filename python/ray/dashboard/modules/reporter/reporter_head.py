@@ -25,7 +25,7 @@ from ray._private.ray_constants import (
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import gcs_pb2, reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray.dashboard.state_aggregator import StateAPIManager
@@ -856,6 +856,8 @@ class ReportHead(SubprocessModule):
             timeout=GCS_RPC_TIMEOUT_SECONDS
         )
         for node_id, node_info in node_info_dict.items():
+            if node_info.state != gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+                continue
             if node_info.node_manager_address == ip:
                 http_port = node_info.dashboard_agent_listen_port
                 grpc_port = node_info.metrics_agent_port
