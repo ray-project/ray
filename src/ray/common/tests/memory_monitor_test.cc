@@ -495,17 +495,13 @@ TEST_F(MemoryMonitorTest, TestGetMemoryBytesUsesCGroupWhenLimitUnlimited) {
   auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
   auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
   
-  // Ensure used_bytes <= total_bytes
   ASSERT_LE(used_bytes, total_bytes);
   
   if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
     if (cgroup_total_bytes < total_bytes) {
-      // When cgroup limit < system memory, should use cgroup data
       ASSERT_EQ(used_bytes, cgroup_used_bytes);
       ASSERT_EQ(total_bytes, cgroup_total_bytes);
     } else {
-      // When cgroup limit >= system memory, should use cgroup used_bytes
-      // but system total_bytes (or fall back to system if cgroup_used > system_total)
       ASSERT_LE(used_bytes, total_bytes);
       ASSERT_GT(total_bytes, 0);
     }
