@@ -163,6 +163,9 @@ class StateDataSourceClient:
         if not reply.node_info_list:
             return None
         node_info = reply.node_info_list[0]
+        # Check if node is alive (dead nodes retain stale address info)
+        if node_info.state != GcsNodeInfo.GcsNodeState.ALIVE:
+            return None
         ip = node_info.node_manager_address
         grpc_port = node_info.metrics_agent_port
         if grpc_port <= 0:

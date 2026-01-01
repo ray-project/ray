@@ -23,6 +23,7 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
+from ray.core.generated import gcs_pb2
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     RAY_CLUSTER_ACTIVITY_HOOK,
@@ -303,9 +304,21 @@ class JobHead(SubprocessModule):
                 "for more details."
             )
         node_info = node_info_dict[target_node_id]
+        # Check if node is alive
+        if node_info.state != gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            raise KeyError(
+                f"Node {target_node_id} is not alive. "
+                "The node may have died. Please retry with a different node."
+            )
         ip = node_info.node_manager_address
         http_port = node_info.dashboard_agent_listen_port
         grpc_port = node_info.metrics_agent_port
+        # Validate ports to avoid caching bad clients
+        if grpc_port <= 0 or http_port <= 0:
+            raise KeyError(
+                f"Agent ports not ready for node {target_node_id}. "
+                "The dashboard agent may still be starting up. Please retry."
+            )
         return (ip, http_port, grpc_port)
 
     @routes.get("/api/version")

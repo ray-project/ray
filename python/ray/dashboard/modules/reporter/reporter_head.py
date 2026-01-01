@@ -833,6 +833,9 @@ class ReportHead(SubprocessModule):
         if not node_info_dict or node_id not in node_info_dict:
             return None
         node_info = node_info_dict[node_id]
+        # Check if node is alive (dead nodes retain stale address info)
+        if node_info.state != gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            return None
         ip = node_info.node_manager_address
         http_port = node_info.dashboard_agent_listen_port
         grpc_port = node_info.metrics_agent_port
