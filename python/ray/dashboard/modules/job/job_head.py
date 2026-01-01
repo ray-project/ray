@@ -18,14 +18,12 @@ from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._common.utils import get_or_create_event_loop, load_class
-from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
 from ray.dashboard.consts import (
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
     RAY_CLUSTER_ACTIVITY_HOOK,
     TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
@@ -289,25 +287,26 @@ class JobHead(SubprocessModule):
 
     async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
         """
-        Fetches agent info by the Node ID. May raise exception if there's network error or the
-        agent info is not found.
+        Fetches agent info by the Node ID from GcsNodeInfo. May raise exception
+        if there's network error or the agent info is not found.
 
         Returns: (ip, http_port, grpc_port)
         """
-        key = f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{target_node_id.hex()}"
-        value = await self.gcs_client.async_internal_kv_get(
-            key,
-            namespace=KV_NAMESPACE_DASHBOARD,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        node_info_dict = await self.gcs_client.async_get_all_node_info(
+            node_id=target_node_id, timeout=GCS_RPC_TIMEOUT_SECONDS
         )
-        if not value:
+        if not node_info_dict or target_node_id not in node_info_dict:
             raise KeyError(
-                f"Agent info not found in internal KV for node {target_node_id}. "
+                f"Agent info not found in GCS for node {target_node_id}. "
                 "It's possible that the agent didn't launch successfully due to "
                 "port conflicts or other issues. Please check `dashboard_agent.log` "
                 "for more details."
             )
-        return json.loads(value.decode())
+        node_info = node_info_dict[target_node_id]
+        ip = node_info.node_manager_address
+        http_port = node_info.dashboard_agent_listen_port
+        grpc_port = node_info.metrics_agent_port
+        return [ip, http_port, grpc_port]
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:

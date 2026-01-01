@@ -22,7 +22,6 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
-    KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
@@ -823,34 +822,48 @@ class ReportHead(SubprocessModule):
         self, node_id: NodeID
     ) -> Optional[Tuple[NodeID, str, int, int]]:
         """
-        Given a NodeID, get agent port from InternalKV.
+        Given a NodeID, get agent address from GcsNodeInfo.
 
-        returns a tuple of (ip, http_port, grpc_port).
+        returns a tuple of (node_id, ip, http_port, grpc_port).
 
         If not found, return None.
         """
-        agent_addr_json = await self.gcs_client.async_internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
-            namespace=KV_NAMESPACE_DASHBOARD,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        node_info_dict = await self.gcs_client.async_get_all_node_info(
+            node_id=node_id, timeout=GCS_RPC_TIMEOUT_SECONDS
         )
-        if not agent_addr_json:
+        if not node_info_dict or node_id not in node_info_dict:
             return None
-        ip, http_port, grpc_port = json.loads(agent_addr_json)
+        node_info = node_info_dict[node_id]
+        ip = node_info.node_manager_address
+        http_port = node_info.dashboard_agent_listen_port
+        grpc_port = node_info.metrics_agent_port
+        if grpc_port <= 0:
+            # Agent not started or not available
+            return None
         return node_id, ip, http_port, grpc_port
 
     async def _get_stub_address_by_ip(
         self, ip: str
-    ) -> Optional[Tuple[str, str, int, int]]:
-        agent_addr_json = await self.gcs_client.async_internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
-            namespace=KV_NAMESPACE_DASHBOARD,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
+    ) -> Optional[Tuple[NodeID, str, int, int]]:
+        """
+        Given an IP address, get agent address from GcsNodeInfo.
+
+        returns a tuple of (node_id, ip, http_port, grpc_port).
+
+        If not found, return None.
+        """
+        node_info_dict = await self.gcs_client.async_get_all_node_info(
+            timeout=GCS_RPC_TIMEOUT_SECONDS
         )
-        if not agent_addr_json:
-            return None
-        node_id, http_port, grpc_port = json.loads(agent_addr_json)
-        return NodeID.from_hex(node_id), ip, http_port, grpc_port
+        for node_id, node_info in node_info_dict.items():
+            if node_info.node_manager_address == ip:
+                http_port = node_info.dashboard_agent_listen_port
+                grpc_port = node_info.metrics_agent_port
+                if grpc_port <= 0:
+                    # Agent not started or not available
+                    return None
+                return node_id, ip, http_port, grpc_port
+        return None
 
     def _make_stub(
         self, ip_port: str
