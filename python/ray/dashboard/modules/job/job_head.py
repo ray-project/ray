@@ -306,7 +306,7 @@ class JobHead(SubprocessModule):
         ip = node_info.node_manager_address
         http_port = node_info.dashboard_agent_listen_port
         grpc_port = node_info.metrics_agent_port
-        return [ip, http_port, grpc_port]
+        return (ip, http_port, grpc_port)
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
