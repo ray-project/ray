@@ -11,6 +11,8 @@ Examples:
     python build_wheel_local.py 3.11 all
 """
 
+from __future__ import annotations
+
 import argparse
 import shutil
 import subprocess
