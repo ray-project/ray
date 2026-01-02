@@ -1116,14 +1116,15 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(limits=global_limits)
 
-        # Fast producer (o2) should be backpressured - budget exhausted
-        # o2 has used 800 of object store memory, exhausting its budget
-        #
-        # Budget calculation for o2:
+        # Common budget calculation (applies to both o2 and o3):
         #   global_limits = (cpu=10, mem=1000), reservation_ratio=0.5, 2 eligible ops
-        #   default_reserved = global_limits × (reservation_ratio / num_eligible_ops) = (10, 1000) × 0.25 = (cpu=2.5, mem=250)
+        #   default_reserved = global_limits × (reservation_ratio / num_eligible_ops)
+        #                    = (10, 1000) × 0.25 = (cpu=2.5, mem=250)
         #   reserved_for_outputs = default_reserved.mem / 2 = 250 / 2 = 125
         #   reserved_for_tasks = default_reserved - reserved_for_outputs = (cpu=2.5, mem=125)
+
+        # Fast producer (o2) should be backpressured - budget exhausted
+        # o2 has used 800 of object store memory, exhausting its budget
         #
         #   o2 usage: mem_op_internal=700, mem_op_outputs=100 (< 125 reserved, no excess)
         #   op_mem_usage = 700, op_usage = (cpu=8, mem=700)
@@ -1142,12 +1143,6 @@ class TestReservationOpResourceAllocator:
 
         # Slow consumer (o3) should still be able to submit tasks
         # o3 has only used 100, leaving plenty of budget
-        #
-        # Budget calculation for o3:
-        #   global_limits = (cpu=10, mem=1000), reservation_ratio=0.5, 2 eligible ops
-        #   default_reserved = global_limits × (reservation_ratio / num_eligible_ops) = (10, 1000) × 0.25 = (cpu=2.5, mem=250)
-        #   reserved_for_outputs = default_reserved.mem / 2 = 250 / 2 = 125
-        #   reserved_for_tasks = default_reserved - reserved_for_outputs = (cpu=2.5, mem=125)
         #
         #   o3 usage: mem_op_internal=50, mem_op_outputs=50 (< 125 reserved, no excess)
         #   op_mem_usage = 50, op_usage = (cpu=1, mem=50)
