@@ -641,7 +641,7 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
         count = len(column_data)
         if count == 0:
             return None
-            
+
         sum_ = np.sum(column_data)
 
         if is_null(sum_):
