@@ -116,9 +116,8 @@ def test_sleep_wakeup_lifecycle():
     try:
         # Step 1: Verify initial state - engine should be awake
         print("\n=== Step 1: Checking initial state ===")
-        response = requests.post(
-            f"{BASE_URL}/is_sleeping",
-            json={"model": MODEL_ID},
+        response = requests.get(
+            f"{BASE_URL}/is_sleeping?model={MODEL_ID}",
             timeout=10,
         )
         assert (
@@ -153,9 +152,8 @@ def test_sleep_wakeup_lifecycle():
 
         # Step 4: Verify engine is sleeping
         print("\n=== Step 4: Verifying engine is sleeping ===")
-        response = requests.post(
-            f"{BASE_URL}/is_sleeping",
-            json={"model": MODEL_ID},
+        response = requests.get(
+            f"{BASE_URL}/is_sleeping?model={MODEL_ID}",
             timeout=10,
         )
         assert response.status_code == 200
@@ -196,9 +194,8 @@ def test_sleep_wakeup_lifecycle():
 
         # Step 7: Verify engine is awake
         print("\n=== Step 7: Verifying engine is awake ===")
-        response = requests.post(
-            f"{BASE_URL}/is_sleeping",
-            json={"model": MODEL_ID},
+        response = requests.get(
+            f"{BASE_URL}/is_sleeping?model={MODEL_ID}",
             timeout=10,
         )
         assert response.status_code == 200
