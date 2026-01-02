@@ -219,10 +219,27 @@ class RayJava(WandaDockerTarget):
     SPEC = "ci/docker/ray-java.wanda.yaml"
 
 
+class RayWheel(WandaDockerTarget):
+    SPEC = "ci/docker/ray-wheel.wanda.yaml"
+    DEPS = (RayCore, RayDashboard, RayJava)
+
+
+class RayCppCore(WandaDockerTarget):
+    SPEC = "ci/docker/ray-cpp-core.wanda.yaml"
+
+
+class RayCppWheel(WandaDockerTarget):
+    SPEC = "ci/docker/ray-cpp-wheel.wanda.yaml"
+    DEPS = (RayCore, RayCppCore, RayJava, RayDashboard)
+
+
 TARGETS: Dict[str, Type[BuildTarget]] = {
     "ray-core": RayCore,
     "ray-dashboard": RayDashboard,
     "ray-java": RayJava,
+    "ray-wheel": RayWheel,
+    "ray-cpp-core": RayCppCore,
+    "ray-cpp-wheel": RayCppWheel,
 }
 
 
