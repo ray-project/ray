@@ -522,7 +522,9 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = request.prompt if request.prompt is not None else ""
+                request_output.prompt = (
+                    request.prompt if request.prompt is not None else ""
+                )
                 return request_output
 
         raise RuntimeError(
@@ -651,7 +653,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 )
 
         original_expected_keys = self.expected_input_keys.copy()
-        self.expected_input_keys = self.expected_input_keys - {"prompt", "tokenized_prompt"}
+        self.expected_input_keys = self.expected_input_keys - {
+            "prompt",
+            "tokenized_prompt",
+        }
 
         try:
             super().validate_inputs(inputs)
