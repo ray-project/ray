@@ -366,9 +366,38 @@ def test_complex_ragged_arrays(ray_start_regular_shared, restore_data_context):
         ),
     )
 
-    data = ["hi", 1, None, [[[[]]]], {"a": [[{"b": 2, "c": UserObj()}]]}, UserObj()]
-    output = do_map_batches(data)
-    assert_structure_equals(output, create_ragged_ndarray(data))
+    # Extremely heterogeneous data - Arrow cannot convert this natively.
+    # When RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT=True (the default) and
+    # fallback is disabled, this will fail. When fallback is enabled,
+    # objects are pickled using ArrowPythonObjectType extension.
+    from ray._private.ray_constants import env_bool
+
+    arrow_format_default = env_bool(
+        "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
+    )
+    if arrow_format_default:
+        # With Arrow format default and fallback disabled, expect failure
+        data = [
+            "hi",
+            1,
+            None,
+            [[[[]]]],
+            {"a": [[{"b": 2, "c": UserObj()}]]},
+            UserObj(),
+        ]
+        with pytest.raises(Exception):
+            do_map_batches(data)
+    else:
+        data = [
+            "hi",
+            1,
+            None,
+            [[[[]]]],
+            {"a": [[{"b": 2, "c": UserObj()}]]},
+            UserObj(),
+        ]
+        output = do_map_batches(data)
+        assert_structure_equals(output, create_ragged_ndarray(data))
 
 
 if __name__ == "__main__":
