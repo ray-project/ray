@@ -4,8 +4,6 @@ PyTorch implementation of the TQC RLModule.
 
 from typing import Any, Dict
 
-import gymnasium as gym
-
 from ray.rllib.algorithms.tqc.tqc_catalog import TQCCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network

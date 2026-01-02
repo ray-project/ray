@@ -6,19 +6,14 @@ Implements the TQC loss computation with quantile Huber loss.
 
 from typing import Any, Dict
 
-import gymnasium as gym
-
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.sac.sac_learner import (
-    LOGPS_KEY,
-    SACLearner,
-)
+from ray.rllib.algorithms.sac.sac_learner import LOGPS_KEY
 from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
 from ray.rllib.algorithms.tqc.tqc import TQCConfig
 from ray.rllib.algorithms.tqc.tqc_learner import (
     QF_LOSS_KEY,
-    QF_MEAN_KEY,
     QF_MAX_KEY,
+    QF_MEAN_KEY,
     QF_MIN_KEY,
     TD_ERROR_MEAN_KEY,
     TQCLearner,
