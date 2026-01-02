@@ -17,14 +17,11 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional
 
 from wanda_targets import (
-    BuildContext,
     RayCppWheel,
     RayWheel,
     create_context,
-    get_repo_root,
 )
 
 
@@ -33,14 +30,10 @@ def header(msg: str) -> None:
     print(f"\n\033[34;1m===> {msg}\033[0m", file=sys.stderr)
 
 
-def extract_from_image(image: str, out_dir: Path, dry_run: bool = False) -> List[Path]:
+def extract_from_image(image: str, out_dir: Path) -> list[Path]:
     """Extract .whl files from a docker image."""
     header(f"Extracting wheels to {out_dir}...")
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    if dry_run:
-        print(f"[dry-run] docker create {image}")
-        return []
 
     result = subprocess.run(
         ["docker", "create", image, "true"],
@@ -74,63 +67,51 @@ def build_wheels(
     arch_suffix: str = "",
     hosttype: str = "",
     target: str = "ray",
-    out_dir: Optional[Path] = None,
-    dry_run: bool = False,
-) -> None:
-    """Build Ray wheels."""
+) -> tuple[RayWheel, RayCppWheel]:
+    """Build Ray wheels and return the wheel targets."""
     ctx = create_context(
         python_version=python_version,
         manylinux_version=manylinux_version,
         arch_suffix=arch_suffix,
         hosttype=hosttype,
-        dry_run=dry_run,
     )
-
-    if not ctx.wanda_bin or not ctx.wanda_bin.exists():
-        raise FileNotFoundError(f"Wanda not found: {ctx.wanda_bin}")
-
-    if out_dir is None:
-        out_dir = get_repo_root() / ".whl"
 
     ray_wheel = RayWheel(ctx)
     cpp_wheel = RayCppWheel(ctx)
 
-    # Build wheels (deps are built automatically)
     if target in ("ray", "all"):
         ray_wheel.build()
     if target in ("cpp", "all"):
         cpp_wheel.build()
 
-    # Extract
-    extract_wheels(python_version, target, out_dir, dry_run, arch_suffix)
+    return ray_wheel, cpp_wheel
 
 
 def extract_wheels(
-    python_version: str = "3.10",
+    ray_wheel: RayWheel,
+    cpp_wheel: RayCppWheel,
     target: str = "ray",
-    out_dir: Optional[Path] = None,
-    dry_run: bool = False,
-    arch_suffix: str = "",
-) -> None:
+    out_dir: Path | None = None,
+) -> list[Path]:
     """Extract wheels from built images."""
     if out_dir is None:
-        out_dir = get_repo_root() / ".whl"
-    # Create minimal context just for image_name() calls
-    ctx = BuildContext(
-        env={"PYTHON_VERSION": python_version, "ARCH_SUFFIX": arch_suffix}
-    )
+        out_dir = ray_wheel.ctx.repo_root / ".whl"
 
+    wheels: list[Path] = []
     if target in ("ray", "all"):
-        image = RayWheel(ctx).image_name()
-        for w in extract_from_image(image, out_dir, dry_run):
+        extracted = extract_from_image(ray_wheel.remote_image, out_dir)
+        for w in extracted:
             print(f"  {w}")
+        wheels.extend(extracted)
     if target in ("cpp", "all"):
-        image = RayCppWheel(ctx).image_name()
-        for w in extract_from_image(image, out_dir, dry_run):
+        extracted = extract_from_image(cpp_wheel.remote_image, out_dir)
+        for w in extracted:
             print(f"  {w}")
+        wheels.extend(extracted)
+    return wheels
 
 
-def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build Ray wheels locally",
         usage="%(prog)s [python_version] [target] [options]\n"
@@ -145,23 +126,24 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--arch-suffix", default="")
     parser.add_argument("--hosttype", default="")
     parser.add_argument("--out-dir", type=Path)
-    parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(args)
 
 
-def main(args: Optional[List[str]] = None) -> int:
+def main(args: list[str] | None = None) -> int:
     try:
         p = parse_args(args)
         py = p.python_version.lower().removeprefix("python").removeprefix("py")
-        build_wheels(
+
+        ray_wheel, cpp_wheel = build_wheels(
             python_version=py,
             manylinux_version=p.manylinux_version,
             arch_suffix=p.arch_suffix,
             hosttype=p.hosttype,
             target=p.target,
-            out_dir=p.out_dir,
-            dry_run=p.dry_run,
         )
+
+        extract_wheels(ray_wheel, cpp_wheel, p.target, p.out_dir)
+
         return 0
     except KeyboardInterrupt:
         return 130

@@ -18,7 +18,7 @@ srcs:
   - java/BUILD.bazel
   - java/dependencies.bzl
   - release/BUILD.bazel
-  - release/requirements_buildkite.txt
+  - release/requirements.txt
   - release/requirements_py310.txt
 build_args:
   - PYTHON_VERSION

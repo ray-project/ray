@@ -11,7 +11,6 @@ srcs:
   - pyproject.toml
   - README.rst
   - ci/build/build-manylinux-wheel.sh
-  - ci/build/local-build-utils.sh
   - python/
   - rllib/
 build_args:
