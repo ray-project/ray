@@ -1,5 +1,6 @@
 from typing import Literal
 
+
 class vLLMTaskType:
     """The type of task to run on the vLLM engine."""
 
@@ -23,5 +24,6 @@ class vLLMTaskType:
             for key, value in vars(cls).items()
             if not key.startswith("_") and isinstance(value, str)
         }
+
 
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]

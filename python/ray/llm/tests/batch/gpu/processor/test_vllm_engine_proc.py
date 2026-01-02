@@ -96,7 +96,9 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
 
 
 def test_vllm_engine_processor_invalid_task(model_opt_125m):
-    with pytest.raises(pydantic.ValidationError, match="Invalid task type: invalid_task"):
+    with pytest.raises(
+        pydantic.ValidationError, match="Invalid task type: invalid_task"
+    ):
         vLLMEngineProcessorConfig(
             model_source=model_opt_125m,
             engine_kwargs=dict(
@@ -110,6 +112,7 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
             detokenize_stage=DetokenizeStageConfig(enabled=True),
             prepare_image_stage=PrepareImageStageConfig(enabled=True),
         )
+
 
 def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(

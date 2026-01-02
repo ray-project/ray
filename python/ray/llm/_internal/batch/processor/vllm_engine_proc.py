@@ -116,7 +116,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
                 "stage (%s). Overriding the task in engine kwargs to %s.",
                 engine_kwargs_task,
                 task_type,
-                task_type
+                task_type,
             )
             engine_kwargs["task"] = task_type
         values["engine_kwargs"] = engine_kwargs
