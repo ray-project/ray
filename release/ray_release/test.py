@@ -616,25 +616,6 @@ class Test(dict):
             return byod_ecr
         return get_global_config()["byod_ecr"]
 
-    def get_ray_image(self) -> str:
-        """
-        Returns the ray docker image to use for this test.
-        """
-        config = get_global_config()
-        repo = self.get_byod_repo()
-        if repo == DATAPLANE_ECR_REPO:
-            repo_name = config["byod_ray_cr_repo"]
-        elif repo == DATAPLANE_ECR_LLM_REPO:
-            repo_name = config["byod_ray_llm_cr_repo"]
-        elif repo == DATAPLANE_ECR_ML_REPO:
-            repo_name = config["byod_ray_ml_cr_repo"]
-        else:
-            raise ValueError(f"Unknown repo {repo}")
-
-        ecr = config["byod_ray_ecr"]
-        tag = self.get_byod_base_image_tag()
-        return f"{ecr}/{repo_name}:{tag}"
-
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
