@@ -26,7 +26,7 @@ from wanda_targets import (
     get_git_commit,
     get_wanda_image_name,
     normalize_arch,
-    parse_wanda_spec,
+    parse_wanda_name,
 )
 
 
@@ -305,8 +305,7 @@ class TestWandaSpecEnvVars:
         env = build_env()
         for target_name, target_cls in TARGETS.items():
             spec_path = repo_root / target_cls.SPEC
-            spec = parse_wanda_spec(spec_path)
-            name_template = spec.get("name", "")
+            name_template = parse_wanda_name(spec_path)
             used_vars = extract_env_var_names(name_template)
             missing_vars = used_vars - set(env.keys())
             assert not missing_vars, (
@@ -318,112 +317,79 @@ class TestWandaSpecEnvVars:
         """Verify we can detect when a spec uses an undefined env var."""
         spec_file = tmp_path / "bad.wanda.yaml"
         spec_file.write_text('name: "my-image-$UNDEFINED_VAR"\n')
-        spec = parse_wanda_spec(spec_file)
-        name_template = spec.get("name", "")
+        name_template = parse_wanda_name(spec_file)
         used_vars = extract_env_var_names(name_template)
         env = build_env()
         missing_vars = used_vars - set(env.keys())
         assert missing_vars == {"UNDEFINED_VAR"}
 
 
-class TestParseWandaSpec:
-    def test_parses_name_with_env_vars(self, tmp_path):
+class TestParseWandaName:
+    def test_parses_double_quoted_name(self, tmp_path):
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text('name: "my-image-py$PYTHON_VERSION$ARCH_SUFFIX"\n')
-        spec = parse_wanda_spec(spec_file)
-        assert spec["name"] == "my-image-py$PYTHON_VERSION$ARCH_SUFFIX"
+        assert parse_wanda_name(spec_file) == "my-image-py$PYTHON_VERSION$ARCH_SUFFIX"
+
+    def test_parses_single_quoted_name(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text("name: 'my-image'\n")
+        assert parse_wanda_name(spec_file) == "my-image"
 
     def test_parses_unquoted_name(self, tmp_path):
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text("name: simple-name\n")
-        spec = parse_wanda_spec(spec_file)
-        assert spec["name"] == "simple-name"
+        assert parse_wanda_name(spec_file) == "simple-name"
 
-    def test_parses_froms_list(self, tmp_path):
+    def test_strips_inline_comment(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text("name: test-image  # this is a comment\n")
+        assert parse_wanda_name(spec_file) == "test-image"
+
+    def test_skips_leading_comments(self, tmp_path):
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text(
-            """name: test-image
-froms:
-  - "base-image:latest"
-  - "@dependency-image"
-"""
-        )
-        spec = parse_wanda_spec(spec_file)
-        assert spec["froms"] == ["base-image:latest", "@dependency-image"]
-
-    def test_parses_build_args_with_defaults(self, tmp_path):
-        spec_file = tmp_path / "test.wanda.yaml"
-        spec_file.write_text(
-            """name: test
-build_args:
-  - PYTHON_VERSION
-  - MANYLINUX_VERSION=251216.3835fc5
-  - WHEEL_TYPE=ray
-"""
-        )
-        spec = parse_wanda_spec(spec_file)
-        assert "PYTHON_VERSION" in spec["build_args"]
-        assert "MANYLINUX_VERSION=251216.3835fc5" in spec["build_args"]
-
-    def test_parses_boolean_fields(self, tmp_path):
-        spec_file = tmp_path / "test.wanda.yaml"
-        spec_file.write_text(
-            """name: test
-disable_caching: true
-"""
-        )
-        spec = parse_wanda_spec(spec_file)
-        assert spec["disable_caching"] is True
-
-    def test_parses_complex_spec(self, tmp_path):
-        """Test parsing a realistic wanda spec with all common fields."""
-        spec_file = tmp_path / "complex.wanda.yaml"
-        spec_file.write_text(
-            """# Complex wanda spec for testing
-name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
-disable_caching: true
-froms:
-  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
-  - "@ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"    # C++ binaries
-  - "@ray-java-build$ARCH_SUFFIX"                # Java JARs
-  - "@ray-dashboard"                             # Dashboard
-dockerfile: ci/docker/ray-wheel.Dockerfile
-srcs:
-  - pyproject.toml
-  - README.rst
-  - python/
-build_args:
-  - PYTHON_VERSION
-  - MANYLINUX_VERSION
-  - HOSTTYPE
-  - ARCH_SUFFIX
-  - WHEEL_TYPE=ray
-build_hint_args:
-  - BUILDKITE_CACHE_READONLY
-"""
-        )
-        spec = parse_wanda_spec(spec_file)
-        assert spec["name"] == "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
-        assert spec["disable_caching"] is True
-        assert len(spec["froms"]) == 4
-        assert spec["dockerfile"] == "ci/docker/ray-wheel.Dockerfile"
-        assert "python/" in spec["srcs"]
-        assert "WHEEL_TYPE=ray" in spec["build_args"]
-        assert "BUILDKITE_CACHE_READONLY" in spec["build_hint_args"]
-
-    def test_ignores_yaml_comments(self, tmp_path):
-        spec_file = tmp_path / "test.wanda.yaml"
-        spec_file.write_text(
-            """# This is a comment
-name: test-image  # inline comment
+            """# This is a header comment
 # Another comment
-froms:
-  - base  # comment after list item
+name: my-image
 """
         )
-        spec = parse_wanda_spec(spec_file)
-        assert spec["name"] == "test-image"
-        assert spec["froms"] == ["base"]
+        assert parse_wanda_name(spec_file) == "my-image"
+
+    def test_skips_empty_lines(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """
+
+name: my-image
+
+"""
+        )
+        assert parse_wanda_name(spec_file) == "my-image"
+
+    def test_raises_if_no_name(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text("froms:\n  - base\n")
+        with pytest.raises(ValueError, match="No 'name:' field found"):
+            parse_wanda_name(spec_file)
+
+    def test_finds_name_after_other_fields(self, tmp_path):
+        """Name field doesn't have to be first."""
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """# comment
+disable_caching: true
+name: my-image
+froms:
+  - base
+"""
+        )
+        # Note: our simple parser finds the first 'name:' line
+        assert parse_wanda_name(spec_file) == "my-image"
+
+    def test_handles_complex_env_vars(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text('name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"\n')
+        assert parse_wanda_name(spec_file) == "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
 
 
 class TestGetWandaImageName:

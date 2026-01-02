@@ -17,8 +17,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Dict, Optional, Sequence, Set, Type
 
-import yaml
-
 IMAGE_PREFIX = "cr.ray.io/rayproject"
 DEFAULT_MANYLINUX_VERSION = "251216.3835fc5"
 
@@ -29,10 +27,33 @@ DEFAULT_MANYLINUX_VERSION = "251216.3835fc5"
 
 
 @lru_cache(maxsize=32)
-def parse_wanda_spec(spec_path: Path) -> Dict[str, Any]:
-    """Parse a wanda YAML spec file and return the parsed content."""
+def parse_wanda_name(spec_path: Path) -> str:
+    """
+    Extract the 'name' field from a wanda YAML spec file.
+
+    Uses simple string parsing to avoid requiring PyYAML dependency.
+    Handles: `name: value`, `name: "value"`, `name: 'value'`
+
+    Raises:
+        ValueError: If no 'name:' field is found in the spec file.
+    """
+    NAME_FIELD = "name:"
     with open(spec_path) as f:
-        return yaml.safe_load(f)
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith("#"):
+                continue
+            # Look for name: field
+            if line.startswith(NAME_FIELD):
+                value = line[len(NAME_FIELD) :].strip().split(" #")[0].strip()
+                # Remove surrounding quotes if present
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
+                    value = value[1:-1]
+                return value
+    raise ValueError(f"No 'name:' field found in {spec_path}")
 
 
 def extract_env_var_names(template: str) -> Set[str]:
@@ -67,10 +88,9 @@ def get_wanda_image_name(spec_path: Path, env: Dict[str, str]) -> str:
     """
     Get the expanded image name from a wanda spec file.
 
-    Parses the YAML, extracts the 'name' field, and expands env vars.
+    Parses the spec, extracts the 'name' field, and expands env vars.
     """
-    spec = parse_wanda_spec(spec_path)
-    name_template = spec.get("name", "")
+    name_template = parse_wanda_name(spec_path)
     return expand_env_vars(name_template, env)
 
 
