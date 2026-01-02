@@ -16,7 +16,7 @@ Complete example: [agentic_batch_parallel.py](https://github.com/ray-project/ray
    Demonstrates a how to deploy and run agents in parallel in offline batch workloads.
 
 ### Conditional Routing
-Conditional routing incorporates a first-stage model evaluates the incoming input and decides how it should be handled. Based on this decision, the request is forwarded to a specialized agent or model that is best suited for the task.
+Conditional routing incorporates a first-stage model evaluates the incoming input and decides how it should be handled. Based on this decision, the request is forwarded to a specialized agent or model that's best suited for the task.
 <div align="center">
   <img src="https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/doc-assets/agentic_batch_inference_routing.png" width=600>
 </div>
@@ -32,4 +32,4 @@ Finally, with Ray Data and Ray Serve LLM, you can orchestrate complex agentic pa
 Complete example: [agentic_batch_multi_turn_rollout.py](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/agentic-batch-inference/content/agentic_batch_multi_turn_rollout.py)  
    Guides you through creating agents, complex multi-turn rollout with tool calling workflows, and integrating with self-hosted MCP servers in offline batch workloads.
 
-The patterns introduced above are just basic building blocks. You can mix, match, or modify them to design more advanced or custom agentic workflows that fit your application needs.
+The aforementioned patterns are just basic building blocks. You can mix, match, or modify them to design more advanced or custom agentic workflows that fit your application needs.
