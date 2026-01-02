@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -25,6 +26,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
+        # Define the path to the offline data.
+        offline_data_path = Path(__file__).parent / "data/statelesscartpole"
         # Define the BC config.
         self.config = (
             BCConfig()
@@ -36,7 +39,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
             # as remote learners.
             .offline_data(
                 input_=[
-                    "s3://anonymous@ray-example-data/rllib/offline-data/statelesscartpole"
+                    offline_data_path.as_posix(),
+                    # "s3://anonymous@ray-example-data/rllib/offline-data/statelesscartpole"
                 ],
                 input_read_episodes=True,
                 input_read_batch_size=1,
@@ -67,7 +71,7 @@ class OfflineRLStatefulTest(unittest.TestCase):
                 ),
             )
             .evaluation(
-                evaluation_interval=3,
+                evaluation_interval=1,
                 evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_duration_unit="episodes",
@@ -107,6 +111,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
             ][:1]
             # Get the episode return.
             episode_return = episodes[0].get_return()
+        else:
+            print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
@@ -149,14 +155,14 @@ class OfflineRLStatefulTest(unittest.TestCase):
             i += 1
             learner_results = self.algo.learner_group.update(
                 training_data=training_data,
-                minibatch_size=self.algo.config.train_batch_size_per_learner,
+                minibatch_size=ma_batch["default_policy"].count,
                 num_iters=self.algo.config.dataset_num_iters_per_learner,
                 **self.algo.offline_data.iter_batches_kwargs,
             )
             if i % 10 == 0:
                 loss = learner_results[0]["default_policy"]["policy_loss"].peek()
                 print(f"Iteration {i}: policy_loss: {loss}")
-                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                if np.isclose(loss, 1e-4, atol=1e-5) or i >= 100:
                     break
 
         # Evaluation
@@ -172,7 +178,9 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Evaluate the updated policy for 5 episodes.
         eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
-            self._remote_eval_episode_fn,
+            func=lambda er, duration=self.config.evaluation_duration: er.sample(
+                num_episodes=duration, explore=False
+            ),  # self._remote_eval_episode_fn,
             local_env_runner=False,
         )
         # Assert the eval return is decent.
@@ -210,6 +218,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
             ][:1]
             # Get the episode return.
             episode_return = episodes[0].get_return()
+        else:
+            print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
@@ -246,14 +256,14 @@ class OfflineRLStatefulTest(unittest.TestCase):
             i += 1
             learner_results = self.algo.learner_group.update(
                 training_data=training_data,
-                minibatch_size=self.algo.config.train_batch_size_per_learner,
+                minibatch_size=ma_batch["default_policy"].count,
                 num_iters=self.algo.config.dataset_num_iters_per_learner,
                 **self.algo.offline_data.iter_batches_kwargs,
             )
             if i % 10 == 0:
                 loss = learner_results[0]["default_policy"]["policy_loss"].peek()
                 print(f"Iteration {i}: policy_loss: {loss}")
-                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                if np.isclose(loss, 1e-4, atol=1e-5) or i >= 100:
                     break
 
         # Evaluation
@@ -269,7 +279,9 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Evaluate the updated policy for 5 episodes.
         eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
-            self._remote_eval_episode_fn,
+            func=lambda er, duration=self.config.evaluation_duration: er.sample(
+                num_episodes=duration, explore=False
+            ),  # self._remote_eval_episode_fn,
             local_env_runner=False,
         )
         # Assert the eval return is decent.
@@ -313,6 +325,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
             ][:1]
             # Get the episode return.
             episode_return = episodes[0].get_return()
+        else:
+            print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
@@ -342,7 +356,7 @@ class OfflineRLStatefulTest(unittest.TestCase):
             if i % 10 == 0:
                 loss = learner_results[0]["default_policy"]["policy_loss"].peek()
                 print(f"Iteration {i}: policy_loss: {loss}")
-                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                if np.isclose(loss, 1e-4, atol=1e-5) or i >= 100:
                     break
 
         # Evaluation
@@ -356,7 +370,9 @@ class OfflineRLStatefulTest(unittest.TestCase):
         )
 
         eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
-            self._remote_eval_episode_fn,
+            func=lambda er, duration=self.config.evaluation_duration: er.sample(
+                num_episodes=duration, explore=False
+            ),  # self._remote_eval_episode_fn,
             local_env_runner=False,
         )
         # Assert the eval return is decent.
@@ -367,10 +383,6 @@ class OfflineRLStatefulTest(unittest.TestCase):
             f"Eval return must be >100.0 but is {episode_return_mean}",
         )
         print(f"Eval episodes returns: {episode_return_mean}")
-
-    @staticmethod
-    def _remote_eval_episode_fn(env_runner):
-        return env_runner.sample(num_episodes=5, explore=False)
 
 
 if __name__ == "__main__":
