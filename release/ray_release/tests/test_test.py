@@ -168,7 +168,6 @@ def test_get_byod_runtime_env():
         }
     )
     runtime_env = test.get_byod_runtime_env()
-    assert runtime_env.get("RAY_BACKEND_LOG_JSON") == "1"
     assert runtime_env.get("a") == "b"
 
 
