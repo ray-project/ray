@@ -216,7 +216,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.language,
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
-                                                    options.startup_token,
                                                     &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
@@ -695,7 +694,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       worker_id_(options.worker_type == WorkerType::DRIVER
                      ? ComputeDriverIdFromJob(options_.job_id)
-                     : WorkerID::FromRandom()),
+                     : options_.worker_id),
       io_work_(io_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),

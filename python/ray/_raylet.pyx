@@ -2684,7 +2684,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port,
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, cluster_id, entrypoint,
+                  WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
         self.is_local_mode = local_mode
 
@@ -2735,7 +2735,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.runtime_env_hash = runtime_env_hash
-        options.startup_token = startup_token
+        options.worker_id = worker_id.native()
         options.session_name = session_name
         options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
