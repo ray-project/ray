@@ -154,7 +154,7 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
+  java -cp bazel-bin/java/all_tests_shaded.jar "io.ray.docdemo.$class"
 done
 popd
 
