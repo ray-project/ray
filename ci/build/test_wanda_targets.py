@@ -336,6 +336,12 @@ class TestParseWandaName:
         spec_file.write_text("name: test-image  # this is a comment\n")
         assert parse_wanda_name(spec_file) == "test-image"
 
+    def test_name_containing_hash(self, tmp_path):
+        """Name containing ' #' should not be split incorrectly."""
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text('name: "my-image #1" # a comment\n')
+        assert parse_wanda_name(spec_file) == "my-image #1"
+
     def test_skips_leading_comments(self, tmp_path):
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text(
@@ -379,6 +385,11 @@ froms:
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text('name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"\n')
         assert parse_wanda_name(spec_file) == "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+   
+    def test_handles_hash_in_quoted_name(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text('name: "my-image-#1" # a comment\n')
+        assert parse_wanda_name(spec_file) == "my-image-#1"
 
 
 class TestGetWandaImageName:
