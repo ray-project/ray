@@ -49,7 +49,8 @@ def extract_from_image(image: str, out_dir: Path) -> list[Path]:
                 ["docker", "export", container_id], stdout=subprocess.PIPE
             )
             subprocess.run(["tar", "-x", "-C", tmpdir], stdin=export.stdout, check=True)
-            export.wait()
+            if export.wait() != 0:
+                raise subprocess.CalledProcessError(export.returncode, export.args)
 
             wheels = []
             for whl in Path(tmpdir).rglob("*.whl"):
@@ -58,7 +59,9 @@ def extract_from_image(image: str, out_dir: Path) -> list[Path]:
                 wheels.append(dest)
             return wheels
     finally:
-        subprocess.run(["docker", "rm", container_id], capture_output=True)
+        result = subprocess.run(["docker", "rm", container_id], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Warning: failed to remove container {container_id}: {result.stderr}", file=sys.stderr)
 
 
 def build_wheels(

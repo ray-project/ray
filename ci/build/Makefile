@@ -4,7 +4,7 @@
 #   make wheel [PY] [TARGET]
 #   python build_wheel_local.py [OPTIONS] [PYTHON_VERSION] [TARGET]
 
-.PHONY: wheel wheel-test wheel-clean matrix-wheels clean help print-vars
+.PHONY: wheel wheel-clean matrix-wheels clean help print-vars
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 BUILD_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
