@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Tests for build_targets.py"""
+"""Tests for wanda_targets.py"""
 
 import os
 from pathlib import Path
 from unittest import mock
 
 import pytest
-from build_targets import (
+from wanda_targets import (
     DEFAULT_MANYLINUX_VERSION,
     IMAGE_PREFIX,
+    TARGETS,
     BuildContext,
     RayCore,
     RayCppCore,
@@ -19,25 +20,33 @@ from build_targets import (
     build_env,
     create_context,
     detect_platform,
+    expand_env_vars,
+    extract_env_var_names,
     find_wanda,
     get_git_commit,
+    get_wanda_image_name,
     normalize_arch,
+    parse_wanda_spec,
 )
 
 
 @pytest.fixture
-def ctx(tmp_path):
+def repo_root():
+    """Return the actual repo root for tests that need real wanda specs."""
+    return Path(__file__).parent.parent.parent
+
+
+@pytest.fixture
+def ctx(tmp_path, repo_root):
     """BuildContext with command recording."""
     wanda = tmp_path / "wanda"
     wanda.touch()
     wanda.chmod(0o755)
-    repo = tmp_path / "ray"
-    repo.mkdir()
 
     commands = []
     c = BuildContext(
         wanda_bin=wanda,
-        repo_root=repo,
+        repo_root=repo_root,
         env={"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": ""},
         _run_cmd=lambda cmd, **kw: commands.append(cmd),
     )
@@ -46,18 +55,16 @@ def ctx(tmp_path):
 
 
 @pytest.fixture
-def ctx_with_arch(tmp_path):
+def ctx_with_arch(tmp_path, repo_root):
     """BuildContext with arch suffix set."""
     wanda = tmp_path / "wanda"
     wanda.touch()
     wanda.chmod(0o755)
-    repo = tmp_path / "ray"
-    repo.mkdir()
 
     commands = []
     c = BuildContext(
         wanda_bin=wanda,
-        repo_root=repo,
+        repo_root=repo_root,
         env={"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": "-aarch64"},
         _run_cmd=lambda cmd, **kw: commands.append(cmd),
     )
@@ -66,10 +73,14 @@ def ctx_with_arch(tmp_path):
 
 
 class TestBuildContext:
-    def test_dry_run(self, capsys):
-        ctx = BuildContext(dry_run=True)
+    def test_dry_run(self, capsys, tmp_path):
+        wanda = tmp_path / "wanda"
+        wanda.touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ctx = BuildContext(wanda_bin=wanda, repo_root=repo, dry_run=True)
         ctx.run(["echo", "test"])
-        assert "[dry-run]" in capsys.readouterr().out
+        assert "[dry-run]" in capsys.readouterr().err
 
     def test_injected_runner(self, ctx):
         ctx.run(["test", "cmd"])
@@ -83,20 +94,44 @@ class TestBuildContext:
         ctx.docker_tag("src:tag", "dst:tag")
         assert ["docker", "tag", "src:tag", "dst:tag"] in ctx._commands
 
-    def test_python_version_property(self):
-        ctx = BuildContext(env={"PYTHON_VERSION": "3.12", "ARCH_SUFFIX": ""})
+    def test_python_version_property(self, tmp_path):
+        wanda = tmp_path / "wanda"
+        wanda.touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ctx = BuildContext(
+            wanda_bin=wanda,
+            repo_root=repo,
+            env={"PYTHON_VERSION": "3.12", "ARCH_SUFFIX": ""},
+        )
         assert ctx.python_version == "3.12"
 
-    def test_python_version_default(self):
-        ctx = BuildContext(env={})
+    def test_python_version_default(self, tmp_path):
+        wanda = tmp_path / "wanda"
+        wanda.touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ctx = BuildContext(wanda_bin=wanda, repo_root=repo, env={})
         assert ctx.python_version == "3.10"
 
-    def test_arch_suffix_property(self):
-        ctx = BuildContext(env={"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": "-aarch64"})
+    def test_arch_suffix_property(self, tmp_path):
+        wanda = tmp_path / "wanda"
+        wanda.touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ctx = BuildContext(
+            wanda_bin=wanda,
+            repo_root=repo,
+            env={"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": "-aarch64"},
+        )
         assert ctx.arch_suffix == "-aarch64"
 
-    def test_arch_suffix_default(self):
-        ctx = BuildContext(env={})
+    def test_arch_suffix_default(self, tmp_path):
+        wanda = tmp_path / "wanda"
+        wanda.touch()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ctx = BuildContext(wanda_bin=wanda, repo_root=repo, env={})
         assert ctx.arch_suffix == ""
 
 
@@ -108,20 +143,20 @@ class TestRayCore:
         RayCore(ctx).build()
         assert any("ray-core.wanda.yaml" in str(c) for c in ctx._commands)
 
-    def test_image_name(self, ctx):
-        assert RayCore(ctx).image_name() == f"{IMAGE_PREFIX}/ray-core-py3.11:latest"
+    def test_remote_image(self, ctx):
+        assert RayCore(ctx).remote_image == f"{IMAGE_PREFIX}/ray-core-py3.11:latest"
 
-    def test_local_name(self, ctx):
-        assert RayCore(ctx).local_name() == "ray-core-py3.11:latest"
+    def test_local_image(self, ctx):
+        assert RayCore(ctx).local_image == "ray-core-py3.11:latest"
 
-    def test_image_name_with_arch(self, ctx_with_arch):
+    def test_remote_image_with_arch(self, ctx_with_arch):
         assert (
-            RayCore(ctx_with_arch).image_name()
+            RayCore(ctx_with_arch).remote_image
             == f"{IMAGE_PREFIX}/ray-core-py3.11-aarch64:latest"
         )
 
-    def test_local_name_with_arch(self, ctx_with_arch):
-        assert RayCore(ctx_with_arch).local_name() == "ray-core-py3.11-aarch64:latest"
+    def test_local_image_with_arch(self, ctx_with_arch):
+        assert RayCore(ctx_with_arch).local_image == "ray-core-py3.11-aarch64:latest"
 
     def test_docker_tag_called_after_build(self, ctx):
         RayCore(ctx).build()
@@ -170,8 +205,8 @@ class TestRayWheel:
         assert any("ray-core" in str(c) for c in wanda_calls)
         assert any("ray-wheel" in str(c) for c in wanda_calls)
 
-    def test_image_name(self, ctx):
-        name = RayWheel(ctx).image_name()
+    def test_remote_image(self, ctx):
+        name = RayWheel(ctx).remote_image
         assert IMAGE_PREFIX in name
         assert "ray-wheel-py3.11" in name
 
@@ -180,8 +215,15 @@ class TestRayCppCore:
     def test_spec(self):
         assert "ray-cpp-core.wanda.yaml" in RayCppCore.SPEC
 
+    def test_no_deps(self):
+        # RayCppCore only depends on manylinux base, not other ray images
+        assert RayCppCore.DEPS == ()
+
     def test_build(self, ctx):
         RayCppCore(ctx).build()
+        wanda_calls = [c for c in ctx._commands if "wanda" in str(c[0])]
+        # Should only build ray-cpp-core (no deps)
+        assert len(wanda_calls) == 1
         assert any("ray-cpp-core.wanda.yaml" in str(c) for c in ctx._commands)
 
 
@@ -190,7 +232,10 @@ class TestRayCppWheel:
         assert "ray-cpp-wheel.wanda.yaml" in RayCppWheel.SPEC
 
     def test_deps(self):
+        assert RayCore in RayCppWheel.DEPS
         assert RayCppCore in RayCppWheel.DEPS
+        assert RayJava in RayCppWheel.DEPS
+        assert RayDashboard in RayCppWheel.DEPS
 
     def test_build_includes_all_deps(self, ctx):
         RayCppWheel(ctx).build()
@@ -203,9 +248,201 @@ class TestRayCppWheel:
         assert any("ray-cpp-core" in str(c) for c in wanda_calls)
         assert any("ray-cpp-wheel" in str(c) for c in wanda_calls)
 
-    def test_image_name(self, ctx):
-        name = RayCppWheel(ctx).image_name()
+    def test_remote_image(self, ctx):
+        name = RayCppWheel(ctx).remote_image
         assert "ray-cpp-wheel-py3.11" in name
+
+
+class TestExpandEnvVars:
+    def test_dollar_var_syntax(self):
+        env = {"FOO": "bar", "BAZ": "qux"}
+        assert expand_env_vars("$FOO-$BAZ", env) == "bar-qux"
+
+    def test_brace_var_syntax(self):
+        env = {"FOO": "bar"}
+        assert expand_env_vars("${FOO}", env) == "bar"
+
+    def test_mixed_syntax(self):
+        env = {"A": "1", "B": "2"}
+        assert expand_env_vars("$A-${B}", env) == "1-2"
+
+    def test_missing_var_becomes_empty(self):
+        assert expand_env_vars("$MISSING", {}) == ""
+
+    def test_adjacent_vars(self):
+        env = {"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": "-aarch64"}
+        assert expand_env_vars("py$PYTHON_VERSION$ARCH_SUFFIX", env) == "py3.11-aarch64"
+
+    def test_no_vars(self):
+        assert expand_env_vars("plain-string", {}) == "plain-string"
+
+
+class TestExtractEnvVarNames:
+    def test_dollar_syntax(self):
+        assert extract_env_var_names("$FOO") == {"FOO"}
+
+    def test_brace_syntax(self):
+        assert extract_env_var_names("${FOO}") == {"FOO"}
+
+    def test_multiple_vars(self):
+        assert extract_env_var_names("$FOO-$BAR") == {"FOO", "BAR"}
+
+    def test_adjacent_vars(self):
+        assert extract_env_var_names("$A$B") == {"A", "B"}
+
+    def test_no_vars(self):
+        assert extract_env_var_names("plain-string") == set()
+
+    def test_mixed_syntax(self):
+        assert extract_env_var_names("$A-${B}") == {"A", "B"}
+
+
+class TestWandaSpecEnvVars:
+    """Validate that all wanda specs only use environment variables set by build_env()."""
+
+    def test_all_targets_use_defined_env_vars(self, repo_root):
+        """Every env var in wanda spec 'name' fields must be set by build_env()."""
+        env = build_env()
+        for target_name, target_cls in TARGETS.items():
+            spec_path = repo_root / target_cls.SPEC
+            spec = parse_wanda_spec(spec_path)
+            name_template = spec.get("name", "")
+            used_vars = extract_env_var_names(name_template)
+            missing_vars = used_vars - set(env.keys())
+            assert not missing_vars, (
+                f"{target_name} uses env vars not set by build_env(): {missing_vars}. "
+                f"Either add them to build_env() or remove from spec."
+            )
+
+    def test_detects_undefined_env_var(self, tmp_path):
+        """Verify we can detect when a spec uses an undefined env var."""
+        spec_file = tmp_path / "bad.wanda.yaml"
+        spec_file.write_text('name: "my-image-$UNDEFINED_VAR"\n')
+        spec = parse_wanda_spec(spec_file)
+        name_template = spec.get("name", "")
+        used_vars = extract_env_var_names(name_template)
+        env = build_env()
+        missing_vars = used_vars - set(env.keys())
+        assert missing_vars == {"UNDEFINED_VAR"}
+
+
+class TestParseWandaSpec:
+    def test_parses_name_with_env_vars(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text('name: "my-image-py$PYTHON_VERSION$ARCH_SUFFIX"\n')
+        spec = parse_wanda_spec(spec_file)
+        assert spec["name"] == "my-image-py$PYTHON_VERSION$ARCH_SUFFIX"
+
+    def test_parses_unquoted_name(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text("name: simple-name\n")
+        spec = parse_wanda_spec(spec_file)
+        assert spec["name"] == "simple-name"
+
+    def test_parses_froms_list(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """name: test-image
+froms:
+  - "base-image:latest"
+  - "@dependency-image"
+"""
+        )
+        spec = parse_wanda_spec(spec_file)
+        assert spec["froms"] == ["base-image:latest", "@dependency-image"]
+
+    def test_parses_build_args_with_defaults(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """name: test
+build_args:
+  - PYTHON_VERSION
+  - MANYLINUX_VERSION=251216.3835fc5
+  - WHEEL_TYPE=ray
+"""
+        )
+        spec = parse_wanda_spec(spec_file)
+        assert "PYTHON_VERSION" in spec["build_args"]
+        assert "MANYLINUX_VERSION=251216.3835fc5" in spec["build_args"]
+
+    def test_parses_boolean_fields(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """name: test
+disable_caching: true
+"""
+        )
+        spec = parse_wanda_spec(spec_file)
+        assert spec["disable_caching"] is True
+
+    def test_parses_complex_spec(self, tmp_path):
+        """Test parsing a realistic wanda spec with all common fields."""
+        spec_file = tmp_path / "complex.wanda.yaml"
+        spec_file.write_text(
+            """# Complex wanda spec for testing
+name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
+  - "@ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"    # C++ binaries
+  - "@ray-java-build$ARCH_SUFFIX"                # Java JARs
+  - "@ray-dashboard"                             # Dashboard
+dockerfile: ci/docker/ray-wheel.Dockerfile
+srcs:
+  - pyproject.toml
+  - README.rst
+  - python/
+build_args:
+  - PYTHON_VERSION
+  - MANYLINUX_VERSION
+  - HOSTTYPE
+  - ARCH_SUFFIX
+  - WHEEL_TYPE=ray
+build_hint_args:
+  - BUILDKITE_CACHE_READONLY
+"""
+        )
+        spec = parse_wanda_spec(spec_file)
+        assert spec["name"] == "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+        assert spec["disable_caching"] is True
+        assert len(spec["froms"]) == 4
+        assert spec["dockerfile"] == "ci/docker/ray-wheel.Dockerfile"
+        assert "python/" in spec["srcs"]
+        assert "WHEEL_TYPE=ray" in spec["build_args"]
+        assert "BUILDKITE_CACHE_READONLY" in spec["build_hint_args"]
+
+    def test_ignores_yaml_comments(self, tmp_path):
+        spec_file = tmp_path / "test.wanda.yaml"
+        spec_file.write_text(
+            """# This is a comment
+name: test-image  # inline comment
+# Another comment
+froms:
+  - base  # comment after list item
+"""
+        )
+        spec = parse_wanda_spec(spec_file)
+        assert spec["name"] == "test-image"
+        assert spec["froms"] == ["base"]
+
+
+class TestGetWandaImageName:
+    def test_expands_python_version(self, repo_root):
+        spec_path = repo_root / "ci/docker/ray-core.wanda.yaml"
+        env = {"PYTHON_VERSION": "3.12", "ARCH_SUFFIX": ""}
+        name = get_wanda_image_name(spec_path, env)
+        assert name == "ray-core-py3.12"
+
+    def test_expands_arch_suffix(self, repo_root):
+        spec_path = repo_root / "ci/docker/ray-core.wanda.yaml"
+        env = {"PYTHON_VERSION": "3.11", "ARCH_SUFFIX": "-aarch64"}
+        name = get_wanda_image_name(spec_path, env)
+        assert name == "ray-core-py3.11-aarch64"
+
+    def test_dashboard_no_vars(self, repo_root):
+        spec_path = repo_root / "ci/docker/ray-dashboard.wanda.yaml"
+        name = get_wanda_image_name(spec_path, {})
+        assert name == "ray-dashboard"
 
 
 class TestNormalizeArch:

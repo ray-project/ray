@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional
 
-from build_targets import (
+from wanda_targets import (
     BuildContext,
     RayCppWheel,
     RayWheel,
@@ -116,7 +116,9 @@ def extract_wheels(
     if out_dir is None:
         out_dir = get_repo_root() / ".whl"
     # Create minimal context just for image_name() calls
-    ctx = BuildContext(env={"PYTHON_VERSION": python_version, "ARCH_SUFFIX": arch_suffix})
+    ctx = BuildContext(
+        env={"PYTHON_VERSION": python_version, "ARCH_SUFFIX": arch_suffix}
+    )
 
     if target in ("ray", "all"):
         image = RayWheel(ctx).image_name()
