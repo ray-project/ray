@@ -1066,20 +1066,18 @@ def unique_post_fn(
         }
 
     def gen_value_index_arrow_from_arrow(
-        values,
-    ) -> Union[Tuple[pa.Array, pa.Array], Dict[Any, int]]:
-        """
-        Generate an encoding map from unique values, using Arrow-native operations
-        when possible for better performance.
+        values: Union["pa.ListScalar", "pa.Array"],
+    ) -> Union[Tuple["pa.Array", "pa.Array"], Dict[Any, int]]:
+        """Generate an encoding map from unique values using Arrow-native operations.
 
-        Accepts:
-        - pa.ListScalar: The aggregation result (list of unique values)
-        - pa.Array: Direct array of values
+        Args:
+            values: The aggregation result as a pa.ListScalar (list of unique values)
+                or a pa.Array of values directly.
 
         Returns:
-            - Tuple[pa.Array, pa.Array]: (sorted_keys, indices) for scalar types
-              that PyArrow can sort natively
-            - Dict[Any, int]: {value: index} for list types that require fallback
+            For scalar types that PyArrow can sort natively, returns a tuple of
+            (sorted_keys, indices) as pa.Array. For list types that require fallback,
+            returns a dict mapping {value: index}.
 
         Note:
             PyArrow's sort_indices doesn't support list types, so we fall back to
