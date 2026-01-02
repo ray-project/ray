@@ -632,7 +632,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.
-        
+
         Overrides base class to handle the requirement for prompt/tokenized_prompt.
 
         Args:
