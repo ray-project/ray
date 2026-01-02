@@ -1,10 +1,12 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pydantic
 import pytest
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
@@ -71,6 +73,43 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "num_gpus": 1,
     }
 
+
+def test_vllm_engine_processor_task_override(model_opt_125m):
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            task=vLLMTaskType.EMBED,
+        ),
+        task_type=vLLMTaskType.GENERATE,
+        concurrency=4,
+        batch_size=64,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+        prepare_image_stage=PrepareImageStageConfig(enabled=True),
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    assert stage.fn_constructor_kwargs["task_type"] == vLLMTaskType.GENERATE
+    assert stage.fn_constructor_kwargs["engine_kwargs"]["task"] == vLLMTaskType.GENERATE
+
+
+def test_vllm_engine_processor_invalid_task(model_opt_125m):
+    with pytest.raises(pydantic.ValidationError, match="Invalid task type: invalid_task"):
+        vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            engine_kwargs=dict(
+                task=vLLMTaskType.EMBED,
+            ),
+            task_type="invalid_task",
+            concurrency=4,
+            batch_size=64,
+            chat_template_stage=ChatTemplateStageConfig(enabled=True),
+            tokenize_stage=TokenizerStageConfig(enabled=True),
+            detokenize_stage=DetokenizeStageConfig(enabled=True),
+            prepare_image_stage=PrepareImageStageConfig(enabled=True),
+        )
 
 def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(
