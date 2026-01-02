@@ -180,7 +180,8 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
     explicit ObjectPullRequest(double first_retry_time)
-        : next_pull_time(first_retry_time) {}
+        : next_pull_time(first_retry_time),
+          subscription_start_time_seconds(first_retry_time) {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
@@ -189,6 +190,8 @@ class PullManager {
     // The pull will timeout at this time if there are still no locations for
     // the object.
     double expiration_time_seconds = 0;
+    // When we started waiting for object location info (for subscription timeout).
+    double subscription_start_time_seconds;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries = 0;

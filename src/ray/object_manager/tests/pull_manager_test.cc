@@ -1236,6 +1236,34 @@ TEST_P(PullManagerTest, TestTimeOut) {
   AssertNoLeaks();
 }
 
+TEST_P(PullManagerTest, TestTimeOutWhenLocationNeverReceived) {
+  // Test that objects timeout when OnLocationChange is never called
+  // (simulating a hung pubsub subscription).
+  BundlePriority prio = GetParam();
+  auto refs = CreateObjectRefs(1);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
+
+  // OnLocationChange is never called - simulating a hung subscription.
+  // The object should NOT be active since we don't have size info.
+  ASSERT_FALSE(pull_manager_.IsObjectActive(oids[0]));
+
+  // Wait for the timeout period.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+
+  // Object should be timed out since location was never received.
+  ASSERT_TRUE(timed_out_objects_.count(oids[0]));
+
+  timed_out_objects_.clear();
+  RAY_UNUSED(pull_manager_.CancelPull(req_id));
+
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
   // Check that a successful Pull resets the timer for failed fetches.
   BundlePriority prio = GetParam();

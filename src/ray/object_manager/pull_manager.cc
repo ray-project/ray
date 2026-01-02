@@ -581,6 +581,30 @@ void PullManager::Tick() {
     const auto &object_id = pair.first;
     TryToMakeObjectLocal(object_id);
   }
+
+  // Timeout objects waiting for location info (not yet in active_object_pull_requests_).
+  // These objects are not in active_object_pull_requests_ because they don't have
+  // size info yet, but they may be stuck forever if the pubsub subscription hangs.
+  double current_time_seconds = get_time_seconds_();
+  double timeout_seconds = pull_timeout_ms_ / 1e3;
+  std::vector<ObjectID> timed_out_objects;
+  for (auto &pair : object_pull_requests_) {
+    const auto &object_id = pair.first;
+    const auto &request = pair.second;
+    if (!request.object_size_set) {
+      double wait_time_seconds =
+          current_time_seconds - request.subscription_start_time_seconds;
+      if (wait_time_seconds > timeout_seconds) {
+        RAY_LOG(WARNING) << "Object " << object_id
+                         << " timed out waiting for location info after "
+                         << wait_time_seconds << "s";
+        timed_out_objects.push_back(object_id);
+      }
+    }
+  }
+  for (const auto &object_id : timed_out_objects) {
+    fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_TIMED_OUT);
+  }
 }
 
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
