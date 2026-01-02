@@ -3542,17 +3542,13 @@ class Dataset:
         Raises:
             ValueError: If the datasets have different row counts.
         """
-        # Wrap each input with StreamingRepartition so blocks align during zip.
-        wrapped_self = StreamingRepartition(
-            self._logical_plan.dag, target_rows_per_block
-        )
-        wrapped_others = [
-            StreamingRepartition(op._logical_plan.dag, target_rows_per_block)
-            for op in other
-        ]
-
+        # ZipOperator handles alignment internally, no need for StreamingRepartition
         plan = self._plan.copy()
-        op = Zip(wrapped_self, *wrapped_others)
+        op = Zip(
+            self._logical_plan.dag,
+            *[ds._logical_plan.dag for ds in other],
+            target_num_rows_per_block=target_rows_per_block,
+        )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
