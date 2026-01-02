@@ -98,7 +98,7 @@ install_miniforge() {
   (
     set +x
     echo "Cleaning conda caches..."
-    "${WORKSPACE_DIR}"/ci/suppress_output conda clean --all -y
+    "${WORKSPACE_DIR}"/ci/suppress_output conda clean --all -q -y
   )
 
   command -V python
