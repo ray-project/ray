@@ -33,38 +33,29 @@ from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 
-def quantile_huber_loss(
+def quantile_huber_loss_per_sample(
     quantiles: torch.Tensor,
     target_quantiles: torch.Tensor,
-    sum_over_quantiles: bool = True,
     kappa: float = 1.0,
 ) -> torch.Tensor:
-    """Computes the quantile Huber loss.
-
-    This is the loss function used in distributional RL with quantile regression.
+    """Computes the quantile Huber loss per sample (for importance sampling).
 
     Args:
         quantiles: Current quantile estimates. Shape: (batch, n_quantiles)
         target_quantiles: Target quantile values. Shape: (batch, n_target_quantiles)
-        sum_over_quantiles: Whether to sum over the quantile dimension.
         kappa: Huber loss threshold parameter.
 
     Returns:
-        The quantile Huber loss.
+        Per-sample quantile Huber loss. Shape: (batch,)
     """
-    batch_size = quantiles.shape[0]
     n_quantiles = quantiles.shape[1]
-    n_target_quantiles = target_quantiles.shape[1]
 
     # Compute cumulative probabilities for quantiles (tau values)
-    # tau_i = (i + 0.5) / n_quantiles for i in [0, n_quantiles-1]
     tau = (
         torch.arange(n_quantiles, device=quantiles.device, dtype=quantiles.dtype) + 0.5
     ) / n_quantiles
 
     # Expand dimensions for broadcasting
-    # quantiles: (batch, n_quantiles, 1)
-    # target_quantiles: (batch, 1, n_target_quantiles)
     quantiles_expanded = quantiles.unsqueeze(2)
     target_expanded = target_quantiles.unsqueeze(1)
 
@@ -80,24 +71,14 @@ def quantile_huber_loss(
     )
 
     # Compute quantile weights
-    # tau: (n_quantiles,) -> (1, n_quantiles, 1)
     tau_expanded = tau.view(1, n_quantiles, 1)
-
-    # Asymmetric weight based on whether error is positive or negative
     quantile_weight = torch.abs(tau_expanded - (td_error < 0).float())
 
     # Weighted Huber loss
     quantile_huber = quantile_weight * huber_loss
 
-    # Sum over target quantiles, mean over batch
-    if sum_over_quantiles:
-        # Sum over both quantile dimensions
-        loss = quantile_huber.sum(dim=(1, 2)).mean()
-    else:
-        # Sum only over target quantiles, keep current quantiles separate
-        loss = quantile_huber.sum(dim=2).mean(dim=0).sum()
-
-    return loss
+    # Sum over quantile dimensions, keep batch dimension
+    return quantile_huber.sum(dim=(1, 2))
 
 
 class TQCTorchLearner(SACTorchLearner, TQCLearner):
@@ -191,9 +172,7 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
         alpha = torch.exp(self.curr_log_alpha[module_id])
 
         # Get TQC parameters
-        n_quantiles = config.n_quantiles
         n_critics = config.n_critics
-        top_quantiles_to_drop = config.top_quantiles_to_drop_per_net
         n_target_quantiles = self._get_n_target_quantiles(module_id)
 
         batch_size = batch[Columns.OBS].shape[0]
@@ -234,16 +213,21 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
             rewards + (1.0 - terminateds) * (gamma ** n_step.unsqueeze(1)) * target_quantiles
         ).detach()
 
+        # Get importance sampling weights for prioritized replay
+        weights = batch.get("weights", torch.ones_like(batch[Columns.REWARDS]))
+
         # Compute critic loss for each critic
         critic_loss = torch.tensor(0.0, device=qf_preds.device)
         for i in range(n_critics):
             # Get quantiles for this critic: (batch, n_quantiles)
             critic_quantiles = qf_preds[:, i, :]
-            critic_loss += quantile_huber_loss(
+            # Compute per-sample quantile huber loss
+            critic_loss_per_sample = quantile_huber_loss_per_sample(
                 critic_quantiles,
                 target_quantiles,
-                sum_over_quantiles=False,
             )
+            # Apply importance sampling weights
+            critic_loss += torch.mean(weights * critic_loss_per_sample)
 
         # === Actor Loss ===
         # Get Q-values for resampled actions

@@ -200,8 +200,9 @@ class DefaultTQCTorchRLModule(TorchRLModule, InferenceOnlyAPI, TargetNetworkAPI,
             Stacked quantile values from all critics.
             Shape: (batch_size, n_critics, n_quantiles)
         """
-        if isinstance(obs, dict):
-            obs = obs[Columns.OBS]
+        # Note: obs should already be a flat tensor at this point.
+        # Dict observations are handled by connectors (e.g., FlattenObservations)
+        # before reaching this method.
 
         # Concatenate observations and actions
         qf_input = torch.cat([obs, actions], dim=-1)

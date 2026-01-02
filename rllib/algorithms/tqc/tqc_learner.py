@@ -4,15 +4,10 @@ TQC Learner base class.
 Extends SAC Learner with quantile-specific loss computation.
 """
 
-from typing import Dict
-
-import numpy as np
-
 from ray.rllib.algorithms.sac.sac_learner import SACLearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import ModuleID
 
 # Loss keys for TQC
 QF_LOSS_KEY = "qf_loss"

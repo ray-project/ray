@@ -4,16 +4,12 @@ TQC Catalog for building TQC-specific models.
 TQC uses multiple quantile critics, each outputting n_quantiles values.
 """
 
-from typing import Callable
-
 import gymnasium as gym
-import numpy as np
 
-from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.core.models.configs import MLPEncoderConfig, MLPHeadConfig
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
+from ray.rllib.core.models.configs import MLPHeadConfig
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 class TQCCatalog(SACCatalog):

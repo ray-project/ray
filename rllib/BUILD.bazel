@@ -2166,6 +2166,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# TQC
+py_test(
+    name = "test_tqc",
+    size = "large",
+    srcs = ["algorithms/tqc/tests/test_tqc.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Generic testing
 py_test(
     name = "algorithms/tests/test_custom_resource",

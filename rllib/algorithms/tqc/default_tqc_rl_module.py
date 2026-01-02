@@ -81,15 +81,12 @@ class DefaultTQCRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
         """Returns attributes not needed for inference."""
-        attrs = []
-        for i in range(self.n_critics):
-            attrs.extend([
-                f"qf_encoders",
-                f"qf_heads",
-                f"target_qf_encoders",
-                f"target_qf_heads",
-            ])
-        return list(set(attrs))
+        return [
+            "qf_encoders",
+            "qf_heads",
+            "target_qf_encoders",
+            "target_qf_heads",
+        ]
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
@@ -105,39 +102,3 @@ class DefaultTQCRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         """TQC does not support RNNs yet."""
         return {}
 
-    @abstractmethod
-    @OverrideToImplementCustomLogic
-    def _qf_forward_helper(
-        self,
-        batch: Dict[str, Any],
-        encoder: Encoder,
-        head: Model,
-    ) -> Dict[str, Any]:
-        """Executes forward pass for a single Q-network.
-
-        Args:
-            batch: Dict containing concatenated observations and actions.
-            encoder: The Q-function encoder.
-            head: The Q-function head.
-
-        Returns:
-            The quantile estimates from this critic.
-        """
-
-    @abstractmethod
-    @OverrideToImplementCustomLogic
-    def _qf_forward_all_critics(
-        self,
-        batch: Dict[str, Any],
-        use_target: bool = False,
-    ) -> Dict[str, Any]:
-        """Executes forward pass for all critics.
-
-        Args:
-            batch: Dict containing observations and actions.
-            use_target: Whether to use target networks.
-
-        Returns:
-            Stacked quantile estimates from all critics.
-            Shape: (batch_size, n_critics, n_quantiles)
-        """
