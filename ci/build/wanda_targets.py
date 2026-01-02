@@ -275,6 +275,29 @@ def find_wanda() -> Optional[Path]:
     return default if default.exists() else None
 
 
+WANDA_VERSION = "v0.22.0"
+WANDA_RELEASE_URL = (
+    f"https://github.com/ray-project/rayci/releases/download/{WANDA_VERSION}"
+)
+
+
+def get_wanda_download_url() -> str:
+    """Get the wanda download URL for the current platform."""
+    system = platform.system().lower()
+    arch = platform.machine().lower()
+
+    if system == "darwin":
+        # macOS - wanda runs in Docker so use linux binary matching host arch
+        suffix = "linux-arm64" if arch == "arm64" else "linux-amd64"
+    elif system == "windows":
+        suffix = "windows-amd64"
+    else:
+        # Linux
+        suffix = "linux-arm64" if arch in ("arm64", "aarch64") else "linux-amd64"
+
+    return f"{WANDA_RELEASE_URL}/wanda-{suffix}"
+
+
 # ---------------------------------------------------------------------------
 # Platform Detection
 # ---------------------------------------------------------------------------
@@ -391,8 +414,16 @@ def create_context(
 
     wanda = wanda_bin or find_wanda()
     if wanda is None:
+        url = get_wanda_download_url()
         raise FileNotFoundError(
-            "Could not find 'wanda'. Set WANDA_BIN or ensure 'wanda' is on PATH."
+            "Could not find 'wanda'. Set WANDA_BIN or ensure 'wanda' is on PATH.\n"
+            f"Download from https://github.com/ray-project/rayci/releases ({WANDA_VERSION})\n"
+            f"\n"
+            f"Example:\n"
+            f"  mkdir -p ~/.local/bin\n"
+            f"  curl -fsSL -o ~/.local/bin/wanda {url}\n"
+            f"  chmod +x ~/.local/bin/wanda\n"
+            f"  wanda --version"
         )
     if not wanda.exists():
         raise FileNotFoundError(f"wanda binary does not exist: {wanda}")
