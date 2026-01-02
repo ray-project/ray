@@ -13,7 +13,6 @@ WHEEL_DIR := $(ROOT)/.whl
 # Defaults (overridable via vars or positionals)
 PY ?= 3.10
 TARGET ?= ray              # ray|cpp|all
-DRY_RUN ?=                 # set to any value for dry-run
 
 PY_VERS ?= 3.11 3.12
 
@@ -60,7 +59,7 @@ wheel:
 	  if [ $$# -gt 2 ]; then echo "Error: too many args. Usage: make wheel <3.x> [ray|cpp|all]"; exit 1; fi; \
 	fi; \
 	echo "==> wheel: PY=$$py TARGET=$$target"; \
-	python3 $(BUILD_DIR)/build_wheel_local.py $$py $$target $(if $(DRY_RUN),--dry-run)
+	python3 $(BUILD_DIR)/build_wheel_local.py $$py $$target
 
 wheel-clean:
 	rm -rf $(WHEEL_DIR)/
