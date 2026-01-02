@@ -61,7 +61,7 @@ def quantile_huber_loss_per_sample(
     abs_td_error = torch.abs(td_error)
     huber_loss = torch.where(
         abs_td_error <= kappa,
-        0.5 * td_error ** 2,
+        0.5 * td_error**2,
         kappa * (abs_td_error - 0.5 * kappa),
     )
 
@@ -205,7 +205,8 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
             n_step = torch.full_like(batch[Columns.REWARDS], n_step)
 
         target_quantiles = (
-            rewards + (1.0 - terminateds) * (gamma ** n_step.unsqueeze(1)) * target_quantiles
+            rewards
+            + (1.0 - terminateds) * (gamma ** n_step.unsqueeze(1)) * target_quantiles
         ).detach()
 
         # Get importance sampling weights for prioritized replay

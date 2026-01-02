@@ -167,8 +167,10 @@ class TestTQC(unittest.TestCase):
             (25, 3, 2),
             (50, 2, 5),
         ]:
-            print(f"Testing n_quantiles={n_quantiles}, n_critics={n_critics}, "
-                  f"top_drop={top_drop}")
+            print(
+                f"Testing n_quantiles={n_quantiles}, n_critics={n_critics}, "
+                f"top_drop={top_drop}"
+            )
 
             config = (
                 tqc.TQCConfig()

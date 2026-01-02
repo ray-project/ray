@@ -92,13 +92,9 @@ class TQCConfig(SACConfig):
 
         # Validate TQC-specific parameters
         if self.n_quantiles < 1:
-            raise ValueError(
-                f"`n_quantiles` must be >= 1, got {self.n_quantiles}"
-            )
+            raise ValueError(f"`n_quantiles` must be >= 1, got {self.n_quantiles}")
         if self.n_critics < 1:
-            raise ValueError(
-                f"`n_critics` must be >= 1, got {self.n_critics}"
-            )
+            raise ValueError(f"`n_critics` must be >= 1, got {self.n_critics}")
 
         # Ensure we don't drop more quantiles than we have
         total_quantiles = self.n_quantiles * self.n_critics

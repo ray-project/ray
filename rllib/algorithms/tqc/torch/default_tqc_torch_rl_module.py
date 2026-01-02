@@ -16,7 +16,9 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class DefaultTQCTorchRLModule(TorchRLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
+class DefaultTQCTorchRLModule(
+    TorchRLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI
+):
     """PyTorch implementation of the TQC RLModule.
 
     TQC uses multiple quantile critics, each outputting n_quantiles values.
@@ -160,7 +162,9 @@ class DefaultTQCTorchRLModule(TorchRLModule, InferenceOnlyAPI, TargetNetworkAPI,
         # For next state Q-values (target computation)
         if Columns.NEXT_OBS in batch:
             # Get action distribution for next observations
-            pi_encoder_out_next = self.pi_encoder({Columns.OBS: batch[Columns.NEXT_OBS]})
+            pi_encoder_out_next = self.pi_encoder(
+                {Columns.OBS: batch[Columns.NEXT_OBS]}
+            )
             pi_out_next = self.pi(pi_encoder_out_next[ENCODER_OUT])
 
             # Sample actions for next state
