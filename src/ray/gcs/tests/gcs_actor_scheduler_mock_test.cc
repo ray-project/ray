@@ -64,6 +64,7 @@ class GcsActorSchedulerMockTest : public Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
+        fake_resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
     local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
     cluster_lease_manager = std::make_unique<ClusterLeaseManager>(
@@ -107,6 +108,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::unique_ptr<rpc::RayletClientPool> client_pool;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;

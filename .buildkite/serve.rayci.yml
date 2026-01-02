@@ -1,7 +1,6 @@
 group: serve tests
 depends_on:
   - forge
-  - oss-ci-base_build
   - oss-ci-base_build-multipy
   - ray-core-build
   - ray-dashboard-build
@@ -27,6 +26,7 @@ steps:
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_test-multipy
     matrix:
       setup:
         python: ["3.10"]
@@ -126,7 +126,7 @@ steps:
         --build-name servebuild-py3.10
         --python-version 3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - servebuild-multipy
       - forge
 
@@ -201,7 +201,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --only-tags ha_integration --python-version 3.10 --build-name servebuild-py3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - servebuild-multipy

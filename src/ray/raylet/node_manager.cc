@@ -25,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -43,6 +44,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
@@ -51,10 +53,10 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
+#include "ray/util/port_persistence.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -181,7 +183,8 @@ NodeManager::NodeManager(
     std::atomic_bool &shutting_down,
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
-    local_stream_socket socket)
+    local_stream_socket socket,
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -210,6 +213,7 @@ NodeManager::NodeManager(
                                                std::move(fn),
                                                std::chrono::milliseconds(delay_ms)));
                     }),
+      runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
@@ -220,6 +224,8 @@ NodeManager::NodeManager(
           RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
+      memory_manager_worker_eviction_total_count_(
+          memory_manager_worker_eviction_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
@@ -267,10 +273,14 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
+  std::tie(metrics_agent_port_, metrics_export_port_, dashboard_agent_listen_port_) =
+      WaitForDashboardAgentPorts(self_node_id, config);
+  runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(self_node_id, config);
+
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
-      config.runtime_env_agent_port, /*delay_executor=*/
+      runtime_env_agent_port_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
@@ -3123,17 +3133,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
             // TODO(sang): Add the job entrypoint to the name.
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
@@ -3306,6 +3316,30 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
+std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  int metrics_agent_port = config.metrics_agent_port;
+  if (metrics_agent_port == 0) {
+    RAY_ASSIGN_OR_CHECK_SET(
+        metrics_agent_port,
+        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsAgentPortName));
+  }
+  int metrics_export_port = config.metrics_export_port;
+  if (metrics_export_port == 0) {
+    RAY_ASSIGN_OR_CHECK_SET(
+        metrics_export_port,
+        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsExportPortName));
+  }
+  int dashboard_agent_listen_port = config.dashboard_agent_listen_port;
+  if (dashboard_agent_listen_port == 0) {
+    RAY_ASSIGN_OR_CHECK_SET(
+        dashboard_agent_listen_port,
+        WaitForPersistedPort(
+            config.session_dir, self_node_id, kDashboardAgentListenPortName));
+  }
+  return {metrics_agent_port, metrics_export_port, dashboard_agent_listen_port};
+}
+
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
   auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
@@ -3339,6 +3373,17 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
+}
+
+int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                            const NodeManagerConfig &config) {
+  if (config.runtime_env_agent_port != 0) {
+    return config.runtime_env_agent_port;
+  }
+  RAY_ASSIGN_OR_CHECK_SET(
+      int port,
+      WaitForPersistedPort(config.session_dir, self_node_id, kRuntimeEnvAgentPortName));
+  return port;
 }
 
 void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
