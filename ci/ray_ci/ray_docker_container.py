@@ -48,7 +48,10 @@ class RayDockerContainer(DockerContainer):
         wheel_name = (
             f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_{self.architecture}.whl"
         )
-        constraints_file = "requirements_compiled.txt"
+        if self.python_version == "3.13":
+            constraints_file = "requirements_compiled_py313.txt"
+        else:
+            constraints_file = "requirements_compiled.txt"
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{image_repo}:{tag}"
         pip_freeze = f"{self.image_type}:{tag}_pip-freeze.txt"
