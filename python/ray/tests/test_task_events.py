@@ -418,7 +418,6 @@ def test_is_debugger_paused(shutdown_only):
 
     def verify(num_paused):
         tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
-        print(len(tasks), num_paused, list_tasks())
         return len(tasks) == num_paused
 
     f_task = f.remote()  # noqa
