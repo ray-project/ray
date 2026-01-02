@@ -114,6 +114,7 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
             prepare_image_stage=PrepareImageStageConfig(enabled=True),
         )
 
+
 def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
