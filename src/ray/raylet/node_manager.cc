@@ -2952,9 +2952,12 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
 void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
                                      rpc::GetAgentPIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  reply->mutable_agent_pids()->insert({"dashboard", dashboard_agent_manager_->GetPid()});
-  reply->mutable_agent_pids()->insert(
-      {"runtime_env", runtime_env_agent_manager_->GetPid()});
+  if (dashboard_agent_manager_) {
+    reply->set_dashboard_agent_pid(dashboard_agent_manager_->GetPid());
+  }
+  if (runtime_env_agent_manager_) {
+    reply->set_runtime_env_agent_pid(runtime_env_agent_manager_->GetPid());
+  }
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 

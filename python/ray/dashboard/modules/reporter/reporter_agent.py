@@ -474,9 +474,11 @@ class ReporterAgent(
             dashboard_agent.session_dir,
             self._dashboard_agent.node_id,
             METRICS_EXPORT_PORT_NAME,
-            dashboard_agent.metrics_export_port
-            if not self._metrics_collection_disabled
-            else -1,
+            (
+                dashboard_agent.metrics_export_port
+                if not self._metrics_collection_disabled
+                else -1
+            ),
         )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
@@ -960,8 +962,9 @@ class ReporterAgent(
     async def _async_get_workers_and_agents(
         self, gpus: Optional[List[GpuUtilizationInfo]] = None
     ):
-        workers = await self._async_get_worker_processes()
-        agents = await self._async_get_agent_processes()
+        workers, agents = await asyncio.gather(
+            self._async_get_worker_processes(), self._async_get_agent_processes()
+        )
         workers.update(agents)
         if not workers:
             return []

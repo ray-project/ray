@@ -409,8 +409,9 @@ message GetWorkerPIDsReply {
 message GetAgentPIDsRequest {}
 
 message GetAgentPIDsReply {
-  // A mapping from agent type to its process ID (PID).
-  map<string, int32> agent_pids = 1;
+  // All agent pids
+  optional int32 dashboard_agent_pid = 1;
+  optional int32 runtime_env_agent_pid = 2;
 }
 
 message KillLocalActorRequest {

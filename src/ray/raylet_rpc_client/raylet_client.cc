@@ -503,8 +503,11 @@ void RayletClient::GetAgentPIDs(
                                     rpc::GetAgentPIDsReply &&reply) {
     if (status.ok()) {
       std::vector<int32_t> agents;
-      for (const auto &agent_pid : reply.agent_pids()) {
-        agents.push_back(agent_pid.second);
+      if (reply.has_dashboard_agent_pid()) {
+        agents.push_back(reply.dashboard_agent_pid());
+      }
+      if (reply.has_runtime_env_agent_pid()) {
+        agents.push_back(reply.runtime_env_agent_pid());
       }
       callback(status, agents);
     } else {
