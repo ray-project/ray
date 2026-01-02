@@ -102,7 +102,7 @@ def build_wheels(
         cpp_wheel.build()
 
     # Extract
-    extract_wheels(python_version, target, out_dir, dry_run)
+    extract_wheels(python_version, target, out_dir, dry_run, arch_suffix)
 
 
 def extract_wheels(
@@ -110,13 +110,13 @@ def extract_wheels(
     target: str = "ray",
     out_dir: Optional[Path] = None,
     dry_run: bool = False,
+    arch_suffix: str = "",
 ) -> None:
     """Extract wheels from built images."""
     if out_dir is None:
         out_dir = get_repo_root() / ".whl"
-
     # Create minimal context just for image_name() calls
-    ctx = BuildContext(env={"PYTHON_VERSION": python_version, "ARCH_SUFFIX": ""})
+    ctx = BuildContext(env={"PYTHON_VERSION": python_version, "ARCH_SUFFIX": arch_suffix})
 
     if target in ("ray", "all"):
         image = RayWheel(ctx).image_name()
