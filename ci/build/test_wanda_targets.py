@@ -12,8 +12,11 @@ from wanda_targets import (
     TARGETS,
     BuildContext,
     RayCore,
+    RayCppCore,
+    RayCppWheel,
     RayDashboard,
     RayJava,
+    RayWheel,
     build_env,
     create_context,
     detect_target_platform,
@@ -174,6 +177,71 @@ class TestRayJava:
     def test_build(self, ctx):
         RayJava(ctx).build()
         assert any("ray-java.wanda.yaml" in str(c) for c in ctx._commands)
+
+
+class TestRayWheel:
+    def test_spec(self):
+        assert "ray-wheel.wanda.yaml" in RayWheel.SPEC
+
+    def test_deps(self):
+        assert RayCore in RayWheel.DEPS
+        assert RayDashboard in RayWheel.DEPS
+        assert RayJava in RayWheel.DEPS
+
+    def test_build_includes_deps(self, ctx):
+        RayWheel(ctx).build()
+        wanda_calls = [c for c in ctx._commands if "wanda" in str(c[0])]
+        # Should build: ray-core, ray-dashboard, ray-java, ray-wheel
+        assert len(wanda_calls) == 4
+        assert any("ray-core" in str(c) for c in wanda_calls)
+        assert any("ray-wheel" in str(c) for c in wanda_calls)
+
+    def test_remote_image(self, ctx):
+        name = RayWheel(ctx).remote_image
+        assert IMAGE_PREFIX in name
+        assert "ray-wheel-py3.11" in name
+
+
+class TestRayCppCore:
+    def test_spec(self):
+        assert "ray-cpp-core.wanda.yaml" in RayCppCore.SPEC
+
+    def test_no_deps(self):
+        # RayCppCore only depends on manylinux base, not other ray images
+        assert RayCppCore.DEPS == ()
+
+    def test_build(self, ctx):
+        RayCppCore(ctx).build()
+        wanda_calls = [c for c in ctx._commands if "wanda" in str(c[0])]
+        # Should only build ray-cpp-core (no deps)
+        assert len(wanda_calls) == 1
+        assert any("ray-cpp-core.wanda.yaml" in str(c) for c in ctx._commands)
+
+
+class TestRayCppWheel:
+    def test_spec(self):
+        assert "ray-cpp-wheel.wanda.yaml" in RayCppWheel.SPEC
+
+    def test_deps(self):
+        assert RayCore in RayCppWheel.DEPS
+        assert RayCppCore in RayCppWheel.DEPS
+        assert RayJava in RayCppWheel.DEPS
+        assert RayDashboard in RayCppWheel.DEPS
+
+    def test_build_includes_all_deps(self, ctx):
+        RayCppWheel(ctx).build()
+        wanda_calls = [c for c in ctx._commands if "wanda" in str(c[0])]
+        # Should build: ray-core, ray-dashboard, ray-java, ray-cpp-core, ray-cpp-wheel
+        assert len(wanda_calls) == 5
+        assert any("ray-core" in str(c) for c in wanda_calls)
+        assert any("ray-dashboard" in str(c) for c in wanda_calls)
+        assert any("ray-java" in str(c) for c in wanda_calls)
+        assert any("ray-cpp-core" in str(c) for c in wanda_calls)
+        assert any("ray-cpp-wheel" in str(c) for c in wanda_calls)
+
+    def test_remote_image(self, ctx):
+        name = RayCppWheel(ctx).remote_image
+        assert "ray-cpp-wheel-py3.11" in name
 
 
 class TestExpandEnvVars:
@@ -475,15 +543,20 @@ class TestCreateContext:
 
 
 class TestDependencyDeduplication:
-    def test_target_built_once(self, ctx):
-        """Building the same target twice should only build it once."""
-        RayCore(ctx).build()
-        RayCore(ctx).build()
+    def test_shared_deps_built_once(self, ctx):
+        """When building both RayWheel and RayCppWheel, shared deps are built once."""
+        RayWheel(ctx).build()
+        RayCppWheel(ctx).build()
 
         wanda_calls = [c for c in ctx._commands if "wanda" in str(c[0])]
-        # Should only build ray-core once, not twice
-        assert len(wanda_calls) == 1
-        assert "ray-core.wanda.yaml" in str(wanda_calls[0])
+        # Should build: ray-core, ray-dashboard, ray-java, ray-wheel, ray-cpp-core, ray-cpp-wheel
+        # Shared deps (core, dashboard, java) should NOT be duplicated
+        assert len(wanda_calls) == 6
+        # Each spec should appear exactly once
+        specs = [str(c[1]) for c in wanda_calls]
+        assert specs.count("ci/docker/ray-core.wanda.yaml") == 1
+        assert specs.count("ci/docker/ray-dashboard.wanda.yaml") == 1
+        assert specs.count("ci/docker/ray-java.wanda.yaml") == 1
 
 
 if __name__ == "__main__":
