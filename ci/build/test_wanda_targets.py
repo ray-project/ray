@@ -317,7 +317,7 @@ froms:
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text('name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"\n')
         assert parse_wanda_name(spec_file) == "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
-   
+
     def test_handles_hash_in_quoted_name(self, tmp_path):
         spec_file = tmp_path / "test.wanda.yaml"
         spec_file.write_text('name: "my-image-#1" # a comment\n')

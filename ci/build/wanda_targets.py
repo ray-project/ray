@@ -243,14 +243,13 @@ def get_repo_root() -> Path:
 
 
 def find_wanda() -> Optional[Path]:
-    """Find wanda binary (checks WANDA_BIN env, PATH, then default location)."""
+    """Find wanda binary (checks WANDA_BIN env var, then PATH)."""
     if wanda := os.environ.get("WANDA_BIN"):
         p = Path(wanda)
         return p if p.exists() else None
     if wanda_path := shutil.which("wanda"):
         return Path(wanda_path)
-    default = Path.home() / "rayci" / "bin" / "wanda"
-    return default if default.exists() else None
+    return None
 
 
 WANDA_VERSION = "v0.22.0"
