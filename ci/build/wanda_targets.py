@@ -1,5 +1,6 @@
 """
-Build targets for Ray Wanda builds for local development.
+Build targets for Wanda. Primarily used for managing dependency
+images in local development.
 """
 
 from __future__ import annotations
@@ -7,7 +8,6 @@ from __future__ import annotations
 import os
 import platform
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -19,6 +19,8 @@ from typing import Any, Callable, ClassVar, Dict, Optional, Sequence, Set, Type
 
 IMAGE_PREFIX = "cr.ray.io/rayproject"
 DEFAULT_MANYLINUX_VERSION = "251216.3835fc5"
+ENV_VAR_PATTERN = r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
+DEFAULT_PYTHON_VERSION = "3.10"
 
 
 # ---------------------------------------------------------------------------
@@ -41,10 +43,9 @@ def parse_wanda_name(spec_path: Path) -> str:
     with open(spec_path) as f:
         for line in f:
             line = line.strip()
-            # Skip comments and empty lines
             if not line or line.startswith("#"):
                 continue
-            # Look for name: field
+
             if line.startswith(NAME_FIELD):
                 value = line[len(NAME_FIELD) :].strip().split(" #")[0].strip()
                 # Remove surrounding quotes if present
@@ -62,10 +63,12 @@ def extract_env_var_names(template: str) -> Set[str]:
 
     Returns set of variable names referenced via $VAR or ${VAR} syntax.
     """
-    pattern = r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
-    matches = re.findall(pattern, template)
-    # Each match is a tuple (braced_name, unbraced_name), one will be empty
-    return {name for match in matches for name in match if name}
+    return {
+        name
+        for match in re.findall(ENV_VAR_PATTERN, template)
+        for name in match
+        if name
+    }
 
 
 def expand_env_vars(template: str, env: Dict[str, str]) -> str:
@@ -80,8 +83,7 @@ def expand_env_vars(template: str, env: Dict[str, str]) -> str:
         return env.get(var_name, "")
 
     # Match ${VAR} or $VAR (where VAR is alphanumeric + underscore)
-    pattern = r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
-    return re.sub(pattern, replace, template)
+    return re.sub(ENV_VAR_PATTERN, replace, template)
 
 
 def get_wanda_image_name(spec_path: Path, env: Dict[str, str]) -> str:
@@ -105,7 +107,6 @@ class BuildContext:
 
     wanda_bin: Path
     repo_root: Path
-    dry_run: bool = False
     env: Dict[str, str] = field(default_factory=dict, repr=False)
     _run_cmd: Optional[Callable[..., subprocess.CompletedProcess[str]]] = field(
         default=None, repr=False
@@ -114,7 +115,7 @@ class BuildContext:
 
     @property
     def python_version(self) -> str:
-        return self.env.get("PYTHON_VERSION", "3.10")
+        return self.env.get("PYTHON_VERSION", DEFAULT_PYTHON_VERSION)
 
     @property
     def arch_suffix(self) -> str:
@@ -123,16 +124,12 @@ class BuildContext:
     def run(
         self, cmd: Sequence[str], **kwargs: Any
     ) -> subprocess.CompletedProcess[str]:
-        """Run a command from repo root, respecting dry_run mode."""
+        """Run a command from repo root."""
         kwargs.setdefault("cwd", self.repo_root)
         kwargs.setdefault("env", self.env)
         kwargs.setdefault("text", True)
 
         cmd_list = list(cmd)
-
-        if self.dry_run:
-            print(f"[dry-run] {shlex.join(cmd_list)}", file=sys.stderr)
-            return subprocess.CompletedProcess(cmd_list, 0, stdout="", stderr="")
 
         if self._run_cmd:
             return self._run_cmd(cmd_list, **kwargs)
@@ -296,15 +293,14 @@ def normalize_arch(arch: str = "") -> str:
     return a
 
 
-def detect_platform() -> tuple[str, Optional[str]]:
-    """Detect platform. Returns (host_os, target_platform for Docker/Wanda)."""
-    host_os = platform.system().lower()
-    if host_os != "darwin":
-        return host_os, None
+def detect_target_platform() -> Optional[str]:
+    """Detect Docker/Wanda target platform (only needed on macOS)."""
+    if platform.system().lower() != "darwin":
+        return None
 
     arch = platform.machine().lower()
     default_target = "linux/arm64" if arch == "arm64" else "linux/amd64"
-    return host_os, os.environ.get("WANDA_PLATFORM", default_target)
+    return os.environ.get("WANDA_PLATFORM", default_target)
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +323,7 @@ def get_git_commit() -> str:
 
 
 def build_env(
-    python_version: str = "3.10",
+    python_version: str = DEFAULT_PYTHON_VERSION,
     manylinux_version: str = "",
     arch_suffix: str = "",
     hosttype: str = "",
@@ -359,7 +355,7 @@ def build_env(
     env.setdefault("BUILDKITE_CACHE_READONLY", "true")
 
     # Platform variables (for cross-platform builds on macOS)
-    _, target_platform = detect_platform()
+    target_platform = detect_target_platform()
     if target_platform:
         env.setdefault("DOCKER_DEFAULT_PLATFORM", target_platform)
         env.setdefault("WANDA_PLATFORM", target_platform)
@@ -373,11 +369,10 @@ def build_env(
 
 
 def create_context(
-    python_version: str = "3.10",
+    python_version: str = DEFAULT_PYTHON_VERSION,
     manylinux_version: str = "",
     arch_suffix: str = "",
     hosttype: str = "",
-    dry_run: bool = False,
     repo_root: Optional[Path] = None,
     wanda_bin: Optional[Path] = None,
 ) -> BuildContext:
@@ -412,6 +407,5 @@ def create_context(
     return BuildContext(
         wanda_bin=wanda,
         repo_root=repo_root,
-        dry_run=dry_run,
         env=env,
     )

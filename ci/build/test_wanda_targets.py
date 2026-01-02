@@ -19,7 +19,7 @@ from wanda_targets import (
     RayWheel,
     build_env,
     create_context,
-    detect_platform,
+    detect_target_platform,
     expand_env_vars,
     extract_env_var_names,
     find_wanda,
@@ -73,15 +73,6 @@ def ctx_with_arch(tmp_path, repo_root):
 
 
 class TestBuildContext:
-    def test_dry_run(self, capsys, tmp_path):
-        wanda = tmp_path / "wanda"
-        wanda.touch()
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        ctx = BuildContext(wanda_bin=wanda, repo_root=repo, dry_run=True)
-        ctx.run(["echo", "test"])
-        assert "[dry-run]" in capsys.readouterr().err
-
     def test_injected_runner(self, ctx):
         ctx.run(["test", "cmd"])
         assert ["test", "cmd"] in ctx._commands
@@ -426,33 +417,28 @@ class TestNormalizeArch:
             assert normalize_arch("") == "x86_64"
 
 
-class TestDetectPlatform:
-    def test_linux(self):
+class TestDetectTargetPlatform:
+    def test_linux_returns_none(self):
         with mock.patch("platform.system", return_value="Linux"):
-            host, target = detect_platform()
-            assert host == "linux"
-            assert target is None
+            assert detect_target_platform() is None
 
     def test_darwin_arm64(self):
         with mock.patch("platform.system", return_value="Darwin"):
             with mock.patch("platform.machine", return_value="arm64"):
                 with mock.patch.dict(os.environ, {}, clear=True):
-                    _, target = detect_platform()
-                    assert target == "linux/arm64"
+                    assert detect_target_platform() == "linux/arm64"
 
     def test_darwin_x86(self):
         with mock.patch("platform.system", return_value="Darwin"):
             with mock.patch("platform.machine", return_value="x86_64"):
                 with mock.patch.dict(os.environ, {}, clear=True):
-                    _, target = detect_platform()
-                    assert target == "linux/amd64"
+                    assert detect_target_platform() == "linux/amd64"
 
     def test_env_override(self):
         with mock.patch("platform.system", return_value="Darwin"):
             with mock.patch("platform.machine", return_value="arm64"):
                 with mock.patch.dict(os.environ, {"WANDA_PLATFORM": "linux/amd64"}):
-                    _, target = detect_platform()
-                    assert target == "linux/amd64"
+                    assert detect_target_platform() == "linux/amd64"
 
 
 class TestFindWanda:
@@ -533,14 +519,12 @@ class TestCreateContext:
             python_version="3.12",
             repo_root=repo,
             wanda_bin=wanda,
-            dry_run=True,
         )
 
         assert ctx.python_version == "3.12"  # via property
         assert ctx.env["PYTHON_VERSION"] == "3.12"
         assert ctx.repo_root == repo
         assert ctx.wanda_bin == wanda
-        assert ctx.dry_run is True
 
     def test_env_is_isolated(self, tmp_path):
         wanda = tmp_path / "wanda"
