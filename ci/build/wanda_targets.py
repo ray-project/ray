@@ -45,7 +45,7 @@ def parse_wanda_name(spec_path: Path) -> str:
                 continue
 
             if line.startswith(NAME_FIELD):
-                value = line[len(NAME_FIELD) :].strip().split(" #")[0].strip()
+                value = line[len(NAME_FIELD) :].strip().rsplit(" #", 1)[0].strip()
                 # Remove surrounding quotes if present
                 if (value.startswith('"') and value.endswith('"')) or (
                     value.startswith("'") and value.endswith("'")
