@@ -230,7 +230,7 @@ class RayCppCore(WandaDockerTarget):
 
 class RayCppWheel(WandaDockerTarget):
     SPEC = "ci/docker/ray-cpp-wheel.wanda.yaml"
-    DEPS = (RayCore, RayCppCore, RayJava, RayDashboard)
+    DEPS = (RayCore, RayCppCore, RayDashboard, RayJava)
 
 
 TARGETS: Dict[str, Type[BuildTarget]] = {

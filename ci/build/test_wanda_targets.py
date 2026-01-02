@@ -194,6 +194,8 @@ class TestRayWheel:
         # Should build: ray-core, ray-dashboard, ray-java, ray-wheel
         assert len(wanda_calls) == 4
         assert any("ray-core" in str(c) for c in wanda_calls)
+        assert any("ray-dashboard" in str(c) for c in wanda_calls)
+        assert any("ray-java" in str(c) for c in wanda_calls)
         assert any("ray-wheel" in str(c) for c in wanda_calls)
 
     def test_remote_image(self, ctx):
@@ -241,6 +243,7 @@ class TestRayCppWheel:
 
     def test_remote_image(self, ctx):
         name = RayCppWheel(ctx).remote_image
+        assert IMAGE_PREFIX in name
         assert "ray-cpp-wheel-py3.11" in name
 
 
