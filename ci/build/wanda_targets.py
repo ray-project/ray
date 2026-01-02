@@ -281,8 +281,11 @@ def get_wanda_download_url() -> str:
     arch = platform.machine().lower()
 
     if system == "darwin":
-        # macOS - wanda runs in Docker so use linux binary matching host arch
-        suffix = "linux-arm64" if arch == "arm64" else "linux-amd64"
+        if arch != "arm64":
+            raise RuntimeError(
+                f"Unsupported platform: darwin/{arch} (only arm64 is supported)"
+            )
+        suffix = "darwin-arm64"
     elif system == "windows":
         suffix = "windows-amd64"
     else:
