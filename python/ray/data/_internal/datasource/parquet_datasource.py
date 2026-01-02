@@ -164,7 +164,7 @@ def check_for_legacy_tensor_type(schema):
                 f"to read data written with an older version of Ray. Reading data "
                 f"written with older versions of Ray might expose you to arbitrary code "
                 f"execution. To try reading the data anyway, "
-                f"set `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
+                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
