@@ -130,6 +130,7 @@ LLM_CONFIG = LLMConfig(
         "enable_auto_tool_choice": True,
         "tool_call_parser": "hermes",
     },
+    accelerator_type="L4",
 )
 
 # ============================================================================

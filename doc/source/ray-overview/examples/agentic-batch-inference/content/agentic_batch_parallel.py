@@ -40,6 +40,7 @@ plan_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
 
 weather_llm_config = LLMConfig(
@@ -57,6 +58,7 @@ weather_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
 
 science_llm_config = LLMConfig(
@@ -74,13 +76,8 @@ science_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
-
-LLM_CONFIGS = {
-    "plan": plan_llm_config,
-    "weather": weather_llm_config,
-    "science": science_llm_config,
-}
 
 # ========== SYSTEM PROMPTS ==========
 PLAN_AGENT_SYSTEM_PROMPT = """Break questions into 2 short task phrases (weather, science). Output only task descriptions, not explanations. Synthesize briefly."""

@@ -43,6 +43,7 @@ science_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
 
 weather_llm_config = LLMConfig(
@@ -60,6 +61,7 @@ weather_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
 
 unknown_llm_config = LLMConfig(
@@ -77,13 +79,8 @@ unknown_llm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.8,
     ),
+    accelerator_type="L4",
 )
-
-LLM_CONFIGS = {
-    "science": science_llm_config,
-    "weather": weather_llm_config,
-    "unknown": unknown_llm_config,
-}
 
 MODEL_IDS = {
     RouteCategory.weather: weather_llm_config.model_id,
