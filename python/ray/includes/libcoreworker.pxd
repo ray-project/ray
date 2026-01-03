@@ -432,7 +432,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         int runtime_env_hash
-        int startup_token
+        CWorkerID worker_id
         CClusterID cluster_id
         c_string session_name
         c_string entrypoint
