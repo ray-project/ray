@@ -471,7 +471,6 @@ def run_release_test_anyscale(
     result: Result,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
