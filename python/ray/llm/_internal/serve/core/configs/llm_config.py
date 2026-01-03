@@ -208,6 +208,18 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
+    server_cls: Optional[Union[str, Any]] = Field(
+        default=None,
+        description="The serve class to use.(e.g., LLMServer, SGLangServer or other Server backends).",
+    )
+
+    @field_validator("server_cls")
+    @classmethod
+    def validate_server_cls(cls, value):
+        if isinstance(value, str):
+            return load_class(value)
+        return value
+
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "

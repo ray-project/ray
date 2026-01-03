@@ -62,7 +62,7 @@ doc/tutorial.rst: lint doc
 
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements.txt: lint release_tests
-release/requirements_buildkite.txt: lint tools
+release/requirements_py310.txt: lint tools
 release/release_tests.yaml: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools

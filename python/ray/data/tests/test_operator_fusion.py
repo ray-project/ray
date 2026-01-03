@@ -745,9 +745,10 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
 @pytest.mark.parametrize(
     "order,target_num_rows,batch_size,should_fuse",
     [
-        # map_batches -> streaming_repartition: fuse when batch_size == target_num_rows
+        # map_batches -> streaming_repartition: fuse when batch_size is a multiple of target_num_rows
         ("map_then_sr", 20, 20, True),
         ("map_then_sr", 20, 10, False),
+        ("map_then_sr", 20, 40, True),
         ("map_then_sr", 20, None, False),
         # streaming_repartition -> map_batches: not fused
         ("sr_then_map", 20, 20, False),

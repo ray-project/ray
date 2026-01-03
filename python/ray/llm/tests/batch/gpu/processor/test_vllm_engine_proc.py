@@ -100,6 +100,34 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     }
 
 
+def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_256m):
+    config = vLLMEngineProcessorConfig(
+        model_source=model_smolvlm_256m,
+        engine_kwargs=dict(
+            max_model_len=8192,
+        ),
+        accelerator_type=gpu_type,
+        concurrency=1,
+        batch_size=16,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            model_config_kwargs=dict(
+                allowed_local_media_path="/tmp",
+            ),
+        ),
+    )
+    processor = ProcessorBuilder.build(config)
+
+    assert "PrepareMultimodalStage" in processor.list_stage_names()
+    stage = processor.get_stage_by_name("PrepareMultimodalStage")
+    fn_kwargs = stage.fn_constructor_kwargs
+
+    assert "model_config_kwargs" in fn_kwargs
+    model_config_kwargs = fn_kwargs["model_config_kwargs"]
+    assert model_config_kwargs["allowed_local_media_path"] == "/tmp"
+    assert model_config_kwargs["model"] == model_smolvlm_256m
+
+
 @pytest.mark.parametrize("backend", ["mp", "ray"])
 def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
