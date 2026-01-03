@@ -126,6 +126,8 @@ if __name__ == "__main__":
     print("Training completed. Restoring new Algorithm for action inference.")
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
+    if not checkpoint:
+        raise ValueError("No checkpoint found in results!")
     # Create new Algorithm from the last checkpoint.
     algo = Algorithm.from_checkpoint(checkpoint)
 

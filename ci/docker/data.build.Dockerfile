@@ -30,7 +30,11 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
 fi
 
 if [[ "${DOCTEST-}" == "1" ]]; then
-  pip install tensorflow-datasets==4.9.9 protobuf==5.29.5
+  # Install tensorflow-datasets first, then upgrade protobuf for transformers compatibility.
+  # transformers requires protobuf 5.x (runtime_version), but tensorflow-datasets resolver
+  # conflicts with it. Installing sequentially with --upgrade bypasses the resolver conflict.
+  pip install tensorflow-datasets==4.9.9
+  pip install --upgrade protobuf==5.29.5
 fi
 
 # Install MongoDB

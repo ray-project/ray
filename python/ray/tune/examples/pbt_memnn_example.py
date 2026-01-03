@@ -11,6 +11,10 @@ import re
 import sys
 import tarfile
 
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# TODO(elliot-barn): Remove this once Tune examples support Keras 3
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import numpy as np
 from filelock import FileLock
 

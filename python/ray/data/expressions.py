@@ -713,9 +713,12 @@ class _CallableClassSpec:
         Returns:
             A hashable tuple that uniquely identifies this UDF configuration.
         """
+        # Use (module, qualname) as a stable class identifier instead of id(),
+        # since id() changes after serialization/deserialization across processes.
+        cls_key = (self.cls.__module__, self.cls.__qualname__)
         try:
             key = (
-                id(self.cls),
+                cls_key,
                 self.args,
                 tuple(sorted(self.kwargs.items())),
             )
@@ -724,7 +727,7 @@ class _CallableClassSpec:
             return key
         except TypeError:
             # Fallback for unhashable args/kwargs - use repr for comparison
-            return (id(self.cls), repr(self.args), repr(self.kwargs))
+            return (cls_key, repr(self.args), repr(self.kwargs))
 
 
 class _CallableClassUDF:
