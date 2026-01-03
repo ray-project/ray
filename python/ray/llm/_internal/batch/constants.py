@@ -35,6 +35,5 @@ class SGLangTaskType(TaskType):
     GENERATE = "generate"
 
 
-
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
 TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]
