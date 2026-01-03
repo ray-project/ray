@@ -671,6 +671,55 @@ def test_with_column_logarithmic_operations(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").sin(), math.sin, id="sin"),
+        pytest.param(lambda: col("value").cos(), math.cos, id="cos"),
+        pytest.param(lambda: col("value").tan(), math.tan, id="tan"),
+        pytest.param(lambda: col("value").asin(), math.asin, id="asin"),
+        pytest.param(lambda: col("value").acos(), math.acos, id="acos"),
+        pytest.param(lambda: col("value").atan(), math.atan, id="atan"),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param(
+            [0.0, math.pi / 6, math.pi / 4, math.pi / 3, math.pi / 2],
+            id="trigonometric_angles",
+        ),
+        pytest.param([0, 1, 2, 3], id="integer_angles"),
+    ],
+)
+def test_with_column_trigonometric_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+    input_values,
+):
+    """Test trigonometric expressions (sin, cos, tan, asin, acos, atan)."""
+    values = input_values
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+
+    # For inverse trigonometric functions, we need to handle domain restrictions
+    # asin and acos require input in [-1, 1]
+    if expected_fn in (math.asin, math.acos):
+        # Use values in the valid domain for inverse trig functions
+        values = [-1.0, -0.5, 0.0, 0.5, 1.0]
+        ds = ray.data.from_items([{"value": v} for v in values])
+
+    expected_values = [expected_fn(v) for v in values]
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "test_data, expr_factory, expected_results, test_id",
     [
         # Test negate
