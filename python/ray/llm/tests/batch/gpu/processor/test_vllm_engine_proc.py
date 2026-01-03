@@ -52,8 +52,9 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "engine_kwargs": {
             "max_model_len": 8192,
             "distributed_executor_backend": "mp",
+            "task": vLLMTaskType.GENERATE,
         },
-        "task_type": "generate",
+        "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 111,
         "dynamic_lora_loading_path": None,
         "max_concurrent_batches": 8,

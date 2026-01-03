@@ -543,6 +543,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         self.should_continue_on_error = should_continue_on_error
 
         # Setup vLLM engine kwargs.
+        self.task_type = task_type
         self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
