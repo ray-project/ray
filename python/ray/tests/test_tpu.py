@@ -367,5 +367,37 @@ def test_get_tpu_version_invalid(invalid_type):
         ray.util.tpu.get_tpu_version_from_type(invalid_type)
 
 
+@pytest.mark.parametrize(
+    "topology, accelerator_type, num_workers, resources_per_worker, expected_slices",
+    [
+        # "2x2x1" has 4 chips, for 4 workers with TPU: 1 each we expect num_slices=1.
+        ("2x2x1", "TPU-V4", 4, {"TPU": 1}, 1),
+        # "2x2x1" has 4 chips, for 8 workers with TPU: 1 each we expect num_slices=2.
+        ("2x2x1", "v4", 8, {"TPU": 1}, 2),
+        # "2x2x2" has 8 chips and 2 hosts, defaulting to 1 TPU worker per host
+        # and requesting 4 workers, we expect num_slices=2.
+        ("2x2x2", "TPU-V4", 4, None, 2),
+        # "2x2x4" has 16 chips and 4 hosts, defaulting to 1 TPU worker per host
+        # and requesting 4 workers, we expect num_slices=1.
+        ("2x2x4", "TPU-V4", 4, None, 1),
+        # 0 workers requested -> request 0 slices.
+        ("2x2x1", "v4", 0, {"TPU": 1}, 0),
+        # Invalid topology -> fallback to 1 slice.
+        ("", "v4", 4, {"TPU": 1}, 1),
+        ("2x2x1", "", 4, {"TPU": 1}, 1),
+    ],
+)
+def test_get_tpu_num_slices_for_workers(
+    topology, accelerator_type, num_workers, resources_per_worker, expected_slices
+):
+    num_slices = ray.util.tpu.get_tpu_num_slices_for_workers(
+        topology=topology,
+        accelerator_type=accelerator_type,
+        num_workers=num_workers,
+        resources_per_worker=resources_per_worker,
+    )
+    assert num_slices == expected_slices
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

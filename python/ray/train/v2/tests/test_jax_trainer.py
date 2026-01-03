@@ -408,48 +408,28 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
-def test_tpu_multi_slice_under_subscription(ray_tpu_multi_host, tmp_path):
+def test_tpu_multi_slice_uneven_workers(ray_tpu_multi_host, tmp_path):
     """
-    Tests that if the number of workers requested fits within a single slice,
-    ScalingConfig automatically sets num_slices=1, and we run without
-    multi-slice coordination variables.
+    Tests that ScalingConfig raises a ValueError if the requested num_workers
+    does not divide evenly across TPU slices of the requested topology.
     """
-    actor_name = "test_tpu_multi_slice_under_subscription"
-    verify_actor = VerificationActor.options(name=actor_name).remote()
-
-    trainer = JaxTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(
+    # Default resources (1 worker per host).
+    with pytest.raises(ValueError, match="must be a multiple of"):
+        ScalingConfig(
             use_tpu=True,
             accelerator_type="TPU-V4",
             topology="2x2x2",
-            resources_per_worker={
-                "TPU": 1
-            },  # 1 TPU per worker. Capacity is 8 per slice.
-            num_workers=4,
-        ),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-            callbacks=[CustomMetricsCallback(actor_name)],
-            worker_runtime_env={"env_vars": {"JAX_PLATFORMS": "cpu"}},
-        ),
-    )
-    result = trainer.fit()
-    assert result.error is None
-
-    reports = ray.get(verify_actor.get_reports.remote())
-
-    assert len(reports) == 4, f"Expected 4 workers, got {len(reports)}"
-
-    # All 4 workers should be on same slice.
-    slices_used = {r["slice_name"] for r in reports}
-    assert len(slices_used) == 1
-    assert list(slices_used)[0] in ["slice-A", "slice-B"]
-
-    # Running in single-slice mode.
-    for r in reports:
-        assert r.get("MEGASCALE_SLICE_ID") is None
-        assert r.get("MEGASCALE_NUM_SLICES") is None
+            num_workers=3,  # Expect a multiple of 2.
+        )
+    # Explicit resources (1 TPU chip per worker).
+    with pytest.raises(ValueError, match="must be a multiple of"):
+        ScalingConfig(
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x1",
+            resources_per_worker={"TPU": 1},
+            num_workers=6,  # Expect a multiple of 4.
+        )
 
 
 def test_scaling_config_validation():

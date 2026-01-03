@@ -117,8 +117,12 @@ class _JaxBackend(Backend):
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
 
+        if backend_config.use_tpu:
+            num_slices = worker_group.get_worker_group_context().num_slices
+        else:
+            num_slices = 1
+
         scaling_config = worker_group._train_run_context.scaling_config
-        num_slices = scaling_config.num_slices if backend_config.use_tpu else 1
 
         # Calculate the number of workers per slice for multi-slice env setup.
         if backend_config.use_tpu and num_slices > 1:

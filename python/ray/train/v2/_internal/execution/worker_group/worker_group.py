@@ -97,6 +97,7 @@ class WorkerGroupContext:
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
         label_selector: Optional label selectors to apply per-bundle for workers.
+        num_slices: The number of TPU slices (if using TPU). Defaults to 1.
     """
 
     run_attempt_id: str
@@ -105,6 +106,7 @@ class WorkerGroupContext:
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
     label_selector: Optional[List[Dict[str, str]]] = None
+    num_slices: int = 1
 
 
 class WorkerGroup(BaseWorkerGroup):
@@ -468,7 +470,7 @@ class WorkerGroup(BaseWorkerGroup):
         ):
             # TPU specific SlicePlacementGroup reservation.
             logger.info(
-                f"Using SlicePlacementGroup utility to reserve {scaling_config.num_slices} "
+                f"Using SlicePlacementGroup utility to reserve {worker_group_context.num_slices} "
                 f"slice(s) with topology '{scaling_config.topology}'..."
             )
 
@@ -479,7 +481,7 @@ class WorkerGroup(BaseWorkerGroup):
                 spg_handle = SlicePlacementGroup(
                     topology=scaling_config.topology,
                     accelerator_version=accelerator_version,
-                    num_slices=scaling_config.num_slices,
+                    num_slices=worker_group_context.num_slices,
                     resources_per_bundle=worker_group_context.resources_per_worker,
                     strategy=worker_group_context.placement_strategy,
                 )

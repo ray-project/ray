@@ -1,5 +1,4 @@
 import logging
-import math
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -93,11 +92,11 @@ class ScalingConfig(ScalingConfigV1):
         # Validate TPU resources when both topology and accelerator type are specified.
         if self.use_tpu and self.topology and self.accelerator_type:
             try:
-                tpu_num_workers, tpu_resources = get_tpu_worker_resources(
+                workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
                     resources_per_unit=self.resources_per_worker,
-                    num_slices=self.num_slices,
+                    num_slices=1,
                 )
             except Exception as e:
                 raise ValueError(
@@ -106,12 +105,12 @@ class ScalingConfig(ScalingConfigV1):
                     f"topology={self.topology}. Error: {e}"
                 )
 
-            if self.num_workers is not None and self.num_workers > tpu_num_workers:
+            if workers_per_slice > 0 and self.num_workers % workers_per_slice != 0:
                 raise ValueError(
-                    f"The configured `num_workers` ({self.num_workers}) exceeds the "
-                    f"maximum number of workers ({tpu_num_workers}) supported by the "
-                    f"specified TPU topology ({self.topology}) and accelerator type "
-                    f"({self.accelerator_type})."
+                    f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
                 )
 
             if self.resources_per_worker is None:
@@ -190,36 +189,6 @@ class ScalingConfig(ScalingConfigV1):
     def num_tpus_per_worker(self):
         """The number of TPUs to set per worker."""
         return self._resources_per_worker_not_none.get("TPU", 0)
-
-    @property
-    def num_slices(self) -> int:
-        if not self.use_tpu:
-            return 1
-
-        if self.num_workers is None or self.num_workers <= 1:
-            return 1
-
-        if not self.topology or not self.accelerator_type:
-            return 1
-
-        try:
-            # Calculate how many slices we need to fit the requested number of workers
-            # in a TPU slice of the specified topology.
-            workers_per_slice, _ = get_tpu_worker_resources(
-                topology=self.topology,
-                accelerator_type=self.accelerator_type,
-                resources_per_unit=self.resources_per_worker,
-                num_slices=1,
-            )
-
-            if workers_per_slice == 0:
-                return 1
-
-            return math.ceil(self.num_workers / workers_per_slice)
-        except Exception:
-            # Fallback to 1 if calculation fails; validation in will raise
-            # proper errors if configuration is invalid.
-            return 1
 
 
 @dataclass
