@@ -1,4 +1,5 @@
 import logging
+from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, Dict, TypeVar
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class BackendConfig:
+class BackendConfig(ABC):
     """Parent class for configurations of training backend."""
 
     @property
@@ -27,10 +28,18 @@ class BackendConfig:
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
 
+    @abstractmethod
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "framework": None,
-        }
+        """Serialize this backend config to a dict for runtime use."""
+        raise NotImplementedError
+
+
+@DeveloperAPI
+class DefaultBackendConfig(BackendConfig):
+    """Default no-op backend config used when none is provided."""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"framework": None}
 
 
 @DeveloperAPI

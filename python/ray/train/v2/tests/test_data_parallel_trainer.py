@@ -44,6 +44,9 @@ def test_backend_setup(tmp_path):
         def backend_cls(self):
             return ValidationBackend
 
+        def to_dict(self):
+            return {"framework": None}
+
     trainer = DataParallelTrainer(
         lambda: None,
         backend_config=ValidationBackendConfig(),
