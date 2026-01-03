@@ -113,12 +113,12 @@ class BigQueryDatasink(Datasink[None]):
                 if retry_cnt > self.max_retry_cnt:
                     logger.info(
                         f"Maximum ({self.max_retry_cnt}) retry count exceeded. Ray"
-                        + " will attempt to retry the block write via fault tolerance."
+                        " will attempt to retry the block write via fault tolerance."
                     )
                     raise RuntimeError(
                         f"Write failed due to {retry_cnt}"
-                        + " repeated API rate limit exceeded responses. Consider"
-                        + " specifiying the max_retry_cnt kwarg with a higher value."
+                        " repeated API rate limit exceeded responses. Consider"
+                        " specifying the max_retry_cnt kwarg with a higher value."
                     )
 
         _write_single_block = cached_remote_fn(_write_single_block)
