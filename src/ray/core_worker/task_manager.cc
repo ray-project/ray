@@ -1130,8 +1130,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                       const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
   bool will_retry = false;
-  int32_t num_retries_left = 0;
-  int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
   {
     absl::MutexLock lock(&mu_);
@@ -1142,12 +1140,12 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     RAY_CHECK(task_entry.IsPending())
         << "Tried to retry task that was not pending " << task_id;
     spec = task_entry.spec_;
-    num_retries_left = task_entry.num_retries_left_;
-    num_oom_retries_left = task_entry.num_oom_retries_left_;
+    auto &num_retries_left = task_entry.num_retries_left_;
+    auto &num_oom_retries_left = task_entry.num_oom_retries_left_;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
-        task_entry.num_oom_retries_left_--;
+        num_oom_retries_left--;
       } else if (num_oom_retries_left == -1) {
         will_retry = true;
       } else {
@@ -1169,7 +1167,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
           RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
                         << task_entry.GetNodeId() << ", not counting against retries";
         } else {
-          task_entry.num_retries_left_--;
+          num_retries_left--;
         }
       } else if (num_retries_left == -1) {
         will_retry = true;
@@ -1177,9 +1175,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
-    // Keep `num_retries_left` and `num_oom_retries_left` up to date
-    num_retries_left = task_entry.num_retries_left_;
-    num_oom_retries_left = task_entry.num_oom_retries_left_;
 
     if (will_retry) {
       // Record the old attempt status as FAILED.
@@ -1188,22 +1183,23 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
-      bool enable_output_error_log_if_still_retry =
-          RayConfig::instance().enable_output_error_log_if_still_retry();
-      if (enable_output_error_log_if_still_retry) {
-        std::string num_retries_left_str;
+      if (RayConfig::instance().enable_output_error_log_if_still_retry()) {
+        std::string error_message = "Task " + spec.FunctionDescriptor()->CallString();
         if (task_failed_due_to_oom) {
-          num_retries_left_str = num_oom_retries_left == -1
-                                     ? "infinite"
-                                     : std::to_string(num_oom_retries_left);
+          error_message.append(" failed due to oom. There are " +
+                               (num_oom_retries_left == -1
+                                    ? "infinite"
+                                    : std::to_string(num_oom_retries_left + 1)) +
+                               " oom retries remaining, ");
         } else {
-          num_retries_left_str =
-              num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+          error_message.append(" failed. There are " +
+                               (num_retries_left == -1
+                                    ? "infinite"
+                                    : std::to_string(num_retries_left + 1)) +
+                               " retries remaining, ");
         }
-        auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
-                             " failed. There are " + num_retries_left_str +
-                             " retries remaining, so the task will be retried. Error: " +
-                             error_info.error_message();
+        error_message.append("so the task will be retried. Error: " +
+                             error_info.error_message());
         Status push_error_status =
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
@@ -1220,15 +1216,15 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     /* include_task_info */ true,
                     task_entry.spec_.AttemptNumber() + 1);
     }
+    std::string num_retries_left_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
+                  << ", oom retries left: " << num_oom_retries_left
+                  << ", task failed due to oom: " << task_failed_due_to_oom;
   }
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  std::string num_retries_left_str =
-      num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
-                << ", oom retries left: " << num_oom_retries_left
-                << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
