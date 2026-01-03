@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+from ray.data._internal.progress.progress_bar import ProgressBar
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -41,7 +42,7 @@ class TqdmSubProgressBar(ProgressBar):
             self._bar.n = self._progress
 
 
-class TqdmExecutionProgressManager:
+class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using tqdm."""
 
     # If the name/description of the progress bar exceeds this length,

@@ -6,6 +6,7 @@ import math
 import random
 import threading
 import time
+import typing
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -69,6 +70,9 @@ from ray.data.context import (
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -396,9 +400,7 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
 
         return [self.shuffle_name, self.reduce_name]
 
-    def set_sub_progress_bar(self, name, pg):
-        # No type-hints due to circular imports. `name` should be a `str`
-        # and `pg` should be a `SubProgressBar`
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self.shuffle_name is not None and self.shuffle_name == name:
             self.shuffle_bar = pg
         elif self.reduce_name is not None and self.reduce_name == name:
@@ -998,12 +1000,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             gpu=0,
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
-        return self._is_finalized() and super().completed()
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
+        return self._is_finalized() and super().has_completed()
 
     def _is_finalized(self):
         return len(self._pending_finalization_partition_ids) == 0
