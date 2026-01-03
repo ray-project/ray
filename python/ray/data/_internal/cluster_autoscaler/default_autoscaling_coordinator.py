@@ -111,8 +111,7 @@ def handle_timeout_errors(
 
                 # Build error message
                 base_msg = (
-                    f"Failed to {operation_name} for {requester_id}."
-                    f"{consecutive_msg}"
+                    f"Failed to {operation_name} for {requester_id}.{consecutive_msg}"
                 )
                 if error_msg_suffix is not None:
                     msg = f"{base_msg} {error_msg_suffix}"
@@ -399,15 +398,22 @@ class _AutoscalingCoordinatorActor:
                         ongoing_req.allocated_resources.append(req)
                         break
         # Allocate remaining resources.
-        # NOTE, to handle the case where multiple datasets are running concurrently,
-        # now we double-allocate remaining resources to all requesters with
-        # `request_remaining=True`.
-        # This achieves parity with the behavior before Ray Data was integrated with
-        # AutoscalingCoordinator, where each dataset assumes it has the whole cluster.
-        # TODO(hchen): handle multiple request_remaining requests better.
-        for ongoing_req in ongoing_reqs:
-            if ongoing_req.request_remaining:
-                ongoing_req.allocated_resources.extend(cluster_node_resources)
+        # NOTE: to handle the case where multiple datasets are running concurrently,
+        # we divide remaining resources equally to all requesters with `request_remaining=True`.
+        remaining_resource_requesters = [
+            req for req in ongoing_reqs if req.request_remaining
+        ]
+        num_remaining_requesters = len(remaining_resource_requesters)
+        if num_remaining_requesters > 0:
+            for node_resource in cluster_node_resources:
+                # Divide remaining resources equally among requesters.
+                # NOTE: Integer division may leave some resources unallocated.
+                divided_resource = {
+                    k: v // num_remaining_requesters for k, v in node_resource.items()
+                }
+                for ongoing_req in remaining_resource_requesters:
+                    if any(v > 0 for v in divided_resource.values()):
+                        ongoing_req.allocated_resources.append(divided_resource)
 
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"
