@@ -1,7 +1,18 @@
 from typing import Literal
 
 
-class vLLMTaskType:
+class TaskType:
+    @classmethod
+    def values(cls):
+        """Return a set of all valid task type values."""
+        return {
+            value
+            for key, value in vars(cls).items()
+            if not key.startswith("_") and isinstance(value, str)
+        }
+
+
+class vLLMTaskType(TaskType):
     """The type of task to run on the vLLM engine."""
 
     # Generate text.
@@ -16,14 +27,13 @@ class vLLMTaskType:
     # Scoring (e.g., cross-encoder models).
     SCORE = "score"
 
-    @classmethod
-    def values(cls):
-        """Return a set of all valid task type values."""
-        return {
-            value
-            for key, value in vars(cls).items()
-            if not key.startswith("_") and isinstance(value, str)
-        }
+
+class SGLangTaskType(TaskType):
+    """The type of task to run on the SGLang engine."""
+
+    # Generate text.
+    GENERATE = "generate"
 
 
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
+TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]
