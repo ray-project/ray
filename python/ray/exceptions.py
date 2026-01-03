@@ -138,12 +138,16 @@ class RayTaskError(RayError):
         try:
             pickle.dumps(cause)
         except (pickle.PicklingError, TypeError) as e:
+            err_type = f"{cause.__class__.__module__}.{cause.__class__.__name__}"
+
             err_msg = (
-                "The original cause of the RayTaskError"
-                f" ({self.cause.__class__}) isn't serializable: {e}."
-                " Overwriting the cause to a RayError."
+                f"Exception {err_type} isn't serializable: {e}.\n"
+                f"Original exception details:\n{traceback_str}"
             )
-            logger.warning(err_msg)
+
+            logger.exception(
+                f"The original cause of the RayTaskError ({err_type}) isn't serializable."
+            )
             self.cause = RayError(err_msg)
 
         # BaseException implements a __reduce__ method that returns

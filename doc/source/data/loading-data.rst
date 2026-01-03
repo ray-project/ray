@@ -338,6 +338,33 @@ You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
+
+Downloading files from URIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may have a metadata table with a column of URIs and you want to download the files referenced by the URIs.
+
+You can download data in bulk by leveraging the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
+
+The following example shows how to download a batch of images from URLs listed in a Parquet file:
+
+.. testcode::
+
+    import ray
+    from ray.data.expressions import download
+
+    # Read a Parquet file containing a column of image URLs
+    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
+
+    # Use `with_column` and `download` to download the images in parallel.
+    # This creates a new column 'bytes' with the downloaded file contents.
+    ds = ds.with_column(
+        "bytes",
+        download("image_url"),
+    )
+
+    ds.take(1)
+
 Loading data from other libraries
 =================================
 

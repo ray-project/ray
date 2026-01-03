@@ -120,7 +120,9 @@ repos:
             python/ray/autoscaler/sdk/sdk.py|
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
-            python/ray/_private/gcs_utils.py
+            python/ray/_private/gcs_utils.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
           )
         additional_dependencies:
           [

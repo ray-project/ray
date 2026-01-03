@@ -241,9 +241,8 @@ def make_fastapi_ingress(
         class_dict[method_name] = decorated_method
 
     # Create new class with the decorated methods in its __dict__.
-    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
-    # class so that make_fastapi_class_based_view can properly identify the routes
-    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    # We keep the same __name__ and __qualname__ as the original class
+    # so that the new class properly represents the input class.
     new_cls = type(cls.__name__, (cls,), class_dict)
     new_cls.__qualname__ = cls.__qualname__
 
