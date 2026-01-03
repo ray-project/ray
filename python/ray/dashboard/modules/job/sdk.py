@@ -509,7 +509,7 @@ class JobSubmissionClient(SubmissionClient):
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     # Old Ray versions (<=2.0.1) may send ERROR on connection close
-                    if hasattr(self, "_server_ray_version") and packaging.version.parse(
+                    if self._server_ray_version is not None and packaging.version.parse(
                         self._server_ray_version
                     ) > packaging.version.parse("2.0.1"):
                         raise RuntimeError(
