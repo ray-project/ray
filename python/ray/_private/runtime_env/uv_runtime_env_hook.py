@@ -356,7 +356,7 @@ if __name__ == "__main__":
 
     test_parser = argparse.ArgumentParser()
     test_parser.add_argument("--extra-args", action="store_true")
-    test_parser.add_argument("runtime_env")
+    test_parser.add_argument("runtime_env", nargs="?")
     args = test_parser.parse_args()
 
     # If the env variable is set, add one more level of subprocess indirection
@@ -376,12 +376,12 @@ if __name__ == "__main__":
 
         multiprocessing.set_start_method("spawn")
         pool = multiprocessing.Pool(processes=1)
-        runtime_env = json.loads(args.runtime_env)
+        runtime_env = json.loads(args.runtime_env) if args.runtime_env is not None else None
         print(json.dumps(pool.apply(hook, (runtime_env,))))
         sys.exit(0)
 
     # We purposefully modify sys.argv here to make sure the hook is robust
     # against such modification.
     sys.argv.pop(1)
-    runtime_env = json.loads(args.runtime_env)
+    runtime_env = json.loads(args.runtime_env) if args.runtime_env is not None else None
     print(json.dumps(hook(runtime_env)))
