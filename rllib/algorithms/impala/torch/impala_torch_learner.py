@@ -117,6 +117,7 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
             bootstrap_values=bootstrap_values,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            _use_jit=not config.torch_compile_learner,
         )
 
         # The policy gradients loss.

@@ -147,6 +147,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             bootstrap_values=bootstrap_values,
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
+            _use_jit=not config.torch_compile_learner,
         )
         pg_advantages = pg_advantages * loss_mask_time_major
 

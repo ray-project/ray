@@ -71,7 +71,7 @@ def make_time_major(
 
 
 @torch.jit.script
-def vtrace_torch(
+def _vtrace_torch_impl(
     target_action_log_probs: "torch.Tensor",
     behaviour_action_log_probs: "torch.Tensor",
     discounts: "torch.Tensor",
@@ -129,13 +129,18 @@ def vtrace_torch(
     clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
     cs = torch.clamp(rhos, max=1.0)
 
-    # values[t+1]
+    # Shifted values: V(s_{t+1})
     values_t_plus_1 = torch.empty_like(values)
     values_t_plus_1[:-1] = values[1:]
     values_t_plus_1[-1] = bootstrap_values
 
-    deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
+    # TD errors: δ_t = r_t + γ·V(s_{t+1}) - V(s_t)  [computed once]
+    td_errors = rewards + discounts * values_t_plus_1 - values
 
+    # Weighted TD errors for V-trace: ρ̄_t · δ_t
+    deltas = clipped_rhos * td_errors
+
+    # Backward pass: compute (v_s - V(s)) via dynamic programming
     T, B = deltas.shape
     vs_minus_v_xs = torch.empty_like(deltas)
     running = torch.zeros(B, device=deltas.device, dtype=deltas.dtype)
@@ -144,13 +149,47 @@ def vtrace_torch(
         running = deltas[t] + dc[t] * running
         vs_minus_v_xs[t] = running
 
+    # V-trace targets
     vs = vs_minus_v_xs + values
 
-    vs_t_plus_1 = torch.empty_like(values)
-    vs_t_plus_1[:-1] = vs[1:]
-    vs_t_plus_1[-1] = bootstrap_values
+    # For PG advantages: ρ̄_pg · (r + γ·v_{s+1} - V(s))
+    # Rewrite as: ρ̄_pg · (td_errors + γ · (v_{s+1} - V(s_{t+1})))
+    # where (v_{s+1} - V(s_{t+1})) is just vs_minus_v_xs shifted
+    vs_minus_v_xs_shifted = torch.empty_like(vs_minus_v_xs)
+    vs_minus_v_xs_shifted[:-1] = vs_minus_v_xs[1:]
+    vs_minus_v_xs_shifted[-1] = 0.0  # At terminal: v_T = V(T) = bootstrap
 
     clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
-    pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
+    pg_advantages = clipped_pg_rhos * (td_errors + discounts * vs_minus_v_xs_shifted)
 
     return vs.detach(), pg_advantages.detach()
+
+
+# Pre-compile JIT version at module load
+_vtrace_torch_jit = torch.jit.script(_vtrace_torch_impl)
+
+
+def vtrace_torch(
+    target_action_log_probs: "torch.Tensor",
+    behaviour_action_log_probs: "torch.Tensor",
+    discounts: "torch.Tensor",
+    rewards: "torch.Tensor",
+    values: "torch.Tensor",
+    bootstrap_values: "torch.Tensor",
+    clip_rho_threshold: float = 1.0,
+    clip_pg_rho_threshold: float = 1.0,
+    *,
+    _use_jit: bool = True,  # or pull from RLlib config
+) -> Tuple["torch.Tensor", "torch.Tensor"]:
+    """Dispatch to JIT or eager based on configuration."""
+    fn = _vtrace_torch_jit if _use_jit else _vtrace_torch_impl
+    return fn(
+        target_action_log_probs,
+        behaviour_action_log_probs,
+        discounts,
+        rewards,
+        values,
+        bootstrap_values,
+        clip_rho_threshold,
+        clip_pg_rho_threshold,
+    )
