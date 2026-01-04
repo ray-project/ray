@@ -3052,7 +3052,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   // Verify that the expected retry message was sent to the callback
   EXPECT_THAT(captured_error_message,
               testing::HasSubstr(
-                  "There are 1 retries remaining, so the task will be retried. Error:"));
+                  "There are 2 retries remaining, so the task will be retried. Error:"));
   EXPECT_THAT(captured_error_message,
               testing::HasSubstr("Worker crashed during task execution"));
   EXPECT_EQ(captured_error_type, "WORKER_DIED");

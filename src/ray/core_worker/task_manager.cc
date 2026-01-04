@@ -1142,6 +1142,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     spec = task_entry.spec_;
     auto &num_retries_left = task_entry.num_retries_left_;
     auto &num_oom_retries_left = task_entry.num_oom_retries_left_;
+    auto is_preempted = false;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
@@ -1152,7 +1153,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      auto is_preempted = false;
       if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
         const auto node_info =
             gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
@@ -1184,22 +1184,29 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
       if (RayConfig::instance().enable_output_error_log_if_still_retry()) {
-        std::string error_message = "Task " + spec.FunctionDescriptor()->CallString();
-        if (task_failed_due_to_oom) {
-          error_message.append(" failed due to oom. There are " +
-                               (num_oom_retries_left == -1
-                                    ? "infinite"
-                                    : std::to_string(num_oom_retries_left + 1)) +
-                               " oom retries remaining, ");
+        std::string error_message =
+            absl::StrCat("Task ", spec.FunctionDescriptor()->CallString());
+        if (is_preempted) {
+          absl::StrAppend(&error_message,
+                          " failed due to node preemption. The task will be retried, but "
+                          "the retry will not count against the normal retry count.");
         } else {
-          error_message.append(" failed. There are " +
-                               (num_retries_left == -1
-                                    ? "infinite"
-                                    : std::to_string(num_retries_left + 1)) +
-                               " retries remaining, ");
+          const int32_t retries_left =
+              task_failed_due_to_oom ? num_oom_retries_left : num_retries_left;
+          const std::string retries_remaining_str =
+              retries_left == -1 ? "infinite" : std::to_string(retries_left + 1);
+          task_failed_due_to_oom ? absl::StrAppend(&error_message,
+                                                   " failed due to oom. There are ",
+                                                   retries_remaining_str,
+                                                   " oom retries remaining, ")
+                                 : absl::StrAppend(&error_message,
+                                                   " failed. There are ",
+                                                   retries_remaining_str,
+                                                   " retries remaining, ");
+          absl::StrAppend(&error_message,
+                          "so the task will be retried. Error: ",
+                          error_info.error_message());
         }
-        error_message.append("so the task will be retried. Error: " +
-                             error_info.error_message());
         Status push_error_status =
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
