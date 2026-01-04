@@ -713,7 +713,7 @@ Rescheduling Bundles on a Dead Node
 
 If nodes that contain some bundles of a placement group die, Ray tries to reschedule the lost bundles on different nodes.
 This means that the initial creation of placement group is "atomic," but after the initial creation,
-there could be partial placement groups. The Actors or tasks running on the bundles continue to run.
+there could be partial placement groups. Actors or tasks running on bundles on the remaining live nodes continue to run.
 Note that rescheduling bundles have higher scheduling priority than other placement group scheduling.
 
 Provide Resources for Partially Lost Bundles
