@@ -382,6 +382,9 @@ if __name__ == "__main__":
 
     # We purposefully modify sys.argv here to make sure the hook is robust
     # against such modification.
-    sys.argv.pop(1)
-    runtime_env = json.loads(args.runtime_env) if args.runtime_env is not None else None
+    if args.runtime_env is not None:
+        sys.argv.pop(1)
+        runtime_env = json.loads(args.runtime_env)
+    else:
+        runtime_env = None
     print(json.dumps(hook(runtime_env)))
