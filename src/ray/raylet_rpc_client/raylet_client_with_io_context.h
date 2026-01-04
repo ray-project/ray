@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/common/asio/asio_util.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/rpc/grpc_client.h"
 
@@ -44,7 +43,6 @@ class RayletClientWithIoContext {
   /// during the whole lifetime of client.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::unique_ptr<rpc::RayletClient> raylet_client_;
-  inline static InstrumentedIOContextWithThread io_context_{"raylet_client_io_service"};
 };
 
 }  // namespace rpc
