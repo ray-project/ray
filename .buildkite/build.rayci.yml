@@ -91,6 +91,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
     key: ray_extra_images
@@ -117,6 +118,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":tapioca: build: ray-llm py{{matrix}} docker (x86_64)"
     tags:
