@@ -9,7 +9,6 @@ from ray._common.network_utils import build_address
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.train.backend import Backend, BackendConfig
-from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -23,9 +22,7 @@ class TensorflowConfig(BackendConfig):
         return _TensorflowBackend
 
     def to_dict(self) -> Dict[str, Any]:
-        config_dict = super().to_dict()
-        config_dict["framework"] = TrainingFramework.TENSORFLOW.value
-        return config_dict
+        return {}
 
 
 def _setup_tensorflow_environment(worker_addresses: List[str], index: int):

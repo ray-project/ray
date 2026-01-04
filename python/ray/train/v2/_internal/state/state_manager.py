@@ -6,6 +6,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.train import BackendConfig
 from ray.train._internal.data_config import DataConfig
+from ray.train.backend import Backend
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ResizeDecision,
@@ -13,6 +14,7 @@ from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
     CheckpointConfig as CheckpointConfigSchema,
     DatasetsDetails,
     FailureConfig as FailureConfigSchema,
@@ -96,9 +98,14 @@ class TrainStateManager:
             bundle_label_selector=scaling_config.bundle_label_selector,
         )
 
+        backend_config = BackendConfigSchema(
+            framework=backend_config.framework,
+            configs=backend_config.to_dict(),
+        )
+
         run_configuration = RunConfiguration(
             train_loop_config=train_loop_config,
-            backend_config=backend_config.to_dict(),
+            backend_config=backend_config,
             scaling_config=scaling_config,
             datasets_details=datasets_details,
             runtime_config=runtime_config,
@@ -288,9 +295,9 @@ class TrainStateManager:
         update_train_run_attempt_aborted(run_attempt=run_attempt, graceful=True)
         self._create_or_update_train_run_attempt(run_attempt)
 
-    def get_train_run_framework(self, run_id: str) -> Dict[str, str]:
+    def get_train_run_backend(self, run_id: str) -> Optional[Backend]:
         run = self._runs[run_id]
-        return run.run_configuration.backend_config["framework"]
+        return run.run_configuration.backend_config.backend_cls
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)

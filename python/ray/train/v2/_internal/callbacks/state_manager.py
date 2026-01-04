@@ -1,7 +1,12 @@
 import logging
+from enum import Enum
 from typing import Optional
 
 import ray
+from ray.train.backend import Backend
+from ray.train.lightgbm.config import _LightGBMBackend
+from ray.train.tensorflow.config import _TensorflowBackend
+from ray.train.torch.config import _TorchBackend
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
@@ -32,12 +37,24 @@ from ray.train.v2._internal.logging.logging import (
     get_train_application_controller_log_path,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2._internal.util import TrainingFramework
+from ray.train.v2.jax.config import _JaxBackend
+from ray.train.xgboost.config import (
+    _XGBoostRabitBackend,
+    _XGBoostRabitBackend_pre_xgb210,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _get_framework_version(framework: Optional[str]):
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
+
+
+def _get_framework_version(backend_cls: Optional[Backend]):
     versions = {}
 
     try:
@@ -48,31 +65,34 @@ def _get_framework_version(framework: Optional[str]):
         logger.warning("Failed to collect ray version on worker.")
 
     try:
-        if framework is None:
+        if backend_cls is None:
             return versions
 
-        if framework == TrainingFramework.TORCH.value:
+        if backend_cls == _TorchBackend:
             import torch
 
             versions[TrainingFramework.TORCH.value] = torch.__version__
-        elif framework == TrainingFramework.JAX.value:
+        elif backend_cls == _JaxBackend:
             import jax
 
             versions[TrainingFramework.JAX.value] = jax.__version__
-        elif framework == TrainingFramework.TENSORFLOW.value:
+        elif backend_cls == _TensorflowBackend:
             import tensorflow
 
             versions[TrainingFramework.TENSORFLOW.value] = tensorflow.__version__
-        elif framework == TrainingFramework.XGBOOST.value:
+        elif (
+            backend_cls == _XGBoostRabitBackend
+            or backend_cls == _XGBoostRabitBackend_pre_xgb210
+        ):
             import xgboost
 
             versions[TrainingFramework.XGBOOST.value] = xgboost.__version__
-        elif framework == TrainingFramework.LIGHTGBM.value:
+        elif backend_cls == _LightGBMBackend:
             import lightgbm
 
             versions[TrainingFramework.LIGHTGBM.value] = lightgbm.__version__
     except ImportError:
-        logger.warning(f"Failed to collect {framework} version on worker.")
+        logger.warning("Failed to collect framework version on worker.")
 
     return versions
 
@@ -188,9 +208,9 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         )
 
         # Update train run framework version
-        framework = self._state_manager.get_train_run_framework(self._run_id)
+        backend_cls = self._state_manager.get_train_run_backend(self._run_id)
         framework_versions = worker_group.execute_single(
-            0, _get_framework_version, framework
+            0, _get_framework_version, backend_cls
         )
         self._state_manager.update_train_run_framework_versions(
             run_id=self._run_id,

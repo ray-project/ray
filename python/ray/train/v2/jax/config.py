@@ -12,7 +12,6 @@ from ray.train.constants import (
     DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
-from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -29,14 +28,10 @@ class JaxConfig(BackendConfig):
         return _JaxBackend
 
     def to_dict(self) -> Dict[str, Any]:
-        config_dict = super().to_dict()
-        config_dict["framework"] = TrainingFramework.JAX.value
-        config_dict.update(
-            {
-                "use_tpu": self.use_tpu,
-                "use_gpu": self.use_gpu,
-            }
-        )
+        config_dict = {
+            "use_tpu": self.use_tpu,
+            "use_gpu": self.use_gpu,
+        }
         return config_dict
 
 

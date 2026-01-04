@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.train.backend import Backend
 from ray.util.annotations import DeveloperAPI
 
 MAX_ERROR_STACK_TRACE_LENGTH = 50000
@@ -313,13 +314,25 @@ class RuntimeConfig(BaseModel):
 
 
 @DeveloperAPI
+class BackendConfig(BaseModel):
+    """Backend config for a Train run."""
+
+    backend_cls: Optional[Backend] = Field(
+        description="The backend class for this backend config."
+    )
+    configs: Dict[str, Any] = Field(
+        description="Backend-specific configuration fields."
+    )
+
+
+@DeveloperAPI
 class RunConfiguration(BaseModel):
     """The configuration for a Train run, including train loop config, backend config, scaling config, datasets details, and runtime configuration."""
 
     train_loop_config: Optional[Dict[str, Any]] = Field(
         description="The user defined train loop config for a Train run."
     )
-    backend_config: Dict[str, Any] = Field(
+    backend_config: Optional[BackendConfig] = Field(
         description="The backend config for a Train run. Can vary with the framework (e.g. TorchConfig)"
     )
     scaling_config: Optional[ScalingConfig] = Field(
