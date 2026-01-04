@@ -416,7 +416,9 @@ class MARWILConfig(AlgorithmConfig):
             )
 
         # Assert that burnin_len is smaller than max_seq_len.
-        if self.burnin_len >= self.model.get("max_seq_len", 0):
+        if self.burnin_len > 0 and (
+            self.burnin_len >= self.model.get("max_seq_len", 0)
+        ):
             self._value_error(
                 "`burnin_len` must be < `model.max_seq_len`! "
                 f"Got burnin_len={self.burnin_len}, "

@@ -96,23 +96,19 @@ class OfflineRLStatefulTest(unittest.TestCase):
         # Load the dataset.
         ds = self.algo.offline_data.data
 
-        # Find a single episode with return >350.0
-        episode_return = 0.0
-        while episode_return <= 350.0:
-            # Take a single-row batch (one episode).
-            batch = ds.take_batch(1)
+        # Take a single-row batch (one episode).
+        batch = ds.take_batch(1)
 
-            # Read the episodes and decode them.
-            episodes = [
-                SingleAgentEpisode.from_state(
-                    msgpack.unpackb(state, object_hook=mnp.decode)
-                )
-                for state in batch["item"]
-            ][:1]
-            # Get the episode return.
-            episode_return = episodes[0].get_return()
-        else:
-            print(f"Found episode with return {episode_return}")
+        # Read the episodes and decode them.
+        episodes = [
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(state, object_hook=mnp.decode)
+            )
+            for state in batch["item"]
+        ][:1]
+        # Get the episode return.
+        episode_return = episodes[0].get_return()
+        print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
@@ -203,23 +199,20 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Load the dataset.
         ds = self.algo.offline_data.data
-        # Find a single episode with return >350.0
-        episode_return = 0.0
-        while episode_return <= 350.0:
-            # Take a single-row batch (one episode).
-            batch = ds.take_batch(1)
 
-            # Read the episodes and decode them.
-            episodes = [
-                SingleAgentEpisode.from_state(
-                    msgpack.unpackb(state, object_hook=mnp.decode)
-                )
-                for state in batch["item"]
-            ][:1]
-            # Get the episode return.
-            episode_return = episodes[0].get_return()
-        else:
-            print(f"Found episode with return {episode_return}")
+        # Take a single-row batch (one episode).
+        batch = ds.take_batch(1)
+
+        # Read the episodes and decode them.
+        episodes = [
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(state, object_hook=mnp.decode)
+            )
+            for state in batch["item"]
+        ][:1]
+        # Get the episode return.
+        episode_return = episodes[0].get_return()
+        print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
@@ -310,23 +303,20 @@ class OfflineRLStatefulTest(unittest.TestCase):
             module_spec=self.algo.offline_data.module_spec,
             module_state=self.algo.learner_group._learner.get_state()["rl_module"],
         )
-        # Find a single episode with return >350.0
-        episode_return = 0.0
-        while episode_return <= 350.0:
-            # Take a single-row batch (one episode).
-            batch = ds.take_batch(1)
 
-            # Read the episodes and decode them.
-            episodes = [
-                SingleAgentEpisode.from_state(
-                    msgpack.unpackb(state, object_hook=mnp.decode)
-                )
-                for state in batch["item"]
-            ][:1]
-            # Get the episode return.
-            episode_return = episodes[0].get_return()
-        else:
-            print(f"Found episode with return {episode_return}")
+        # Take a single-row batch (one episode).
+        batch = ds.take_batch(1)
+
+        # Read the episodes and decode them.
+        episodes = [
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(state, object_hook=mnp.decode)
+            )
+            for state in batch["item"]
+        ][:1]
+        # Get the episode return.
+        episode_return = episodes[0].get_return()
+        print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
