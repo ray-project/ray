@@ -15,6 +15,15 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
+  - name: datadocbuild-multipy
+    label: "wanda: datadocbuild-py{{matrix}}"
+    wanda: ci/docker/datadoc.build.wanda.yaml
+    matrix: ["3.10"]
+    env:
+      PYTHON: "{{matrix}}"
+      DOCTEST: "1"
+    tags: cibase
+
   - name: datalbuild-multipy
     label: "wanda: datalbuild-py{{matrix}}"
     wanda: ci/docker/datal.build.wanda.yaml
@@ -220,19 +229,19 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name databuild-py3.10
+        --build-name datadocbuild-py3.10
         --python-version 3.10
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name databuild-py3.10
+        --build-name datadocbuild-py3.10
         --python-version 3.10
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: databuild-multipy
+    depends_on: datadocbuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:

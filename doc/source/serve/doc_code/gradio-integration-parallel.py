@@ -61,7 +61,7 @@ app = MyGradioServer.bind(app1, app2)
 # Test example code
 serve.run(app)
 response = requests.post(
-    "http://127.0.0.1:8000/api/predict/", json={"data": ["My name is Lewis"]}
+    "http://127.0.0.1:8000/gradio_api/run/predict/", json={"data": ["My name is Lewis"]}
 )
 assert response.status_code == 200
 print(

@@ -13,6 +13,11 @@ it is less efficient.
 from __future__ import print_function
 
 import argparse
+import os
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# TODO(elliot-barn): Remove this once Tune examples support Keras 3
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
 import numpy as np
 import tensorflow as tf
@@ -122,10 +127,14 @@ class Cifar10Model(Trainable):
         model = self._build_model(x_train.shape[1:])
 
         opt = tf.keras.optimizers.Adadelta(
-            lr=self.config.get("lr", 1e-4), weight_decay=self.config.get("decay", 1e-4)
+            learning_rate=self.config.get("lr", 1e-4),
+            weight_decay=self.config.get("decay", 1e-4),
         )
         model.compile(
-            loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
+            loss="categorical_crossentropy",
+            optimizer=opt,
+            metrics=["accuracy"],
+            run_eagerly=True,
         )
         self.model = model
 
@@ -161,8 +170,12 @@ class Cifar10Model(Trainable):
         aug_gen.fit(x_train)
         batch_size = self.config.get("batch_size", 64)
         gen = aug_gen.flow(x_train, y_train, batch_size=batch_size)
-        self.model.fit_generator(
-            generator=gen, epochs=self.config.get("epochs", 1), validation_data=None
+        steps_per_epoch = max(1, int(np.ceil(len(x_train) / batch_size)))
+        self.model.fit(
+            gen,
+            epochs=self.config.get("epochs", 1),
+            steps_per_epoch=steps_per_epoch,
+            verbose=0,
         )
 
         # loss, accuracy
@@ -170,13 +183,13 @@ class Cifar10Model(Trainable):
         return {"mean_accuracy": accuracy}
 
     def save_checkpoint(self, checkpoint_dir):
-        file_path = checkpoint_dir + "/model"
+        file_path = checkpoint_dir + "/model.h5"
         self.model.save(file_path)
 
     def load_checkpoint(self, checkpoint_dir):
         # See https://stackoverflow.com/a/42763323
         del self.model
-        file_path = checkpoint_dir + "/model"
+        file_path = checkpoint_dir + "/model.h5"
         self.model = load_model(file_path)
 
     def cleanup(self):

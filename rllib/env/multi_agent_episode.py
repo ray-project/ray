@@ -2392,7 +2392,9 @@ class MultiAgentEpisode:
                 _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
             )
-            if agent_value is None or agent_value == []:
+            if agent_value is None or (
+                isinstance(agent_value, (list, tuple)) and len(agent_value) == 0
+            ):
                 continue
             ret[agent_id] = agent_value
         return ret

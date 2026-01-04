@@ -2,7 +2,6 @@
 
 import copy
 import logging
-import math
 from typing import Dict, List, Optional, Union
 
 # use cloudpickle instead of pickle to make BOHB obj
@@ -294,61 +293,40 @@ class TuneBOHB(Searcher):
         def resolve_value(
             par: str, domain: Domain
         ) -> ConfigSpace.hyperparameters.Hyperparameter:
-            quantize = None
 
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                quantize = sampler.q
+                logger.warning(
+                    "TuneBOHB does not support quantization. "
+                    "Dropped quantization for parameter '%s'.",
+                    par,
+                )
                 sampler = sampler.sampler
 
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
                     return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=True
+                        par, lower=domain.lower, upper=domain.upper, log=True
                     )
                 elif isinstance(sampler, Uniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
                     return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=False
+                        par, lower=domain.lower, upper=domain.upper, log=False
                     )
                 elif isinstance(sampler, Normal):
                     return ConfigSpace.hyperparameters.NormalFloatHyperparameter(
-                        par, mu=sampler.mean, sigma=sampler.sd, q=quantize, log=False
+                        par, mu=sampler.mean, sigma=sampler.sd, log=False
                     )
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
-                    else:
-                        # Tune search space integers are exclusive
-                        upper -= 1
+                    # Tune search space integers are exclusive on upper bound
                     return ConfigSpace.UniformIntegerHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=True
+                        par, lower=domain.lower, upper=domain.upper - 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
-                    else:
-                        # Tune search space integers are exclusive
-                        upper -= 1
+                    # Tune search space integers are exclusive on upper bound
                     return ConfigSpace.UniformIntegerHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=False
+                        par, lower=domain.lower, upper=domain.upper - 1, log=False
                     )
 
             elif isinstance(domain, Categorical):

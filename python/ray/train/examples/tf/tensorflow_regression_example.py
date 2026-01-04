@@ -37,8 +37,8 @@ def train_func(config: dict):
         multi_worker_model = build_model()
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
-            loss=tf.keras.losses.mean_absolute_error,
-            metrics=[tf.keras.metrics.mean_squared_error],
+            loss=tf.keras.losses.MeanAbsoluteError(),
+            metrics=[tf.keras.metrics.MeanSquaredError()],
         )
 
     dataset = train.get_dataset_shard("train")

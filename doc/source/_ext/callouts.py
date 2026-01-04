@@ -123,7 +123,7 @@ class CalloutDirective(SphinxDirective):
 
             from ray import tune
             from ray.tune.search.hyperopt import HyperOptSearch
-            import keras
+            import tf_keras as keras
 
             def objective(config):  # <1>
                 ...

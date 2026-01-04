@@ -231,7 +231,10 @@ one for each of the configured learning rates:
         # ``.train()``. Also note that -1100 is not a good episode return for
         # Pendulum-v1, we are using it here to shorten the experiment time.
         run_config=tune.RunConfig(
-            stop={"env_runners/episode_return_mean": -1100.0},
+            stop={
+                "env_runners/episode_return_mean": -1100.0,
+                "training_iteration": 30,
+            },
         ),
     )
     # Run the Tuner and capture the results.

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
+
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
@@ -887,29 +888,36 @@ class TensorFlowVariables:
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
         variable_list = [
-            v for v in tf1.global_variables() if v.op.node_def.name in variable_names
+            v for v in tf1.global_variables() if self._variable_key(v) in variable_names
         ]
         if input_variables is not None:
             variable_list += input_variables
 
-        if not tf1.executing_eagerly():
-            for v in variable_list:
-                self.variables[v.op.node_def.name] = v
+        for v in variable_list:
+            self.variables[self._variable_key(v)] = v
 
+        if not tf1.executing_eagerly():
             self.placeholders = {}
             self.assignment_nodes = {}
 
-            # Create new placeholders to put in custom weights.
             for k, var in self.variables.items():
                 self.placeholders[k] = tf1.placeholder(
-                    var.value().dtype,
+                    var.dtype,
                     var.get_shape().as_list(),
                     name="Placeholder_" + k,
                 )
                 self.assignment_nodes[k] = var.assign(self.placeholders[k])
-        else:
-            for v in variable_list:
-                self.variables[v.name] = v
+
+    def _variable_key(self, v) -> str:
+        if (
+            hasattr(v, "op")
+            and hasattr(v.op, "node_def")
+            and hasattr(v.op.node_def, "name")
+        ):
+            return v.op.node_def.name
+        if hasattr(v, "name") and v.name:
+            return v.name.split(":")[0]
+        return str(id(v))
 
     def get_flat_size(self):
         """Returns the total length of all of the flattened variables.

@@ -4,8 +4,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-import tensorflow as tf
-from tensorflow import keras
+# TODO(elliot-barn): Switch to Keras 3 (tf.keras) when supported; remove tf_keras dependency
+import tf_keras as keras
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
@@ -44,9 +44,9 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
             .. testcode::
 
                 from ray.train.tensorflow import TensorflowCheckpoint
-                import tensorflow as tf
+                import tf_keras as keras
 
-                model = tf.keras.applications.resnet.ResNet101()
+                model = keras.applications.ResNet101()
                 checkpoint = TensorflowCheckpoint.from_model(model)
 
             .. testoutput::
@@ -57,7 +57,8 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
 
         """
         tempdir = tempfile.mkdtemp()
-        filename = "model.keras"
+        # TODO(elliot-barn): Update to "model.keras" once Ray Train supports Keras 3.
+        filename = "model.h5"
         model.save(Path(tempdir, filename).as_posix())
 
         checkpoint = cls.from_directory(tempdir)
@@ -137,11 +138,11 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
 
     def get_model(
         self,
-    ) -> tf.keras.Model:
+    ) -> keras.Model:
         """Retrieve the model stored in this checkpoint.
 
         Returns:
-            The Tensorflow Keras model stored in the checkpoint.
+            The Keras model stored in the checkpoint.
         """
         metadata = self.get_metadata()
         if self.MODEL_FILENAME_KEY not in metadata:

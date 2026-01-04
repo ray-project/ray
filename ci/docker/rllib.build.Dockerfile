@@ -7,6 +7,8 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
+RUN pip install mlagents_envs==0.28.0
+
 RUN RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
 
 RUN if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then \

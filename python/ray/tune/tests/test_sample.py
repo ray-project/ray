@@ -505,13 +505,15 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": {"minimize": False}},
         )
         searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": {"minimize": False}},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -539,11 +541,11 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
         from ax.modelbridge.generation_strategy import (
             GenerationStep,
             GenerationStrategy,
         )
+        from ax.modelbridge.registry import Models
         from ax.service.ax_client import AxClient
 
         from ray.tune.search.ax import AxSearch
