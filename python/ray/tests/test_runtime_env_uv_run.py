@@ -132,7 +132,7 @@ def test_uv_run_runtime_env_hook():
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
     ):
         result = subprocess.run(
-            cmd + [json.dumps(runtime_env)],
+            cmd + [] if runtime_env is None else [json.dumps(runtime_env)],
             capture_output=True,
             **(subprocess_kwargs if subprocess_kwargs else {}),
         )
@@ -290,6 +290,21 @@ def test_uv_run_runtime_env_hook():
             "ray._private.runtime_env.uv_runtime_env_hook",
         ],
         runtime_env={},
+        expected_output={
+            "py_executable": f"{find_uv_bin()} run --no-project",
+            "working_dir": os.getcwd(),
+        },
+    )
+
+    check_uv_run(
+        cmd=[
+            find_uv_bin(),
+            "run",
+            "--no-project",
+            "-m",
+            "ray._private.runtime_env.uv_runtime_env_hook",
+        ],
+        runtime_env=None,
         expected_output={
             "py_executable": f"{find_uv_bin()} run --no-project",
             "working_dir": os.getcwd(),

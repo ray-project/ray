@@ -319,6 +319,9 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser = _create_uv_run_parser()
     (options, command) = _parse_args(parser, cmdline[2:])
 
+    # `command` can be empty when uv is invoked with options that consume all arguments.
+    # For example, `uv run -m module_name` has no positional command -- the parser
+    # treats `-m module_name` as an option, not as a command to execute.
     # NOTE: The empty list is a suffix of any list.
     if len(command) > 0 and cmdline[-len(command) :] != command:
         raise AssertionError(
