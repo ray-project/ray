@@ -473,7 +473,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -506,14 +506,14 @@ class SearchSpaceTest(unittest.TestCase):
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(
             parameters=converted_config,
-            objectives={"a": {"minimize": False}},
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(
             parameters=ax_config,
-            objectives={"a": {"minimize": False}},
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -541,11 +541,6 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
         from ax.service.ax_client import AxClient
 
         from ray.tune.search.ax import AxSearch
@@ -566,36 +561,30 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
+        # In Ax 1.2.1, prefer not to import/build step-based generation strategies.
+        client1 = AxClient(enforce_sequential_optimization=False)
+
+        # Ax 1.2.1-compatible create_experiment
         try:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+            from ax.service.utils.instantiation import ObjectiveProperties
+
+            client1.create_experiment(
+                parameters=AxSearch.convert_search_space(config),
+                objectives={"a": ObjectiveProperties(minimize=False)},
             )
         except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
+            client1.create_experiment(
+                parameters=AxSearch.convert_search_space(config),
+                objective_name="a",
+                minimize=False,
             )
 
-        client1 = AxClient(
-            enforce_sequential_optimization=False,
-            generation_strategy=generation_strategy,
-        )
-
-        client1.create_experiment(
-            parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
-        )
         searcher1 = AxSearch(ax_client=client1)
 
         def config_generator():
             for i in range(50):
                 yield searcher1.suggest(f"trial_{i}")
 
-        # Unfortunately even random sampling in Ax takes a long time, so we
-        # only sample 50 trials and don't do an extensive bounds check.
-        # Full bounds check has been run locally and seems to work fine.
         self._testTuneSampleAPI(config_generator(), ignore=ignore, check_stats=False)
 
     def testConvertBayesOpt(self):
@@ -717,7 +706,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),

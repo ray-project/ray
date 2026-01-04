@@ -314,7 +314,12 @@ class TuneBOHB(Searcher):
                     )
                 elif isinstance(sampler, Normal):
                     return ConfigSpace.hyperparameters.NormalFloatHyperparameter(
-                        par, mu=sampler.mean, sigma=sampler.sd, log=False
+                        par,
+                        mu=sampler.mean,
+                        sigma=sampler.sd,
+                        lower=domain.lower,
+                        upper=domain.upper,
+                        log=False,
                     )
 
             elif isinstance(domain, Integer):

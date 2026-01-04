@@ -484,6 +484,11 @@ class TuneExampleTest(unittest.TestCase):
         ray.shutdown()
 
     def testPBTKeras(self):
+        import os
+
+        # Set TF_USE_LEGACY_KERAS before importing to match the example's setting
+        os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
         from tensorflow.keras.datasets import cifar10
 
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model

@@ -1,7 +1,13 @@
 import logging
+import os
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# TODO(elliot-barn): Remove this once Train supports Keras 3
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import tensorflow as tf
 
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
