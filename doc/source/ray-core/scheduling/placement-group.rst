@@ -699,8 +699,8 @@ Note that Ray decouples the lifetime option and the name option. If you only spe
 the name without specifying ``lifetime="detached"``, then you can only retrieve the placement group
 while the driver where you created the placement group is still running.
 It's recommended to always specify the name when creating the detached placement group. If you don't,
-there is no way to retrieve the placement group from another driver and there is no way
-to ever kill it.
+there is no way to retrieve the placement group from another process, and there is no way
+to kill it once you exit the driver script that created the placement group.
 
 
 .. _ray-placement-group-ft-ref:
