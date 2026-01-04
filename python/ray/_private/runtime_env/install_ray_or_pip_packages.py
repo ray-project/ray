@@ -18,13 +18,20 @@ def find_first_matching_wheel(whl_dir: str, whl_file_name: str) -> str:
     matches = list(dir_path.glob(whl_file_name))
     return str(matches[0]) if matches else ""
 
+# Uninstall to ensure the python environments are clean
+def uninstall_ray():
+    pip_uninstall_command = [sys.executable, "-m", "pip", "uninstall", "-y", "ray", "ant-ray", "ant-ray-nightly"]
+    result = subprocess.run(pip_uninstall_command)
+    logger.info("Uninstalled ray: {}. Return code: {}".format(pip_uninstall_command, result.returncode))
+    
+    
 def install_ray_package(ray_version, whl_dir):
     pip_install_command = [sys.executable, "-m", "pip", "install", "-U"]
 
     if whl_dir:
         # generate whl file name
         whl_file_name = (
-            f"ant_ray-*cp{sys.version_info.major}{sys.version_info.minor}*.whl"
+            f"ant_ray*cp{sys.version_info.major}{sys.version_info.minor}*.whl"
         )
 
         # got the first matched wheel file 
@@ -34,7 +41,7 @@ def install_ray_package(ray_version, whl_dir):
         pip_install_command.append(whl_file_path + "[default]")
     else:
         # generate ray package name
-        ray_package_name = f"ant_ray=={ray_version}"
+        ray_package_name = f"ant_ray[default]=={ray_version}"
         pip_install_command.append(ray_package_name)
 
     logger.info("Starting install ray: {}".format(pip_install_command))
@@ -97,9 +104,11 @@ if __name__ == "__main__":
     )
 
     if args.ray_version or args.whl_dir:
+        uninstall_ray()
         install_ray_package(args.ray_version, args.whl_dir)
     if args.packages:
         pip_packages = json.loads(
             base64.b64decode(args.packages.encode("utf-8")).decode("utf-8")
         )
         install_pip_package(pip_packages, isolate_pip_installation)
+
