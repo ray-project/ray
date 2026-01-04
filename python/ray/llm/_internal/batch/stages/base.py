@@ -1,6 +1,6 @@
 """The base class for all stages."""
 import logging
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
@@ -80,8 +80,14 @@ def wrap_postprocess(
 
     return _postprocess
 
+class StatefulStageBaseUDF:
+    def __init__(self, data_column: str, expected_input_keys: Optional[List[str]] = None):
+        pass
 
-class StatefulStageUDF:
+    def validate_inputs(self, inputs: List[Dict[str, Any]]):
+        pass
+
+class StatefulStageUDF(StatefulStageBaseUDF):
     """A stage UDF wrapper that processes the input and output columns
     before and after the UDF.
 
@@ -252,13 +258,20 @@ class StatefulStageUDF:
     async def udf(self, rows: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         raise NotImplementedError("StageUDF must implement the udf method")
 
+class StatefulStageSyncUDF(StatefulStageBaseUDF):
+    def __call__(self, batch: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+        pass
+
+    def udf(self, rows: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+        raise NotImplementedError("StatefulStageSyncUDF must implement the udf method")
+
 
 class StatefulStage(BaseModel):
     """
     A basic building block to compose a Processor.
     """
 
-    fn: Type[StatefulStageUDF] = Field(
+    fn: Type[StatefulStageBaseUDF] = Field(
         description="The well-optimized stateful UDF for this stage."
     )
     fn_constructor_kwargs: Dict[str, Any] = Field(

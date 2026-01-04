@@ -9,7 +9,17 @@ import time
 import uuid
 from collections import Counter
 from functools import partial
-from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 
 import numpy as np
 import torch
@@ -24,6 +34,8 @@ import ray
 from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
+    StatefulStageBaseUDF,
+    StatefulStageSyncUDF,
     StatefulStageUDF,
 )
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
@@ -199,8 +211,24 @@ class vLLMOutputData(BaseModel):
         validate_assignment = True
         arbitrary_types_allowed = True
 
+class vLLMEngineBaseWrapper:
+    def __init__(
+        self,
+        idx_in_batch_column: str,
+        max_pending_requests: int = -1,
+        dynamic_lora_loading_path: Optional[str] = None,
+        **kwargs,
+    ):
+        pass
 
-class vLLMEngineWrapper:
+    def shutdown(self):
+        pass
+
+    def get_scheduler_config(self):
+        pass
+
+
+class vLLMEngineWrapper(vLLMEngineBaseWrapper):
     """Wrapper around the vLLM engine to handle async requests.
 
     Args:
@@ -529,7 +557,61 @@ class vLLMEngineWrapper:
         return self._vllm_config.scheduler_config
 
 
-class vLLMEngineStageUDF(StatefulStageUDF):
+
+class vLLMEngineStageSyncWrapper(vLLMEngineBaseWrapper):
+    def __init__(
+        self,
+        idx_in_batch_column: str,
+        max_pending_requests: int = -1,
+        dynamic_lora_loading_path: Optional[str] = None,
+        model: Optional[str] = None,
+        model_source: Optional[str] = None,
+        enable_log_requests: bool = False,
+        **kwargs,
+    ):
+        pass
+
+    def generate(
+        self, row: Dict[str, Any]
+    ) -> Tuple[vLLMEngineRequest, Dict[str, Any], float]:
+        pass
+
+
+class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
+    def __init__(
+        self,
+        data_column: str,
+        expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
+        model: str,
+        engine_kwargs: Dict[str, Any],
+        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        max_pending_requests: Optional[int] = None,
+        dynamic_lora_loading_path: Optional[str] = None,
+        should_continue_on_error: bool = False,
+    ):
+        pass
+
+    def normalize_engine_kwargs(
+        self,
+        task_type: vLLMTaskType,
+        engine_kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        pass
+
+    def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        pass
+
+    def __del__(self):
+        pass
+
+
+class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
     def __init__(
         self,
         data_column: str,
@@ -560,7 +642,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
         """
-        super().__init__(data_column, expected_input_keys)
+        StatefulStageUDF.__init__(self, data_column, expected_input_keys)
         self.model = model
         self.should_continue_on_error = should_continue_on_error
 
@@ -732,6 +814,37 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             self.llm.shutdown()
 
 
+
+class vLLMEngineStageSyncUDF(vLLMEngineStageBaseUDF, StatefulStageSyncUDF):
+    def __init__(
+        self,
+        data_column: str,
+        expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
+        model: str,
+        engine_kwargs: Dict[str, Any],
+        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        max_pending_requests: Optional[int] = None,
+        dynamic_lora_loading_path: Optional[str] = None,
+        should_continue_on_error: bool = False,
+    ):
+        pass
+
+    def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        pass
+
+    def udf(self, rows: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+        if False:
+            yield {}
+
+    def __del__(self):
+        pass
+
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
@@ -785,7 +898,8 @@ class vLLMEngineStage(StatefulStage):
     A stage that runs vLLM engine.
     """
 
-    fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
+    fn: Type[StatefulStageBaseUDF]
+    sync: bool
 
     @root_validator(pre=True)
     def post_init(cls, values):
@@ -798,6 +912,9 @@ class vLLMEngineStage(StatefulStage):
         Returns:
             The updated values.
         """
+        sync = values["sync"]
+        values["fn"] = vLLMEngineStageSyncUDF if sync else vLLMEngineStageUDF
+
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
         fn_constructor_kwargs = values["fn_constructor_kwargs"]
