@@ -16,10 +16,12 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -35,12 +37,14 @@ struct SchedulingClassDescriptor {
                                      LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy sched_strategy);
+                                     rpc::SchedulingStrategy sched_strategy,
+                                     std::vector<FallbackOption> fallback_strategy_p);
   ResourceSet resource_set;
   LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
+  std::vector<FallbackOption> fallback_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const;
   std::string DebugString() const;
@@ -54,7 +58,8 @@ H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
                     sched_cls.function_descriptor->Hash(),
                     sched_cls.depth,
                     sched_cls.scheduling_strategy,
-                    sched_cls.label_selector);
+                    sched_cls.label_selector,
+                    sched_cls.fallback_strategy);
 }
 
 using SchedulingClass = int;

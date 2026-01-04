@@ -196,7 +196,7 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "accelerator":
             self._type_hint = TorchTensorType(
-                transport == "accelerator",
+                transport="accelerator",
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -210,8 +210,9 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
-                    "a Communicator type"
+                    f"Invalid transport type: {transport}. "
+                    "Transport must be one of 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "an instance of Communicator type."
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,

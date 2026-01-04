@@ -6,6 +6,7 @@ ray_cc_library(
     hdrs = ["object_manager.h"],
     deps = [
         ":chunk_object_reader",
+        ":metrics",
         ":object_buffer_pool",
         ":object_directory",
         ":object_manager_common",
@@ -30,6 +31,7 @@ ray_cc_library(
     srcs = ["push_manager.cc"],
     hdrs = ["push_manager.h"],
     deps = [
+        ":metrics",
         "//src/ray/common:id",
         "//src/ray/stats:stats_metric",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -41,6 +43,7 @@ ray_cc_library(
     srcs = ["pull_manager.cc"],
     hdrs = ["pull_manager.h"],
     deps = [
+        ":metrics",
         ":object_manager_common",
         ":ownership_object_directory",
         "//src/ray/common:id",
@@ -161,4 +164,13 @@ ray_cc_library(
     name = "object_reader",
     hdrs = ["object_reader.h"],
     deps = ["//src/ray/protobuf:common_cc_proto"],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:size_literals",
+    ],
 )

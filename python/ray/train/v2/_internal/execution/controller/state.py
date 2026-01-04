@@ -12,7 +12,7 @@ class TrainControllerStateType(Enum):
     States:
        INITIALIZING: The train controller is starting up. This is always the initial
            state of the controller.
-       SCHEDULING: The training controller is in the process of scheduling a new worker
+       SCHEDULING: The train controller is in the process of scheduling a new worker
            group.
        RESCHEDULING: The train controller is in the process of rescheduling the worker
            group.
@@ -20,6 +20,8 @@ class TrainControllerStateType(Enum):
        RESTARTING: The train controller is in the process of recovering from an error.
        RESIZING: The train controller is in the process of resizing a running worker
            group.
+       SHUTTING_DOWN: The train controller has already shut down the worker group and
+           and is in the process of shutting itself down.
        ERRORED: A terminal state indicating that training has encountered an error and
            cannot continue.
        FINISHED: A terminal state indicating that training has completed.
@@ -39,11 +41,17 @@ class TrainControllerStateType(Enum):
     RUNNING = ("RUNNING", False, False)
     RESTARTING = ("RESTARTING", False, True)
     RESIZING = ("RESIZING", False, True)
+    SHUTTING_DOWN = ("SHUTTING_DOWN", False, False)
     ERRORED = ("ERRORED", True, False)
     FINISHED = ("FINISHED", True, False)
     ABORTED = ("ABORTED", True, False)
 
-    def __init__(self, state_name: str, is_terminal: bool, needs_new_run_attempt: bool):
+    def __init__(
+        self,
+        state_name: str,
+        is_terminal: bool,
+        needs_new_run_attempt: bool,
+    ):
         self.state_name = state_name
         self.is_terminal = is_terminal
         self.needs_new_run_attempt = needs_new_run_attempt
@@ -121,6 +129,12 @@ class ResizingState(TrainControllerState):
     ):
         super().__init__(state_type=TrainControllerStateType.RESIZING)
         self.scaling_decision = scaling_decision
+
+
+class ShuttingDownState(TrainControllerState):
+    def __init__(self, next_state: "TrainControllerState"):
+        super().__init__(state_type=TrainControllerStateType.SHUTTING_DOWN)
+        self.next_state = next_state
 
 
 class ErroredState(TrainControllerState):

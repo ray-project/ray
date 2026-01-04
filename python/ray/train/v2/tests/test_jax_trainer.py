@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import ray
@@ -13,17 +15,7 @@ assert is_v2_enabled()
 
 
 @pytest.fixture
-def jax_runtime_env():
-    return {
-        "pip": ["jax"],
-        "env_vars": {
-            "JAX_PLATFORMS": "cpu",
-        },
-    }
-
-
-@pytest.fixture
-def ray_tpu_single_host(monkeypatch, jax_runtime_env):
+def ray_tpu_single_host(monkeypatch):
     """Start a mock single-host TPU Ray cluster with 2x4 v6e (8 chips per host)."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-8")
@@ -34,24 +26,24 @@ def ray_tpu_single_host(monkeypatch, jax_runtime_env):
             resources={"TPU": 8},
         )
 
-        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
+        ray.init(address=cluster.address)
 
         yield cluster
         ray.shutdown()
 
 
 @pytest.fixture
-def ray_tpu_multi_host(monkeypatch, jax_runtime_env):
+def ray_tpu_multi_host(monkeypatch):
     """Start a simulated multi-host TPU Ray cluster."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_NAME", "test-slice-1")
         monkeypatch.setenv("TPU_WORKER_ID", "0")
-        monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-8")
+        monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-16")
         monkeypatch.setenv("TPU_TOPOLOGY", "2x2x2")
 
         cluster.add_node(
             num_cpus=2,
-            resources={"TPU": 4, "TPU-v4-8-head": 1},
+            resources={"TPU": 4, "TPU-v4-16-head": 1},
         )
         monkeypatch.setenv("TPU_WORKER_ID", "1")
         cluster.add_node(
@@ -59,7 +51,7 @@ def ray_tpu_multi_host(monkeypatch, jax_runtime_env):
             resources={"TPU": 4},
         )
 
-        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
+        ray.init(address=cluster.address)
 
         yield cluster
         ray.shutdown()
@@ -81,6 +73,10 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -93,6 +89,11 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()
@@ -106,6 +107,10 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     assert len(labeled_nodes) == 1
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -118,6 +123,11 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()
@@ -132,6 +142,19 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         if node["Alive"] and node["Labels"].get("ray.io/tpu-slice-name") == slice_label
     ]
     assert len(labeled_nodes) == 2
+
+
+def test_scaling_config_validation():
+    with pytest.raises(
+        ValueError, match="Cannot set `label_selector` when `use_tpu=True`"
+    ):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            label_selector={"subcluster": "my_subcluster"},
+        )
 
 
 if __name__ == "__main__":

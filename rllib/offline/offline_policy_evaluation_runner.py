@@ -1,32 +1,32 @@
-import gymnasium as gym
 import math
-import numpy
-import ray
-
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Collection,
     Dict,
     Iterable,
     List,
     Optional,
-    TYPE_CHECKING,
     Union,
 )
 
+import gymnasium as gym
+import numpy
+
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
     ALL_MODULES,
-    DEFAULT_AGENT_ID,
-    DEFAULT_MODULE_ID,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_RL_MODULE,
+    DEFAULT_AGENT_ID,
+    DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -102,9 +102,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # TODO (simon): Refactor into a single code block for both cases.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -131,9 +133,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -241,14 +245,14 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         # Define the collate function that converts the flattened dictionary
         # to a `MultiAgentBatch` with Tensors.
         def _collate_fn(
-            _batch: Dict[str, numpy.ndarray]
+            _batch: Dict[str, numpy.ndarray],
         ) -> Dict[EpisodeID, Dict[str, numpy.ndarray]]:
 
             return _batch["episodes"]
 
         # Define the finalize function that makes the host-to-device transfer.
         def _finalize_fn(
-            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]]
+            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
         ) -> Dict[EpisodeID, Dict[str, TensorType]]:
 
             return [
@@ -273,8 +277,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         explore: bool,
         train: bool,
     ) -> None:
-
-        self.metrics.activate_tensor_mode()
 
         num_env_steps = 0
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
@@ -325,15 +327,12 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED),
             iteration + 1,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
             iteration + 1,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
-
-        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 
@@ -448,16 +447,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
-        # TODO (simon): Create extra metrics.
-        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
-
     def _log_episode_metrics(self, episode_len: int, episode_return: float) -> None:
         """Logs episode metrics for each episode."""
 
@@ -518,36 +507,33 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log module steps (sum of all modules).
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log env steps (all modules).
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
 
@@ -556,9 +542,11 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -613,7 +601,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property

@@ -28,6 +28,11 @@ message NodeLifecycleEvent {
     DEAD = 1;
   }
 
+  enum AliveSubState {
+    UNSPECIFIED = 0;
+    DRAINING = 1;
+  }
+
   message DeathInfo {
     enum Reason {
       UNSPECIFIED = 0;
@@ -46,6 +51,7 @@ message NodeLifecycleEvent {
     map<string, double> resources = 3; // Resources (cpu, gpu, etc.) and their counts,
                                        // available only in the ALIVE state.
     DeathInfo death_info = 4;  // Available only in the DEAD state
+    AliveSubState alive_sub_state = 5; // Available only in the ALIVE state
   }
 
   bytes node_id = 1;

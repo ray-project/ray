@@ -85,11 +85,12 @@ std::shared_ptr<Client> Client::Create(
     PlasmaStoreConnectionErrorHandler connection_error_handler,
     ray::local_stream_socket &&socket) {
   ray::MessageHandler ray_message_handler =
-      [message_handler](std::shared_ptr<ray::ClientConnection> client,
+      [message_handler](const std::shared_ptr<ray::ClientConnection> &client,
                         int64_t message_type,
                         const std::vector<uint8_t> &message) {
-        Status s = message_handler(
-            std::static_pointer_cast<Client>(client), (MessageType)message_type, message);
+        Status s = message_handler(std::static_pointer_cast<Client>(client),
+                                   static_cast<MessageType>(message_type),
+                                   message);
         if (!s.ok()) {
           if (!s.IsDisconnected()) {
             RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
@@ -101,7 +102,7 @@ std::shared_ptr<Client> Client::Create(
       };
 
   ray::ConnectionErrorHandler ray_connection_error_handler =
-      [connection_error_handler](std::shared_ptr<ray::ClientConnection> client,
+      [connection_error_handler](const std::shared_ptr<ray::ClientConnection> &client,
                                  const boost::system::error_code &error) {
         connection_error_handler(std::static_pointer_cast<Client>(client), error);
       };

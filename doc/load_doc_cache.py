@@ -1,20 +1,19 @@
-import boto3
-import botocore
 import subprocess
 import tarfile
 import os
-import click
-from botocore import UNSIGNED
-from botocore.client import Config
 import time
+
+import click
 import requests
 
-S3_BUCKET = "ray-ci-results"
-DOC_BUILD_DIR_S3 = "doc_build"
 LAST_BUILD_CUTOFF = 3  # how many days ago to consider a build outdated
 PENDING_FILES_PATH = "pending_files.txt"
 ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
-DOC_BUILD_S3_URL = "https://ray-ci-results.s3.us-west-2.amazonaws.com/doc_build"
+DOC_BUILD_CACHE_URL = "https://rayci.anyscale.dev/ray/doc/build-cache"
+
+
+def _build_cache_url(commit: str):
+    return f"{DOC_BUILD_CACHE_URL}/{commit}.tgz"
 
 
 def find_latest_master_commit():
@@ -34,33 +33,32 @@ def find_latest_master_commit():
         .split("\n")
     )
     for commit in latest_commits:
-        result = requests.head(f"{DOC_BUILD_S3_URL}/{commit}.tgz")
-        if result.status_code == 200:
-            return commit
+        with requests.head(_build_cache_url(commit), allow_redirects=True) as response:
+            if response.status_code == 200:
+                return commit
     raise Exception(
-        "No cache found for latest master commit."
+        "No cache found for latest master commit. "
         "Please merge with upstream master or use 'make develop'."
     )
 
 
-def fetch_cache_from_s3(commit, target_file_path):
+def fetch_cache(commit, target_file_path):
     """
-    Fetch doc cache archive from ray-ci-results S3 bucket
+    Fetch doc cache archive from rayci.anyscale.dev
 
     Args:
         commit: The commit hash of the doc cache to fetch
         target_file_path: The file path to save the doc cache archive
     """
-    # Create an S3 client
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    s3_file_path = f"{DOC_BUILD_DIR_S3}/{commit}.tgz"
-    try:
-        print(f"Fetching doc cache from commit {commit}...")
-        s3.download_file(S3_BUCKET, s3_file_path, target_file_path)
-        print(f"Successfully downloaded {s3_file_path} to {target_file_path}")
-    except botocore.exceptions.ClientError as e:
-        print(f"Failed to download {s3_file_path} from S3: {str(e)}")
-        raise e
+
+    with requests.get(
+        _build_cache_url(commit), allow_redirects=True, stream=True
+    ) as response:
+        response.raise_for_status()
+        with open(target_file_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"Successfully downloaded {target_file_path}")
 
 
 def extract_cache(cache_path: str, doc_dir: str):
@@ -149,8 +147,9 @@ def main(ray_dir: str) -> None:
         f.write("\n".join(filenames))
 
     cache_path = f"{ray_dir}/doc.tgz"
-    # Fetch cache of that commit from S3 to cache_path
-    fetch_cache_from_s3(latest_master_commit, cache_path)
+    # Fetch cache of that commit from build cache archive to cache_path
+    print(f"Use build cache for commit {latest_master_commit}")
+    fetch_cache(latest_master_commit, cache_path)
     # Extract cache to override ray/doc directory
     extract_cache(cache_path, f"{ray_dir}/doc")
     os.remove(cache_path)

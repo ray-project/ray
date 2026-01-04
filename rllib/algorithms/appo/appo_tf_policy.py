@@ -5,37 +5,37 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import numpy as np
 import logging
-import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
+
+import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.appo.utils import make_appo_models
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.algorithms.impala.impala_tf_policy import (
-    _make_time_major,
     VTraceClipGradients,
     VTraceOptimizer,
+    _make_time_major,
 )
 from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
-    Postprocessing,
-)
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
-from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
-from ray.rllib.policy.tf_mixins import (
-    EntropyCoeffSchedule,
-    LearningRateSchedule,
-    KLCoeffMixin,
-    ValueNetworkMixin,
-    GradStatsMixin,
-    TargetNetworkMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import (
+    EntropyCoeffSchedule,
+    GradStatsMixin,
+    KLCoeffMixin,
+    LearningRateSchedule,
+    TargetNetworkMixin,
+    ValueNetworkMixin,
+)
 from ray.rllib.utils.annotations import (
     override,
 )

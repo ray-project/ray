@@ -1,28 +1,31 @@
 import asyncio
 import concurrent.futures
 import enum
+import json
 import os
 import platform
 import subprocess
-import json
 import time
-from itertools import chain
-from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
+from itertools import chain
+from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional, Set
 
 import aioboto3
 import boto3
 from botocore.exceptions import ClientError
-from github import Repository
+
+if TYPE_CHECKING:
+    from github import Repository
 
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
-from ray_release.result import (
-    ResultStatus,
-    Result,
-)
 from ray_release.logger import logger
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.util import (
+    ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
     get_read_state_machine_aws_bucket,
     get_write_state_machine_aws_bucket,
@@ -33,7 +36,7 @@ MICROCHECK_COMMAND = "@microcheck"
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -354,7 +357,7 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "Repository") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
@@ -387,6 +390,12 @@ class Test(dict):
         Returns whether this test is running on KubeRay.
         """
         return self.get("env") == "kuberay"
+
+    def is_azure(self) -> bool:
+        """
+        Returns whether this test is running on Azure.
+        """
+        return self.get("env") == "azure"
 
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
@@ -432,31 +441,33 @@ class Test(dict):
         """
         Returns the post-build script for the BYOD cluster.
         """
-        return self["cluster"]["byod"].get("post_build_script")
+        return self["cluster"]["byod"].get("post_build_script", None)
+
+    def get_byod_python_depset(self) -> Optional[str]:
+        """
+        Returns the lock file path.
+        """
+        return self["cluster"]["byod"].get("python_depset", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        default = {
-            "RAY_BACKEND_LOG_JSON": "1",
-            # Logs the full stack trace from Ray Data in case of exception,
-            # which is useful for debugging failures.
-            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
-            # To make ray data compatible across multiple pyarrow versions.
-            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
-        }
-        default.update(
-            _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
-        )
-
-        return default
+        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
     def get_byod_pips(self) -> List[str]:
         """
         Returns the list of pips for the BYOD cluster.
         """
         return self["cluster"]["byod"].get("pip", [])
+
+    def get_ray_version(self) -> Optional[str]:
+        """
+        Returns the Ray version to use from DockerHub if specified in cluster config.
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py310-cpu
+        instead of building custom BYOD images.
+        """
+        return self["cluster"].get("ray_version", None)
 
     def get_name(self) -> str:
         """
@@ -555,8 +566,13 @@ class Test(dict):
             return self.get_byod_base_image_tag(build_id)
         custom_info = {
             "post_build_script": self.get_byod_post_build_script(),
+            "python_depset": self.get_byod_python_depset(),
         }
-        return f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
+        tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
+        ray_version = self.get_ray_version()
+        if ray_version:
+            tag = f"{tag}-{ray_version}"
+        return tag
 
     def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
@@ -581,34 +597,24 @@ class Test(dict):
         """
         if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
+        if self.is_azure():
+            return get_global_config()["byod_azure_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
             return byod_ecr
         return get_global_config()["byod_ecr"]
 
-    def get_ray_image(self) -> str:
-        """
-        Returns the ray docker image to use for this test.
-        """
-        config = get_global_config()
-        repo = self.get_byod_repo()
-        if repo == DATAPLANE_ECR_REPO:
-            repo_name = config["byod_ray_cr_repo"]
-        elif repo == DATAPLANE_ECR_LLM_REPO:
-            repo_name = config["byod_ray_llm_cr_repo"]
-        elif repo == DATAPLANE_ECR_ML_REPO:
-            repo_name = config["byod_ray_ml_cr_repo"]
-        else:
-            raise ValueError(f"Unknown repo {repo}")
-
-        ecr = config["byod_ray_ecr"]
-        tag = self.get_byod_base_image_tag()
-        return f"{ecr}/{repo_name}:{tag}"
-
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
+        ray_version = self.get_ray_version()
+        if ray_version:
+            python_version = "py" + self.get_python_version().replace(".", "")
+            tag_suffix = self.get_tag_suffix()
+            if tag_suffix == "gpu":
+                tag_suffix = "cu121"
+            return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         return (
             f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
@@ -618,16 +624,30 @@ class Test(dict):
         """
         Returns whether this test requires a custom byod image.
         """
-        return self.get_byod_post_build_script() is not None
+        return (
+            self.get_byod_post_build_script() is not None
+            or self.get_byod_python_depset() is not None
+        )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
+        If ray_version is specified in cluster config, returns anyscale/ray image.
         """
-        return (
-            f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
+        ray_version = self.get_ray_version()
+        if not ray_version or self.require_custom_byod_image():
+            # Use custom BYOD image
+            return (
+                f"{self.get_byod_ecr()}/"
+                f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
+            )
+
+        python_version = "py" + self.get_python_version().replace(".", "")
+        tag_suffix = (
+            "cu121" if self.get_tag_suffix() == "gpu" else self.get_tag_suffix()
         )
+        tag = f"{ray_version}-{python_version}-{tag_suffix}"
+        return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 
     def get_test_results(
         self,

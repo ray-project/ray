@@ -210,7 +210,7 @@ one for each of the configured learning rates:
 
 .. testcode::
 
-    from ray import train, tune
+    from ray import tune
     from ray.rllib.algorithms.ppo import PPOConfig
 
     config = (
@@ -230,7 +230,7 @@ one for each of the configured learning rates:
         # pretty printed result metrics from the results returned previously by
         # ``.train()``. Also note that -1100 is not a good episode return for
         # Pendulum-v1, we are using it here to shorten the experiment time.
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={"env_runners/episode_return_mean": -1100.0},
         ),
     )

@@ -25,8 +25,10 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/util/time.h"
 
@@ -56,7 +58,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       pubsub::SubscriberInterface *core_worker_subscriber,
-      IObjectDirectory *object_directory)
+      IObjectDirectory *object_directory,
+      ray::observability::MetricInterface &object_store_memory_gauge,
+      ray::raylet::SpillManagerMetrics &spill_manager_metrics)
       : self_node_id_(node_id),
         self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
@@ -75,7 +79,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
         core_worker_subscriber_(core_worker_subscriber),
-        object_directory_(object_directory) {}
+        object_directory_(object_directory),
+        object_store_memory_gauge_(object_store_memory_gauge),
+        spill_manager_metrics_(spill_manager_metrics) {}
 
   /// Pin objects.
   ///
@@ -387,6 +393,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   /// The number of failed deletion requests.
   std::atomic<int64_t> num_failed_deletion_requests_ = 0;
+
+  ray::observability::MetricInterface &object_store_memory_gauge_;
+  ray::raylet::SpillManagerMetrics &spill_manager_metrics_;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
 };

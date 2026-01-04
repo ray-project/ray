@@ -42,6 +42,8 @@ constexpr int kRayletStoreErrorExitCode = 100;
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 
 constexpr char kClusterIdKey[] = "ray_cluster_id";
+constexpr char kAuthTokenKey[] = "authorization";
+constexpr char kBearerPrefix[] = "Bearer ";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
@@ -63,6 +65,13 @@ constexpr int kMessagePackOffset = 9;
 /// Filename of "shim process" that sets up Python worker environment.
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray_constants.py
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
+
+// Should be kept in sync with port names in ray_constants.py
+constexpr char kRuntimeEnvAgentPortName[] = "runtime_env_agent_port";
+constexpr char kMetricsAgentPortName[] = "metrics_agent_port";
+constexpr char kMetricsExportPortName[] = "metrics_export_port";
+constexpr char kDashboardAgentListenPortName[] = "dashboard_agent_listen_port";
+constexpr char kGcsServerPortName[] = "gcs_server_port";
 
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
@@ -150,3 +159,6 @@ constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
 
 /// PID of GCS process to record metrics.
 constexpr char kGcsPidKey[] = "gcs_pid";
+
+// Prefix for namespaces which are used internally by ray.
+constexpr char kRayInternalNamespacePrefix[] = "_ray_internal_";  // NOLINT

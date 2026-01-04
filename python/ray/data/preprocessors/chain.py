@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
-from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
+from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
@@ -66,6 +66,7 @@ class Chain(Preprocessor):
             return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
+        super().__init__()
         self.preprocessors = preprocessors
 
     def _fit(self, ds: "Dataset") -> Preprocessor:

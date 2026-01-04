@@ -11,10 +11,12 @@ from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
     FinishedState,
+    ReschedulingState,
     ResizingState,
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
@@ -110,6 +112,14 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             self._state_manager.update_train_run_aborted(
                 run_id=self._run_id,
             )
+
+        elif isinstance(current_state, ReschedulingState):
+            # substate of SchedulingState
+            pass
+
+        elif isinstance(current_state, ShuttingDownState):
+            # substate of RunningState
+            pass
 
     def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
         self._state_manager.create_train_run_attempt(

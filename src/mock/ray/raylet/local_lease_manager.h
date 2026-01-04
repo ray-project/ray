@@ -15,6 +15,7 @@
 #pragma once
 
 #include "gmock/gmock.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 
 namespace ray::raylet {
@@ -30,6 +31,10 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
                rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                const std::string &scheduling_failure_message),
+              (override));
+  MOCK_METHOD(std::vector<std::shared_ptr<internal::Work>>,
+              CancelLeasesWithoutReply,
+              (std::function<bool(const std::shared_ptr<internal::Work> &)> predicate),
               (override));
   MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,
                                          std::deque<std::shared_ptr<internal::Work>>> &),
@@ -71,10 +76,22 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (override));
   MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
+  MOCK_METHOD(SchedulerMetrics &, GetSchedulerMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));
   MOCK_METHOD(size_t, GetNumLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumWaitingLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumUnschedulableLeaseSpilled, (), (const, override));
+  MOCK_METHOD(bool,
+              IsLeaseQueued,
+              (const SchedulingClass &scheduling_class, const LeaseID &lease_id),
+              (const, override));
+  MOCK_METHOD(bool,
+              AddReplyCallback,
+              (const SchedulingClass &scheduling_class,
+               const LeaseID &lease_id,
+               rpc::SendReplyCallback send_reply_callback,
+               rpc::RequestWorkerLeaseReply *reply),
+              (override));
 };
 
 }  // namespace ray::raylet

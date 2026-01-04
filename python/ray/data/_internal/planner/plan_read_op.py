@@ -4,7 +4,6 @@ from typing import Iterable, List
 
 import ray
 from ray import ObjectRef
-from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -71,7 +70,14 @@ def plan_read_op(
         assert (
             parallelism is not None
         ), "Read parallelism must be set by the optimizer before execution"
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
+
+        # Get the original read tasks
+        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+            parallelism,
+            per_task_row_limit=op._per_block_limit,
+            data_context=data_context,
+        )
+
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
         ret = []
@@ -119,6 +125,6 @@ def plan_read_op(
         inputs,
         data_context,
         name=op.name,
-        compute_strategy=TaskPoolStrategy(op._concurrency),
+        compute_strategy=op._compute,
         ray_remote_args=op._ray_remote_args,
     )

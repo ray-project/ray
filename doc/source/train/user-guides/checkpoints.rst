@@ -233,6 +233,101 @@ Here is an example of distributed checkpointing with PyTorch:
     rank-specific filenames already, so you usually do not need to worry about this.
 
 
+.. _train-checkpoint-upload-modes:
+
+Checkpoint upload modes
+-----------------------
+
+By default, when you call :func:`~ray.train.report`, Ray Train synchronously pushes
+your checkpoint from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on
+your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` with
+:class:`~ray.train.CheckpointUploadMode` set to ``ray.train.CheckpointUploadMode.SYNC``.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_sync_start__
+    :end-before: __checkpoint_upload_mode_sync_end__
+
+.. _train-checkpoint-upload-mode-async:
+
+Asynchronous checkpoint uploading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may want to upload your checkpoint asynchronously instead so that
+the next training step can start in parallel. If so, you should use
+``ray.train.CheckpointUploadMode.ASYNC``, which kicks off a new thread
+to upload the checkpoint. This is helpful for larger
+checkpoints that might take longer to upload, but might add unnecessary
+complexity (see below) if you want to immediately upload only a small checkpoint.
+
+Each ``report`` blocks until the previous ``report``\'s checkpoint
+upload completes before starting a new checkpoint upload thread. Ray Train does this
+to avoid accumulating too many upload threads and potentially running out of memory.
+
+Because ``report`` returns without waiting for the checkpoint upload to complete,
+you must ensure that the local checkpoint directory stays alive until the checkpoint
+upload completes. This means you can't use a temporary directory that Ray Train may
+delete before the upload finishes, for example from ``tempfile.TemporaryDirectory``.
+``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
+defaults to ``True`` if ``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_async_start__
+    :end-before: __checkpoint_upload_mode_async_end__
+
+.. figure:: ../images/sync_vs_async_checkpointing.png
+
+    This figure illustrates the difference between synchronous and asynchronous
+    checkpoint uploading.
+
+Custom checkpoint uploading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:func:`~ray.train.report` defaults to uploading from disk to the remote ``storage_path``
+with the PyArrow filesystem copying utilities before reporting the checkpoint to Ray Train.
+If you would rather upload the checkpoint manually or with a third-party library
+such as `Torch Distributed Checkpointing <https://docs.pytorch.org/docs/stable/distributed.checkpoint.html>`_,
+you have the following options:
+
+.. tab-set::
+
+    .. tab-item:: Synchronous
+
+        If you want to upload the checkpoint synchronously, you can first upload the checkpoint
+        to the ``storage_path``and then report a reference to the uploaded checkpoint with
+        ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_mode_no_upload_start__
+            :end-before: __checkpoint_upload_mode_no_upload_end__
+
+    .. tab-item:: Asynchronous
+
+        If you want to upload the checkpoint asynchronously, you can set ``checkpoint_upload_mode``
+        to ``ray.train.CheckpointUploadMode.ASYNC`` and pass a ``checkpoint_upload_fn`` to
+        ``ray.train.report``. This function takes the ``Checkpoint`` and ``checkpoint_dir_name``
+        passed to ``ray.train.report`` and returns the persisted ``Checkpoint``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_function_start__
+            :end-before: __checkpoint_upload_function_end__
+
+        .. warning::
+
+            In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
+            lead to unexpected behavior. You should also avoid collective operations, such as
+            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
+
+        .. note::
+
+            Do not pass a ``checkpoint_upload_fn`` with ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD``
+            because Ray Train will simply ignore ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
+            ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.SYNC``, but this is equivalent to uploading the
+            checkpoint yourself and reporting the checkpoint with ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing
@@ -254,6 +349,30 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
 
+Using checkpoints during training
+----------------------------------
+
+During training, you may want to access checkpoints you've reported and their associated metrics
+from training workers for a variety of reasons, such as
+reporting the best checkpoint so far to an experiment tracker. You can do this by calling
+:func:`~ray.train.get_all_reported_checkpoints` from within your training function. This function returns
+a list of :class:`~ray.train.ReportedCheckpoint` objects that represent all the
+:class:`~ray.train.Checkpoint`\s and their associated metrics that you've reported so far
+and have been kept based on the :ref:`checkpoint configuration <train-dl-configure-checkpoints>`.
+
+This function supports two consistency modes:
+
+- ``CheckpointConsistencyMode.COMMITTED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage and committed.
+- ``CheckpointConsistencyMode.VALIDATED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage, committed, and validated (see :ref:`train-validating-checkpoints`).
+  This is the default consistency mode and has the same behavior as ``CheckpointConsistencyMode.COMMITTED``
+  if your report did not kick off validation.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __get_all_reported_checkpoints_example_start__
+    :end-before: __get_all_reported_checkpoints_example_end__
 
 
 Using checkpoints after training

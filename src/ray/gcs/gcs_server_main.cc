@@ -12,19 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/constants.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server.h"
+#include "ray/gcs/metrics.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/observability/metrics.h"
+#include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/port_persistence.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
@@ -43,8 +52,10 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
+DEFINE_string(node_id, "", "The ID of the node where GCS runs (head node).");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
+DEFINE_string(session_dir, "", "The path of this ray session directory.");
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -101,7 +112,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string node_id = FLAGS_node_id;
   const std::string session_name = FLAGS_session_name;
+  const std::string session_dir = FLAGS_session_dir;
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -126,7 +139,7 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, kRayVersion},
                                             {ray::stats::NodeAddressKey, node_ip_address},
                                             {ray::stats::SessionNameKey, session_name}};
-  ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
+  ray::stats::Init(global_tags, ray::WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
@@ -159,15 +172,66 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.node_id = node_id;
   gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
-  ray::stats::Count event_recorder_dropped_events_counter =
-      ray::GetRayEventRecorderDroppedEventsMetric();
 
-  ray::gcs::GcsServer gcs_server(
-      gcs_server_config, main_service, event_recorder_dropped_events_counter);
+  // Create individual metrics
+  auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();
+  auto gcs_actor_by_state_gauge = ray::gcs::GetGcsActorByStateGaugeMetric();
+  auto running_job_gauge = ray::gcs::GetRunningJobGaugeMetric();
+  auto finished_job_counter = ray::gcs::GetFinishedJobCounterMetric();
+  auto job_duration_in_seconds_gauge = ray::gcs::GetJobDurationInSecondsGaugeMetric();
+  auto placement_group_gauge = ray::gcs::GetPlacementGroupGaugeMetric();
+  auto placement_group_creation_latency_in_ms_histogram =
+      ray::gcs::GetPlacementGroupCreationLatencyInMsHistogramMetric();
+  auto placement_group_scheduling_latency_in_ms_histogram =
+      ray::gcs::GetPlacementGroupSchedulingLatencyInMsHistogramMetric();
+  auto placement_group_count_gauge = ray::gcs::GetPlacementGroupCountGaugeMetric();
+  auto task_events_reported_gauge =
+      ray::gcs::GetTaskManagerTaskEventsReportedGaugeMetric();
+  auto task_events_dropped_gauge = ray::gcs::GetTaskManagerTaskEventsDroppedGaugeMetric();
+  auto task_events_stored_gauge = ray::gcs::GetTaskManagerTaskEventsStoredGaugeMetric();
+  auto event_recorder_dropped_events_counter =
+      ray::GetRayEventRecorderDroppedEventsCounterMetric();
+  auto storage_operation_latency_in_ms_histogram =
+      ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
+  auto storage_operation_count_counter =
+      ray::gcs::GetGcsStorageOperationCountCounterMetric();
+  auto resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
+  auto health_check_rpc_latency_ms_histogram =
+      ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
+  auto scheduler_placement_time_ms_histogram =
+      ray::GetSchedulerPlacementTimeMsHistogramMetric();
+
+  // Create the metrics struct
+  ray::gcs::GcsServerMetrics gcs_server_metrics{
+      /*actor_by_state_gauge=*/actor_by_state_gauge,
+      /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge,
+      /*running_job_gauge=*/running_job_gauge,
+      /*finished_job_counter=*/finished_job_counter,
+      /*job_duration_in_seconds_gauge=*/job_duration_in_seconds_gauge,
+      /*placement_group_gauge=*/placement_group_gauge,
+      /*placement_group_creation_latency_in_ms_histogram=*/
+      placement_group_creation_latency_in_ms_histogram,
+      /*placement_group_scheduling_latency_in_ms_histogram=*/
+      placement_group_scheduling_latency_in_ms_histogram,
+      /*placement_group_count_gauge=*/placement_group_count_gauge,
+      /*task_events_reported_gauge=*/task_events_reported_gauge,
+      /*task_events_dropped_gauge=*/task_events_dropped_gauge,
+      /*task_events_stored_gauge=*/task_events_stored_gauge,
+      /*event_recorder_dropped_events_counter=*/event_recorder_dropped_events_counter,
+      /*storage_operation_latency_in_ms_histogram=*/
+      storage_operation_latency_in_ms_histogram,
+      /*storage_operation_count_counter=*/storage_operation_count_counter,
+      resource_usage_gauge,
+      scheduler_placement_time_ms_histogram,
+      health_check_rpc_latency_ms_histogram,
+  };
+
+  ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
@@ -188,7 +252,14 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  gcs_server.Start();
+  gcs_server.SetPortReadyCallback([session_dir, node_id](int bound_port) {
+    if (!session_dir.empty()) {
+      auto node_id_obj = ray::NodeID::FromHex(node_id);
+      RAY_CHECK_OK(
+          ray::PersistPort(session_dir, node_id_obj, kGcsServerPortName, bound_port));
+    }
+  });
 
+  gcs_server.Start();
   main_service.run();
 }

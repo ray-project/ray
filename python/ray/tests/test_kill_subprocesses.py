@@ -1,5 +1,4 @@
 import logging
-import multiprocessing
 import os
 import subprocess
 import sys
@@ -22,6 +21,13 @@ def enable_subreaper():
     del os.environ["RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper"]
 
 
+@pytest.fixture
+def enable_pg_cleanup():
+    os.environ["RAY_process_group_cleanup_enabled"] = "true"
+    yield
+    del os.environ["RAY_process_group_cleanup_enabled"]
+
+
 def sleep_forever():
     while True:
         time.sleep(10000)
@@ -42,8 +48,7 @@ def get_process_info(pid):
 @ray.remote
 class BedMaker:
     def make_sleeper(self):
-        p = multiprocessing.Process(target=sleep_forever)
-        p.start()
+        p = subprocess.Popen(["sleep", "1000"])  # inherits PGID
         return p.pid
 
     def spawn_daemon(self):
@@ -171,6 +176,126 @@ def test_default_sigchld_handler(enable_subreaper, shutdown_only):
     # order matters, since `manual_reap` sets the signal handler.
     ray.get(a.auto_reap.remote())
     ray.get(a.manual_reap.remote())
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_sigkilled_worker_child_process_cleaned_up(enable_pg_cleanup, shutdown_only):
+    ray.init()
+    # SIGKILL the actor; PG cleanup should terminate the background child.
+    b = BedMaker.remote()
+    child_pid = ray.get(b.make_sleeper.remote())
+    actor_pid = ray.get(b.my_pid.remote())
+
+    logger.info(get_process_info(child_pid))  # shows the process
+    psutil.Process(actor_pid).kill()  # sigkill
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
+    with pytest.raises(psutil.NoSuchProcess):
+        logger.info(get_process_info(child_pid))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_background_child_survives_while_actor_alive_then_killed_with_pg_cleanup(
+    enable_pg_cleanup, shutdown_only
+):
+    ray.init()
+    # Spawn a background child that remains in the same PG as the actor.
+    b = BedMaker.remote()
+    child_pid = ray.get(b.make_sleeper.remote())
+    actor_pid = ray.get(b.my_pid.remote())
+
+    # The background child remains alive while the actor is alive.
+    time.sleep(1)
+    assert psutil.pid_exists(child_pid)
+
+    # After the actor is killed, PG cleanup should terminate the background child.
+    psutil.Process(actor_pid).kill()
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
+    with pytest.raises(psutil.NoSuchProcess):
+        logger.info(get_process_info(child_pid))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Orphan process killing only works on Linux.",
+)
+def test_detached_setsido_escape_with_pg_cleanup(enable_pg_cleanup, shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        def spawn_detached(self):
+            # Detach into a new session (escape worker PG); sleep long.
+            return subprocess.Popen(
+                [sys.executable, "-c", "import os,time; os.setsid(); time.sleep(1000)"]
+            ).pid
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+    child_pid = ray.get(a.spawn_detached.remote())
+    actor_pid = ray.get(a.pid.remote())
+    psutil.Process(actor_pid).kill()
+    time.sleep(1)
+    # Detached child should still be alive (escaped PG cleanup).
+    assert psutil.pid_exists(child_pid)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Process‑group cleanup is POSIX‑only (Linux/macOS).",
+)
+def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_only):
+    """
+    Test that a subprocess spawned by another subprocess is cleaned up when the actor
+    is killed.
+    """
+    ray.init()
+
+    @ray.remote
+    class NestedSpawner:
+        def spawn_nested(self):
+            # Create a subprocess that spawns another subprocess.
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "import subprocess; "
+                    "subprocess.Popen(['sleep', '150']); "
+                    "import time; time.sleep(100)",
+                ],
+                text=True,
+            )
+            child_pid = proc.pid
+            # Wait until the subprocess is running.
+            wait_for_condition(
+                lambda: psutil.pid_exists(child_pid), retry_interval_ms=100
+            )
+            wait_for_condition(
+                lambda: len(psutil.Process(child_pid).children()) > 0,
+                retry_interval_ms=100,
+            )
+            grandchild_pid = psutil.Process(child_pid).children()[0].pid
+            return proc.pid, grandchild_pid
+
+    actor = NestedSpawner.remote()
+    child_pid, grandchild_pid = ray.get(actor.spawn_nested.remote())
+
+    # Both child and grandchild should be alive while the actor is alive.
+    assert psutil.pid_exists(child_pid)
+    assert psutil.pid_exists(grandchild_pid)
+
+    del actor
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
+    wait_for_condition(
+        lambda: not psutil.pid_exists(grandchild_pid), retry_interval_ms=100
+    )
 
 
 if __name__ == "__main__":

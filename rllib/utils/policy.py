@@ -1,7 +1,6 @@
-import gymnasium as gym
 import logging
-import numpy as np
 from typing import (
+    TYPE_CHECKING,
     Callable,
     Dict,
     List,
@@ -9,18 +8,19 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
+
+import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
-
 import ray.cloudpickle as pickle
+from ray._common.deprecation import Deprecated
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,

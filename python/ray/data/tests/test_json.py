@@ -17,10 +17,12 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+)
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -214,7 +216,7 @@ def test_json_read_meta_provider(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(
         path1,
-        meta_provider=FastFileMetadataProvider(),
+        meta_provider=DefaultFileMetadataProvider(),
     )
 
     # Expect to lazily compute all metadata correctly.
@@ -528,13 +530,22 @@ class TestPandasJSONDatasource:
         [{"a": []}, {"a": [1]}, {"a": [1, 2, 3]}],
         ids=["empty", "single", "multiple"],
     )
+    @pytest.mark.parametrize(
+        "compression,filename",
+        [("gzip", "test.json.gz"), ("infer", "test.json")],  # infer = default
+    )
     def test_read_stream(
-        self, data, tmp_path, target_max_block_size_infinite_or_default
+        self,
+        data,
+        tmp_path,
+        compression,
+        filename,
+        target_max_block_size_infinite_or_default,
     ):
         # Setup test file.
         df = pd.DataFrame(data)
-        path = os.path.join(tmp_path, "test.json")
-        df.to_json(path, orient="records", lines=True)
+        path = os.path.join(tmp_path, filename)
+        df.to_json(path, orient="records", lines=True, compression=compression)
 
         # Setup datasource.
         local_filesystem = fs.LocalFileSystem()

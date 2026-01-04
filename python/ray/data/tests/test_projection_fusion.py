@@ -10,11 +10,13 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
-from ray.data.expressions import DataType, col, udf
+from ray.data.expressions import DataType, StarExpr, col, star, udf
 
 
 @dataclass
@@ -38,7 +40,7 @@ class DependencyTestCase:
     description: str
 
 
-class TestPorjectionFusion:
+class TestProjectionFusion:
     """Test topological sorting in projection pushdown fusion."""
 
     @pytest.fixture(autouse=True)
@@ -114,12 +116,14 @@ class TestPorjectionFusion:
         current_op = input_op
 
         for expr_dict in expressions_list:
-            exprs = {
-                name: self._parse_expression(desc) for name, desc in expr_dict.items()
-            }
-            current_op = Project(
-                current_op, cols=None, cols_rename=None, exprs=exprs, ray_remote_args={}
-            )
+            # Convert dictionary to list of named expressions
+            exprs = []
+            for name, desc in expr_dict.items():
+                expr = self._parse_expression(desc)
+                named_expr = expr.alias(name)
+                exprs.append(named_expr)
+
+            current_op = Project(current_op, exprs=[star()] + exprs, ray_remote_args={})
 
         return current_op
 
@@ -129,8 +133,10 @@ class TestPorjectionFusion:
         levels = []
 
         while isinstance(current, Project):
-            if current.exprs:
-                levels.append(set(current.exprs.keys()))
+            # Extract names, ignoring StarExpr (not a named column)
+            levels.append(
+                {expr.name for expr in current.exprs if not isinstance(expr, StarExpr)}
+            )
             current = current.input_dependency
 
         return list(reversed(levels))  # Return bottom-up order
@@ -263,7 +269,7 @@ class TestPorjectionFusion:
                 f"Expected {expected_content} to be subset of {actual_levels[i]}"
             )
 
-    def test_pairwise_fusion_behavior(self):
+    def test_pairwise_fusion_behavior(self, ray_start_regular_shared):
         """Test to understand how pairwise fusion works in practice."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -308,7 +314,7 @@ class TestPorjectionFusion:
         assert result3 == {"id": 0, "col1": 1, "col2": 0, "col3": -1}
         assert result4 == {"id": 0, "col1": 1, "col2": 0, "col3": -1, "col4": 5}
 
-    def test_optimal_fusion_with_single_chain(self):
+    def test_optimal_fusion_with_single_chain(self, ray_start_regular_shared):
         """Test fusion when all operations are added in a single chain (ideal case)."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -344,22 +350,20 @@ class TestPorjectionFusion:
         for col_name, expr in expressions.items():
             ds_with_column = ds_with_column.with_column(col_name, expr)
 
-        # Convert both to pandas for reliable comparison (avoids take() ordering issues)
-        result_optimal_df = (
-            ds_optimal.to_pandas().sort_values("id").reset_index(drop=True)
-        )
-        result_with_column_df = (
-            ds_with_column.to_pandas().sort_values("id").reset_index(drop=True)
-        )
+        # Convert both to pandas for reliable comparison
+        result_optimal_df = ds_optimal.to_pandas()
+        result_with_column_df = ds_with_column.to_pandas()
 
-        # Compare using pandas testing
-        pd.testing.assert_frame_equal(
-            result_optimal_df.sort_index(axis=1),
-            result_with_column_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_optimal_df = result_optimal_df[sorted(result_optimal_df.columns)]
+        result_with_column_df = result_with_column_df[
+            sorted(result_with_column_df.columns)
+        ]
 
-    def test_basic_fusion_works(self):
+        # Compare using rows_same (deterministic, ignores order)
+        assert rows_same(result_optimal_df, result_with_column_df)
+
+    def test_basic_fusion_works(self, ray_start_regular_shared):
         """Test that basic fusion of two independent operations works."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -385,57 +389,26 @@ class TestPorjectionFusion:
             optimized_count == 1
         ), f"Two independent operations should fuse to 1 operator, got {optimized_count}"
 
-        # Verify correctness using pandas comparison
+        # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
         optimized_ds = Dataset(ds._plan, optimized_plan)
+        result_df = optimized_ds.to_pandas()
 
-        try:
-            result_df = optimized_ds.to_pandas()
-            print(f"Result: {result_df}")
+        expected_df = pd.DataFrame(
+            {
+                "id": [0, 1, 2, 3, 4],
+                "doubled": [0, 2, 4, 6, 8],
+                "plus_one": [1, 2, 3, 4, 5],
+            }
+        )
 
-            expected_df = pd.DataFrame(
-                {
-                    "id": [0, 1, 2, 3, 4],
-                    "doubled": [0, 2, 4, 6, 8],
-                    "plus_one": [1, 2, 3, 4, 5],
-                }
-            )
-            print(f"Expected: {expected_df}")
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-            # Sort columns for comparison
-            result_sorted = result_df.reindex(sorted(result_df.columns), axis=1)
-            expected_sorted = expected_df.reindex(sorted(expected_df.columns), axis=1)
-
-            pd.testing.assert_frame_equal(
-                result_sorted,
-                expected_sorted,
-                check_dtype=False,
-                check_index_type=False,
-            )
-
-        except Exception as e:
-            print(f"Error in basic fusion test: {e}")
-            # Fallback verification
-            result_list = optimized_ds.take_all()
-            print(f"Result as list: {result_list}")
-
-            expected_list = [
-                {"id": 0, "doubled": 0, "plus_one": 1},
-                {"id": 1, "doubled": 2, "plus_one": 2},
-                {"id": 2, "doubled": 4, "plus_one": 3},
-                {"id": 3, "doubled": 6, "plus_one": 4},
-                {"id": 4, "doubled": 8, "plus_one": 5},
-            ]
-
-            assert len(result_list) == len(expected_list)
-            for actual, expected in zip(result_list, expected_list):
-                for key, expected_val in expected.items():
-                    assert (
-                        actual[key] == expected_val
-                    ), f"Mismatch for key {key}: expected {expected_val}, got {actual[key]}"
-
-    def test_dependency_prevents_fusion(self):
+    def test_dependency_prevents_fusion(self, ray_start_regular_shared):
         """Test that dependencies are handled in single operator with OrderedDict."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -463,7 +436,7 @@ class TestPorjectionFusion:
             optimized_count == 1
         ), f"All operations should fuse into 1 operator, got {optimized_count}"
 
-        # Verify correctness using pandas comparison
+        # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
         optimized_ds = Dataset(ds._plan, optimized_plan)
@@ -477,13 +450,12 @@ class TestPorjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-    def test_mixed_udf_regular_end_to_end(self):
+    def test_mixed_udf_regular_end_to_end(self, ray_start_regular_shared):
         """Test the exact failing scenario from the original issue."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -527,11 +499,10 @@ class TestPorjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
         # Verify that we have 1 operator (changed from multiple)
         optimized_count = self._count_project_operators(optimized_plan)
@@ -539,7 +510,7 @@ class TestPorjectionFusion:
             optimized_count == 1
         ), f"Expected 1 operator with all expressions fused, got {optimized_count}"
 
-    def test_optimal_fusion_comparison(self):
+    def test_optimal_fusion_comparison(self, ray_start_regular_shared):
         """Compare optimized with_column approach against manual map_batches."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -576,17 +547,16 @@ class TestPorjectionFusion:
             apply_all_expressions, batch_format="pyarrow"
         )
 
-        # Compare results using pandas
+        # Compare results using rows_same
         result_optimized = optimized_ds.to_pandas()
         result_optimal = ds_optimal.to_pandas()
 
-        pd.testing.assert_frame_equal(
-            result_optimized.sort_index(axis=1),
-            result_optimal.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_optimized = result_optimized[sorted(result_optimized.columns)]
+        result_optimal = result_optimal[sorted(result_optimal.columns)]
+        assert rows_same(result_optimized, result_optimal)
 
-    def test_chained_udf_dependencies(self):
+    def test_chained_udf_dependencies(self, ray_start_regular_shared):
         """Test multiple non-vectorized UDFs in a dependency chain."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -604,7 +574,7 @@ class TestPorjectionFusion:
         assert self._count_project_operators(optimized_plan) == 1
         assert (
             self._describe_plan_structure(optimized_plan)
-            == "Project(3 exprs) -> FromItems"  # Changed from multiple operators
+            == "Project(4 exprs) -> FromItems"  # Changed from multiple operators
         )
 
         # Verify execution correctness
@@ -622,13 +592,12 @@ class TestPorjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-    def test_performance_impact_of_udf_chains(self):
+    def test_performance_impact_of_udf_chains(self, ray_start_regular_shared):
         """Test performance characteristics of UDF dependency chains vs independent UDFs."""
         input_data = [{"id": i} for i in range(100)]
 
@@ -666,12 +635,730 @@ class TestPorjectionFusion:
         )  # Changed from 3 to 1
         assert (
             self._describe_plan_structure(optimized_independent)
-            == "Project(3 exprs) -> FromItems"
+            == "Project(4 exprs) -> FromItems"
         )
         assert (
             self._describe_plan_structure(optimized_chained)
-            == "Project(3 exprs) -> FromItems"  # Changed from multiple operators
+            == "Project(4 exprs) -> FromItems"  # Changed from multiple operators
         )
+
+    @pytest.mark.parametrize(
+        "operations,expected",
+        [
+            # Single operations
+            ([("rename", {"a": "A"})], {"A": 1, "b": 2, "c": 3}),
+            ([("select", ["a", "b"])], {"a": 1, "b": 2}),
+            ([("with_column", "d", 4)], {"a": 1, "b": 2, "c": 3, "d": 4}),
+            # Two operations - rename then select
+            ([("rename", {"a": "A"}), ("select", ["A"])], {"A": 1}),
+            ([("rename", {"a": "A"}), ("select", ["b"])], {"b": 2}),
+            (
+                [("rename", {"a": "A", "b": "B"}), ("select", ["A", "B"])],
+                {"A": 1, "B": 2},
+            ),
+            # Two operations - select then rename
+            ([("select", ["a", "b"]), ("rename", {"a": "A"})], {"A": 1, "b": 2}),
+            ([("select", ["a"]), ("rename", {"a": "x"})], {"x": 1}),
+            # Two operations - with_column combinations
+            ([("with_column", "d", 4), ("select", ["a", "d"])], {"a": 1, "d": 4}),
+            ([("select", ["a"]), ("with_column", "d", 4)], {"a": 1, "d": 4}),
+            (
+                [("rename", {"a": "A"}), ("with_column", "d", 4)],
+                {"A": 1, "b": 2, "c": 3, "d": 4},
+            ),
+            (
+                [("with_column", "d", 4), ("rename", {"d": "D"})],
+                {"a": 1, "b": 2, "c": 3, "D": 4},
+            ),
+            # Three operations
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "b"]),
+                    ("with_column", "d", 4),
+                ],
+                {"A": 1, "b": 2, "d": 4},
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "d"]),
+                ],
+                {"A": 1, "d": 4},
+            ),
+            (
+                [
+                    ("select", ["a", "b"]),
+                    ("rename", {"a": "x"}),
+                    ("with_column", "d", 4),
+                ],
+                {"x": 1, "b": 2, "d": 4},
+            ),
+            # Column swap (no actual changes)
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 2}),
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 1}),
+            # Multiple same operations
+            (
+                [("rename", {"a": "x"}), ("rename", {"x": "y"})],
+                {"y": 1, "b": 2, "c": 3},
+            ),
+            ([("select", ["a", "b"]), ("select", ["a"])], {"a": 1}),
+            (
+                [("with_column", "d", 4), ("with_column", "e", 5)],
+                {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5},
+            ),
+            # Complex expressions with with_column
+            (
+                [("rename", {"a": "x"}), ("with_column_expr", "sum", "x", 10)],
+                {"x": 1, "b": 2, "c": 3, "sum": 10},
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("with_column", "e", 5),
+                    ("select", ["d", "e"]),
+                ],
+                {"d": 4, "e": 5},
+            ),
+        ],
+    )
+    def test_projection_operations_comprehensive(
+        self, ray_start_regular_shared, operations, expected
+    ):
+        """Comprehensive test for projection operations combinations."""
+        from ray.data.expressions import col, lit
+
+        # Create initial dataset
+        ds = ray.data.range(1).map(lambda row: {"a": 1, "b": 2, "c": 3})
+
+        # Apply operations
+        for op in operations:
+            if op[0] == "rename":
+                ds = ds.rename_columns(op[1])
+            elif op[0] == "select":
+                ds = ds.select_columns(op[1])
+            elif op[0] == "with_column":
+                ds = ds.with_column(op[1], lit(op[2]))
+            elif op[0] == "with_column_expr":
+                # Special case for expressions referencing columns
+                ds = ds.with_column(op[1], col(op[2]) * op[3])
+
+        # Verify result using rows_same
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame([expected])
+        # Ensure columns are in the same order for comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
+    @pytest.mark.parametrize(
+        "operations,expected",
+        [
+            # Basic count operations
+            ([("count",)], 3),  # All 3 rows
+            ([("rename", {"a": "A"}), ("count",)], 3),
+            ([("select", ["a", "b"]), ("count",)], 3),
+            ([("with_column", "d", 4), ("count",)], 3),
+            # Filter operations affecting count
+            ([("filter", col("a") > 1), ("count",)], 2),  # 2 rows have a > 1
+            ([("filter", col("b") == 2), ("count",)], 3),  # All rows have b == 2
+            ([("filter", col("c") < 10), ("count",)], 3),  # All rows have c < 10
+            ([("filter", col("a") == 1), ("count",)], 1),  # 1 row has a == 1
+            # Projection then filter then count
+            ([("rename", {"a": "A"}), ("filter", col("A") > 1), ("count",)], 2),
+            ([("select", ["a", "b"]), ("filter", col("a") > 1), ("count",)], 2),
+            ([("with_column", "d", 4), ("filter", col("d") == 4), ("count",)], 3),
+            # Filter then projection then count
+            ([("filter", col("a") > 1), ("rename", {"a": "A"}), ("count",)], 2),
+            ([("filter", col("b") == 2), ("select", ["a", "b"]), ("count",)], 3),
+            ([("filter", col("c") < 10), ("with_column", "d", 4), ("count",)], 3),
+            # Multiple projections with filter and count
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["A", "b"]),
+                    ("filter", col("A") > 1),
+                    ("count",),
+                ],
+                2,
+            ),
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("rename", {"d": "D"}),
+                    ("filter", col("D") == 4),
+                    ("count",),
+                ],
+                3,
+            ),
+            (
+                [
+                    ("select", ["a", "b"]),
+                    ("filter", col("a") > 1),
+                    ("rename", {"a": "x"}),
+                    ("count",),
+                ],
+                2,
+            ),
+            # Complex combinations
+            (
+                [
+                    ("filter", col("a") > 0),
+                    ("rename", {"b": "B"}),
+                    ("select", ["a", "B"]),
+                    ("filter", col("B") == 2),
+                    ("count",),
+                ],
+                3,
+            ),
+            (
+                [
+                    ("with_column", "sum", 99),
+                    ("filter", col("a") > 1),
+                    ("select", ["a", "sum"]),
+                    ("count",),
+                ],
+                2,
+            ),
+            (
+                [
+                    ("rename", {"a": "A", "b": "B"}),
+                    ("filter", (col("A") + col("B")) > 3),
+                    ("select", ["A"]),
+                    ("count",),
+                ],
+                2,
+            ),
+        ],
+    )
+    def test_projection_fusion_with_count_and_filter(
+        self, ray_start_regular_shared, operations, expected
+    ):
+        """Test projection fusion with count operations including filters."""
+        from ray.data.expressions import lit
+
+        # Create dataset with 3 rows: {"a": 1, "b": 2, "c": 3}, {"a": 2, "b": 2, "c": 3}, {"a": 3, "b": 2, "c": 3}
+        ds = ray.data.from_items(
+            [
+                {"a": 1, "b": 2, "c": 3},
+                {"a": 2, "b": 2, "c": 3},
+                {"a": 3, "b": 2, "c": 3},
+            ]
+        )
+
+        # Apply operations
+        for op in operations:
+            if op[0] == "rename":
+                ds = ds.rename_columns(op[1])
+            elif op[0] == "select":
+                ds = ds.select_columns(op[1])
+            elif op[0] == "with_column":
+                ds = ds.with_column(op[1], lit(op[2]))
+            elif op[0] == "filter":
+                # Use the predicate expression directly
+                ds = ds.filter(expr=op[1])
+            elif op[0] == "count":
+                # Count returns a scalar, not a dataset
+                result = ds.count()
+                assert result == expected
+                return  # Early return since count() terminates the pipeline
+
+        # This should not be reached for count operations
+        assert False, "Count operation should have returned early"
+
+    @pytest.mark.parametrize(
+        "invalid_operations,error_type,error_message_contains",
+        [
+            # Try to filter on a column that doesn't exist yet
+            (
+                [("filter", col("d") > 0), ("with_column", "d", 4)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "d",
+            ),
+            # Try to filter on a renamed column before the rename
+            (
+                [("filter", col("A") > 1), ("rename", {"a": "A"})],
+                (KeyError, ray.exceptions.RayTaskError),
+                "A",
+            ),
+            # Try to use a column that was removed by select
+            (
+                [("select", ["a"]), ("filter", col("b") == 2)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a column after it was removed by select
+            (
+                [("select", ["a", "b"]), ("filter", col("c") < 10)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "c",
+            ),
+            # Try to use with_column referencing a non-existent column
+            (
+                [("select", ["a"]), ("with_column", "new_col", col("b") + 1)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a column that was renamed away
+            (
+                [("rename", {"b": "B"}), ("filter", col("b") == 2)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to use with_column with old column name after rename
+            (
+                [("rename", {"a": "A"}), ("with_column", "result", col("a") + 1)],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Try to select using old column name after rename
+            (
+                [("rename", {"b": "B"}), ("select", ["a", "b", "c"])],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+            # Try to filter on a computed column that was removed by select
+            (
+                [
+                    ("with_column", "d", 4),
+                    ("select", ["a", "b"]),
+                    ("filter", col("d") == 4),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "d",
+            ),
+            # Try to rename a column that was removed by select
+            (
+                [("select", ["a", "b"]), ("rename", {"c": "C"})],
+                (KeyError, ray.exceptions.RayTaskError),
+                "c",
+            ),
+            # Complex: rename, select (removing renamed source), then use old name
+            (
+                [
+                    ("rename", {"a": "A"}),
+                    ("select", ["b", "c"]),
+                    ("filter", col("a") > 0),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Complex: with_column, select (keeping new column), filter on removed original
+            (
+                [
+                    ("with_column", "sum", col("a") + col("b")),
+                    ("select", ["sum"]),
+                    ("filter", col("a") > 0),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "a",
+            ),
+            # Try to use column in with_column expression after it was removed
+            (
+                [
+                    ("select", ["a", "c"]),
+                    ("with_column", "result", col("a") + col("b")),
+                ],
+                (KeyError, ray.exceptions.RayTaskError),
+                "b",
+            ),
+        ],
+    )
+    def test_projection_operations_invalid_order(
+        self,
+        ray_start_regular_shared,
+        invalid_operations,
+        error_type,
+        error_message_contains,
+    ):
+        """Test that operations fail gracefully when referencing non-existent columns."""
+        import ray
+        from ray.data.expressions import lit
+
+        # Create dataset with 3 rows: {"a": 1, "b": 2, "c": 3}, {"a": 2, "b": 2, "c": 3}, {"a": 3, "b": 2, "c": 3}
+        ds = ray.data.from_items(
+            [
+                {"a": 1, "b": 2, "c": 3},
+                {"a": 2, "b": 2, "c": 3},
+                {"a": 3, "b": 2, "c": 3},
+            ]
+        )
+
+        # Apply operations and expect them to fail
+        with pytest.raises(error_type) as exc_info:
+            for op in invalid_operations:
+                if op[0] == "rename":
+                    ds = ds.rename_columns(op[1])
+                elif op[0] == "select":
+                    ds = ds.select_columns(op[1])
+                elif op[0] == "with_column":
+                    if len(op) == 3 and not isinstance(op[2], (int, float, str)):
+                        # Expression-based with_column (op[2] is an expression)
+                        ds = ds.with_column(op[1], op[2])
+                    else:
+                        # Literal-based with_column
+                        ds = ds.with_column(op[1], lit(op[2]))
+                elif op[0] == "filter":
+                    ds = ds.filter(expr=op[1])
+                elif op[0] == "count":
+                    ds.count()
+                    return
+
+            # Force execution to trigger the error
+            result = ds.take_all()
+            print(f"Unexpected success: {result}")
+
+        # Verify the error message contains the expected column name
+        error_str = str(exc_info.value).lower()
+        assert (
+            error_message_contains.lower() in error_str
+        ), f"Expected '{error_message_contains}' in error message: {error_str}"
+
+    @pytest.mark.parametrize(
+        "operations,expected_output",
+        [
+            # === Basic Select Operations ===
+            pytest.param(
+                [("select", ["a"])],
+                [{"a": 1}, {"a": 2}, {"a": 3}],
+                id="select_single_column",
+            ),
+            pytest.param(
+                [("select", ["a", "b"])],
+                [{"a": 1, "b": 4}, {"a": 2, "b": 5}, {"a": 3, "b": 6}],
+                id="select_two_columns",
+            ),
+            pytest.param(
+                [("select", ["a", "b", "c"])],
+                [
+                    {"a": 1, "b": 4, "c": 7},
+                    {"a": 2, "b": 5, "c": 8},
+                    {"a": 3, "b": 6, "c": 9},
+                ],
+                id="select_all_columns",
+            ),
+            pytest.param(
+                [("select", ["c", "a"])],
+                [{"c": 7, "a": 1}, {"c": 8, "a": 2}, {"c": 9, "a": 3}],
+                id="select_reordered_columns",
+            ),
+            # === Basic Rename Operations ===
+            pytest.param(
+                [("rename", {"a": "alpha"})],
+                [
+                    {"alpha": 1, "b": 4, "c": 7},
+                    {"alpha": 2, "b": 5, "c": 8},
+                    {"alpha": 3, "b": 6, "c": 9},
+                ],
+                id="rename_single_column",
+            ),
+            pytest.param(
+                [("rename", {"a": "alpha", "b": "beta"})],
+                [
+                    {"alpha": 1, "beta": 4, "c": 7},
+                    {"alpha": 2, "beta": 5, "c": 8},
+                    {"alpha": 3, "beta": 6, "c": 9},
+                ],
+                id="rename_multiple_columns",
+            ),
+            # === Basic with_column Operations ===
+            pytest.param(
+                [("with_column_expr", "sum", "add", "a", "b")],
+                [
+                    {"a": 1, "b": 4, "c": 7, "sum": 5},
+                    {"a": 2, "b": 5, "c": 8, "sum": 7},
+                    {"a": 3, "b": 6, "c": 9, "sum": 9},
+                ],
+                id="with_column_add_keep_all",
+            ),
+            pytest.param(
+                [("with_column_expr", "product", "multiply", "b", "c")],
+                [
+                    {"a": 1, "b": 4, "c": 7, "product": 28},
+                    {"a": 2, "b": 5, "c": 8, "product": 40},
+                    {"a": 3, "b": 6, "c": 9, "product": 54},
+                ],
+                id="with_column_multiply_keep_all",
+            ),
+            # === Chained Selects ===
+            pytest.param(
+                [("select", ["a", "b", "c"]), ("select", ["a", "b"])],
+                [{"a": 1, "b": 4}, {"a": 2, "b": 5}, {"a": 3, "b": 6}],
+                id="chained_selects_two_levels",
+            ),
+            pytest.param(
+                [
+                    ("select", ["a", "b", "c"]),
+                    ("select", ["a", "b"]),
+                    ("select", ["a"]),
+                ],
+                [{"a": 1}, {"a": 2}, {"a": 3}],
+                id="chained_selects_three_levels",
+            ),
+            # === Rename → Select ===
+            pytest.param(
+                [("rename", {"a": "x"}), ("select", ["x", "b"])],
+                [{"x": 1, "b": 4}, {"x": 2, "b": 5}, {"x": 3, "b": 6}],
+                id="rename_then_select",
+            ),
+            pytest.param(
+                [("rename", {"a": "x", "c": "z"}), ("select", ["x", "z"])],
+                [{"x": 1, "z": 7}, {"x": 2, "z": 8}, {"x": 3, "z": 9}],
+                id="rename_multiple_then_select",
+            ),
+            # === Select → Rename ===
+            pytest.param(
+                [("select", ["a", "b"]), ("rename", {"a": "x"})],
+                [{"x": 1, "b": 4}, {"x": 2, "b": 5}, {"x": 3, "b": 6}],
+                id="select_then_rename",
+            ),
+            pytest.param(
+                [("select", ["a", "b", "c"]), ("rename", {"a": "x", "b": "y"})],
+                [
+                    {"x": 1, "y": 4, "c": 7},
+                    {"x": 2, "y": 5, "c": 8},
+                    {"x": 3, "y": 6, "c": 9},
+                ],
+                id="select_all_then_rename_some",
+            ),
+            # === Multiple Renames ===
+            pytest.param(
+                [("rename", {"a": "x"}), ("rename", {"x": "y"})],
+                [
+                    {"y": 1, "b": 4, "c": 7},
+                    {"y": 2, "b": 5, "c": 8},
+                    {"y": 3, "b": 6, "c": 9},
+                ],
+                id="chained_renames",
+            ),
+            # === with_column → Select ===
+            pytest.param(
+                [("with_column_expr", "sum", "add", "a", "b"), ("select", ["sum"])],
+                [{"sum": 5}, {"sum": 7}, {"sum": 9}],
+                id="with_column_then_select_only_computed",
+            ),
+            pytest.param(
+                [
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("select", ["a", "sum"]),
+                ],
+                [{"a": 1, "sum": 5}, {"a": 2, "sum": 7}, {"a": 3, "sum": 9}],
+                id="with_column_then_select_mixed",
+            ),
+            pytest.param(
+                [
+                    ("with_column_expr", "result", "multiply", "b", "c"),
+                    ("select", ["a", "result"]),
+                ],
+                [
+                    {"a": 1, "result": 28},
+                    {"a": 2, "result": 40},
+                    {"a": 3, "result": 54},
+                ],
+                id="with_column_select_source_and_computed",
+            ),
+            # === Multiple with_column Operations ===
+            pytest.param(
+                [
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("with_column_expr", "product", "multiply", "a", "c"),
+                ],
+                [
+                    {"a": 1, "b": 4, "c": 7, "sum": 5, "product": 7},
+                    {"a": 2, "b": 5, "c": 8, "sum": 7, "product": 16},
+                    {"a": 3, "b": 6, "c": 9, "sum": 9, "product": 27},
+                ],
+                id="multiple_with_column_keep_all",
+            ),
+            pytest.param(
+                [
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("with_column_expr", "product", "multiply", "a", "c"),
+                    ("select", ["sum", "product"]),
+                ],
+                [
+                    {"sum": 5, "product": 7},
+                    {"sum": 7, "product": 16},
+                    {"sum": 9, "product": 27},
+                ],
+                id="multiple_with_column_then_select",
+            ),
+            pytest.param(
+                [
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("with_column_expr", "diff", "add", "c", "a"),
+                    ("select", ["sum", "diff"]),
+                ],
+                [{"sum": 5, "diff": 8}, {"sum": 7, "diff": 10}, {"sum": 9, "diff": 12}],
+                id="multiple_with_column_independent_sources",
+            ),
+            # === with_column → Rename ===
+            pytest.param(
+                [
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("rename", {"sum": "total"}),
+                ],
+                [
+                    {"a": 1, "b": 4, "c": 7, "total": 5},
+                    {"a": 2, "b": 5, "c": 8, "total": 7},
+                    {"a": 3, "b": 6, "c": 9, "total": 9},
+                ],
+                id="with_column_then_rename_computed",
+            ),
+            # === Rename → with_column ===
+            pytest.param(
+                [
+                    ("rename", {"a": "x"}),
+                    ("with_column_expr", "x_plus_b", "add", "x", "b"),
+                ],
+                [
+                    {"x": 1, "b": 4, "c": 7, "x_plus_b": 5},
+                    {"x": 2, "b": 5, "c": 8, "x_plus_b": 7},
+                    {"x": 3, "b": 6, "c": 9, "x_plus_b": 9},
+                ],
+                id="rename_then_with_column_using_renamed",
+            ),
+            pytest.param(
+                [
+                    ("rename", {"a": "x"}),
+                    ("with_column_expr", "result", "add", "x", "b"),
+                    ("select", ["result"]),
+                ],
+                [{"result": 5}, {"result": 7}, {"result": 9}],
+                id="rename_with_column_select_chain",
+            ),
+            # === Select → with_column → Select ===
+            pytest.param(
+                [
+                    ("select", ["a", "b"]),
+                    ("with_column_expr", "sum", "add", "a", "b"),
+                    ("select", ["a", "sum"]),
+                ],
+                [{"a": 1, "sum": 5}, {"a": 2, "sum": 7}, {"a": 3, "sum": 9}],
+                id="select_with_column_select_chain",
+            ),
+            pytest.param(
+                [
+                    ("select", ["a", "b", "c"]),
+                    ("with_column_expr", "x", "add", "a", "b"),
+                    ("with_column_expr", "y", "multiply", "b", "c"),
+                    ("select", ["x", "y"]),
+                ],
+                [{"x": 5, "y": 28}, {"x": 7, "y": 40}, {"x": 9, "y": 54}],
+                id="select_multiple_with_column_select_chain",
+            ),
+            # === Complex Multi-Step Chains ===
+            pytest.param(
+                [
+                    ("select", ["a", "b", "c"]),
+                    ("rename", {"a": "x"}),
+                    ("with_column_expr", "result", "add", "x", "b"),
+                    ("select", ["result", "c"]),
+                ],
+                [{"result": 5, "c": 7}, {"result": 7, "c": 8}, {"result": 9, "c": 9}],
+                id="complex_select_rename_with_column_select",
+            ),
+            pytest.param(
+                [
+                    ("rename", {"a": "alpha", "b": "beta"}),
+                    ("select", ["alpha", "beta", "c"]),
+                    ("with_column_expr", "sum", "add", "alpha", "beta"),
+                    ("rename", {"sum": "total"}),
+                    ("select", ["total", "c"]),
+                ],
+                [{"total": 5, "c": 7}, {"total": 7, "c": 8}, {"total": 9, "c": 9}],
+                id="complex_five_step_chain",
+            ),
+            pytest.param(
+                [
+                    ("select", ["a", "b", "c"]),
+                    ("select", ["b", "c"]),
+                    ("select", ["c"]),
+                ],
+                [{"c": 7}, {"c": 8}, {"c": 9}],
+                id="select_chain",
+            ),
+        ],
+    )
+    def test_projection_pushdown_into_parquet_read(
+        self, ray_start_regular_shared, tmp_path, operations, expected_output
+    ):
+        """Test that projection operations fuse and push down into parquet reads.
+
+        Verifies:
+        - Multiple projections fuse into single operator
+        - Fused projection pushes down into Read operator
+        - Only necessary columns are read from parquet
+        - Results are correct for select, rename, and with_column operations
+        """
+        from ray.data.expressions import col
+
+        # Create test parquet file
+        df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+        parquet_path = tmp_path / "test.parquet"
+        df.to_parquet(parquet_path, index=False)
+
+        # Build pipeline with operations
+        ds = ray.data.read_parquet(str(parquet_path))
+
+        for op_type, *op_args in operations:
+            if op_type == "select":
+                ds = ds.select_columns(op_args[0])
+            elif op_type == "rename":
+                ds = ds.rename_columns(op_args[0])
+            elif op_type == "with_column_expr":
+                col_name, operator, col1, col2 = op_args
+                if operator == "add":
+                    ds = ds.with_column(col_name, col(col1) + col(col2))
+                elif operator == "multiply":
+                    ds = ds.with_column(col_name, col(col1) * col(col2))
+
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame(expected_output)
+        # Ensure columns are in the same order for comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.parametrize("flavor", ["project_before", "project_after"])
+def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
+    """
+    Test that valid select and renaming merges correctly.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+
+    if flavor == "project_before":
+        ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'petal.width' to 'width'
+    ds = ds.rename_columns({"petal.width": "width"})
+
+    if flavor == "project_after":
+        ds = ds.select_columns(["length", "width"])
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    # Check that both "sepal.length" and "petal.width" are present in the columns,
+    # regardless of their order.
+    assert select_op.exprs == [
+        # TODO fix (renaming doesn't remove prev columns)
+        col("sepal.length").alias("length"),
+        col("petal.width").alias("width"),
+    ]
 
 
 if __name__ == "__main__":

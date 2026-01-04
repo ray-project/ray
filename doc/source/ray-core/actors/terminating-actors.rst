@@ -3,7 +3,9 @@ Terminating Actors
 
 Actor processes will be terminated automatically when all copies of the
 actor handle have gone out of scope in Python, or if the original creator
-process dies.
+process dies. When actors terminate gracefully, Ray calls the actor's
+``__ray_shutdown__()`` method if defined, allowing for cleanup of resources
+(see :ref:`actor-cleanup` for details).
 
 Note that automatic termination of actors is not yet supported in Java or C++.
 
@@ -33,9 +35,8 @@ manually destroyed.
             actor_handle = Actor.remote()
 
             ray.kill(actor_handle)
-            # This will not go through the normal Python sys.exit
-            # teardown logic, so any exit handlers installed in
-            # the actor using ``atexit`` will not be called.
+            # Force kill: the actor exits immediately without cleanup.
+            # This will NOT call __ray_shutdown__() or atexit handlers.
 
 
     .. tab-item:: Java
@@ -191,3 +192,59 @@ You could see the actor is dead as a result of the user's `exit_actor()` call:
       is_detached: false
       placement_group_id: null
       repr_name: ''
+
+
+.. _actor-cleanup:
+
+Actor cleanup with `__ray_shutdown__`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When an actor terminates gracefully, Ray calls the ``__ray_shutdown__()`` method
+if it exists, allowing cleanup of resources like database connections or file handles.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. testcode::
+
+            import ray
+            import tempfile
+            import os
+
+            @ray.remote
+            class FileProcessorActor:
+                def __init__(self):
+                    self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+                    self.temp_file.write(b"processing data")
+                    self.temp_file.flush()
+                    
+                def __ray_shutdown__(self):
+                    # Clean up temporary file
+                    if hasattr(self, 'temp_file'):
+                        self.temp_file.close()
+                        os.unlink(self.temp_file.name)
+                
+                def process(self):
+                    return "done"
+
+            actor = FileProcessorActor.remote()
+            ray.get(actor.process.remote())
+            del actor  # __ray_shutdown__() is called automatically
+
+When ``__ray_shutdown__()`` is called:
+
+- **Automatic termination**: When all actor handles go out of scope (``del actor`` or natural scope exit)
+- **Manual graceful termination**: When you call ``actor.__ray_terminate__.remote()``
+
+When ``__ray_shutdown__()`` is **NOT** called:
+
+- **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup.
+- **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as a segfault or being killed by the OOM killer).
+
+**Important notes:**
+
+- ``__ray_shutdown__()`` runs after all actor tasks complete.
+- By default, Ray waits 30 seconds for the graceful shutdown procedure (including ``__ray_shutdown__()``) to complete. If the actor doesn't exit within this timeout, it's force killed. Configure this with ``ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})``.
+- Exceptions in ``__ray_shutdown__()`` are caught and logged but don't prevent actor termination.
+- ``__ray_shutdown__()`` must be a synchronous method, including for async actors.

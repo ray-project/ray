@@ -184,9 +184,16 @@ def debug_status(
 
 
 def request_resources(
-    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+    num_cpus: Optional[int] = None,
+    bundles: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Remotely request some CPU or GPU resources from the autoscaler. Optionally
+    specify label selectors for nodes with the requested resources.
+
+    If `bundle_label_selectors` is provided, `bundles` must also be provided.
+    Both must be lists of the same length, and `bundle_label_selectors` expects a list
+    of string dictionaries.
 
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
@@ -198,14 +205,24 @@ def request_resources(
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made.
+        bundle_label_selectors (List[Dict[str,str]]): Optional label selectors
+            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
+            The elements in the bundle_label_selectors should be one-to-one mapping
+            to the elements in bundles.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
     to_request = []
-    if num_cpus:
-        to_request += [{"CPU": 1}] * num_cpus
+    for _ in range(num_cpus or 0):
+        to_request.append({"resources": {"CPU": 1}, "label_selector": {}})
+    assert not bundle_label_selectors or (
+        bundles and len(bundles) == len(bundle_label_selectors)
+    ), "If bundle_label_selectors is provided, bundles must also be provided and have the same length."
     if bundles:
-        to_request += bundles
+        for i, bundle in enumerate(bundles):
+            selector = bundle_label_selectors[i] if bundle_label_selectors else {}
+            to_request.append({"resources": bundle, "label_selector": selector})
+
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
@@ -368,7 +385,10 @@ def _bootstrap_config(
                     cf.bold("--no-config-cache"),
                 )
 
-            return config_cache["config"]
+            cached_config = config_cache["config"]
+            if "provider" in cached_config:
+                cached_config["provider"]["_config_cache_path"] = cache_key
+            return cached_config
         else:
             cli_logger.warning(
                 "Found cached cluster config "
@@ -415,6 +435,7 @@ def _bootstrap_config(
             "update your install command."
         )
     resolved_config = provider_cls.bootstrap_config(config)
+    resolved_config["provider"]["_config_cache_path"] = cache_key
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -561,6 +582,20 @@ def teardown_cluster(
                 "{} nodes remaining after {} second(s).", cf.bold(len(A)), POLL_INTERVAL
             )
         cli_logger.success("No nodes remaining.")
+
+        # Cleanup shared cluster resources if provider supports it
+        if hasattr(provider, "cleanup_cluster_resources") and not workers_only:
+            try:
+                cli_logger.print("Cleaning up shared cluster resources...")
+                provider.cleanup_cluster_resources()
+                cli_logger.success("Shared cluster resources cleaned up.")
+            except Exception as e:
+                cli_logger.verbose_error("{}", str(e))
+                cli_logger.warning(
+                    "Failed to cleanup shared cluster resources "
+                    "(use -v to see details). "
+                    "You may need to manually delete MSI, NSG, and Subnet resources."
+                )
 
 
 def kill_node(

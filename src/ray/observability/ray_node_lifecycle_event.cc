@@ -30,6 +30,12 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
   if (data.state() == rpc::GcsNodeInfo::ALIVE) {
     state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE);
+    if (data.has_state_snapshot() &&
+        data.state_snapshot().state() == rpc::NodeSnapshot::DRAINING) {
+      state_transition.set_alive_sub_state(rpc::events::NodeLifecycleEvent::DRAINING);
+    } else {
+      state_transition.set_alive_sub_state(rpc::events::NodeLifecycleEvent::UNSPECIFIED);
+    }
     state_transition.mutable_resources()->insert(data.resources_total().begin(),
                                                  data.resources_total().end());
   } else {

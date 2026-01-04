@@ -11,7 +11,6 @@ from ray.data._internal.execution.autoscaling_requester import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -26,17 +25,17 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
     def __init__(
         self,
         topology: "Topology",
-        resource_manager: "ResourceManager",
         *,
         execution_id: str,
     ):
-        super().__init__(topology, resource_manager, execution_id)
+        self._topology = topology
+        self._execution_id = execution_id
 
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
 
     def try_trigger_scaling(self):
-        """Try to scale up the cluster to accomodate the provided in-progress workload.
+        """Try to scale up the cluster to accommodate the provided in-progress workload.
 
         This makes a resource request to Ray's autoscaler consisting of the current,
         aggregate usage of all operators in the DAG + the incremental usage of all
@@ -60,8 +59,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             for _, op_state in self._topology.items()
         )
         any_has_input = any(
-            op_state._pending_dispatch_input_bundles_count() > 0
-            for _, op_state in self._topology.items()
+            op_state.has_pending_bundles() for _, op_state in self._topology.items()
         )
         if not (no_runnable_op and any_has_input):
             return
@@ -86,7 +84,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             resource_request.extend([task_bundle] * op.num_active_tasks())
             # Only include incremental resource usage for ops that are ready for
             # dispatch.
-            if state._pending_dispatch_input_bundles_count() > 0:
+            if state.has_pending_bundles():
                 # TODO(Clark): Scale up more aggressively by adding incremental resource
                 # usage for more than one bundle in the queue for this op?
                 resource_request.append(task_bundle)

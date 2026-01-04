@@ -8,9 +8,9 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._common.utils import hex_to_binary
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
     run_string_as_driver,
 )
 from ray._private.worker import RayContext
@@ -21,8 +21,8 @@ _SYSTEM_CONFIG = {
 }
 
 
-def actors_by_state(info: RayContext) -> Dict:
-    res = raw_metrics(info)
+def actors_by_state(info: RayContext, timeseries: PrometheusTimeseries) -> Dict:
+    res = raw_metric_timeseries(info, timeseries)
     actors_info = defaultdict(int)
     if "ray_actors" in res:
         for sample in res["ray_actors"]:
@@ -34,8 +34,8 @@ def actors_by_state(info: RayContext) -> Dict:
     return actors_info
 
 
-def actors_by_name(info: RayContext) -> Dict:
-    res = raw_metrics(info)
+def actors_by_name(info: RayContext, timeseries: PrometheusTimeseries) -> Dict:
+    res = raw_metric_timeseries(info, timeseries)
     actors_info = defaultdict(int)
     if "ray_actors" in res:
         for sample in res["ray_actors"]:
@@ -79,6 +79,7 @@ def test_basic_states(shutdown_only):
     ray.get(b.ping.remote())
     ray.get(c.ping.remote())
     d = Actor.remote()
+    timeseries = PrometheusTimeseries()
 
     # Test creation states.
     expected = {
@@ -87,7 +88,7 @@ def test_basic_states(shutdown_only):
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -102,7 +103,7 @@ def test_basic_states(shutdown_only):
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -122,14 +123,14 @@ def test_destroy_actors(shutdown_only):
     c = Actor.remote()
     del a
     del b
-
+    timeseries = PrometheusTimeseries()
     expected = {
         "ALIVE": 1,
         "ALIVE_IDLE": 1,
         "DEAD": 2,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -155,12 +156,13 @@ ray.get([actor.ready.remote() for actor in actors])
 
         output = run_string_as_driver(driver)
         print(output)
+        timeseries = PrometheusTimeseries()
 
         expected = {
             "DEAD": 10,
         }
         wait_for_condition(
-            lambda: actors_by_state(info) == expected,
+            lambda: expected.items() <= actors_by_state(info, timeseries).items(),
             timeout=20,
             retry_interval_ms=500,
         )
@@ -174,7 +176,7 @@ ray.get([actor.ready.remote() for actor in actors])
         wait_for_condition(lambda: len(list_actors()) == 5)
         # DEAD count shouldn't be changed.
         wait_for_condition(
-            lambda: actors_by_state(info) == expected,
+            lambda: expected.items() <= actors_by_state(info, timeseries).items(),
             timeout=20,
             retry_interval_ms=500,
         )
@@ -193,11 +195,12 @@ def test_dep_wait(shutdown_only):
             pass
 
     a = Actor.remote(sleep.remote())
+    timeseries = PrometheusTimeseries()
     expected = {
         "DEPENDENCIES_UNREADY": 1,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -221,12 +224,13 @@ def test_async_actor(shutdown_only):
 
     a = AsyncActor.remote()
     a.sleep.remote()
+    timeseries = PrometheusTimeseries()
     expected = {
         "ALIVE": 1,
         "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -239,7 +243,7 @@ def test_async_actor(shutdown_only):
         "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
-        lambda: actors_by_state(info) == expected,
+        lambda: actors_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -263,7 +267,7 @@ def test_tracking_by_name(shutdown_only):
 
     a = Actor1.remote()
     b = Actor2.remote()
-
+    timeseries = PrometheusTimeseries()
     expected = {
         # one reported by gcs as ALIVE
         # another reported by core worker as IDLE
@@ -271,7 +275,7 @@ def test_tracking_by_name(shutdown_only):
         "Actor2": 2,
     }
     wait_for_condition(
-        lambda: actors_by_name(info) == expected,
+        lambda: actors_by_name(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -281,7 +285,7 @@ def test_tracking_by_name(shutdown_only):
 
 
 def test_get_all_actors_info(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, include_dashboard=True)
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -291,28 +295,31 @@ def test_get_all_actors_info(shutdown_only):
     actor_1 = Actor.remote()
     actor_2 = Actor.remote()
     ray.get([actor_1.ping.remote(), actor_2.ping.remote()], timeout=5)
-    actors_info = ray.state.actors()
+    actors_info = list_actors(detail=True)
     assert len(actors_info) == 2
 
     job_id_hex = ray.get_runtime_context().get_job_id()
-    job_id = ray.JobID(hex_to_binary(job_id_hex))
-    actors_info = ray.state.actors(job_id=job_id)
+    actors_info = list_actors(filters=[("job_id", "=", job_id_hex)], detail=True)
     assert len(actors_info) == 2
-    actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))
+    actors_info = list_actors(
+        filters=[("job_id", "=", ray.JobID.from_int(100).hex())], detail=True
+    )
     assert len(actors_info) == 0
 
     # To filter actors by state
     actor_3 = Actor.remote()
     wait_for_condition(
-        lambda: len(ray.state.actors(actor_state_name="PENDING_CREATION")) == 1
+        lambda: len(list_actors(filters=[("state", "=", "PENDING_CREATION")])) == 1
     )
-    assert (
-        actor_3._actor_id.hex()
-        in ray.state.actors(actor_state_name="PENDING_CREATION").keys()
+    assert actor_3._actor_id.hex() in list(
+        map(
+            lambda s: s.actor_id,
+            list_actors(filters=[("state", "=", "PENDING_CREATION")]),
+        )
     )
 
-    with pytest.raises(ValueError, match="not a valid actor state name"):
-        actors_info = ray.state.actors(actor_state_name="UNKONWN_STATE")
+    with pytest.raises(ray.util.state.exception.RayStateApiException):
+        actors_info = list_actors(filters=[("state", "=", "UNKONWN_STATE")])
 
 
 if __name__ == "__main__":

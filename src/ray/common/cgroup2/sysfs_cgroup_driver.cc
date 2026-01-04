@@ -46,13 +46,29 @@
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
-  FILE *fp = setmntent(mount_file_path_.c_str(), "r");
+  std::string mount_file_path = mount_file_path_;
+
+  int fd = open(mount_file_path.c_str(), O_RDONLY);
+
+  if (fd == -1) {
+    mount_file_path = fallback_mount_file_path_;
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to open mount fail at %s because of error '%s'. Using fallback mount "
+        "file at %s.",
+        mount_file_path_,
+        strerror(errno),
+        fallback_mount_file_path_);
+  } else {
+    close(fd);
+  }
+
+  FILE *fp = setmntent(mount_file_path.c_str(), "r");
 
   if (!fp) {
     return Status::Invalid(
         absl::StrFormat("Failed to open mount file at %s. Could not verify that "
                         "cgroupv2 was mounted correctly. \n%s",
-                        mount_file_path_,
+                        mount_file_path,
                         strerror(errno)));
   }
 
@@ -71,7 +87,7 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
     return Status::Invalid(
         absl::StrFormat("Failed to parse mount file at %s. Could not verify that "
                         "cgroupv2 was mounted correctly.",
-                        mount_file_path_));
+                        mount_file_path));
   }
 
   if (found_cgroupv1 && found_cgroupv2) {
@@ -332,23 +348,9 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
 }
 
 Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
-                                        const std::string &controller,
                                         const std::string &constraint,
                                         const std::string &constraint_value) {
   RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
-  // Check if the required controller for the constraint is enabled.
-  StatusOr<std::unordered_set<std::string>> available_controllers_s =
-      GetEnabledControllers(cgroup_path);
-  RAY_RETURN_NOT_OK(available_controllers_s.status());
-  const auto &controllers = available_controllers_s.value();
-  if (controllers.find(controller) == controllers.end()) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply %s to cgroup %s. To use %s, enable the %s controller.",
-        constraint,
-        cgroup_path,
-        constraint,
-        controller));
-  }
 
   // Try to apply the constraint and propagate the appropriate failure error.
   std::string file_path =

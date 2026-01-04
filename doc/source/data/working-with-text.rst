@@ -156,7 +156,7 @@ that sets up and invokes a model. Then, call
 
     ds = (
         ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-        .map_batches(TextClassifier, concurrency=2)
+        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2))
     )
 
     ds.show(3)

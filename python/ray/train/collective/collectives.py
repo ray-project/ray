@@ -2,6 +2,7 @@ import logging
 from typing import Optional, TypeVar
 
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+from ray.train.v2._internal.util import requires_train_worker
 from ray.util.annotations import PublicAPI
 
 T = TypeVar("T", bound=Optional[object])
@@ -11,6 +12,7 @@ logger = logging.getLogger(__file__)
 
 
 @PublicAPI(stability="alpha")
+@requires_train_worker()
 def broadcast_from_rank_zero(data: T) -> T:
     """Broadcast small (<1kb) data from the rank 0 worker to all other workers.
 
@@ -20,7 +22,6 @@ def broadcast_from_rank_zero(data: T) -> T:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import broadcast_from_rank_zero
@@ -54,6 +55,7 @@ def broadcast_from_rank_zero(data: T) -> T:
 
 
 @PublicAPI(stability="alpha")
+@requires_train_worker()
 def barrier() -> None:
     """Create a barrier across all workers.
 
@@ -62,7 +64,6 @@ def barrier() -> None:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import barrier

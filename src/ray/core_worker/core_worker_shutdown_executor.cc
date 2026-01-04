@@ -133,7 +133,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
           core_worker_->task_receiver_->Stop();
 
           // Release resources only after tasks have stopped executing.
-          auto status = core_worker_->raylet_ipc_client_->NotifyDirectCallTaskBlocked();
+          auto status = core_worker_->raylet_ipc_client_->NotifyWorkerBlocked();
           if (!status.ok()) {
             RAY_LOG(WARNING)
                 << "Failed to notify Raylet. The raylet may have already shut down or "
@@ -253,7 +253,8 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         /* timestamp */ absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/
         core_worker_->worker_context_->GetCurrentActorID().IsNil(),
-        core_worker_->options_.session_name);
+        core_worker_->options_.session_name,
+        core_worker_->GetCurrentNodeId());
     core_worker_->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 

@@ -83,6 +83,7 @@ const Wrapper =
                 ? "DISABLED"
                 : "http://localhost:3000",
               grafanaOrgId: "1",
+              grafanaClusterFilter: undefined,
               dashboardUids: {
                 default: "rayDefaultDashboard",
                 serve: "rayServeDashboard",
@@ -97,6 +98,9 @@ const Wrapper =
               dashboardDatasource: "Prometheus",
               serverTimeZone: undefined,
               currentTimeZone: undefined,
+              themeMode: "light",
+              // eslint-disable-next-line @typescript-eslint/no-empty-function
+              toggleTheme: () => {},
             }}
           >
             {children}

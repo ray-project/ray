@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -30,7 +33,8 @@ namespace ray {
 
 namespace raylet {
 
-using std::literals::operator""sv;
+using GetRequestId = int64_t;
+using PullRequestId = int64_t;
 
 /// Used for unit-testing the ClusterLeaseManager, which requests dependencies
 /// for queued leases.
@@ -72,24 +76,23 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
           // Offset the metric values recorded from the owner process.
           task_by_state_counter_.Record(
               -num_total,
-              {{"State"sv,
-                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
           task_by_state_counter_.Record(
               num_total - num_inactive,
-              {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
           task_by_state_counter_.Record(
               num_inactive,
-              {{"State"sv,
+              {{"State",
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
         });
   }
 
@@ -131,19 +134,24 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// cancel.
   void CancelWaitRequest(const WorkerID &worker_id);
 
-  /// Start or update a worker's `ray.get` request. This will attempt to make
-  /// any remote objects local, including previously requested objects. The
-  /// `ray.get` request will stay active until the request for this worker is
-  /// canceled.
-  ///
-  /// This method may be called multiple times per worker on the same objects.
-  ///
-  /// \param worker_id The ID of the worker that called `ray.wait`.
+  /// \param worker_id The ID of the worker that called `ray.get`.
   /// \param required_objects The objects required by the worker.
-  void StartOrUpdateGetRequest(const WorkerID &worker_id,
-                               const std::vector<rpc::ObjectReference> &required_objects);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void StartGetRequest(const WorkerID &worker_id,
+                       std::vector<rpc::ObjectReference> &&required_objects,
+                       int64_t get_request_id);
 
-  /// Cancel a worker's `ray.get` request. We will no longer attempt to fetch
+  /// Cleans up either an inflight or finished get request. Cancels the underlying
+  /// pull if necessary.
+  ///
+  /// \param worker_id The ID of the worker that called `ray.get`.
+  /// \param request_id The ID of the get request.
+  /// \param required_objects The objects required by the worker.
+  /// \return the request id which will be used for cleanup.
+  void CancelGetRequest(const WorkerID &worker_id, const GetRequestId &request_id);
+
+  /// Cancel all of a worker's `ray.get` requests. We will no longer attempt to fetch
   /// any objects that this worker requested previously, if no other lease or
   /// worker requires them.
   ///
@@ -211,8 +219,8 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
     /// argument or because the lease of the lease called `ray.get` on the object.
     std::unordered_set<LeaseID> dependent_leases;
     /// The workers that depend on this object because they called `ray.get` on the
-    /// object.
-    std::unordered_set<WorkerID> dependent_get_requests;
+    /// object and the count of outstanding get_requests per worker.
+    std::unordered_map<WorkerID, int64_t> dependent_get_requests;
     /// The workers that depend on this object because they called `ray.wait` on the
     /// object.
     std::unordered_set<WorkerID> dependent_wait_requests;
@@ -297,12 +305,16 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// dependencies are all local or not.
   absl::flat_hash_map<LeaseID, std::unique_ptr<LeaseDependencies>> queued_lease_requests_;
 
-  /// A map from worker ID to the set of objects that the worker called
-  /// `ray.get` on and a pull request ID for these objects. The pull request ID
-  /// should be used to cancel the pull request in the object manager once the
-  /// worker cancels the `ray.get` request.
-  absl::flat_hash_map<WorkerID, std::pair<absl::flat_hash_set<ObjectID>, uint64_t>>
+  // Maps a GetRequest to the PullRequest Id and the set of ObjectIDs.
+  // Used to cleanup a finished or cancel an inflight get request.
+  // TODO(57911): This can be slimmed down. We do not need to track the ObjectIDs.
+  absl::flat_hash_map<std::pair<WorkerID, GetRequestId>,
+                      std::pair<std::vector<ObjectID>, PullRequestId>,
+                      absl::Hash<std::pair<WorkerID, GetRequestId>>>
       get_requests_;
+
+  // Used to clean up all get requests for a worker.
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<GetRequestId>> worker_to_requests_;
 
   /// A map from worker ID to the set of objects that the worker called
   /// `ray.wait` on. Objects are removed from the set once they are made local,

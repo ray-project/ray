@@ -114,10 +114,13 @@ def main(args):
         max_concurrency=2,
     )
 
-    # Force execution.
     total_images = 0
-    for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
-        total_images += len(batch)
+
+    # NOTE: We're iterating over ref-bundles to avoid pulling blocks into the
+    #       driver, therefore making it a factor impacting benchmark performance
+    for bundle in ds.iter_internal_ref_bundles():
+        total_images += bundle.num_rows()
+
     end_time = time.time()
 
     total_time = end_time - start_time

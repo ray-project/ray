@@ -4,11 +4,9 @@ ray_cc_library(
     name = "stats_metric",
     srcs = [
         "metric.cc",
-        "metric_defs.cc",
     ],
     hdrs = [
         "metric.h",
-        "metric_defs.h",
     ],
     deps = [
         ":tag_defs",
@@ -58,6 +56,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "tag_defs",
+    srcs = ["tag_defs.cc"],
     hdrs = ["tag_defs.h"],
     deps = [
         "//src/ray/observability:metric_interface",

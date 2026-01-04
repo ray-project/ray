@@ -162,7 +162,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers) const override {
+      bool filter_dead_drivers, bool filter_system_drivers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
@@ -176,7 +176,6 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                         pid_t pid,
-                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override {
     RAY_CHECK(false) << "Not used.";
     return Status::Invalid("Not used.");
@@ -251,7 +250,10 @@ class MockWorkerPool : public WorkerPoolInterface {
 namespace {
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id, double num_cpus, gcs::GcsClient &gcs_client) {
+    const std::string &id,
+    double num_cpus,
+    gcs::GcsClient &gcs_client,
+    ray::observability::MetricInterface &resource_usage_gauge) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   static instrumented_io_context io_context;
@@ -259,9 +261,11 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       io_context,
       scheduling::NodeID(id),
       local_node_resources,
-      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
-        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
-      });
+      /*is_node_available_fn*/
+      [&gcs_client](scheduling::NodeID node_id) {
+        return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
+      },
+      resource_usage_gauge);
 
   return scheduler;
 }
@@ -315,20 +319,27 @@ class LocalLeaseManagerTest : public ::testing::Test {
   explicit LocalLeaseManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
+        scheduler_(CreateSingleNodeScheduler(
+            id_.Binary(), num_cpus, *gcs_client_, fake_resource_usage_gauge_)),
         object_manager_(),
         fake_task_by_state_counter_(),
+        scheduler_metrics_{fake_scheduler_tasks_gauge_,
+                           fake_scheduler_unscheduleable_tasks_gauge_,
+                           fake_scheduler_failed_worker_startup_total_gauge_,
+                           fake_internal_num_spilled_tasks_gauge_,
+                           fake_internal_num_infeasible_scheduling_classes_gauge_},
         lease_dependency_manager_(object_manager_, fake_task_by_state_counter_),
         local_lease_manager_(std::make_shared<LocalLeaseManager>(
             id_,
             *scheduler_,
             lease_dependency_manager_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+            [this](
+                const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                return std::optional((node_info_[node_id]));
               }
-              return nullptr;
+              return std::nullopt;
             },
             pool_,
             leased_workers_,
@@ -345,12 +356,14 @@ class LocalLeaseManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
+            /*scheduler_metrics=*/scheduler_metrics_,
             /*get_time=*/[this]() { return current_time_ms_; })) {}
 
   void SetUp() override {
-    static rpc::GcsNodeInfo node_info;
-    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return(&node_info));
+    static rpc::GcsNodeAddressAndLiveness node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor,
+            GetNodeAddressAndLiveness(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(node_info));
   }
 
   RayObject *MakeDummyArg() {
@@ -364,6 +377,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
 
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -372,13 +386,59 @@ class LocalLeaseManagerTest : public ::testing::Test {
   int default_arg_size_ = 10;
   int64_t current_time_ms_ = 0;
 
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
   MockObjectManager object_manager_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
+  ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
+  ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
+  ray::raylet::SchedulerMetrics scheduler_metrics_;
   LeaseDependencyManager lease_dependency_manager_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };
+
+TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
+  int num_callbacks_called = 0;
+  auto callback = [&num_callbacks_called](Status status,
+                                          std::function<void()> success,
+                                          std::function<void()> failure) {
+    ++num_callbacks_called;
+  };
+
+  auto lease1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
+  rpc::RequestWorkerLeaseReply reply1;
+  // lease1 is waiting for a worker
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)},
+      internal::WorkStatus::WAITING));
+
+  auto arg_id = ObjectID::FromRandom();
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(
+      std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
+  auto lease2 = CreateLease({{kCPU_ResourceLabel, 1}}, "f", args);
+  EXPECT_CALL(object_manager_, Pull(_, _, _)).WillOnce(::testing::Return(1));
+  rpc::RequestWorkerLeaseReply reply2;
+  // lease2 is waiting for args
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)},
+      internal::WorkStatus::WAITING));
+
+  auto cancelled_works = local_lease_manager_->CancelLeasesWithoutReply(
+      [](const std::shared_ptr<internal::Work> &work) { return true; });
+  ASSERT_EQ(cancelled_works.size(), 2);
+  // Make sure the reply is not sent.
+  ASSERT_EQ(num_callbacks_called, 0);
+}
 
 TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   // Initial setup: 3 CPUs available.
@@ -396,12 +456,24 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto lease_f1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto lease_f2 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
+  auto empty_callback =
+      [](Status status, std::function<void()> success, std::function<void()> failure) {};
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
@@ -411,13 +483,33 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto lease_f5 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto lease_g1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "g");
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f4,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f5,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_g1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
@@ -444,19 +536,35 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   auto lease1 = CreateLease({{kCPU_ResourceLabel, 3}}, "f", args);
   auto lease2 = CreateLease({{kCPU_ResourceLabel, 3}}, "f2", args);
 
+  // The node is idle initially.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
   EXPECT_CALL(object_manager_, Pull(_, _, _))
       .WillOnce(::testing::Return(1))
       .WillOnce(::testing::Return(2));
 
   // Submit the leases to the local lease manager.
   int num_callbacks_called = 0;
-  auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
+  auto callback = [&num_callbacks_called](Status status,
+                                          std::function<void()> success,
+                                          std::function<void()> failure) {
+    ++num_callbacks_called;
+  };
   rpc::RequestWorkerLeaseReply reply1;
   local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
-      lease1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)},
+      internal::WorkStatus::WAITING));
   rpc::RequestWorkerLeaseReply reply2;
   local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
-      lease2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)},
+      internal::WorkStatus::WAITING));
+  // The node is no longer idle as it is pulling objects.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
 
   // Node no longer has cpu.
   scheduler_->GetLocalResourceManager().DeleteLocalResource(
@@ -473,6 +581,50 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(num_callbacks_called, 2);
   ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 0);
+  // The node is idle again as the leases are cancelled.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
+}
+
+TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
+  // This test is to verify that the node is not idle when it is pulling task arguments.
+  //
+  // Test setup:
+  // - Node has 3 CPUs available with one free worker.
+  // - Node is idle initially.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
+
+  // A lease that requires 3 CPUs and pulling task arguments is submitted to this
+  // node. The node is no longer idle as it is pulling objects but not doing any work
+  // yet (3 CPUs are still available).
+  auto arg_id = ObjectID::FromRandom();
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(
+      std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
+  auto lease = CreateLease({{kCPU_ResourceLabel, 3}}, "f", args);
+  EXPECT_CALL(object_manager_, Pull(_, _, _)).WillOnce(::testing::Return(1));
+  rpc::RequestWorkerLeaseReply reply;
+  auto empty_callback =
+      [](Status status, std::function<void()> success, std::function<void()> failure) {};
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
+
+  // Simulate arg becoming local. The node is still node idle but because it is now
+  // doing work (3 CPUs are now used).
+  local_lease_manager_->LeasesUnblocked({lease.GetLeaseSpecification().LeaseId()});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
 }
 
 int main(int argc, char **argv) {

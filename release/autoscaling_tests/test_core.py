@@ -1,12 +1,9 @@
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.autoscaler.v2.tests.util import (
-    NodeCountCheck,
-    TotalResourceCheck,
-    check_cluster,
-)
+from ray.autoscaler.v2.sdk import get_cluster_status
 import time
 from logger import logger
+from typing import Dict
 
 ray.init("auto")
 
@@ -17,16 +14,27 @@ IDLE_TERMINATION_S = 60 * 5  # 5 min
 DEFAULT_RETRY_INTERVAL_MS = 15 * 1000  # 15 sec
 
 
+def check_cluster(target_num_nodes: int, target_resources: Dict[str, float]):
+    gcs_address = ray.get_runtime_context().gcs_address
+    cluster_status = get_cluster_status(gcs_address)
+
+    assert (
+        len(cluster_status.active_nodes) + len(cluster_status.idle_nodes)
+    ) == target_num_nodes
+
+    for k, v in target_resources.items():
+        assert cluster_status.total_resources().get(k, 0) == v
+
+    return True
+
+
 ctx = {
     "num_cpus": 0,
     "num_nodes": 1,
 }
 logger.info(f"Starting cluster with {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus")
 check_cluster(
-    [
-        NodeCountCheck(ctx["num_nodes"]),
-        TotalResourceCheck({"CPU": ctx["num_cpus"]}),
-    ]
+    target_num_nodes=ctx["num_nodes"], target_resources={"CPU": ctx["num_cpus"]}
 )
 
 
@@ -48,10 +56,8 @@ def test_request_cluster_resources(ctx: dict):
         check_cluster,
         timeout=60 * 5,  # 5min
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
-        targets=[
-            NodeCountCheck(ctx["num_nodes"]),
-            TotalResourceCheck({"CPU": ctx["num_cpus"]}),
-        ],
+        target_num_nodes=ctx["num_nodes"],
+        target_resources={"CPU": ctx["num_cpus"]},
     )
 
     # Reset the cluster constraints.
@@ -67,10 +73,8 @@ def test_request_cluster_resources(ctx: dict):
         check_cluster,
         timeout=60 + IDLE_TERMINATION_S,  # 1min + idle timeout
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
-        targets=[
-            NodeCountCheck(ctx["num_nodes"]),
-            TotalResourceCheck({"CPU": ctx["num_cpus"]}),
-        ],
+        target_num_nodes=ctx["num_nodes"],
+        target_resources={"CPU": ctx["num_cpus"]},
     )
 
 
@@ -100,10 +104,8 @@ def test_run_tasks_concurrent(ctx: dict):
         check_cluster,
         timeout=60 * 5,  # 5min
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
-        targets=[
-            NodeCountCheck(ctx["num_nodes"]),
-            TotalResourceCheck({"CPU": ctx["num_cpus"]}),
-        ],
+        target_num_nodes=ctx["num_nodes"],
+        target_resources={"CPU": ctx["num_cpus"]},
     )
 
     [ray.cancel(task) for task in tasks]
@@ -120,10 +122,8 @@ def test_run_tasks_concurrent(ctx: dict):
         check_cluster,
         timeout=60 + IDLE_TERMINATION_S,
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
-        targets=[
-            NodeCountCheck(ctx["num_nodes"]),
-            TotalResourceCheck({"CPU": ctx["num_cpus"]}),
-        ],
+        target_num_nodes=ctx["num_nodes"],
+        target_resources={"CPU": ctx["num_cpus"]},
     )
 
 

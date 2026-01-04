@@ -1,6 +1,7 @@
 import itertools
 import math
 import random
+import threading
 import time
 from typing import Any, List, Tuple
 from unittest.mock import patch
@@ -199,7 +200,10 @@ def test_split_small(ray_start_regular_shared_2_cpus):
     assert not fail, fail
 
 
-def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
+def test_split_at_indices_simple(ray_start_regular_shared_2_cpus, restore_data_context):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
@@ -258,10 +262,14 @@ def test_split_at_indices_simple(ray_start_regular_shared_2_cpus):
     ],
 )
 def test_split_at_indices_coverage(
-    ray_start_regular_shared_2_cpus, num_blocks, indices
+    ray_start_regular_shared_2_cpus, num_blocks, indices, restore_data_context
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
+
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(20, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.sort("id").take_all()) for s in splits]
@@ -288,8 +296,11 @@ def test_split_at_indices_coverage(
     ],  # Selected three-split cases
 )
 def test_split_at_indices_coverage_complete(
-    ray_start_regular_shared_2_cpus, num_blocks, indices
+    ray_start_regular_shared_2_cpus, num_blocks, indices, restore_data_context
 ):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
     ds = ray.data.range(10, override_num_blocks=num_blocks)
@@ -885,6 +896,142 @@ def test_split_is_not_disruptive(ray_start_cluster):
     # Same as above but having in-place tranforms post converting to lazy.
     verify_integrity(ds.randomize_block_order().split(2, equal=True))
     verify_integrity(ds.randomize_block_order().split(3, equal=True))
+
+
+def test_streaming_train_test_split_hash(ray_start_regular_shared_2_cpus):
+    ds = ray.data.range(10000000, override_num_blocks=10)
+
+    ds_train, ds_test = ds.streaming_train_test_split(
+        test_size=0.2, split_type="hash", hash_column="id"
+    )
+
+    np.testing.assert_almost_equal(float(ds_train.count()) / 10000000.0, 0.8, decimal=3)
+    np.testing.assert_almost_equal(float(ds_test.count()) / 10000000.0, 0.2, decimal=3)
+
+    # Check if train and test are disjoint
+    assert (
+        ds_train.join(ds_test, join_type="inner", on=("id",), num_partitions=1).count()
+        == 0
+    )
+
+
+@pytest.mark.parametrize("seed", [None, 42])
+def test_streaming_train_test_split_random(ray_start_regular_shared_2_cpus, seed):
+    ds = ray.data.range(10000000, override_num_blocks=10)
+
+    ds_train, ds_test = ds.streaming_train_test_split(
+        test_size=0.2, split_type="random", seed=seed
+    )
+
+    np.testing.assert_almost_equal(float(ds_train.count()) / 10000000.0, 0.8, decimal=3)
+    np.testing.assert_almost_equal(float(ds_test.count()) / 10000000.0, 0.2, decimal=3)
+
+    # Check if train and test are disjoint
+    assert (
+        ds_train.join(ds_test, join_type="inner", on=("id",), num_partitions=1).count()
+        == 0
+    )
+
+
+@pytest.mark.parametrize(
+    "test_size,split_type,hash_column,seed,error_msg",
+    [
+        (0.2, "hash", None, None, "hash_column is required for hash split"),
+        (0.2, "hash", "id", 42, "seed is not supported for hash split"),
+        (0, "hash", "id", None, "test_size must be between 0 and 1"),
+        (1, "hash", "id", None, "test_size must be between 0 and 1"),
+        (0.2, "random", "id", None, "hash_column is not supported for random split"),
+        (0, "random", None, None, "test_size must be between 0 and 1"),
+        (1, "random", None, None, "test_size must be between 0 and 1"),
+        (0.2, "unknown", "id", None, "Invalid split type: unknown"),
+    ],
+)
+def test_streaming_train_test_split_wrong_params(
+    ray_start_regular_shared_2_cpus, test_size, split_type, hash_column, seed, error_msg
+):
+    ds = ray.data.range(10)
+
+    with pytest.raises(ValueError, match=error_msg):
+        ds.streaming_train_test_split(
+            test_size=test_size,
+            split_type=split_type,
+            hash_column=hash_column,
+            seed=seed,
+        )
+
+
+@pytest.mark.parametrize("prefetch_batches", [0, 2])
+def test_streaming_split_reports_and_clears_prefetched_bytes(
+    ray_start_regular_shared_2_cpus, prefetch_batches
+):
+    """Test streaming_split reports and clears prefetched bytes.
+
+    Verifies that:
+    1. Prefetched bytes are tracked during iteration
+    2. When StopIteration is raised in SplitCoordinator.get(), the
+       prefetched bytes are cleared to avoid stale backpressure data
+    """
+    ds = ray.data.range(20, override_num_blocks=4)
+    splits = ds.streaming_split(2, equal=True)
+
+    # Get the coordinator actor to check prefetched bytes
+    coord = splits[0]._coord_actor
+
+    results = []
+
+    def consume(split, idx):
+        count = 0
+        for batch in split.iter_batches(
+            batch_size=5, prefetch_batches=prefetch_batches
+        ):
+            count += len(batch["id"])
+        results.append((idx, count))
+
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Verify both splits consumed all data (epoch completed via StopIteration)
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Expected 20 total rows, got {total_rows}"
+
+    # Verify client prefetched bytes are cleared after epoch end
+    # (cleared when StopIteration is raised in SplitCoordinator.get())
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} has stale prefetched bytes: {bytes_val}"
+
+    # Run a second epoch to verify cleared bytes don't cause issues
+    results.clear()
+
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Second epoch should also consume all data
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Second epoch: expected 20 rows, got {total_rows}"
+
+    # Verify prefetched bytes cleared again after second epoch
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
 
 
 if __name__ == "__main__":

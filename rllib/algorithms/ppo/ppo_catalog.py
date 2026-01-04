@@ -1,13 +1,13 @@
 # __sphinx_doc_begin__
 import gymnasium as gym
 
+from ray.rllib.core.models.base import ActorCriticEncoder, Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
-    MLPHeadConfig,
     FreeLogStdMLPHeadConfig,
+    MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 

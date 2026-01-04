@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.bc.bc import BCConfig, BC
+from ray.rllib.algorithms.bc.bc import BC, BCConfig
 
 __all__ = [
     "BC",

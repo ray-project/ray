@@ -92,7 +92,8 @@ class TaskEventBufferTest : public ::testing::Test {
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
+        "test_session_name",
+        NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -158,6 +159,7 @@ class TaskEventBufferTest : public ::testing::Test {
         1,
         /*is_actor_task_event=*/false,
         "test_session_name",
+        NodeID::Nil(),
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -175,6 +177,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              running_ts,
                                              /*is_actor_task_event=*/false,
                                              "test_session_name",
+                                             NodeID::Nil(),
                                              nullptr,
                                              state_update);
   }
@@ -188,7 +191,8 @@ class TaskEventBufferTest : public ::testing::Test {
                                               "",
                                               "test_event",
                                               1,
-                                              "test_session_name");
+                                              "test_session_name",
+                                              NodeID::Nil());
   }
 
   static void CompareTaskEventData(const rpc::TaskEventData &actual_data,
@@ -439,9 +443,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
       auto new_event = expected_ray_events_data.add_events();
       *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (ray_events_tuple.task_execution_event) {
+    if (ray_events_tuple.task_lifecycle_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(ray_events_tuple.task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
     }
     if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
@@ -757,9 +761,9 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
       auto new_event = expected_ray_events_data.add_events();
       *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (ray_events_tuple.task_execution_event) {
+    if (ray_events_tuple.task_lifecycle_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(ray_events_tuple.task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
     }
     if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
@@ -948,7 +952,8 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
                                                           node_ip,
                                                           event_name,
                                                           start_time,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
 
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
@@ -960,7 +965,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   // Verify that the second event is nullopt (empty)
   EXPECT_FALSE(ray_events_tuple.task_definition_event.has_value())
       << "TaskProfileEvent should be populated in RayEventsTuple";
-  EXPECT_FALSE(ray_events_tuple.task_execution_event.has_value())
+  EXPECT_FALSE(ray_events_tuple.task_lifecycle_event.has_value())
       << "TaskProfileEvent should be populated in RayEventsTuple";
 
   // Verify that the first event contains the profile event
@@ -1019,7 +1024,8 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
                                                           "192.168.1.2",
                                                           "profile_test",
                                                           5000,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
@@ -1071,7 +1077,8 @@ TEST_P(TaskEventBufferTestDifferentDestination,
                                                           "192.168.1.3",
                                                           "mixed_test",
                                                           7000,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
   // Expect data flushed match. Generate the expected data
   rpc::TaskEventData expected_task_event_data;
   rpc::events::RayEventsData expected_ray_events_data;
@@ -1086,9 +1093,9 @@ TEST_P(TaskEventBufferTestDifferentDestination,
     auto new_event = expected_ray_events_data.add_events();
     *new_event = std::move(ray_events_tuple.task_definition_event.value());
   }
-  if (ray_events_tuple.task_execution_event) {
+  if (ray_events_tuple.task_lifecycle_event) {
     auto new_event = expected_ray_events_data.add_events();
-    *new_event = std::move(ray_events_tuple.task_execution_event.value());
+    *new_event = std::move(ray_events_tuple.task_lifecycle_event.value());
   }
   if (ray_events_tuple.task_profile_event) {
     auto new_event = expected_ray_events_data.add_events();

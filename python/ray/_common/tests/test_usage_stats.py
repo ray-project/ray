@@ -1554,17 +1554,31 @@ def test_get_cloud_from_metadata_requests(monkeypatch):
             if "gcp" in error_providers:
                 print("raising")
                 raise requests.exceptions.ConnectionError()
-            mock_response.status_code = 200 if provider == "gcp" else 404
+            mock_response.status_code = 200 if provider == "gcp" else 400
         elif url == "http://169.254.169.254/latest/meta-data/":
             # AWS endpoint
             if "aws" in error_providers:
                 raise requests.exceptions.ConnectionError()
-            mock_response.status_code = 200 if provider == "aws" else 404
-        elif url == "http://169.254.169.254/metadata/instance?api-version=2021-02-01":
+            # Azure IMDS returns 400 (not 404) when queried with AWS endpoint format
+            # because Azure requires the "Metadata: true" header (not sent in AWS queries).
+            # See: https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service#errors-and-debugging
+            if provider == "azure":
+                mock_response.status_code = (
+                    400  # Bad Request (missing headers/wrong path)
+                )
+            else:
+                mock_response.status_code = 200 if provider == "aws" else 404
+        elif url == "http://169.254.169.254/metadata/instance?api-version=2021-12-13":
             # Azure endpoint
             if "azure" in error_providers:
                 raise requests.exceptions.ConnectionError()
-            mock_response.status_code = 200 if provider == "azure" else 404
+            # AWS IMDS returns 404 when queried with Azure endpoint format
+            # because Azure's URL path doesn't exist on AWS metadata service.
+            # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html#instance-metadata-returns
+            if provider == "aws":
+                mock_response.status_code = 404  # Not Found
+            else:
+                mock_response.status_code = 200 if provider == "azure" else 400
 
         return mock_response
 
@@ -1582,7 +1596,7 @@ def test_get_cloud_from_metadata_requests(monkeypatch):
         assert result == "aws"
 
         mock_get.side_effect = lambda url, **kwargs: create_mock_response(
-            url, "azure", ["gcp"]
+            url, "azure", []
         )
         result = ray_usage_lib.get_cloud_from_metadata_requests()
         assert result == "azure"
@@ -1592,6 +1606,46 @@ def test_get_cloud_from_metadata_requests(monkeypatch):
         )
         result = ray_usage_lib.get_cloud_from_metadata_requests()
         assert result == "unknown"
+
+
+def test_get_cloud_azure_not_detected_as_aws():
+    """Regression test for bug where Azure VMs were incorrectly detected as AWS.
+
+    The bug occurred because:
+    1. AWS endpoint was checked before Azure endpoint
+    2. Both use the same IP (169.254.169.254)
+    3. Azure IMDS returns 400 (not 404) when queried with AWS endpoint
+    4. Old code accepted any non-404 status, so it incorrectly returned "aws"
+
+    This test ensures only 200 status is accepted.
+    """
+    with patch("requests.get") as mock_get:
+        # Simulate being on an Azure VM
+        # - Azure endpoint returns 200 (correct provider)
+        # - AWS endpoint returns 400 (Azure IMDS rejecting AWS query)
+        # - GCP endpoint times out (not on GCP)
+        def azure_vm_response(url, **kwargs):
+            mock_response = Mock()
+            if url == "http://169.254.169.254/metadata/instance?api-version=2021-12-13":
+                # Azure endpoint succeeds
+                mock_response.status_code = 200
+            elif url == "http://169.254.169.254/latest/meta-data/":
+                # AWS endpoint fails with 400 on Azure IMDS (the critical bug case)
+                mock_response.status_code = 400
+            elif url == "http://metadata.google.internal/computeMetadata/v1":
+                # GCP times out
+                raise requests.exceptions.ConnectionError()
+            return mock_response
+
+        mock_get.side_effect = azure_vm_response
+        result = ray_usage_lib.get_cloud_from_metadata_requests()
+
+        # Should correctly identify as Azure (not AWS!)
+        assert result == "azure", (
+            "Azure VM incorrectly detected as AWS! "
+            "This is the critical bug where status_code != 404 accepted "
+            "Azure's 400 response to AWS query."
+        )
 
 
 if __name__ == "__main__":

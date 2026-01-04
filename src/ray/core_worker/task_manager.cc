@@ -271,6 +271,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   returned_refs.reserve(num_returns);
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
+  auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -292,7 +293,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         is_reconstructable,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        /*tensor_transport=*/spec.TensorTransport());
+                                        tensor_transport);
     }
 
     return_ids.push_back(return_id);
@@ -301,35 +302,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
-    ref.set_tensor_transport(spec.TensorTransport());
-
-    // Register the callback to free the GPU object when it is out of scope.
-    auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
-    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
-        rpc::TensorTransport::OBJECT_STORE) {
-      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-          return_object_id, [this](const ObjectID &object_id) {
-            auto actor_id = ObjectID::ToActorID(object_id);
-            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-            if (!rpc_client.has_value()) {
-              // ActorTaskSubmitter already knows the actor is already dead.
-              return;
-            }
-            rpc::FreeActorObjectRequest request;
-            request.set_object_id(object_id.Binary());
-            rpc_client.value()->FreeActorObject(
-                std::move(request),
-                [object_id, actor_id](const Status &status,
-                                      const rpc::FreeActorObjectReply &reply) {
-                  if (status.IsDisconnected()) {
-                    RAY_LOG(DEBUG).WithField(object_id).WithField(actor_id)
-                        << "FreeActorObject failed because actor worker is dead";
-                  } else if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
-                        << "Failed to free actor object: " << status;
-                  }
-                });
-          });
+    if (tensor_transport.has_value()) {
+      ref.set_tensor_transport(*tensor_transport);
+      // Register the callback to free the GPU object when it is out of scope.
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
+                                                            free_actor_object_callback_);
     }
 
     returned_refs.push_back(std::move(ref));
@@ -582,7 +559,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // will choose the right raylet for any queued dependent tasks.
     reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_node_id);
     // Mark it as in plasma with a dummy object.
-    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
   } else {
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
@@ -604,19 +583,18 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
     RayObject object(data_buffer,
                      metadata_buffer,
                      nested_refs,
                      /*copy_data=*/false,
-                     tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
+                     reference_counter_.GetTensorTransport(object_id));
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
       if (!s.ok()) {
         return s;
       }
     } else {
-      in_memory_store_.Put(object, object_id);
+      in_memory_store_.Put(object, object_id, reference_counter_.HasReference(object_id));
       direct_return = true;
     }
   }
@@ -785,7 +763,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     // Put a dummy object at the end of the stream. We don't need to check if
     // the object should be stored in plasma because the end of the stream is a
     // fake ObjectRef that should never be read by the application.
-    in_memory_store_.Put(error, last_object_id);
+    in_memory_store_.Put(
+        error, last_object_id, reference_counter_.HasReference(last_object_id));
   }
 }
 
@@ -795,7 +774,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
-  uint64_t attempt_number = request.attempt_number();
+  int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
@@ -829,11 +808,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
-
-  // TODO(sang): Support the regular return values as well.
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
-    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+
+  if (request.has_returned_object()) {
+    const rpc::ReturnObject &returned_object = request.returned_object();
+    const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
@@ -850,7 +829,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     StatusOr<bool> put_res =
         HandleTaskReturn(object_id,
-                         return_object,
+                         returned_object,
                          NodeID::FromBinary(request.worker_addr().node_id()),
                          /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
     if (!put_res.ok()) {
@@ -1177,9 +1156,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     } else {
       auto is_preempted = false;
       if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
-        const auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
-                                                        /*filter_dead_nodes=*/false);
-        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+        const auto node_info =
+            gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
+                                                           /*filter_dead_nodes=*/false);
+        is_preempted = node_info && node_info->has_death_info() &&
                        node_info->death_info().reason() ==
                            rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
       }
@@ -1350,7 +1330,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   RemoveFinishedTaskReferences(spec,
                                /*release_lineage=*/true,
                                rpc::Address(),
-                               ReferenceCounter::ReferenceTableProto());
+                               ReferenceCounterInterface::ReferenceTableProto());
 
   MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
 
@@ -1420,7 +1400,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     TaskSpecification &spec,
     bool release_lineage,
     const rpc::Address &borrower_addr,
-    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
+    const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
 
   std::vector<ObjectID> return_ids;
@@ -1533,6 +1513,15 @@ void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
   MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
 }
 
+bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.is_canceled_;
+}
+
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     const TaskID &task_id, bool *first_execution_out) const {
   bool first_execution = false;
@@ -1572,10 +1561,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
       if (!s.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
-        in_memory_store_.Put(error, object_id);
+        in_memory_store_.Put(
+            error, object_id, reference_counter_.HasReference(object_id));
       }
     } else {
-      in_memory_store_.Put(error, object_id);
+      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
     }
   }
   if (spec.ReturnsDynamic()) {
@@ -1585,10 +1575,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, dynamic_return_id);
+          in_memory_store_.Put(error,
+                               dynamic_return_id,
+                               reference_counter_.HasReference(dynamic_return_id));
         }
       } else {
-        in_memory_store_.Put(error, dynamic_return_id);
+        in_memory_store_.Put(
+            error, dynamic_return_id, reference_counter_.HasReference(dynamic_return_id));
       }
     }
   }
@@ -1615,10 +1608,14 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, generator_return_id);
+          in_memory_store_.Put(error,
+                               generator_return_id,
+                               reference_counter_.HasReference(generator_return_id));
         }
       } else {
-        in_memory_store_.Put(error, generator_return_id);
+        in_memory_store_.Put(error,
+                             generator_return_id,
+                             reference_counter_.HasReference(generator_return_id));
       }
     }
   }
@@ -1801,7 +1798,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
+  total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 
@@ -1822,8 +1819,8 @@ std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
-    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
-      // GPU objects are inlined but the actual data lives on the remote actor.
+    } else if (spec.ArgTensorTransport(i).has_value()) {
+      // RDT objects are inlined but the actual data lives on the remote actor.
       // Therefore, we apply the reference counting protocol used for plasma objects
       // instead of decrementing the ref count upon inlining.
       plasma_dependencies.push_back(spec.ArgObjectId(i));

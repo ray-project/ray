@@ -1,7 +1,7 @@
 import sys
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
@@ -9,6 +9,8 @@ from ray.data.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     import datasets
+
+    from ray.data.context import DataContext
 
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -165,6 +167,8 @@ class HuggingFaceDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
         # We always generate a single ReadTask to perform the read.
@@ -184,6 +188,7 @@ class HuggingFaceDatasource(Datasource):
             ReadTask(
                 self._read_dataset,
                 meta,
+                per_task_row_limit=per_task_row_limit,
             )
         ]
         return read_tasks

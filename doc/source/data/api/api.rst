@@ -10,6 +10,7 @@ Ray Data API
     dataset.rst
     data_iterator.rst
     execution_options.rst
+    checkpoint.rst
     aggregate.rst
     grouped_data.rst
     expressions.rst

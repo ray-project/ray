@@ -1,11 +1,11 @@
 import sys
-from copy import deepcopy
 from pathlib import Path
 
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
     ModelLoadingConfig,
@@ -157,100 +157,6 @@ class TestModelConfig:
             "upscaling_factor" not in llm_config.deployment_config["autoscaling_config"]
         )
 
-    def test_get_serve_options_with_accelerator_type(self):
-        """Test that get_serve_options returns the correct options when accelerator_type is set."""
-        serve_options = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            accelerator_type="A100-40G",
-            deployment_config={
-                "autoscaling_config": {
-                    "min_replicas": 0,
-                    "initial_replicas": 1,
-                    "max_replicas": 10,
-                },
-            },
-            runtime_env={"env_vars": {"FOO": "bar"}},
-        ).get_serve_options(name_prefix="Test:")
-
-        # Test the core functionality without being strict about Ray's automatic runtime env additions
-        assert serve_options["autoscaling_config"] == {
-            "min_replicas": 0,
-            "initial_replicas": 1,
-            "max_replicas": 10,
-        }
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
-        ]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
-        assert serve_options["name"] == "Test:test_model"
-
-        # Check that our custom env vars are present
-        assert (
-            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
-            == "bar"
-        )
-        assert (
-            "worker_process_setup_hook"
-            in serve_options["ray_actor_options"]["runtime_env"]
-        )
-
-    def test_get_serve_options_without_accelerator_type(self):
-        """Test that get_serve_options returns the correct options when accelerator_type is not set."""
-        serve_options = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            deployment_config={
-                "autoscaling_config": {
-                    "min_replicas": 0,
-                    "initial_replicas": 1,
-                    "max_replicas": 10,
-                },
-            },
-            runtime_env={"env_vars": {"FOO": "bar"}},
-        ).get_serve_options(name_prefix="Test:")
-
-        # Test the core functionality without being strict about Ray's automatic runtime env additions
-        assert serve_options["autoscaling_config"] == {
-            "min_replicas": 0,
-            "initial_replicas": 1,
-            "max_replicas": 10,
-        }
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
-        assert serve_options["name"] == "Test:test_model"
-
-        # Check that our custom env vars are present
-        assert (
-            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
-            == "bar"
-        )
-        assert (
-            "worker_process_setup_hook"
-            in serve_options["ray_actor_options"]["runtime_env"]
-        )
-
-    def test_resources_per_bundle(self):
-        """Test that resources_per_bundle is correctly parsed."""
-
-        # Test the default resource bundle
-        serve_options = LLMConfig(
-            model_loading_config=dict(model_id="test_model"),
-            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-        ).get_serve_options(name_prefix="Test:")
-
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
-            {"GPU": 1} for _ in range(5)
-        ]
-
-        # Test the custom resource bundle
-        serve_options = LLMConfig(
-            model_loading_config=dict(model_id="test_model"),
-            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-            resources_per_bundle={"XPU": 1},
-        ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0, "XPU": 1}
-        ] + [{"XPU": 1} for _ in range(5)]
-
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
         get_engine_config so the attributes on the engine will be persisted."""
@@ -304,54 +210,29 @@ class TestModelConfig:
             )
 
     @pytest.mark.parametrize(
-        "data_parallel_size,num_replica,allowed",
+        "load_format,expected_download_model",
         [
-            (None, 1, True),
-            (None, 2, True),
-            (None, 3, True),
-            (1, 1, True),
-            (1, 2, True),
-            (1, 3, True),
-            (2, 2, False),
-            (2, 3, False),
-            (4, 2, False),
-            (2, None, True),
-            (None, None, True),
+            ("runai_streamer", NodeModelDownloadable.NONE),
+            ("runai_streamer_sharded", NodeModelDownloadable.NONE),
+            ("tensorizer", NodeModelDownloadable.NONE),
+            (None, NodeModelDownloadable.MODEL_AND_TOKENIZER),
         ],
     )
-    def test_multi_replica_dp_validation(
-        self, data_parallel_size, num_replica, allowed
-    ):
-        """Test that multi-replica and DP size are mutually exclusive.
+    def test_load_format_callback_context(self, load_format, expected_download_model):
+        """Test that different load_format values set correct worker_node_download_model in callback context."""
+        engine_kwargs = {"load_format": load_format} if load_format is not None else {}
 
-        Ray.llm's implementation does not yet support multi-replica
-        deployment along with DP.
-        """
-        engine_kwargs = (
-            {}
-            if data_parallel_size is None
-            else {"data_parallel_size": data_parallel_size}
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            engine_kwargs=engine_kwargs,
         )
-        deployment_config = {} if num_replica is None else {"num_replicas": num_replica}
 
-        def get_serve_options_with_num_replica():
-            return LLMConfig(
-                model_loading_config=dict(model_id="test_model"),
-                engine_kwargs=deepcopy(engine_kwargs),
-                deployment_config=deepcopy(deployment_config),
-            ).get_serve_options(name_prefix="Test:")
+        # Get the callback instance which should trigger the context setup
+        callback = llm_config.get_or_create_callback()
 
-        if allowed:
-            serve_options = get_serve_options_with_num_replica()
-            actual_num_replicas = serve_options.get("num_replicas", 1)
-            expected_num_replicas = (data_parallel_size or 1) * (num_replica or 1)
-            assert actual_num_replicas == expected_num_replicas
-        else:
-            with pytest.raises(
-                ValueError,
-                match="use engine_kwargs.data_parallel_size",
-            ):
-                get_serve_options_with_num_replica()
+        # Check that the callback context has the correct worker_node_download_model value
+        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
+        assert callback.ctx.worker_node_download_model == expected_download_model
 
 
 class TestFieldValidators:
@@ -410,6 +291,41 @@ class TestFieldValidators:
             )
 
         assert "Invalid lora_config" in str(exc_info.value)
+
+
+class TestUseCpuLogic:
+    """Test the use_cpu logic and its interaction with accelerator_type."""
+
+    def test_use_cpu_field_basic(self):
+        """Test that use_cpu field works with basic values."""
+        # Test use_cpu=True
+        llm_config_cpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+        )
+        assert llm_config_cpu.use_cpu is True
+        engine_config = llm_config_cpu.get_engine_config()
+        assert engine_config.use_gpu is False
+
+        # Test use_cpu=False
+        llm_config_gpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=False,
+        )
+        assert llm_config_gpu.use_cpu is False
+        engine_config_gpu = llm_config_gpu.get_engine_config()
+        assert engine_config_gpu.use_gpu is True
+
+    def test_use_cpu_precedence_over_accelerator_type(self):
+        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
+        # use_cpu=True should override GPU accelerator_type
+        llm_config_cpu_override = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
+        )
+        engine_config = llm_config_cpu_override.get_engine_config()
+        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
 
 
 if __name__ == "__main__":

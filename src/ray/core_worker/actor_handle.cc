@@ -37,7 +37,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels) {
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -56,6 +57,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_enable_tensor_transport(enable_tensor_transport);
   inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   inner.mutable_labels()->insert(labels.begin(), labels.end());
+  inner.set_is_detached(is_detached);
   return inner;
 }
 
@@ -89,6 +91,7 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
       task_spec.actor_creation_task_spec().allow_out_of_order_execution());
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
   inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
+  inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
   return inner;
 }
 }  // namespace
@@ -109,7 +112,8 @@ ActorHandle::ActorHandle(
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels)
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -125,7 +129,8 @@ ActorHandle::ActorHandle(
                                          allow_out_of_order_execution,
                                          enable_tensor_transport,
                                          enable_task_events,
-                                         labels)) {}
+                                         labels,
+                                         is_detached)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -139,7 +144,8 @@ void ActorHandle::SetActorTaskSpec(
     const ObjectID new_cursor,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
@@ -150,7 +156,8 @@ void ActorHandle::SetActorTaskSpec(
                            max_retries,
                            retry_exceptions,
                            serialized_retry_exception_allowlist,
-                           task_counter_++);
+                           task_counter_++,
+                           tensor_transport);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {

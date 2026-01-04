@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from dataclasses import astuple, dataclass
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,9 @@ from ray.data.tests.conftest import (
     get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 # Data source generates random bytes data
@@ -47,7 +51,12 @@ class RandomBytesDatasource(Datasource):
     def estimate_inmemory_data_size(self):
         return None
 
-    def get_read_tasks(self, parallelism: int):
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
                 if self.use_bytes:
@@ -91,6 +100,7 @@ class RandomBytesDatasource(Datasource):
                     input_files=None,
                     exec_stats=None,
                 ),
+                per_task_row_limit=per_task_row_limit,
             )
         ]
 

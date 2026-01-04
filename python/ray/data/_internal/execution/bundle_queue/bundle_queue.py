@@ -62,6 +62,11 @@ class BundleQueue(abc.ABC):
         ...
 
     @abc.abstractmethod
+    def num_blocks(self) -> int:
+        """Return the number of blocks in the queue."""
+        ...
+
+    @abc.abstractmethod
     def is_empty(self):
         """Return whether this queue and all of its internal data structures are empty.
 

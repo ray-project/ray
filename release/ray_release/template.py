@@ -1,7 +1,7 @@
 import copy
 import datetime
 import os
-from typing import Optional, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 import jinja2
 import yaml

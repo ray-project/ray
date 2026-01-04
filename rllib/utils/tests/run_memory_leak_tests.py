@@ -11,22 +11,23 @@
 #     tags = ["memory_leak_tests"],
 #     size = "medium",  # 5min timeout
 #     srcs = ["tests/test_memory_leak.py"],
-#     data = glob(["tuned_examples/ppo/*.yaml"]),
+#     data = glob(["examples/algorithms/ppo/*.yaml"]),
 #     # Pass `BAZEL` option and the path to look for yaml files.
-#     args = ["BAZEL", "tuned_examples/ppo/memory-leak-test-ppo.yaml"]
+#     args = ["BAZEL", "examples/algorithms/ppo/memory-leak-test-ppo.yaml"]
 # )
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 import ray
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
-from ray._common.deprecation import deprecation_warning
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()

@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._private.ray_constants import env_bool, env_set_by_user
 
 # Unsupported configs can use this value to detect if the user has set it.
@@ -42,14 +43,14 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
 DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
 
-# Timeout in seconds for `ray.train.report` to block on synchronization barriers,
-# after which a timeout error will be raised.
-REPORT_BARRIER_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_TIMEOUT_S"
-DEFAULT_REPORT_BARRIER_TIMEOUT_S: float = 60 * 30
-# Time in seconds for `ray.train.report` to log a warning if it is waiting for sync
-# actor notification of releasing.
-REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_WARN_INTERVAL_S"
-DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S: float = 60
+# Time in seconds for collective operations before raising a timeout error.
+COLLECTIVE_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"
+# NOTE: Default to no timeout to avoid introducing more timeouts for users to configure.
+# For example, users can already configure timeouts in torch distributed.
+DEFAULT_COLLECTIVE_TIMEOUT_S: float = -1
+# Interval in seconds to log a warning when waiting for a collective operation to complete.
+COLLECTIVE_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_WARN_INTERVAL_S"
+DEFAULT_COLLECTIVE_WARN_INTERVAL_S: float = 60
 
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
@@ -83,8 +84,12 @@ GET_ACTOR_TIMEOUT_S: int = 2
 # GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
 # way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
 CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
+
+# Ray Train does not warn by default when using blocking ray.get inside async actor.
+DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
@@ -93,13 +98,14 @@ ENV_VARS_TO_PROPAGATE = {
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
     ENABLE_PRINT_PATCH_ENV_VAR,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
+    RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
 }
 
 
@@ -112,7 +118,7 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
 
 def is_v2_enabled() -> bool:
-    return env_bool(V2_ENABLED_ENV_VAR, False)
+    return env_bool(V2_ENABLED_ENV_VAR, True)
 
 
 def get_env_vars_to_propagate() -> Dict[str, str]:

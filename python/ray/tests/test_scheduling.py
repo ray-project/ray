@@ -16,6 +16,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
     MetricSamplePattern,
+    PrometheusTimeseries,
     get_metric_check_condition,
     object_memory_usage,
 )
@@ -673,13 +674,18 @@ def test_scheduling_class_depth(ray_start_regular):
         # longer timeout is necessary to pass on windows debug/asan builds.
         timeout = 180
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
-        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=2)]),
+        get_metric_check_condition(
+            [MetricSamplePattern(name=metric_name, value=2)], timeseries
+        ),
         timeout=timeout,
     )
     start_infeasible.remote(2)
     wait_for_condition(
-        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
+        get_metric_check_condition(
+            [MetricSamplePattern(name=metric_name, value=3)], timeseries
+        ),
         timeout=timeout,
     )
 
