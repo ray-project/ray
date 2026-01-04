@@ -111,9 +111,8 @@ anyio==4.12.0 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.10.lock
     #   httpx
     #   jupyter-server
-anyscale==0.26.67 \
-    --hash=sha256:91ce1a9844145033cc2a51950577231fb368452b70935b4b73268003150b4b17 \
-    --hash=sha256:c17c3b9cccd530637d3d2c07cb44fe4bcf7b0c5618ad845033e9e126aadd9727
+anyscale==0.26.74 \
+    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.10.lock
     #   -r docker/base-extra/requirements.in

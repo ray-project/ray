@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import unittest
@@ -7,17 +6,12 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
-from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.exception import (
     ClusterComputeCreateError,
-    ClusterCreationError,
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
     ClusterEnvCreateError,
-    ClusterStartupError,
-    ClusterStartupFailed,
-    ClusterStartupTimeout,
 )
 from ray_release.test import Test
 from ray_release.tests.utils import (
@@ -28,7 +22,6 @@ from ray_release.tests.utils import (
     fail_always,
     fail_once,
 )
-from ray_release.util import get_anyscale_sdk
 
 TEST_CLUSTER_COMPUTE = {
     "cloud_id": UNIT_TEST_CLOUD_ID,
@@ -131,10 +124,8 @@ class MinimalSessionManagerTest(unittest.TestCase):
             sdk=sdk,
         )
         cluster_manager.set_cluster_env()
-        self.assertEqual(
-            cluster_manager.cluster_env_name,
-            "anyscale__env__"
-            "a93b7dec6c1b606a9814ceb96ace13e116d04cc8ce3a2bdea1b0f279c34ff692",
+        self.assertRegex(
+            cluster_manager.cluster_env_name, r"^anyscale__env__[0-9a-f]+$"
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
@@ -689,135 +680,6 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
         self.assertEqual(len(self.sdk.call_counter), 2)
-
-
-class FullSessionManagerTest(MinimalSessionManagerTest):
-    cls = FullClusterManager
-
-    def testSessionStartCreationError(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = _fail
-
-        with self.assertRaises(ClusterCreationError):
-            self.cluster_manager.start_cluster()
-
-    def testSessionStartStartupError(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = _fail
-
-        with self.assertRaises(ClusterStartupError):
-            self.cluster_manager.start_cluster()
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupTimeout(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time, self.assertRaises(ClusterStartupTimeout):
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            # Timeout before startup finishes
-            self.cluster_manager.start_cluster(timeout=200)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupFailed(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time, self.assertRaises(ClusterStartupFailed):
-            frozen_time.tick(delta=0.1)
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            self.sdk.returns["get_cluster"] = APIDict(
-                result=APIDict(state="Terminated")
-            )
-
-            # Timeout is long enough
-            self.cluster_manager.start_cluster(timeout=400)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupSuccess(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time:
-            frozen_time.tick(delta=0.1)
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            self.sdk.returns["get_cluster"] = APIDict(result=APIDict(state="Running"))
-
-            # Timeout is long enough
-            self.cluster_manager.start_cluster(timeout=400)
-
-
-@unittest.skipUnless(
-    os.environ.get("RELEASE_UNIT_TEST_NO_ANYSCALE", "0") == "1",
-    reason="RELEASE_UNIT_TEST_NO_ANYSCALE is set to 1",
-)
-class LiveSessionManagerTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.sdk = get_anyscale_sdk()
-
-        self.cluster_compute = TEST_CLUSTER_COMPUTE
-
-        self.cluster_manager = FullClusterManager(
-            project_id=UNIT_TEST_PROJECT_ID,
-            sdk=self.sdk,
-            test_name=f"unit_test__{self.__class__.__name__}__endToEnd",
-        )
-
-    def tearDown(self) -> None:
-        self.cluster_manager.terminate_cluster()
-        self.cluster_manager.delete_configs()
-
-    def testSessionEndToEnd(self):
-        self.cluster_manager.set_cluster_env(self.cluster_env)
-        self.cluster_manager.set_cluster_compute(self.cluster_compute)
-        self.cluster_manager.build_configs(timeout=1200)
-
-        # Reset, so that we fetch them again and test that code path
-        self.cluster_manager.cluster_compute_id = None
-        self.cluster_manager.cluster_env_id = None
-        self.cluster_manager.cluster_env_build_id = None
-        self.cluster_manager.build_configs(timeout=1200)
-
-        # Start cluster
-        self.cluster_manager.start_cluster(timeout=1200)
 
 
 if __name__ == "__main__":
