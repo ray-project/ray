@@ -132,7 +132,7 @@ def test_uv_run_runtime_env_hook():
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
     ):
         result = subprocess.run(
-            cmd + [] if runtime_env is None else [json.dumps(runtime_env)],
+            cmd + ([] if runtime_env is None else [json.dumps(runtime_env)]),
             capture_output=True,
             **(subprocess_kwargs if subprocess_kwargs else {}),
         )
