@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
-from ray.data._internal.execution.interfaces.ref_bundle import BlockSlice
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -28,18 +27,20 @@ if TYPE_CHECKING:
 
 
 class ZipAlignmentBundler:
-    """Bundler that accumulates rows until target is reached, then produces slice specs.
-
-    Similar to BaseRefBundler but designed for zip alignment - it produces
-    (block_refs, slices) tuples instead of RefBundle objects.
-    """
+    """Bundler that accumulates rows until target is reached, then produces a merged RefBundle."""
 
     def __init__(self, target_num_rows: int):
+        """Create a ZipAlignmentBundler.
+        Args:
+            target_num_rows: The target number of rows to accumulate before producing a merged RefBundle.
+        """
         self._target_num_rows = target_num_rows
         self._pending_bundles: collections.deque[RefBundle] = collections.deque()
         self._pending_rows = 0
-        self._consumed_rows_in_first = 0  # Rows already consumed from first bundle
         self._finalized = False
+        # Track mapping from remaining_bundle -> original_bundle for metrics
+        # When a bundle is sliced, the remaining portion maps back to the original
+        self._remaining_to_original: dict[RefBundle, RefBundle] = {}
 
     def add_bundle(self, bundle: RefBundle) -> None:
         """Add a bundle to the bundler."""
@@ -70,92 +71,56 @@ class ZipAlignmentBundler:
         """Return number of pending rows."""
         return self._pending_rows
 
-    def get_next_bundle(
-        self,
-    ) -> Tuple[List[ObjectRef[Block]], List[BlockSlice], List[RefBundle], Optional[Schema]]:
-        """Get the next bundle as (block_refs, slices, consumed_bundles, schema).
+    def get_next_bundle(self) -> Tuple[RefBundle, List[RefBundle]]:
+        """Get the next bundle as (merged_bundle, consumed_bundles).
 
-        Returns slice specs for exactly target_num_rows (or remaining if finalized).
+        Returns a merged RefBundle for exactly target_num_rows (or remaining if finalized).
+        Uses RefBundle.slice() for slicing logic. The merged bundle contains block_refs
+        and slices attributes that can be used directly.
+
+        consumed_bundles contains the ORIGINAL bundles that were registered with
+        on_input_queued, for proper metrics tracking.
         """
         assert self.has_bundle()
 
         rows_to_take = min(self._target_num_rows, self._pending_rows)
-        block_refs: List[ObjectRef[Block]] = []
-        slices: List[BlockSlice] = []
+        bundles_to_merge: List[RefBundle] = []
         consumed_bundles: List[RefBundle] = []
-        schema = None
-        skip_rows = self._consumed_rows_in_first
+        rows_collected = 0
 
-        rows_remaining = rows_to_take
-        while rows_remaining > 0 and self._pending_bundles:
-            bundle = self._pending_bundles[0]
-            if schema is None:
-                schema = bundle.schema
+        while rows_collected < rows_to_take and self._pending_bundles:
+            bundle = self._pending_bundles.popleft()
+            bundle_rows = bundle.num_rows()
+            rows_needed = rows_to_take - rows_collected
 
-            bundle_total = bundle.num_rows()
-            available = bundle_total - skip_rows
+            # Get the original bundle for metrics tracking
+            # If this bundle is a remainder from a previous slice, look up its original
+            original_bundle = self._remaining_to_original.pop(bundle, bundle)
 
-            if available <= rows_remaining:
-                # Take all remaining rows from this bundle
-                self._extract_slices(bundle, skip_rows, bundle_total, block_refs, slices)
-                rows_remaining -= available
-                self._pending_rows -= available
-                self._pending_bundles.popleft()
-                consumed_bundles.append(bundle)
-                self._consumed_rows_in_first = 0
-                skip_rows = 0
+            if bundle_rows <= rows_needed:
+                # Take entire bundle - original is fully consumed
+                bundles_to_merge.append(bundle)
+                consumed_bundles.append(original_bundle)
+                rows_collected += bundle_rows
+                self._pending_rows -= bundle_rows
             else:
-                # Take partial rows
-                end_row = skip_rows + rows_remaining
-                self._extract_slices(bundle, skip_rows, end_row, block_refs, slices)
-                self._pending_rows -= rows_remaining
-                self._consumed_rows_in_first = end_row
-                rows_remaining = 0
+                sliced_bundle, remaining_bundle = bundle.slice(rows_needed)
+                bundles_to_merge.append(sliced_bundle)
+                # Don't add to consumed_bundles yet - original still has remaining rows
+                # Track that remaining_bundle maps to the original
+                self._remaining_to_original[remaining_bundle] = original_bundle
+                self._pending_bundles.appendleft(remaining_bundle)
+                rows_collected += rows_needed
+                self._pending_rows -= rows_needed
 
-        return block_refs, slices, consumed_bundles, schema
-
-    def _extract_slices(
-        self,
-        bundle: RefBundle,
-        global_start: int,
-        global_end: int,
-        block_refs: List[ObjectRef[Block]],
-        slices: List[BlockSlice],
-    ) -> None:
-        """Extract BlockSlice specs for rows [global_start, global_end) from a bundle."""
-        current_row = 0
-        for (block_ref, meta), existing_slice in zip(bundle.blocks, bundle.slices):
-            if existing_slice is not None:
-                block_start = existing_slice.start_offset
-                block_end = existing_slice.end_offset
-            else:
-                block_start = 0
-                block_end = meta.num_rows
-
-            block_rows = block_end - block_start
-            block_global_start = current_row
-            block_global_end = current_row + block_rows
-
-            if block_global_end <= global_start:
-                current_row = block_global_end
-                continue
-            if block_global_start >= global_end:
-                break
-
-            overlap_start = max(global_start, block_global_start)
-            overlap_end = min(global_end, block_global_end)
-            local_start = block_start + (overlap_start - block_global_start)
-            local_end = block_start + (overlap_end - block_global_start)
-
-            block_refs.append(block_ref)
-            slices.append(BlockSlice(start_offset=local_start, end_offset=local_end))
-            current_row = block_global_end
+        merged = RefBundle.merge_ref_bundles(bundles_to_merge)
+        return merged, consumed_bundles
 
 
 class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     """An operator that zips its inputs together in a streaming fashion.
 
-    Uses ZipAlignmentBundler per input to accumulate rows. When ALL bundlers
+    Uses ZipAlignmentBundler per input to accumulate rows. When all bundlers
     have a ready bundle, extracts slice specs and submits a zip task.
     """
 
@@ -217,11 +182,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return sum(bundle.size_bytes() for bundle in self._output_buffer)
 
     def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues."""
         for bundler in self._bundlers:
             bundler.done_adding_bundles()
             while bundler.has_bundle():
-                _, _, consumed, _ = bundler.get_next_bundle()
+                _, consumed = bundler.get_next_bundle()
                 for bundle in consumed:
                     self._metrics.on_input_dequeued(bundle)
 
@@ -277,59 +241,55 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return True
 
     def _try_submit_zip_tasks(self) -> None:
-        """Submit zip tasks when ALL bundlers have a ready bundle."""
+        """Submit zip tasks when all bundlers have a ready bundle."""
         while all(bundler.has_bundle() for bundler in self._bundlers):
-            # All bundlers ready - extract from each
-            all_block_refs: List[List[ObjectRef[Block]]] = []
-            all_slices: List[List[BlockSlice]] = []
-            schemas: List[Optional[Schema]] = []
+            merged_bundles: List[RefBundle] = []
             total_size_bytes = 0
             owns_blocks = True
-            num_rows = None
 
             for bundler in self._bundlers:
-                block_refs, slices, consumed, schema = bundler.get_next_bundle()
-                all_block_refs.append(block_refs)
-                all_slices.append(slices)
-                schemas.append(schema)
+                merged, consumed = bundler.get_next_bundle()
+                merged_bundles.append(merged)
 
-                # Report consumed bundles and accumulate metadata
                 for bundle in consumed:
                     self._metrics.on_input_dequeued(bundle)
                     total_size_bytes += bundle.size_bytes()
                     owns_blocks = owns_blocks and bundle.owns_blocks
 
-                # Calculate num_rows from slices
-                bundle_rows = sum(s.end_offset - s.start_offset for s in slices)
-                if num_rows is None:
-                    num_rows = bundle_rows
+            num_rows = merged_bundles[0].num_rows()
 
-            merged_schema = _merge_schemas(schemas)
-            if merged_schema is not None:
-                self._merged_schema = merged_schema
+            if self._merged_schema is None:
+                schemas = [b.schema for b in merged_bundles]
+                self._merged_schema = _merge_schemas(schemas)
 
             output_bundle = self._submit_zip_task(
-                all_block_refs, all_slices, num_rows, total_size_bytes, owns_blocks
+                merged_bundles, num_rows, total_size_bytes, owns_blocks
             )
             self._output_buffer.append(output_bundle)
             self._metrics.on_output_queued(output_bundle)
 
     def _submit_zip_task(
         self,
-        all_block_refs: List[List[ObjectRef[Block]]],
-        all_slices: List[List[BlockSlice]],
+        merged_bundles: List[RefBundle],
         num_rows: int,
         total_size_bytes: int,
         owns_blocks: bool,
     ) -> RefBundle:
-        """Submit a zip task with the calculated slices."""
+        """Submit a zip task with the merged bundles containing slice info."""
         zip_remote = cached_remote_fn(_zip_blocks_with_slices, num_returns=2)
 
-        # Convert BlockSlice to tuples for serialization
-        slice_tuples = [
-            [(s.start_offset, s.end_offset) for s in input_slices]
-            for input_slices in all_slices
-        ]
+        all_block_refs = [list(b.block_refs) for b in merged_bundles]
+        slice_tuples = []
+        for bundle in merged_bundles:
+            input_slices = []
+            for (_, meta), block_slice in zip(bundle.blocks, bundle.slices):
+                if block_slice is None:
+                    input_slices.append((0, meta.num_rows))
+                else:
+                    input_slices.append(
+                        (block_slice.start_offset, block_slice.end_offset)
+                    )
+            slice_tuples.append(input_slices)
 
         result_block, meta_ref = zip_remote.remote(all_block_refs, slice_tuples)
         self._pending_metadata_refs.append(meta_ref)
