@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
     vLLMOutputData,
-    vLLMTaskType,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -129,7 +129,8 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # Test that this should be overridden by the stage.
+            # This is overriden in the processor, so it remains unchanged when we bypass
+            # the processor and pass it directly to the stage via vLLMEngineStageUDF.
             "task": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
             "disable_log_stats": False,
@@ -138,7 +139,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     assert udf.model == model_llama_3_2_216M
     assert udf.task_type == vLLMTaskType.GENERATE
-    assert udf.engine_kwargs["task"] == vLLMTaskType.GENERATE
+    assert udf.engine_kwargs["task"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
@@ -169,7 +170,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
-        task=vLLMTaskType.GENERATE,
+        task=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
         enable_log_requests=False,

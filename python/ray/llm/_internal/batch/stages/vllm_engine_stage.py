@@ -8,7 +8,6 @@ import math
 import time
 import uuid
 from collections import Counter
-from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
@@ -22,6 +21,7 @@ else:
     MultiModalDataDict = Any
 
 import ray
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
@@ -52,22 +52,6 @@ except ImportError:
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
-
-
-class vLLMTaskType(str, Enum):
-    """The type of task to run on the vLLM engine."""
-
-    """Generate text."""
-    GENERATE = "generate"
-
-    """Generate embeddings."""
-    EMBED = "embed"
-
-    """Classification (e.g., sequence classification models)."""
-    CLASSIFY = "classify"
-
-    """Scoring (e.g., cross-encoder models)."""
-    SCORE = "score"
 
 
 class vLLMEngineRequest(BaseModel):
@@ -251,9 +235,6 @@ class vLLMEngineWrapper:
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
-        # Convert the task type back to a string to pass to the engine.
-        kwargs["task"] = self.task_type.value
-
         try:
             import vllm
         except ImportError as e:
@@ -420,7 +401,7 @@ class vLLMEngineWrapper:
             pooling_params = row.pop("pooling_params", {})
             params = vllm.PoolingParams(
                 **maybe_convert_ndarray_to_list(pooling_params),
-                task=self.task_type.value,
+                task=self.task_type,
             )
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
@@ -557,7 +538,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
@@ -585,7 +566,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
@@ -637,14 +618,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
@@ -659,18 +638,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 model,
                 self.model,
             )
-
-        # Override the task if it is different from the stage.
-        task = vLLMTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
@@ -893,7 +860,7 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
-    def _get_task_type(self) -> vLLMTaskType:
+    def _get_task_type(self) -> TypeVLLMTaskType:
         return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
 
     def get_required_input_keys(self) -> Dict[str, str]:
