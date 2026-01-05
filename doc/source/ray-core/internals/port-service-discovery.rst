@@ -58,7 +58,7 @@ and languages (C++/Python). Raylet spawns two agents:
    - ``runtime_env_agent_port``: gRPC (default: random)
 
 After binding, agents write their ports to
-`{session_dir}/{port_name}_{node_id} <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/util/port_persistence.h#L42>`_.
+`{session_dir}/{port_name}_{node_id_hex} <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/util/port_persistence.h#L42>`_.
 Raylet polls these files and waits for all agent ports before
 `registering the node to GCS <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.cc#L313>`_.
 
