@@ -40,10 +40,14 @@ Results to expect
 Training should show all agents learning to swing up their pendulums within 500k
 timesteps.
 """
+import random
+
 from torch import nn
 
 from ray.rllib.algorithms.sac import SACConfig
+from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
@@ -86,18 +90,35 @@ config = (
         num_steps_sampled_before_learning_starts=256,
     )
     .multi_agent(
-        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-        policies={f"p{i}" for i in range(args.num_agents)},
+        policies={f"p{i}" for i in range(args.num_agents)} | {"random"},
+        policy_mapping_fn=lambda aid, eps, **kw: (
+            random.choice([f"p{i}" for i in range(args.num_agents)] + ["random"])
+        ),
+        policies_to_train=[f"p{i}" for i in range(args.num_agents)],
     )
     .rl_module(
+        rl_module_spec=MultiRLModuleSpec(
+            rl_module_specs=(
+                {
+                    f"p{i}": RLModuleSpec(
+                        model_config=DefaultModelConfig(
+                            fcnet_hiddens=[256, 256],
+                            fcnet_activation="relu",
+                            fcnet_kernel_initializer=nn.init.xavier_uniform_,
+                            head_fcnet_hiddens=[],
+                            head_fcnet_activation=None,
+                            head_fcnet_kernel_initializer=nn.init.orthogonal_,
+                            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+                        ),
+                    )
+                    for i in range(args.num_agents)
+                }
+                | {"random": RLModuleSpec(module_class=RandomRLModule)}
+            ),
+        ),
+
         model_config=DefaultModelConfig(
-            fcnet_hiddens=[256, 256],
-            fcnet_activation="relu",
-            fcnet_kernel_initializer=nn.init.xavier_uniform_,
-            head_fcnet_hiddens=[],
-            head_fcnet_activation=None,
-            head_fcnet_kernel_initializer=nn.init.orthogonal_,
-            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+
         ),
     )
 )
