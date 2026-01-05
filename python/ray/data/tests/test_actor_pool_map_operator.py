@@ -705,9 +705,10 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # Unbounded pools should return infinite max resources
+    # Unbounded pools should return infinite max resources for GPU (which is used),
+    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
     assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
-    assert max_resource_usage_bound == ExecutionResources.for_limits()
+    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
