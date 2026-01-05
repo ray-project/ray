@@ -2439,7 +2439,6 @@ typing-extensions==4.15.0
     #   gradio
     #   gradio-client
     #   graphene
-    #   grpcio
     #   gymnasium
     #   huggingface-hub
     #   lightning-utilities
