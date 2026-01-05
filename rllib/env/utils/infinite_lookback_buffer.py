@@ -3,30 +3,20 @@ from typing import Any, Dict, List, Optional, Union
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.utils.env_checker import data_equivalence
 
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
-    from_jsonable_if_needed,
     get_base_struct_from_space,
     get_dummy_batch_for_space,
-    to_jsonable_if_needed,
 )
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
 class InfiniteLookbackBuffer:
-    @property
-    def space(self):
-        return self._space
-
-    @space.setter
-    def space(self, value):
-        self._space = value
-        self.space_struct = get_base_struct_from_space(value)
-
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -36,7 +26,7 @@ class InfiniteLookbackBuffer:
         self.data = data if data is not None else []
         self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
-        self.space_struct = None
+
         self.space = space
 
     def __eq__(
@@ -53,16 +43,28 @@ class InfiniteLookbackBuffer:
             `True`, if `other` is an `InfiniteLookbackBuffer` instance and all
             attributes are identical. Otherwise, returns `False`.
         """
-        if isinstance(other, InfiniteLookbackBuffer):
-            if (
-                self.data == other.data
-                and self.lookback == other.lookback
-                and self.finalized == other.finalized
-                and self.space_struct == other.space_struct
-                and self.space == other.space
-            ):
-                return True
-        return False
+        return (
+            isinstance(other, InfiniteLookbackBuffer)
+            # Todo (mark): Replace `data_equivalence` with ray / rllib implementation similar to `check` without asserts
+            and data_equivalence(self.data, other.data)
+            and self.lookback == other.lookback
+            and self.finalized == other.finalized
+            and self.space_struct == other.space_struct
+            and self.space == other.space
+        )
+
+    @property
+    def space(self):
+        return self._space
+
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self._space_struct = get_base_struct_from_space(value)
+
+    @property
+    def space_struct(self):
+        return self._space_struct
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the pickable state of a buffer.
@@ -75,16 +77,14 @@ class InfiniteLookbackBuffer:
             A dict containing all the data and metadata from the buffer.
         """
         return {
-            "data": to_jsonable_if_needed(self.data, self.space)
-            if self.space
-            else self.data,
+            "data": self.data,
             "lookback": self.lookback,
             "finalized": self.finalized,
-            "space": gym_space_to_dict(self.space) if self.space else self.space,
+            "space": gym_space_to_dict(self.space) if self.space else None,
         }
 
     @staticmethod
-    def from_state(state: Dict[str, Any]) -> None:
+    def from_state(state: Dict[str, Any]) -> "InfiniteLookbackBuffer":
         """Creates a new `InfiniteLookbackBuffer` from a state dict.
 
         Args:
@@ -98,14 +98,8 @@ class InfiniteLookbackBuffer:
         buffer.lookback = state["lookback"]
         buffer.finalized = state["finalized"]
         buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
-        buffer.space_struct = (
-            get_base_struct_from_space(buffer.space) if buffer.space else None
-        )
-        buffer.data = (
-            from_jsonable_if_needed(state["data"], buffer.space)
-            if buffer.space
-            else state["data"]
-        )
+        # space_struct is set when space is assigned
+        buffer.data = state["data"]
 
         return buffer
 

@@ -229,6 +229,9 @@ def _generate_panel_template(
     template["stack"] = panel.stack
     template["linewidth"] = panel.linewidth
 
+    if panel.hideXAxis:
+        template.setdefault("xaxis", {})["show"] = False
+
     # Handle stacking visualization
     if panel.stack is True:
         template["nullPointMode"] = "connected"

@@ -7,15 +7,17 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data import DataContext
+from ray.data._internal.execution.util import memory_string
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
     _convert_to_pyarrow_native_array,
     _infer_pyarrow_type,
     convert_to_pyarrow_array,
 )
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
-from ray.data import DataContext
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
+from ray.data._internal.util import MiB
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -125,9 +127,8 @@ def test_convert_datetime_array(
     assert expected == converted
 
 
-@pytest.mark.parametrize("arg_type", ["list", "ndarray"])
 @pytest.mark.parametrize("dtype", ["int64", "float64", "datetime64[ns]"])
-def test_infer_type_does_not_leak_memory(arg_type, dtype):
+def test_infer_type_does_not_leak_memory(dtype):
     # Test for https://github.com/apache/arrow/issues/45493.
     ndarray = np.zeros(923040, dtype=dtype)  # A ~7 MiB column
 
@@ -136,20 +137,18 @@ def test_infer_type_does_not_leak_memory(arg_type, dtype):
     pa.default_memory_pool().release_unused()
     before = process.memory_info().rss
 
-    if arg_type == "ndarray":
-        column_values = ndarray
-    elif arg_type == "list":
-        column_values = [ndarray]
-    else:
-        pytest.fail(f"Unknown type: {arg_type}")
-
-    _infer_pyarrow_type(column_values)
+    # Call the function several times. If there's a memory leak, this loop will leak
+    # as much as 1 GiB of memory with 8 repetitions. 8 was chosen arbitrarily.
+    num_repetitions = 8
+    for _ in range(num_repetitions):
+        _infer_pyarrow_type(ndarray)
 
     gc.collect()
     pa.default_memory_pool().release_unused()
     after = process.memory_info().rss
 
-    assert after - before < 1024 * 1024, after - before
+    margin_of_error = 64 * MiB
+    assert after - before < margin_of_error, memory_string(after - before)
 
 
 def test_pa_infer_type_failing_to_infer():

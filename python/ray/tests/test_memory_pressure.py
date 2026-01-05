@@ -13,7 +13,7 @@ from ray._private import (
 )
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import raw_metrics
+from ray._private.test_utils import PrometheusTimeseries, raw_metric_timeseries
 from ray._private.utils import get_used_memory
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -118,8 +118,10 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
     return bytes_needed
 
 
-def has_metric_tagged_with_value(addr, tag, value) -> bool:
-    metrics = raw_metrics(addr)
+def has_metric_tagged_with_value(
+    addr, tag, value, timeseries: PrometheusTimeseries
+) -> bool:
+    metrics = raw_metric_timeseries(addr, timeseries)
     for name, samples in metrics.items():
         for sample in samples:
             if tag in set(sample.labels.values()) and sample.value == value:
@@ -145,6 +147,7 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
     with pytest.raises(ray.exceptions.OutOfMemoryError):
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
@@ -152,6 +155,7 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
         addr=addr,
         tag="MemoryManager.ActorEviction.Total",
         value=2.0 if restartable else 1.0,
+        timeseries=timeseries,
     )
 
     wait_for_condition(
@@ -161,6 +165,7 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
         addr=addr,
         tag="Leaker.__init__",
         value=2.0 if restartable else 1.0,
+        timeseries=timeseries,
     )
 
 
@@ -180,6 +185,7 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
@@ -187,6 +193,7 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
         addr=addr,
         tag="MemoryManager.ActorEviction.Total",
         value=2.0,
+        timeseries=timeseries,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -195,6 +202,7 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
         addr=addr,
         tag="Leaker.__init__",
         value=2.0,
+        timeseries=timeseries,
     )
 
 
@@ -210,6 +218,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
@@ -217,6 +226,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
+        timeseries=timeseries,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -225,6 +235,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         addr=addr,
         tag="allocate_memory",
         value=1.0,
+        timeseries=timeseries,
     )
 
 
@@ -372,6 +383,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
             )
         )
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
@@ -379,6 +391,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
+        timeseries=timeseries,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -387,6 +400,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
         addr=addr,
         tag="allocate_memory",
         value=1.0,
+        timeseries=timeseries,
     )
 
 
@@ -411,6 +425,7 @@ def test_task_oom_only_uses_oom_retry(
             )
         )
 
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
@@ -418,6 +433,7 @@ def test_task_oom_only_uses_oom_retry(
         addr=addr,
         tag="MemoryManager.TaskEviction.Total",
         value=task_oom_retries + 1,
+        timeseries=timeseries,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -426,6 +442,7 @@ def test_task_oom_only_uses_oom_retry(
         addr=addr,
         tag="allocate_memory",
         value=task_oom_retries + 1,
+        timeseries=timeseries,
     )
 
 
@@ -502,6 +519,7 @@ def test_last_task_of_the_group_fail_immediately():
             time.sleep(5)
 
     with ray.init() as addr:
+        timeseries = PrometheusTimeseries()
         with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
             ray.get(infinite_retry_task.remote())
 
@@ -512,6 +530,7 @@ def test_last_task_of_the_group_fail_immediately():
             addr=addr,
             tag="MemoryManager.TaskEviction.Total",
             value=1.0,
+            timeseries=timeseries,
         )
 
 

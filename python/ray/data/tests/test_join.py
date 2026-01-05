@@ -8,7 +8,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import MiB
+from ray.data._internal.util import MiB, rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -263,11 +263,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
 
         assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
     else:
-
-        joined_pd = pd.DataFrame(joined.take_all())
-
-        # Sort resulting frame and reset index (to be able to compare with expected one)
-        joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+        joined_pd = joined.to_pandas()
 
         # Join using Pandas (to assert against)
         expected_pd = doubles_pd.join(
@@ -278,7 +274,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
             rsuffix=right_suffix,
         ).reset_index(drop=True)
 
-        pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
+        assert rows_same(expected_pd, joined_pd), "Expected contents to be same"
 
 
 def test_invalid_join_config(ray_start_regular_shared_2_cpus):
@@ -768,7 +764,7 @@ def test_join_with_predicate_pushdown(
     plan_str = optimized_plan.dag.dag_str
 
     join_idx = plan_str.find("Join[Join]")
-    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
+    filter_idx = plan_str.find("Filter[Filter(")
 
     if should_push:
         # Filter should be pushed before join

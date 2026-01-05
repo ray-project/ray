@@ -55,7 +55,7 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
 
 
-def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass:
+def make_callable_class_single_threaded(callable_cls: CallableClass) -> CallableClass:
     """Returns a thread-safe CallableClass with the same logic as the provided
     `callable_cls`.
 
@@ -66,7 +66,7 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
     user provided UDF.
     """
 
-    class _Wrapper(callable_cls):
+    class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
             super().__init__(*args, **kwargs)
@@ -79,4 +79,4 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
             future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
             return future.result()
 
-    return _Wrapper
+    return _SingleThreadedWrapper

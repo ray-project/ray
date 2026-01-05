@@ -8,7 +8,7 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/tests/data|
+    rllib/offline/tests/data|
     thirdparty/patches/|
     src/ray/thirdparty/|
     doc/external/|
@@ -30,10 +30,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
-            # json5 comments prevent parsing
-            python/asv.conf.json|
-            rllib/asv.conf.json
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json
           )
       - id: check-toml
 
@@ -45,38 +42,10 @@ repos:
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
-  # pydoclint-local is for local commits only due to pre-commit-hook only passing
-  # updated files to the hook and overwriting the baseline text file
   - repo: https://github.com/jsh9/pydoclint
-    rev: "0.8.1"
+    rev: "0.8.3"
     hooks:
       - id: pydoclint
-        name: pydoclint-local
-        stages: [pre-commit, pre-push]
-        args: [
-          --style=google,
-          --baseline=ci/lint/pydoclint-baseline.txt,
-          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$|^python/ray/_private/parameter\.py$,
-          --auto-regenerate-baseline=False,
-          # Current settings (not because we think they're right, but because we
-          # don't want a baseline the size of the codebase)
-          --arg-type-hints-in-docstring=False,
-          --skip-checking-raises=True,
-          --check-return-types=False,
-          --allow-init-docstring=True,
-          --check-class-attributes=False,
-          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
-        ]
-        types: [python]
-        files: '^python/ray/'
-
-  # pydoclint-ci is for CI, overwrites the baseline text file, and is run with the manual stage flag
-  - repo: https://github.com/jsh9/pydoclint
-    rev: "0.8.1"
-    hooks:
-      - id: pydoclint
-        name: pydoclint-ci
-        stages: [manual]
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
@@ -151,7 +120,9 @@ repos:
             python/ray/autoscaler/sdk/sdk.py|
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
-            python/ray/_private/gcs_utils.py
+            python/ray/_private/gcs_utils.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
           )
         additional_dependencies:
           [

@@ -7,7 +7,8 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import React, { memo, useState } from "react";
+import React, { memo, useContext, useState } from "react";
+import { GlobalContext } from "../../App";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 
 const useLogViewer = () => {
@@ -53,6 +54,7 @@ export const LogViewer = memo(
   }: LogViewerProps) => {
     const { search, setSearch, startTime, setStart, endTime, setEnd } =
       useLogViewer();
+    const { themeMode } = useContext(GlobalContext);
 
     return (
       <React.Fragment>
@@ -69,7 +71,11 @@ export const LogViewer = memo(
                   type: "",
                   endAdornment: (
                     <InputAdornment position="end">
-                      <SearchOutlined />
+                      <SearchOutlined
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
                     </InputAdornment>
                   ),
                 }}
@@ -144,6 +150,7 @@ export const LogViewer = memo(
               fontSize={search?.fontSize || 12}
               content={log}
               language="prolog"
+              theme={themeMode}
               startTime={startTime}
               endTime={endTime}
             />

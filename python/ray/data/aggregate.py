@@ -1,9 +1,13 @@
 import abc
+import enum
 import math
+import pickle
+import re
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Dict,
     Generic,
     List,
@@ -21,6 +25,7 @@ from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
     BlockColumnAccessor,
     KeyType,
 )
@@ -49,6 +54,8 @@ SupportsRichComparisonType = TypeVar(
     "SupportsRichComparisonType", bound=_SupportsRichComparison
 )
 AggOutputType = TypeVar("AggOutputType")
+
+_AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -198,6 +205,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
+        else:
+            self._agg_name = name
+
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self.finalize)
@@ -214,6 +229,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
+
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._agg_name
 
     @abc.abstractmethod
     def combine(
@@ -915,13 +938,30 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         ignore_nulls: Whether to ignore null values when collecting unique items.
                       Default is True (nulls are excluded).
         alias_name: Optional name for the resulting column.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
     """
+
+    class ListEncodingMode(str, enum.Enum):
+        """Controls how to encode individual elements inside the list column:
+
+        - NONE: no encoding applied, elements (lists) are stored as is and
+                unique ones are returned.
+        - FLATTEN: column of element lists is flattened into a single list.
+        - HASH: each list element is hashed, a list of unique hashes is returned.
+        """
+
+        FLATTEN = "FLATTEN"
+        HASH = "HASH"
 
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,
+        ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
+        encode_lists: Union[bool, ListEncodingMode, None] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -930,23 +970,66 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             zero_factory=set,
         )
 
+        if isinstance(encode_lists, Unique.ListEncodingMode):
+            self._list_encoding_mode = encode_lists
+        elif isinstance(encode_lists, bool) and encode_lists:
+            self._list_encoding_mode = Unique.ListEncodingMode.FLATTEN
+        else:
+            self._list_encoding_mode = None
+
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> List[Any]:
-        import pyarrow.compute as pac
+    def _compute_unique(self, block: Block) -> BlockColumn:
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
 
-        col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        return pac.unique(col).to_pylist()
+        if (
+            column_accessor.is_composed_of_lists()
+            and self._list_encoding_mode is not None
+        ):
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN:
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.flatten()
+                )
+            elif self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
+            else:
+                raise ValueError(
+                    f"list encoding mode not supported: {self._list_encoding_mode}"
+                )
+
+        if self._ignore_nulls:
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.unique()
+
+    def aggregate_block(self, block: Block) -> List[Any]:
+        column = self._compute_unique(block)
+        return BlockColumnAccessor.for_column(column).to_pylist()
 
     @staticmethod
     def _to_set(x):
         if isinstance(x, set):
-            return x
+            return Unique._normalize_nans(x)
+
         elif isinstance(x, list):
-            return set(x)
+            if len(x) > 0 and isinstance(x[0], list):
+                # necessary because pyarrow converts all tuples to
+                # list internally.
+                x = map(lambda v: None if v is None else tuple(v), x)
+
+            return Unique._normalize_nans(x)
         else:
             return {x}
+
+    @staticmethod
+    def _normalize_nans(x: Collection) -> Set:
+        # NOTE: Pandas when converting to Python objects instantiates
+        #       new `float('nan')` objects which are incomparable b/w each
+        #       other. Here we canonicalize any nan instances replacing them
+        #       w/ `np.nan`
+        return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
 
 
 @PublicAPI
@@ -1450,6 +1533,7 @@ class ApproximateTopK(AggregateFnV2):
         k: int,
         log_capacity: int = 15,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         """
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
@@ -1486,11 +1570,17 @@ class ApproximateTopK(AggregateFnV2):
             log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
                 Higher values increase accuracy but use more memory. Defaults to 15.
             alias_name: The name of the aggregate. Defaults to None.
+            encode_lists: If `True`, encode list elements.  If `False`, encode
+                whole lists (i.e., the entire list is considered as a single object).
+                `False` by default. Note that this is a top-level flatten (not a recursive
+                flatten) operation.
         """
 
         self.k = k
         self._log_capacity = log_capacity
         self._frequent_strings_sketch = self._require_datasketches()
+        self._encode_lists = encode_lists
+
         super().__init__(
             alias_name if alias_name else f"approx_topk({str(on)})",
             on=on,
@@ -1502,13 +1592,25 @@ class ApproximateTopK(AggregateFnV2):
         return self._frequent_strings_sketch(lg_max_k=log_capacity)
 
     def aggregate_block(self, block: Block) -> bytes:
+        # Note: The datasketches Python bindings only expose frequent_strings_sketch
+        # (not type-specific variants like frequent_ints_sketch). We use pickle
+        # serialization as a workaround, which is less performant than native
+        # type-specific sketches. Revisit if type-specific bindings are added.
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
         sketch = self.zero(self._log_capacity)
         for value in column:
-            if value.as_py() is not None:
-                sketch.update(str(value.as_py()))
+            py_value = value.as_py()
+            if self._encode_lists and isinstance(py_value, list):
+                for item in py_value:
+                    if item is None:
+                        continue
+                    dump = pickle.dumps(item).hex()
+                    sketch.update(dump)
+            elif py_value is not None:
+                dump = pickle.dumps(py_value).hex()
+                sketch.update(dump)
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
@@ -1520,10 +1622,13 @@ class ApproximateTopK(AggregateFnV2):
     def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
         from datasketches import frequent_items_error_type
 
+        column = self.get_target_column()
+
         frequent_items = self._frequent_strings_sketch.deserialize(
             accumulator
         ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
+
         return [
-            {self.get_target_column(): str(item[0]), "count": int(item[1])}
+            {column: pickle.loads(bytes.fromhex(item[0])), "count": int(item[1])}
             for item in frequent_items[: self.k]
         ]

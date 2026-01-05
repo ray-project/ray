@@ -50,12 +50,12 @@ def init_grpc_channel(
     interceptors = []
     if authentication_utils.is_token_auth_enabled():
         from ray._private.authentication.grpc_authentication_client_interceptor import (
-            AsyncAuthenticationMetadataClientInterceptor,
             SyncAuthenticationMetadataClientInterceptor,
+            get_async_auth_interceptors,
         )
 
         if asynchronous:
-            interceptors.append(AsyncAuthenticationMetadataClientInterceptor())
+            interceptors.extend(get_async_auth_interceptors())
         else:
             interceptors.append(SyncAuthenticationMetadataClientInterceptor())
 

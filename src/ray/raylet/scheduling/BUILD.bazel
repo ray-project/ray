@@ -52,6 +52,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/raylet:metrics",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -67,6 +68,7 @@ ray_cc_library(
         ":cluster_resource_manager",
         ":composite_scheduling_policy",
         ":scheduler_internal",
+        "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -112,6 +114,8 @@ ray_cc_library(
     hdrs = ["local_lease_manager_interface.h"],
     deps = [
         ":scheduler_internal",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/raylet:metrics",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

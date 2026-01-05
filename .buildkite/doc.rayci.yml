@@ -8,7 +8,6 @@ steps:
       - ray-core-build
       - ray-dashboard-build
     matrix:
-      - "3.9"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"
@@ -75,8 +74,7 @@ steps:
     key: doc_api_policy_check
     instance_type: medium
     depends_on: docbuild
-    # TODO(aslonnie): migrate to Python 3.12
-    job_env: docbuild-py3.9
+    job_env: docbuild-py3.10
     commands:
       - bash ci/lint/lint.sh api_policy_check
 
