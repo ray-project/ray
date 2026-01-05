@@ -7,7 +7,11 @@ Implements the TQC loss computation with quantile Huber loss.
 from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.sac.sac_learner import LOGPS_KEY
+from ray.rllib.algorithms.sac.sac_learner import (
+    LOGPS_KEY,
+    QF_PREDS,
+    QF_TARGET_NEXT,
+)
 from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
 from ray.rllib.algorithms.tqc.tqc import TQCConfig
 from ray.rllib.algorithms.tqc.tqc_learner import (
@@ -22,8 +26,8 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
-from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
+from ray.rllib.utils.metrics import TD_ERROR_KEY
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 
@@ -57,13 +61,9 @@ def quantile_huber_loss_per_sample(
     # Compute pairwise TD errors: (batch, n_quantiles, n_target_quantiles)
     td_error = target_expanded - quantiles_expanded
 
-    # Compute Huber loss element-wise
-    abs_td_error = torch.abs(td_error)
-    huber_loss = torch.where(
-        abs_td_error <= kappa,
-        0.5 * td_error**2,
-        kappa * (abs_td_error - 0.5 * kappa),
-    )
+    # Compute Huber loss element-wise using nn.HuberLoss
+    huber_loss_fn = nn.HuberLoss(reduction="none", delta=kappa)
+    huber_loss = huber_loss_fn(quantiles_expanded, target_expanded)
 
     # Compute quantile weights
     tau_expanded = tau.view(1, n_quantiles, 1)
@@ -175,11 +175,11 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
         # === Critic Loss ===
         # Get current Q-value predictions (quantiles)
         # Shape: (batch, n_critics, n_quantiles)
-        qf_preds = fwd_out["qf_preds"]
+        qf_preds = fwd_out[QF_PREDS]
 
         # Get target Q-values for next state
         # Shape: (batch, n_critics, n_quantiles)
-        qf_target_next = fwd_out["qf_target_next"]
+        qf_target_next = fwd_out[QF_TARGET_NEXT]
         logp_next = fwd_out["logp_next"]
 
         # Flatten and sort quantiles across all critics
@@ -283,29 +283,4 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
 
         return total_loss
 
-    @override(SACTorchLearner)
-    def compute_gradients(
-        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
-    ) -> ParamDict:
-        """Computes gradients for each optimizer separately."""
-        grads = {}
-        for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
-            for optim_name, optim in self.get_optimizers_for_module(module_id):
-                optim.zero_grad(set_to_none=True)
-
-                loss_key = optim_name + "_loss"
-                if (module_id, loss_key) in self._temp_losses:
-                    loss_tensor = self._temp_losses.pop((module_id, loss_key))
-                    loss_tensor.backward(retain_graph=True)
-
-                    grads.update(
-                        {
-                            pid: p.grad
-                            for pid, p in self.filter_param_dict_for_optimizer(
-                                self._params, optim
-                            ).items()
-                        }
-                    )
-
-        self._temp_losses.clear()
-        return grads
+    # Note: compute_gradients is inherited from SACTorchLearner

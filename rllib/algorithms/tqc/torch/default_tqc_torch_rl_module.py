@@ -4,6 +4,7 @@ PyTorch implementation of the TQC RLModule.
 
 from typing import Any, Dict
 
+from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_NEXT
 from ray.rllib.algorithms.tqc.tqc_catalog import TQCCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
@@ -34,13 +35,8 @@ class DefaultTQCTorchRLModule(
 
     @override(TorchRLModule)
     def setup(self):
-        # Get TQC-specific parameters
-        self.n_quantiles = self.model_config.get("n_quantiles", 25)
-        self.n_critics = self.model_config.get("n_critics", 2)
-        self.top_quantiles_to_drop_per_net = self.model_config.get(
-            "top_quantiles_to_drop_per_net", 2
-        )
-        self.quantiles_total = self.n_quantiles * self.n_critics
+        # Call parent setup to initialize TQC-specific parameters
+        super().setup()
 
         # Build the policy encoder
         self.pi_encoder = self.catalog.build_encoder(framework=self.framework)
@@ -149,7 +145,7 @@ class DefaultTQCTorchRLModule(
             batch[Columns.ACTIONS],
             use_target=False,
         )
-        output["qf_preds"] = qf_out  # (batch, n_critics, n_quantiles)
+        output[QF_PREDS] = qf_out  # (batch, n_critics, n_quantiles)
 
         # Compute Q-values for resampled actions (for actor loss)
         qf_curr = self._qf_forward_all_critics(
@@ -181,7 +177,7 @@ class DefaultTQCTorchRLModule(
                 actions_next,
                 use_target=True,
             )
-            output["qf_target_next"] = qf_target_next
+            output[QF_TARGET_NEXT] = qf_target_next
 
         return output
 

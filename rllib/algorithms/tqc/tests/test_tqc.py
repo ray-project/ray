@@ -55,9 +55,9 @@ class TestTQC(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_tqc_compilation(self):
-        """Test whether TQC can be built and trained."""
-        config = (
+    def setUp(self) -> None:
+        """Set up base config for tests."""
+        self.base_config = (
             tqc.TQCConfig()
             .training(
                 n_step=3,
@@ -72,12 +72,15 @@ class TestTQC(unittest.TestCase):
                 train_batch_size=10,
             )
             .env_runners(
-                env_to_module_connector=(
-                    lambda env, spaces, device: FlattenObservations()
-                ),
                 num_env_runners=0,
                 rollout_fragment_length=10,
             )
+        )
+
+    def test_tqc_compilation(self):
+        """Test whether TQC can be built and trained."""
+        config = self.base_config.copy().env_runners(
+            env_to_module_connector=(lambda env, spaces, device: FlattenObservations()),
         )
         num_iterations = 1
 
