@@ -1,27 +1,46 @@
-from typing import TYPE_CHECKING, List, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
-from ray.experimental.collective.tensor_transport_manager import (
+from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
 )
-from ray.util.collective.types import (
-    CUDA_IPC_GROUP_NAME,
-    Backend,
-    CudaIpcCommunicatorMetadata,
-    CudaIpcTransportMetadata,
+from ray.experimental.gpu_object_manager.types import (
+    CommunicatorMetadata,
+    TensorTransportMetadata,
 )
 
 if TYPE_CHECKING:
     import torch
 
 
+@dataclass
+class CudaIpcCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the CUDA IPC communicator."""
+
+
+@dataclass
+class CudaIpcTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for CUDA IPC transport."""
+
+    # List of tuples, each containing the function and metadata to reconstruct the tensor.
+    cuda_ipc_handles: Optional[List[Any]] = None
+    # The IPC handle of the event that is used to synchronize the sender and receiver.
+    cuda_ipc_event_ipc_handle: Optional[bytes] = None
+    # The index of the GPU that the tensors are on. This requires that the GPU is
+    # assigned by Ray, e.g., using @ray.remote(num_gpus=1).
+    ray_gpu_idx: Optional[int] = None
+    # The node that the GPU that the tensors are on is on.
+    ray_node_id: Optional[str] = None
+
+
 class CudaIpcTransport(TensorTransportManager):
-    def __init__(self, tensor_transport_backend: Backend):
-        self._tensor_transport_backend = tensor_transport_backend
+    def __init__(self, tensor_transport_backend: str):
+        pass
 
     @property
-    def tensor_transport_backend(self) -> Backend:
-        return self._tensor_transport_backend
+    def tensor_transport_backend(self) -> str:
+        return "CUDA_IPC"
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -32,7 +51,7 @@ class CudaIpcTransport(TensorTransportManager):
         return False
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
-        return True
+        return torch.cuda.is_available()
 
     @staticmethod
     def extract_tensor_transport_metadata(
@@ -42,22 +61,21 @@ class CudaIpcTransport(TensorTransportManager):
 
         tensor_meta = []
         cuda_ipc_handles = []
-        device = None
-        uuid = None
         event_ipc_handle = None
+        ray_gpu_idx = None
+        ray_node_id = None
         if gpu_object:
             import torch
             from torch.multiprocessing.reductions import reduce_tensor
 
-            # Create an interprocess-shareable CUDA event
-            # This event can be shared across processes via IPC
+            # Create an interprocess-shareable CUDA event so that the receiver
+            # can wait for the sender's computations to complete.
             event = torch.cuda.Event(interprocess=True)
-            # Record the event on the current stream
-            # This marks the point when all prior operations (including tensor computation) are complete
             torch.cuda.current_stream().record_event(event)
 
             device = gpu_object[0].device
-            uuid = str(torch.cuda.get_device_properties(device).uuid)
+            ray_gpu_idx = ray.get_gpu_ids()[device.index]
+            ray_node_id = ray.get_runtime_context().get_node_id()
 
             for t in gpu_object:
                 if t.device.type != device.type:
@@ -75,7 +93,8 @@ class CudaIpcTransport(TensorTransportManager):
             tensor_device=device,
             cuda_ipc_handles=cuda_ipc_handles,
             cuda_ipc_event_ipc_handle=event_ipc_handle,
-            cuda_ipc_device_uuid=uuid,
+            ray_gpu_idx=ray_gpu_idx,
+            ray_node_id=ray_node_id,
         )
 
     @staticmethod
@@ -117,9 +136,7 @@ class CudaIpcTransport(TensorTransportManager):
         backend: Optional[str] = None,
     ) -> CudaIpcCommunicatorMetadata:
 
-        communicator_metadata = CudaIpcCommunicatorMetadata(
-            communicator_name=CUDA_IPC_GROUP_NAME,
-        )
+        communicator_metadata = CudaIpcCommunicatorMetadata()
         return communicator_metadata
 
     @staticmethod
@@ -129,25 +146,30 @@ class CudaIpcTransport(TensorTransportManager):
         tensor_transport_metadata: CudaIpcTransportMetadata,
         communicator_metadata: CudaIpcCommunicatorMetadata,
     ):
-        from ray.util.collective import types
 
         assert isinstance(
-            tensor_transport_metadata, types.CudaIpcTransportMetadata
+            tensor_transport_metadata, CudaIpcTransportMetadata
         ), "metadata must be a CudaIpcTransportMetadata object for CUDA IPC transport"
         assert isinstance(
-            communicator_metadata, types.CudaIpcCommunicatorMetadata
+            communicator_metadata, CudaIpcCommunicatorMetadata
         ), "metadata must be a CudaIpcCommunicatorMetadata object for CUDA IPC transport"
 
         if tensors:
             import torch
 
-            device = torch.cuda.current_device()
-            received_uuid = str(torch.cuda.get_device_properties(device).uuid)
-            sender_uuid = tensor_transport_metadata.cuda_ipc_device_uuid
-            if received_uuid != sender_uuid:
+            cur_node_id = ray.get_runtime_context().get_node_id()
+            if cur_node_id != tensor_transport_metadata.ray_node_id:
                 raise ValueError(
-                    f"CUDA IPC transport only supports tensors on the same GPU, but the sender (GPU UUID: {sender_uuid}) and receiver (GPU UUID: {received_uuid}) are on different GPUs."
+                    f"CUDA IPC transport only supports tensors on the same node, but the current node ID: {cur_node_id} and the sender node ID: {tensor_transport_metadata.ray_node_id} are different."
                 )
+
+            device = tensors[0].device
+            cur_gpu_idx = ray.get_gpu_ids()[device.index]
+            if cur_gpu_idx != tensor_transport_metadata.ray_gpu_idx:
+                raise ValueError(
+                    f"CUDA IPC transport only supports tensors on the same GPU, but the sender (GPU: {tensor_transport_metadata.ray_gpu_idx}) and receiver (GPU: {cur_gpu_idx}) are on different GPUs."
+                )
+
             event_ipc_handle = tensor_transport_metadata.cuda_ipc_event_ipc_handle
             if event_ipc_handle is not None:
                 # Reconstruct the event from IPC handle
@@ -165,11 +187,17 @@ class CudaIpcTransport(TensorTransportManager):
                 list_args = list(args)
                 # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
                 # Update device ID to match current process's device mapping
-                assert isinstance(
-                    list_args[6], int
-                ), f"CUDA IPC Transport metadata mismatch: list_args[6] is not a device ID, but got {list_args[6]}"
-                list_args[6] = device
-                tensor = func(*list_args)
+                if not isinstance(list_args[6], int):
+                    raise RuntimeError(
+                        f"Expected CUDA IPC tensor reconstruction list_args[6] to be device ID, but got {list_args[6]}. Please file an issue at https://github.com/ray-project/ray/issues/new/choose."
+                    )
+                list_args[6] = device.index
+                try:
+                    tensor = func(*list_args)
+                except Exception as e:
+                    raise RuntimeError(
+                        "Error reconstructing CUDA IPC tensor. Source actor may have failed."
+                    ) from e
                 tensors[i] = tensor
 
     @staticmethod

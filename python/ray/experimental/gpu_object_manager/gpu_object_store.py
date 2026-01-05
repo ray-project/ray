@@ -90,21 +90,6 @@ def __ray_recv__(
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
 
-<<<<<<< HEAD
-        if (
-            communicator_meta.communicator_name
-            in COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND
-        ):
-            backend = COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND[
-                communicator_meta.communicator_name
-            ]
-        else:
-            backend = collective.get_group_handle(
-                communicator_meta.communicator_name
-            ).backend()
-
-=======
->>>>>>> efb34a676b05da643cf6733c765564757c76c206
         if tensor_meta and not device_match_transport(device, backend):
             raise ValueError(
                 f"Tensor transport backend {backend} does not support tensor transfer on device {device}."

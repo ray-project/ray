@@ -52,91 +52,6 @@ class Backend(object):
         return backend
 
 
-<<<<<<< HEAD
-@dataclass
-class TensorTransportMetadata:
-    """Metadata for tensors stored in the GPU object store.
-
-    Args:
-        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        tensor_device: The device of the tensor. Currently, we require all tensors in the
-        list have the same device type.
-    """
-
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    tensor_device: Optional["torch.device"] = None
-
-
-@dataclass
-class NixlTransportMetadata(TensorTransportMetadata):
-    """Metadata for tensors stored in the GPU object store for NIXL transport.
-
-    Args:
-        nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
-        nixl_agent_meta: The additional metadata of the remote NIXL agent.
-    """
-
-    nixl_reg_descs: Optional[Any] = None
-    nixl_serialized_descs: Optional[bytes] = None
-    nixl_agent_meta: Optional[bytes] = None
-
-    __eq__ = object.__eq__
-    __hash__ = object.__hash__
-
-
-@dataclass
-class CollectiveTransportMetadata(TensorTransportMetadata):
-    """Metadata for tensors stored in the GPU object store for collective transport."""
-
-
-@dataclass
-class CudaIpcTransportMetadata(TensorTransportMetadata):
-    """Metadata for tensors stored in the GPU object store for CUDA IPC transport."""
-
-    # List of tuples, each containing the function and metadata to reconstruct the tensor.
-    cuda_ipc_handles: Optional[List[Any]] = None
-    # The UUID of the device that the tensors are on.
-    cuda_ipc_device_uuid: Optional[str] = None
-    # The IPC handle of the event that is used to synchronize the sender and receiver.
-    cuda_ipc_event_ipc_handle: Optional[bytes] = None
-
-
-@dataclass
-class CommunicatorMetadata:
-    """Metadata for the communicator.
-
-    Args:
-        communicator_name: The name of the communicator.
-    """
-
-    communicator_name: str = ""
-
-
-@dataclass
-class CollectiveCommunicatorMetadata(CommunicatorMetadata):
-    """Metadata for the collective communicator (e.g. NCCL, GLOO).
-
-    Args:
-        src_rank: The rank of the source actor.
-        dst_rank: The rank of the destination actor.
-    """
-
-    src_rank: Optional[int32] = None
-    dst_rank: Optional[int32] = None
-
-
-@dataclass
-class NixlCommunicatorMetadata(CommunicatorMetadata):
-    """Metadata for the NIXL communicator."""
-
-
-@dataclass
-class CudaIpcCommunicatorMetadata(CommunicatorMetadata):
-    """Metadata for the CUDA IPC communicator."""
-
-
-=======
->>>>>>> efb34a676b05da643cf6733c765564757c76c206
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -146,15 +61,6 @@ class ReduceOp(Enum):
 
 unset_timeout_ms = timedelta(milliseconds=-1)
 
-<<<<<<< HEAD
-# This is used to identify the collective group for NIXL.
-NIXL_GROUP_NAME = "ray_internal_nixl_group"
-
-# This is used to identify the collective group for CUDA IPC.
-CUDA_IPC_GROUP_NAME = "ray_internal_cuda_ipc_group"
-
-=======
->>>>>>> efb34a676b05da643cf6733c765564757c76c206
 
 @dataclass
 class AllReduceOptions:
