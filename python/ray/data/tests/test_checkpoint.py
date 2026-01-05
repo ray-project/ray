@@ -701,6 +701,48 @@ def test_filter_rows_for_block():
     assert filtered_block.equals(expected_block)
 
 
+def test_filter_rows_for_block_with_string_id():
+    """Test BatchBasedCheckpointFilter.filter_rows_for_block with string-typed id column"""
+
+    # Common test setup
+    checkpoint_path = "/mock/path"
+
+    # Test with simple ID column
+    config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+    )
+
+    # Create a mock block.
+    block = pyarrow.table(
+        {
+            ID_COL: [str(i) for i in range(10)],
+            "data": [str(i) for i in range(10)],
+        }
+    )
+    # Create a mock checkpointed_ids with multiple chunks.
+    chunk1 = pyarrow.table({ID_COL: ["1", "2", "4"]})
+    chunk2 = pyarrow.table({ID_COL: ["6", "8", "9", "11"]})
+    chunk3 = pyarrow.table({ID_COL: ["12", "13"]})
+    checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
+    assert len(checkpointed_ids[ID_COL].chunks) == 3
+
+    expected_block = pyarrow.table(
+        {
+            ID_COL: ["0", "3", "5", "7"],
+            "data": ["0", "3", "5", "7"],
+        }
+    )
+
+    filter_instance = BatchBasedCheckpointFilter(config)
+    filtered_block = filter_instance.filter_rows_for_block(
+        block=block,
+        checkpointed_ids=checkpointed_ids,
+    )
+
+    assert filtered_block.equals(expected_block)
+
+
 def test_checkpoint_restore_after_full_execution(
     ray_start_10_cpus_shared,
     tmp_path,

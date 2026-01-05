@@ -224,9 +224,13 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         # Convert the block's ID column to a numpy array for fast processing.
         block_ids = block[self.id_column].to_numpy()
 
-        def filter_with_ckpt_chunk(ckpt_chunk: pyarrow.ChunkedArray) -> numpy.ndarray:
+        def filter_with_ckpt_chunk(ckpt_chunk: pyarrow.Array) -> numpy.ndarray:
             # Convert checkpoint chunk to numpy for fast search.
-            ckpt_ids = ckpt_chunk.to_numpy(zero_copy_only=True)
+            try:
+                ckpt_ids = ckpt_chunk.to_numpy(zero_copy_only=True)
+            except Exception:
+                # fallback to disable zero_copy
+                ckpt_ids = ckpt_chunk.to_numpy(zero_copy_only=False)
             # Start with a mask of all True (keep all rows).
             mask = numpy.ones(len(block_ids), dtype=bool)
             # Use binary search to find where block_ids would be in ckpt_ids.
