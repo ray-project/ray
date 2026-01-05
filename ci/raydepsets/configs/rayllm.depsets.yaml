@@ -37,10 +37,9 @@ depsets:
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
     operation: expand
+    depsets:
+      - ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     requirements:
-      - python/requirements.txt
-      - python/requirements/cloud-requirements.txt
-      - python/requirements/base-test-requirements.txt
       - python/requirements/llm/llm-requirements.txt
       - python/requirements/llm/llm-test-requirements.txt
     constraints:

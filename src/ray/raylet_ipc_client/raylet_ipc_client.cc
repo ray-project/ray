@@ -95,7 +95,6 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             const rpc::Language &language,
                                             const std::string &ip_address,
                                             const std::string &serialized_job_config,
-                                            const StartupToken &startup_token,
                                             NodeID *node_id,
                                             int *assigned_port) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -104,7 +103,6 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             static_cast<int>(worker_type),
                                             flatbuf::to_flatbuf(fbb, worker_id),
                                             getpid(),
-                                            startup_token,
                                             flatbuf::to_flatbuf(fbb, job_id),
                                             runtime_env_hash,
                                             language,
@@ -195,23 +193,22 @@ Status RayletIpcClient::ActorCreationTaskDone() {
 
 StatusOr<ScopedResponse> RayletIpcClient::AsyncGetObjects(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses) {
+    const std::vector<rpc::Address> &owner_addresses,
+    int64_t get_request_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
-  auto message = protocol::CreateAsyncGetObjectsRequest(
-      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
+  auto message =
+      protocol::CreateAsyncGetObjectsRequest(fbb,
+                                             object_ids_message,
+                                             AddressesToFlatbuffer(fbb, owner_addresses),
+                                             get_request_id);
   fbb.Finish(message);
   std::vector<uint8_t> reply;
   // TODO(57923): This should be FATAL. Local sockets are reliable. If a worker is unable
   // to communicate with the raylet, there's no way to recover.
-  RAY_RETURN_NOT_OK(AtomicRequestReply(MessageType::AsyncGetObjectsRequest,
-                                       MessageType::AsyncGetObjectsReply,
-                                       &reply,
-                                       &fbb));
-  auto reply_message = flatbuffers::GetRoot<protocol::AsyncGetObjectsReply>(reply.data());
-  int64_t request_id = reply_message->request_id();
-  return ScopedResponse([this, request_id_to_cleanup = request_id]() {
+  RAY_RETURN_NOT_OK(WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb));
+  return ScopedResponse([this, request_id_to_cleanup = get_request_id]() {
     return CancelGetRequest(request_id_to_cleanup);
   });
 }

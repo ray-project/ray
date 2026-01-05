@@ -16,10 +16,8 @@ from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
+    --no-header
     --generate-hashes
-    --strip-extras
-    --unsafe-package setuptools
-    --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
     --no-strip-markers
     --emit-index-url
@@ -276,6 +274,7 @@ class DependencySetManager:
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 packages=depset.packages,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -285,6 +284,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "expand":
             self.expand(
@@ -295,6 +295,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                include_setuptools=depset.include_setuptools,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -307,10 +308,13 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
         packages: Optional[List[str]] = None,
         requirements: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
         stdin = None
+        if not include_setuptools:
+            args.extend(_flatten_flags(["--unsafe-package setuptools"]))
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -318,10 +322,10 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if constraints:
-            for constraint in constraints:
+            for constraint in sorted(constraints):
                 args.extend(["-c", constraint])
         if requirements:
-            for requirement in requirements:
+            for requirement in sorted(requirements):
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin
@@ -339,6 +343,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Subset a dependency set."""
         source_depset = _get_depset(self.config.depsets, source_depset)
@@ -350,6 +355,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
         )
 
     def expand(
@@ -361,6 +367,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
@@ -378,6 +385,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:
@@ -391,7 +399,7 @@ class DependencySetManager:
 
     def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
         for req in requirements:
-            if req not in source_depset.requirements:
+            if req not in self.get_expanded_depset_requirements(source_depset.name, []):
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )

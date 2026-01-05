@@ -458,29 +458,32 @@ def test_remote_cancel(ray_start_cluster, use_force):
 
 @pytest.mark.parametrize("use_force", [True, False])
 def test_recursive_cancel(shutdown_only, use_force):
-    ray.init(num_cpus=4)
+    ray.init(num_cpus=2)
 
     @ray.remote(num_cpus=1)
-    def inner():
+    def inner(signal_actor):
+        signal_actor.send.remote()
         while True:
             time.sleep(0.1)
 
     @ray.remote(num_cpus=1)
-    def outer():
-        x = [inner.remote()]
-        print(x)
+    def outer(signal_actor):
+        _ = inner.remote(signal_actor)
         while True:
             time.sleep(0.1)
 
-    @ray.remote(num_cpus=4)
+    @ray.remote(num_cpus=2)
     def many_resources():
-        return 300
+        return True
 
-    outer_fut = outer.remote()
+    signal_actor = SignalActor.remote()
+    outer_fut = outer.remote(signal_actor)
+    # Wait until both inner and outer are running
+    ray.get(signal_actor.wait.remote())
     many_fut = many_resources.remote()
     with pytest.raises(GetTimeoutError):
         ray.get(many_fut, timeout=1)
-    ray.cancel(outer_fut)
+    ray.cancel(outer_fut, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(outer_fut, timeout=10)
 
@@ -618,6 +621,36 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
     # cancelled.
     with pytest.raises(TaskCancelledError):
         ray.get(consumer.remote([producer_ref]))
+
+
+def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
+    """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
+
+    is_canceled() will be True in KeyboardInterrupt exception block.
+    """
+
+    @ray.remote
+    def task_handling_keyboard_interrupt(signal_actor):
+        try:
+            ray.get(signal_actor.wait.remote())
+        except KeyboardInterrupt:
+            # is_canceled() should be true here
+            if ray.get_runtime_context().is_canceled():
+                return "canceled_via_keyboard_interrupt"
+        return "completed"
+
+    sig = SignalActor.remote()
+    ref = task_handling_keyboard_interrupt.remote(sig)
+
+    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 1)
+
+    ray.cancel(ref)
+
+    # Send signal to unblock the task
+    ray.get(sig.send.remote())
+
+    # We will get the return value
+    assert ray.get(ref) == "canceled_via_keyboard_interrupt"
 
 
 if __name__ == "__main__":

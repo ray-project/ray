@@ -17,12 +17,11 @@ from typing import (
 )
 
 import ray
-from ray._common.network_utils import is_ipv6
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.actor import ActorHandle
 from ray.air._internal.util import (
     StartTraceback,
     StartTracebackWithWorkerRank,
-    find_free_port,
 )
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef

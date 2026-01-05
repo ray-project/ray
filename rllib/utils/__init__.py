@@ -179,6 +179,8 @@ __all__ = [
     "fc",
     "force_list",
     "force_tuple",
+    "flatten_dict",
+    "unflatten_dict",
     "lstm",
     "merge_dicts",
     "one_hot",

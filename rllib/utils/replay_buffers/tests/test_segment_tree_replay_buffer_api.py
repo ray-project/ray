@@ -1,8 +1,9 @@
 import unittest
+
 import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils.replay_buffers import PrioritizedEpisodeReplayBuffer
 
 

@@ -1,9 +1,10 @@
-import ray
 import argparse
-from time import time, sleep
 from math import floor
-from ray._private.test_utils import safe_write_to_results_json
+from time import sleep, time
+
+import ray
 import ray._private.test_utils as test_utils
+from ray._private.test_utils import safe_write_to_results_json
 
 
 @ray.remote

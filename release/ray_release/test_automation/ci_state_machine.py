@@ -1,11 +1,10 @@
 from typing import List
 
+from ray_release.test import Test, TestResult, TestState
 from ray_release.test_automation.state_machine import (
-    TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
 )
-from ray_release.test import Test, TestState, TestResult
-
 
 CONTINUOUS_FAILURE_TO_FLAKY = 3  # Number of continuous failures before flaky
 CONTINUOUS_PASSING_TO_PASSING = 10  # Number of continuous passing before passing

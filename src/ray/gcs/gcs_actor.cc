@@ -60,6 +60,14 @@ const rpc::Address &GcsActor::GetOwnerAddress() const {
   return actor_table_data_.owner_address();
 }
 
+const std::optional<rpc::Address> &GcsActor::LocalRayletAddress() const {
+  return local_raylet_address_;
+}
+
+void GcsActor::UpdateLocalRayletAddress(const rpc::Address &address) {
+  local_raylet_address_ = address;
+}
+
 void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
   actor_table_data_.set_state(state);
   RefreshMetrics();

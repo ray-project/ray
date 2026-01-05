@@ -23,6 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
+agentic
 Alibaba
 Alpaca
 Anyscale
@@ -50,6 +51,7 @@ dev to prod
 [d|D]isable
 DLinear
 Dockerfile
+docstrings
 DPO
 EKS
 ETDataset
@@ -58,16 +60,19 @@ Flink
 g[Rr][Pp][Cc]
 GGUF
 GKE
+GPT
 GPTQ
 GPU(s)?
 hostfile
 http
 HTTP
+Karpenter
 KServe
 KTO
 kubectl
 Kubernetes
 Kueue
+LLMServer
 LMs
 LSH
 MCP
@@ -91,8 +96,9 @@ pretraining
 productionize
 Pythonic
 QPS
-Qwen
 Quantizing
+Quickstarts
+Qwen
 retrigger
 RISECamp
 RLHF
@@ -103,11 +109,14 @@ SFT
 ShareGPT
 SLA
 SLAs
+SSE
 streamable
 Softmax
 streamable
 subprocess
 teardown
+tiktoken
+tokenization
 uncaptured
 URI(s)?
 UUID

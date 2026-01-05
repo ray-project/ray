@@ -19,8 +19,8 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/postable.h"
 #include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/store_client.h"
 
 namespace ray {

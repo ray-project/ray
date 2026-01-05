@@ -1,7 +1,6 @@
 """Integration tests for token-based authentication in Ray."""
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -10,13 +9,35 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import AuthenticationTokenLoader, Config
-from ray.cluster_utils import Cluster
+from ray._common.network_utils import build_address
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+    client_test_enabled,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 
+try:
+    from ray._raylet import AuthenticationTokenLoader
 
-def reset_token_cache():
-    AuthenticationTokenLoader.instance().reset_cache()
+    _RAYLET_AVAILABLE = True
+except ImportError:
+    _RAYLET_AVAILABLE = False
+    AuthenticationTokenLoader = None
+
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_auth_token_path,
+    set_env_auth_token,
+)
+
+pytestmark = pytest.mark.skipif(
+    not _RAYLET_AVAILABLE,
+    reason="Authentication tests require ray._raylet (not available in minimal installs)",
+)
 
 
 def _run_ray_start_and_verify_status(
@@ -25,7 +46,7 @@ def _run_ray_start_and_verify_status(
     """Helper to run ray start command with proper error handling."""
     result = subprocess.run(
         ["ray", "start"] + args,
-        env=env,
+        env={"RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1", **env},
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -84,68 +105,17 @@ def _cleanup_ray_start(env: Optional[dict] = None):
 
 
 @pytest.fixture(autouse=True)
-def clean_token_sources():
-    """Clean up all token sources before and after each test."""
-    # This follows the same pattern as authentication_token_loader_test.cc
-    if "HOME" not in os.environ:
-        # Use TEST_TMPDIR if available (Bazel sets this), otherwise use system temp
-        test_tmpdir = os.environ.get("TEST_TMPDIR")
-        if test_tmpdir:
-            temp_home = os.path.join(test_tmpdir, "ray_test_home")
-        else:
-            temp_home = "/tmp/ray_test_home"
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
 
-        # Create the directory if it doesn't exist
-        os.makedirs(temp_home, exist_ok=True)
-        os.environ["HOME"] = temp_home
-        home_was_set = False
-    else:
-        temp_home = None
-        home_was_set = True
-
-    # Clean environment variables
-    env_vars_to_clean = [
-        "RAY_AUTH_TOKEN",
-        "RAY_AUTH_TOKEN_PATH",
-        "RAY_auth_mode",
-    ]
-    original_values = {}
-    for var in env_vars_to_clean:
-        original_values[var] = os.environ.get(var)
-        if var in os.environ:
-            del os.environ[var]
-
-    # Clean default token file
-    default_token_path = Path.home() / ".ray" / "auth_token"
-    original_exists = default_token_path.exists()
-    original_content = None
-    if original_exists:
-        original_content = default_token_path.read_text()
-        default_token_path.unlink()
-
-    Config.initialize("")
-
-    # Reset token caches (both Python and C++)
-    reset_token_cache()
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
 
     yield
-
-    # Restore environment variables
-    for var, value in original_values.items():
-        if value is not None:
-            os.environ[var] = value
-        elif var in os.environ:
-            del os.environ[var]
-
-    # Restore default token file
-    if original_exists and original_content is not None:
-        default_token_path.parent.mkdir(parents=True, exist_ok=True)
-        default_token_path.write_text(original_content)
 
     if ray.is_initialized():
         ray.shutdown()
 
-    # Ensure all ray processes are stopped
     subprocess.run(
         ["ray", "stop", "--force"],
         capture_output=True,
@@ -153,23 +123,13 @@ def clean_token_sources():
         check=False,
     )
 
-    # Reset token caches again after test
-    reset_token_cache()
-    Config.initialize("")
-
-    # Clean up temporary HOME if we created one
-    # Only delete if we set it and it was temporary
-    if temp_home is not None and not home_was_set:
-        try:
-            if os.path.exists(temp_home):
-                shutil.rmtree(temp_home)
-        except Exception:
-            pass  # Best effort cleanup
-        # Remove the HOME env var we set
-        if "HOME" in os.environ and os.environ["HOME"] == temp_home:
-            del os.environ["HOME"]
+    reset_auth_token_state()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="This test is for starting a new local cluster, not compatible with client mode",
+)
 def test_local_cluster_generates_token():
     """Test ray.init() generates token for local cluster when auth_mode=token is set."""
     # Ensure no token exists
@@ -179,8 +139,8 @@ def test_local_cluster_generates_token():
     ), f"Token file already exists at {default_token_path}"
 
     # Enable token auth via environment variable
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     # Initialize Ray with token auth
     ray.init()
@@ -193,7 +153,7 @@ def test_local_cluster_generates_token():
             f"Files in {default_token_path.parent}: {list(default_token_path.parent.iterdir()) if default_token_path.parent.exists() else 'directory does not exist'}"
         )
         token = default_token_path.read_text().strip()
-        assert len(token) == 32
+        assert len(token) == 64
         assert all(c in "0123456789abcdef" for c in token)
 
         # Verify cluster is working
@@ -203,103 +163,110 @@ def test_local_cluster_generates_token():
         ray.shutdown()
 
 
-def test_connect_without_token_raises_error():
+def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
     """Test ray.init(address=...) without token fails when auth_mode=token is set."""
-    # Set up a cluster with token auth enabled
-    cluster_token = "testtoken12345678901234567890"
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
 
-    # Create cluster with token auth enabled
-    cluster = Cluster()
-    cluster.add_node()
+    # Disconnect the current driver session and drop token state before retrying.
+    ray.shutdown()
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
 
-    try:
-        # Remove the token from the environment so we try to connect without it
-        os.environ["RAY_auth_mode"] = "disabled"
-        os.environ["RAY_AUTH_TOKEN"] = ""
-        Config.initialize("")
-        reset_token_cache()
+    # Ensure no token exists
+    token_loader = AuthenticationTokenLoader.instance()
+    assert not token_loader.has_token()
 
-        # Ensure no token exists
-        token_loader = AuthenticationTokenLoader.instance()
-        assert not token_loader.has_token()
+    # Try to connect to the cluster without a token - should raise RuntimeError
+    with pytest.raises(ConnectionError):
+        ray.init(address=cluster.address)
 
-        # Try to connect to the cluster without a token - should raise RuntimeError
-        with pytest.raises(ConnectionError):
-            ray.init(address=cluster.address)
 
-    finally:
-        cluster.shutdown()
+@pytest.mark.parametrize(
+    "token,expected_status",
+    [
+        (None, 401),  # No token -> Unauthorized
+        ("wrong_token", 403),  # Wrong token -> Forbidden
+    ],
+    ids=["no_token", "wrong_token"],
+)
+def test_state_api_auth_failure(token, expected_status, setup_cluster_with_token_auth):
+    """Test that state API calls fail with missing or incorrect token."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+    dashboard_url = cluster_info["dashboard_url"]
+
+    # Make direct HTTP request to state API endpoint
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = requests.get(f"{dashboard_url}/api/v0/actors", headers=headers)
+
+    assert response.status_code == expected_status, (
+        f"State API should return {expected_status}, got {response.status_code}: "
+        f"{response.text}"
+    )
 
 
 @pytest.mark.parametrize("tokens_match", [True, False])
-def test_cluster_token_authentication(tokens_match):
+def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_auth):
     """Test cluster authentication with matching and non-matching tokens."""
-    # Set up cluster token first
-    cluster_token = "a" * 32
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
+    cluster_token = cluster_info["token"]
 
-    # Create cluster with token auth enabled - node will read current env token
-    cluster = Cluster()
-    cluster.add_node()
+    # Reconfigure the driver token state to simulate fresh connections.
+    ray.shutdown()
+    set_auth_mode("token")
 
-    try:
-        # Set client token based on test parameter
-        if tokens_match:
-            client_token = cluster_token  # Same token - should succeed
-        else:
-            client_token = "b" * 32  # Different token - should fail
+    if tokens_match:
+        client_token = cluster_token  # Same token - should succeed
+    else:
+        client_token = "b" * 64  # Different token - should fail
 
-        os.environ["RAY_AUTH_TOKEN"] = client_token
+    set_env_auth_token(client_token)
+    reset_auth_token_state()
 
-        # Reset cached token so it reads the new environment variable
-        reset_token_cache()
+    if tokens_match:
+        # Should succeed - test gRPC calls work
+        ray.init(address=cluster.address)
 
-        if tokens_match:
-            # Should succeed - test gRPC calls work
-            ray.init(address=cluster.address)
+        obj_ref = ray.put("test_data")
+        result = ray.get(obj_ref)
+        assert result == "test_data"
 
-            # Test that gRPC calls succeed
-            obj_ref = ray.put("test_data")
-            result = ray.get(obj_ref)
-            assert result == "test_data"
+        @ray.remote
+        def test_func():
+            return "success"
 
-            # Test remote function call
-            @ray.remote
-            def test_func():
-                return "success"
+        result = ray.get(test_func.remote())
+        assert result == "success"
 
-            result = ray.get(test_func.remote())
-            assert result == "success"
-
-            ray.shutdown()
-
-        else:
-            # Should fail - connection or gRPC calls should fail
-            with pytest.raises((ConnectionError, RuntimeError)):
-                ray.init(address=cluster.address)
-                # If init somehow succeeds, try a gRPC operation that should fail
-                try:
-                    ray.put("test")
-                finally:
-                    ray.shutdown()
-
-    finally:
-        # Ensure cleanup
         ray.shutdown()
-        cluster.shutdown()
+
+    else:
+        # Should fail - connection or gRPC calls should fail
+        with pytest.raises((ConnectionError, RuntimeError)):
+            ray.init(address=cluster.address)
+            try:
+                ray.put("test")
+            finally:
+                ray.shutdown()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 @pytest.mark.parametrize("is_head", [True, False])
-def test_ray_start_without_token_raises_error(is_head):
+def test_ray_start_without_token_raises_error(is_head, request):
     """Test that ray start fails when auth_mode=token but no token exists."""
     # Set up environment with token auth enabled but no token
     env = os.environ.copy()
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
 
@@ -308,38 +275,33 @@ def test_ray_start_without_token_raises_error(is_head):
     assert not default_token_path.exists()
 
     # When specifying an address, we need a head node to connect to
-    cluster = None
+    cluster_info = None
     if not is_head:
-        # Start head node with token
-        cluster_token = "a" * 32
-        os.environ["RAY_AUTH_TOKEN"] = cluster_token
-        os.environ["RAY_auth_mode"] = "token"
-        Config.initialize("")
-        cluster = Cluster()
-        cluster.add_node()
+        cluster_info = request.getfixturevalue("setup_cluster_with_token_auth")
+        cluster = cluster_info["cluster"]
+        ray.shutdown()
 
-    try:
-        # Prepare arguments
-        if is_head:
-            args = ["--head", "--port=0"]
-        else:
-            args = [f"--address={cluster.address}"]
+    # Prepare arguments
+    if is_head:
+        args = ["--head", "--port=0"]
+    else:
+        args = [f"--address={cluster.address}"]
 
-        # Try to start node - should fail
-        _run_ray_start_and_verify_status(args, env, expect_success=False)
-
-    finally:
-        if cluster:
-            cluster.shutdown()
+    # Try to start node - should fail
+    _run_ray_start_and_verify_status(args, env, expect_success=False)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 def test_ray_start_head_with_token_succeeds():
     """Test that ray start --head succeeds when token auth is enabled with a valid token."""
     # Set up environment with token auth and a valid token
-    test_token = "a" * 32
+    test_token = "a" * 64
     env = os.environ.copy()
     env["RAY_AUTH_TOKEN"] = test_token
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
 
     try:
         # Start head node - should succeed
@@ -348,10 +310,9 @@ def test_ray_start_head_with_token_succeeds():
         )
 
         # Verify we can connect to the cluster with ray.init()
-        os.environ["RAY_AUTH_TOKEN"] = test_token
-        os.environ["RAY_auth_mode"] = "token"
-        Config.initialize("")
-        reset_token_cache()
+        set_env_auth_token(test_token)
+        set_auth_mode("token")
+        reset_auth_token_state()
 
         # Wait for cluster to be ready
         def cluster_ready():
@@ -377,66 +338,354 @@ def test_ray_start_head_with_token_succeeds():
         _cleanup_ray_start(env)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 @pytest.mark.parametrize("token_match", ["correct", "incorrect"])
-def test_ray_start_address_with_token(token_match):
+def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth):
     """Test ray start --address=... with correct or incorrect token."""
-    # Start a head node with token auth
-    cluster_token = "a" * 32
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
+    cluster_token = cluster_info["token"]
 
-    cluster = Cluster()
-    cluster.add_node(num_cpus=1)
+    # Reset the driver connection to reuse the fixture-backed cluster.
+    ray.shutdown()
+    set_auth_mode("token")
 
-    try:
-        # Set up environment for worker
-        env = os.environ.copy()
-        env["RAY_auth_mode"] = "token"
+    # Set up environment for worker
+    env = os.environ.copy()
+    env["RAY_AUTH_MODE"] = "token"
 
-        if token_match == "correct":
-            env["RAY_AUTH_TOKEN"] = cluster_token
-            expect_success = True
+    if token_match == "correct":
+        env["RAY_AUTH_TOKEN"] = cluster_token
+        expect_success = True
+    else:
+        env["RAY_AUTH_TOKEN"] = "b" * 64
+        expect_success = False
+
+    # Start worker node
+    _run_ray_start_and_verify_status(
+        [f"--address={cluster.address}", "--num-cpus=1"],
+        env,
+        expect_success=expect_success,
+    )
+
+    if token_match == "correct":
+        try:
+            # Connect and verify the cluster has 2 nodes (head + worker)
+            set_env_auth_token(cluster_token)
+            reset_auth_token_state()
+            ray.init(address=cluster.address)
+
+            def worker_joined():
+                return len(ray.nodes()) >= 2
+
+            wait_for_condition(worker_joined, timeout=10)
+
+            nodes = ray.nodes()
+            assert (
+                len(nodes) >= 2
+            ), f"Expected at least 2 nodes, got {len(nodes)}: {nodes}"
+
+        finally:
+            if ray.is_initialized():
+                ray.shutdown()
+            _cleanup_ray_start(env)
+
+
+def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
+    """Test that e2e operations work with token authentication enabled.
+
+    This verifies that with token auth enabled:
+    1. Tasks execute successfully
+    2. Actors can be created and called
+    3. State API works (list_nodes, list_actors, list_tasks)
+    4. Job submission works
+    """
+    cluster_info = setup_cluster_with_token_auth
+
+    # Test 1: Submit a simple task
+    @ray.remote
+    def simple_task(x):
+        return x + 1
+
+    result = ray.get(simple_task.remote(41))
+    assert result == 42, f"Task should return 42, got {result}"
+
+    # Test 2: Create and use an actor
+    @ray.remote
+    class SimpleActor:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    actor = SimpleActor.remote()
+    result = ray.get(actor.increment.remote())
+    assert result == 1, f"Actor method should return 1, got {result}"
+
+    # Test 3: State API operations (uses HTTP with auth headers)
+    from ray.util.state import list_actors, list_nodes, list_tasks
+
+    # List nodes - should include at least the head node
+    wait_for_condition(lambda: len(list_nodes()) >= 1)
+
+    # List actors - should include our SimpleActor
+    def check_actors():
+        actors = list_actors()
+        if len(actors) < 1:
+            return False
+        return "SimpleActor" in actors[0].class_name
+
+    wait_for_condition(check_actors)
+
+    # List tasks - should include completed tasks
+    wait_for_condition(lambda: len(list_tasks()) >= 1)
+
+    # Test 4: Submit a job and wait for completion
+    from ray.job_submission import JobSubmissionClient
+
+    # Create job submission client (uses HTTP with auth headers)
+    client = JobSubmissionClient(address=cluster_info["dashboard_url"])
+
+    # Submit a simple job
+    job_id = client.submit_job(
+        entrypoint="echo 'Hello from job'",
+    )
+
+    # Wait for job to complete
+    def job_finished():
+        status = client.get_job_status(job_id)
+        return status in ["SUCCEEDED", "FAILED", "STOPPED"]
+
+    wait_for_condition(job_finished, timeout=30)
+
+    final_status = client.get_job_status(job_id)
+    assert (
+        final_status == "SUCCEEDED"
+    ), f"Job should succeed, got status: {final_status}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+@pytest.mark.parametrize("use_generate", [True, False])
+def test_get_auth_token_cli(use_generate):
+    """Test ray get-auth-token CLI command."""
+    test_token = "a" * 64
+
+    with authentication_env_guard():
+        if use_generate:
+            # Test --generate flag (no token set)
+            clear_auth_token_sources(remove_default=True)
+            args = ["ray", "get-auth-token", "--generate"]
         else:
-            # Use different token
-            env["RAY_AUTH_TOKEN"] = "b" * 32
-            expect_success = False
+            # Test with existing token from env var
+            set_env_auth_token(test_token)
+            reset_auth_token_state()
+            args = ["ray", "get-auth-token"]
 
-        # Start worker node
-        _run_ray_start_and_verify_status(
-            [f"--address={cluster.address}", "--num-cpus=1"],
-            env,
-            expect_success=expect_success,
+        env = os.environ.copy()
+        result = subprocess.run(
+            args,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
 
-        if token_match == "correct":
-            try:
-                # Connect and verify the cluster has 2 nodes (head + worker)
-                ray.init(address=cluster.address)
+        assert result.returncode == 0, (
+            f"ray get-auth-token should succeed. "
+            f"stdout: {result.stdout}, stderr: {result.stderr}"
+        )
 
-                # Wait for worker node to register
-                def worker_joined():
-                    return len(ray.nodes()) >= 2
+        # Verify token is printed to stdout
+        token = result.stdout.strip()
+        assert len(token) == 64, token
+        assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
 
-                wait_for_condition(worker_joined, timeout=10)
+        if not use_generate:
+            # When using env var, should get exact token back
+            assert token == test_token
 
-                nodes = ray.nodes()
-                assert (
-                    len(nodes) >= 2
-                ), f"Expected at least 2 nodes, got {len(nodes)}: {nodes}"
+        # Verify logs went to stderr (if --generate was used)
+        if use_generate:
+            assert (
+                "generating new authentication token..." in result.stderr.lower()
+            ), "Should log generation to stderr"
 
-            finally:
-                # Always shutdown ray.init() connection before cleanup
-                if ray.is_initialized():
-                    ray.shutdown()
-                # Clean up the worker node started with ray start
-                _cleanup_ray_start(env)
 
-    finally:
-        # Clean up cluster
-        if ray.is_initialized():
-            ray.shutdown()
-        cluster.shutdown()
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+def test_get_auth_token_cli_no_token_no_generate():
+    """Test ray get-auth-token fails without token and without --generate."""
+    with authentication_env_guard():
+        reset_auth_token_state()
+        clear_auth_token_sources(remove_default=True)
+        env = os.environ.copy()
+
+        result = subprocess.run(
+            ["ray", "get-auth-token"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode != 0, "Should fail when no token and no --generate"
+        assert "error" in result.stderr.lower(), "Should print error to stderr"
+        assert "no" in result.stderr.lower() and "token" in result.stderr.lower()
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+def test_get_auth_token_cli_piping():
+    """Test that ray get-auth-token output can be piped."""
+    test_token = "b" * 64
+
+    with authentication_env_guard():
+        set_env_auth_token(test_token)
+        reset_auth_token_state()
+        env = os.environ.copy()
+
+        # Test piping: use token in shell pipeline
+        result = subprocess.run(
+            "ray get-auth-token | wc -c",
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0
+        char_count = int(result.stdout.strip())
+        assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_missing_token_file_raises_authentication_error():
+    """Test that RAY_AUTH_TOKEN_PATH pointing to missing file raises AuthenticationError."""
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path(None, "/nonexistent/path/to/token")
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        # Verify error message is informative
+        assert str(Path("/nonexistent/path/to/token")) in str(exc_info.value)
+        assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_empty_token_file_raises_authentication_error(tmp_path):
+    """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
+    token_file = tmp_path / "empty_token_file.txt"
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path("", token_file)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        assert "cannot be opened or is empty" in str(exc_info.value)
+        assert str(token_file) in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_no_token_with_auth_enabled_returns_false():
+    """Test that has_token(ignore_auth_mode=True) returns False when no token exists.
+
+    This allows the caller (ensure_token_if_auth_enabled) to decide whether
+    to generate a new token or raise an error.
+    """
+    with authentication_env_guard():
+        set_auth_mode("token")
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        # has_token(ignore_auth_mode=True) should return False, not raise an exception
+        result = token_loader.has_token(ignore_auth_mode=True)
+        assert result is False
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="no benefit testing this in client mode",
+)
+def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
+    """Test that OpenTelemetry metrics are exported with token authentication.
+
+    This test verifies that the C++ OpenTelemetryMetricRecorder correctly includes
+    the authentication token in its gRPC metadata when exporting metrics to the
+    metrics agent. If the auth headers are missing or incorrect, the metrics agent
+    would reject the requests and metrics wouldn't be collected.
+    """
+
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
+
+    # Get the metrics export address from the head node
+    head_node = cluster.head_node
+    prom_addresses = [
+        build_address(head_node.node_ip_address, head_node.metrics_export_port)
+    ]
+
+    timeseries = PrometheusTimeseries()
+
+    def verify_metrics_collected():
+        """Verify that metrics are being exported successfully."""
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_names = list(timeseries.metric_descriptors.keys())
+
+        # Check for core Ray metrics that are always exported
+        # These metrics are exported via the C++ OpenTelemetry recorder
+        expected_metrics = [
+            "ray_node_cpu_utilization",
+            "ray_node_mem_used",
+            "ray_node_disk_usage",
+        ]
+
+        # At least some metrics should be present
+        return len(metric_names) > 0 and any(
+            any(expected in name for name in metric_names)
+            for expected in expected_metrics
+        )
+
+    # Wait for metrics to be collected
+    # If auth wasn't working, the metrics agent would reject the exports
+    # and we wouldn't see any metrics
+    wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":

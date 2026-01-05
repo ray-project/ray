@@ -115,7 +115,11 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(KeyError):
+    # With predicate pushdown, the error is raised during file reading
+    # and wrapped in RayTaskError
+    with pytest.raises(
+        (ray.exceptions.RayTaskError, RuntimeError), match="sepal_length_123"
+    ):
         fake_column_ds.to_pandas()
 
 
@@ -422,6 +426,28 @@ def test_filter_predicate_with_different_block_formats(ray_start_regular_shared)
         result_pandas.reset_index(drop=True),
         expected_df.reset_index(drop=True),
         check_dtype=False,
+    )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expression_display_names(ray_start_regular_shared):
+    """Test that filter operations display meaningful expression names in plans."""
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import udf
+
+    @udf(return_dtype=DataType.from_arrow(pa.bool_()))
+    def _str_len(array):
+        return pc.greater(pc.binary_length(array), 0)
+
+    plan_str = str(ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item"))))
+    assert plan_str == (
+        "Filter(_str_len(col('item')))\n"
+        "+- Dataset(num_rows=2, schema={item: string})"
     )
 
 

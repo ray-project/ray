@@ -4,7 +4,11 @@ import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
@@ -268,8 +272,28 @@ class Filter(AbstractUDFMap):
     def can_modify_num_rows(self) -> bool:
         return True
 
+    def is_expression_based(self) -> bool:
+        return self._predicate_expr is not None
 
-class Project(AbstractMap):
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            # Get a concise inline string representation of the expression
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                _InlineExprReprVisitor,
+            )
+
+            expr_str = _InlineExprReprVisitor().visit(self._predicate_expr)
+
+            # Truncate only the final result if too long
+            max_length = 60
+            if len(expr_str) > max_length:
+                expr_str = expr_str[: max_length - 3] + "..."
+
+            return f"{op_name}({expr_str})"
+        return super()._get_operator_name(op_name, fn)
+
+
+class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     def __init__(
@@ -279,6 +303,10 @@ class Project(AbstractMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        # Auto-select compute strategy based on whether expressions contain callable class UDFs
+        if compute is None:
+            compute = self._detect_and_get_compute_strategy(exprs)
+
         super().__init__(
             "Project",
             input_op=input_op,
@@ -297,6 +325,31 @@ class Project(AbstractMap):
                     "or be a star() expression."
                 )
 
+    def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
+        """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
+
+        If any expression contains a callable class UDF, returns ActorPoolStrategy.
+        Otherwise returns TaskPoolStrategy.
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _CallableClassUDFCollector,
+        )
+
+        # Check all expressions for callable class UDFs
+        for expr in exprs:
+            collector = _CallableClassUDFCollector()
+            collector.visit(expr)
+            if collector.get_callable_class_udfs():
+                # Found at least one callable class UDF - use actor semantics
+                from ray.data._internal.compute import ActorPoolStrategy
+
+                return ActorPoolStrategy(min_size=1, max_size=None)
+
+        # No callable class UDFs found - use task-based execution
+        from ray.data._internal.compute import TaskPoolStrategy
+
+        return TaskPoolStrategy()
+
     def has_star_expr(self) -> bool:
         return self.get_star_expr() is not None
 
@@ -314,6 +367,23 @@ class Project(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns the column renames from this projection.
+
+        Maps source_column_name -> output_column_name. This is what we need
+        to rebind predicates when pushing through.
+        """
+        # Reuse the existing logic from projection pushdown
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            _extract_input_columns_renaming_mapping,
+        )
+
+        rename_map = _extract_input_columns_renaming_mapping(self._exprs)
+        return rename_map if rename_map else None
 
 
 class FlatMap(AbstractUDFMap):
@@ -360,7 +430,10 @@ class StreamingRepartition(AbstractMap):
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
     ):
-        super().__init__("StreamingRepartition", input_op)
+        super().__init__(
+            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
+            input_op,
+        )
         self._target_num_rows_per_block = target_num_rows_per_block
 
     @property

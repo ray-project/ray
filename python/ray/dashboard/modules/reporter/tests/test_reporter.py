@@ -198,23 +198,8 @@ def enable_grpc_metrics_collection():
     os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
-@pytest.fixture
-def enable_open_telemetry(request):
-    """
-    Fixture to enable OpenTelemetry for the test.
-    """
-    if request.param:
-        os.environ["RAY_enable_open_telemetry"] = "1"
-    else:
-        os.environ["RAY_enable_open_telemetry"] = "0"
-    yield
-    os.environ.pop("RAY_enable_open_telemetry", None)
-
-
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-@pytest.mark.parametrize("enable_open_telemetry", [True, False], indirect=True)
 def test_prometheus_physical_stats_record(
-    enable_open_telemetry,
     enable_grpc_metrics_collection,
     enable_test_module,
     shutdown_only,
@@ -312,9 +297,11 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
-def test_report_stats():
+def test_report_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -388,9 +375,11 @@ def test_report_stats():
     assert isinstance(stats_payload, str)
 
 
-def test_report_stats_gpu():
+def test_report_stats_gpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -499,9 +488,11 @@ def test_report_stats_gpu():
     assert isinstance(stats_payload, str)
 
 
-def test_get_tpu_usage():
+def test_get_tpu_usage(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -557,9 +548,11 @@ def test_get_tpu_usage():
             assert tpu_utilizations == expected_utilizations
 
 
-def test_report_stats_tpu():
+def test_report_stats_tpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -637,9 +630,11 @@ def test_report_stats_tpu():
     assert isinstance(stats_payload, str)
 
 
-def test_report_per_component_stats():
+def test_report_per_component_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -1205,6 +1200,10 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     dashboard_agent.node_manager_port = (
         ray._private.worker.global_worker.node.node_manager_port
     )
+    dashboard_agent.session_dir = (
+        ray._private.worker.global_worker.node.get_session_dir_path()
+    )
+    dashboard_agent.node_id = ray._private.worker.global_worker.node.unique_id
     agent = ReporterAgent(dashboard_agent)
     pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2

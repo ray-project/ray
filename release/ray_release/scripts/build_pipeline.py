@@ -2,8 +2,8 @@ import json
 import os
 import shutil
 import sys
-from typing import Tuple
 from pathlib import Path
+from typing import Tuple
 
 import click
 
@@ -11,8 +11,8 @@ from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.config import (
-    read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
+    read_and_validate_release_test_collection,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError

@@ -135,6 +135,9 @@ nitpick_ignore_regex = [
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
+    # UnknownPreprocessorError is an internal exception not exported in public API
+    ("py:exc", "UnknownPreprocessorError"),
+    ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -232,8 +235,11 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "data/examples/**/content/README.md",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
+    "serve/tutorials/asynchronous-inference/content/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -324,7 +330,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -570,9 +576,6 @@ def setup(app):
     app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
-    app.add_js_file("js/assistant.js", defer="defer")
-    app.add_css_file("css/assistant.css")
-
     app.add_js_file("js/dismissable-banner.js", defer="defer")
     app.add_css_file("css/dismissable-banner.css")
 
@@ -650,6 +653,7 @@ autodoc_mock_imports = [
     "numpy",
     "pandas",
     "pyarrow",
+    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",

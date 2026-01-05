@@ -2,11 +2,11 @@ import json
 import os
 
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
-from ray_release.logger import logger
 
 
 class RayTestDBReporter(Reporter):

@@ -96,7 +96,6 @@ class MockWorker : public WorkerInterface {
   bool IsBlocked() const override { return blocked_; }
 
   Process GetProcess() const override { return proc_; }
-  StartupToken GetStartupToken() const override { return 0; }
   void SetProcess(Process proc) override { proc_ = std::move(proc); }
 
   Language GetLanguage() const override {
@@ -107,7 +106,7 @@ class MockWorker : public WorkerInterface {
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
   void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
-    RAY_CHECK(false) << "Method unused";
+    rpc_client_ = rpc_client;
   }
 
   int AssignedPort() const override {
@@ -163,10 +162,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  rpc::CoreWorkerClientInterface *rpc_client() override { return rpc_client_.get(); }
 
   bool IsAvailableForScheduling() const override {
     RAY_CHECK(false) << "Method unused";
@@ -178,11 +174,6 @@ class MockWorker : public WorkerInterface {
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;
   }
-
- protected:
-  void SetStartupToken(StartupToken startup_token) override {
-    RAY_CHECK(false) << "Method unused";
-  };
 
  private:
   WorkerID worker_id_;
@@ -203,6 +194,7 @@ class MockWorker : public WorkerInterface {
   ActorID root_detached_actor_id_;
   Process proc_;
   std::atomic<bool> killing_ = false;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };
 
 }  // namespace raylet

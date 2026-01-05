@@ -374,7 +374,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-      const StatusCallback &callback);
+      const rpc::StatusCallback &callback);
 
   /// Send bundles COMMIT request to a node. This means the placement group creation
   /// is ready and GCS will commit resources on a given node.
@@ -385,7 +385,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void CommitResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-      const StatusCallback callback);
+      const rpc::StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
   /// Nodes will be in charge of tracking state of a bundle.
@@ -467,7 +467,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param bundle The node to which the bundle is scheduled and the bundle's
   /// specification.
-  /// \return True if the bundle is succesfully released. False otherwise.
+  /// \return True if the bundle is successfully released. False otherwise.
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 

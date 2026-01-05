@@ -51,7 +51,7 @@ class ScopedResponse {
   }
 
   ScopedResponse &operator=(ScopedResponse &&other) {
-    if (this == &other) {
+    if (this != &other) {
       HandleCleanup();
       this->cleanup_ = other.cleanup_;
       other.cleanup_ = nullptr;
@@ -84,14 +84,13 @@ class RayletIpcClientInterface {
 
   /// Register this client (worker) with the local Raylet.
   ///
-  /// \param worker_id The worker_id of the connecting worker.
+  /// \param worker_id The worker_id of the connecting worker (assigned by raylet).
   /// \param worker_type The worker type of the connecting worker.
   /// \param job_id The job ID that the connecting worker is associated with.
   /// \param runtime_env_hash The runtime_env hash of the connecting worker.
   /// \param language The language of the connecting worker.
   /// \param ip_address The ip_address of the connecting worker.
   /// \param serialized_job_config The serialized job config of the connecting worker.
-  /// \param startup_token The token that was passed to this worker at startup.
   /// \param[out] node_id The node ID for the local Raylet.
   /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
   ///             the worker should pick a port randomly.
@@ -102,7 +101,6 @@ class RayletIpcClientInterface {
                                 const rpc::Language &language,
                                 const std::string &ip_address,
                                 const std::string &serialized_job_config,
-                                const StartupToken &startup_token,
                                 NodeID *node_id,
                                 int *assigned_port) = 0;
 
@@ -150,7 +148,8 @@ class RayletIpcClientInterface {
   /// request to clean up the GetObjectsRequest upon destruction.
   virtual StatusOr<ScopedResponse> AsyncGetObjects(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) = 0;
+      const std::vector<rpc::Address> &owner_addresses,
+      int64_t get_request_id) = 0;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.

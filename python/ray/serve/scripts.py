@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -641,8 +642,9 @@ def config(address: str, name: Optional[str]):
     # Fetch app configs for all live applications on the cluster
     if name is None:
         configs = [
-            yaml.safe_dump(
+            yaml.dump(
                 app.deployed_app_config.dict(exclude_unset=True),
+                Dumper=ServeDeploySchemaDumper,
                 sort_keys=False,
             )
             for app in applications.values()
@@ -659,7 +661,10 @@ def config(address: str, name: Optional[str]):
             print(f'No config has been deployed for application "{name}".')
         else:
             config = app.deployed_app_config.dict(exclude_unset=True)
-            print(yaml.safe_dump(config, sort_keys=False), end="")
+            print(
+                yaml.dump(config, Dumper=ServeDeploySchemaDumper, sort_keys=False),
+                end="",
+            )
 
 
 @cli.command(
@@ -709,13 +714,12 @@ def status(address: str, name: Optional[str]):
     status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
-    yaml.SafeDumper.add_representer(str, str_presenter)
-
     if name is None:
         print(
-            yaml.safe_dump(
+            yaml.dump(
                 # Ensure exception traceback in app_status are printed correctly
                 process_dict_for_yaml_dump(status),
+                Dumper=ServeDeploySchemaDumper,
                 default_flow_style=False,
                 sort_keys=False,
             ),
@@ -726,9 +730,10 @@ def status(address: str, name: Optional[str]):
             cli_logger.error(f'Application "{name}" does not exist.')
         else:
             print(
-                yaml.safe_dump(
+                yaml.dump(
                     # Ensure exception tracebacks in app_status are printed correctly
                     process_dict_for_yaml_dump(status["applications"][name]),
+                    Dumper=ServeDeploySchemaDumper,
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -921,3 +926,17 @@ class ServeDeploySchemaDumper(yaml.SafeDumper):
         # Only add extra line breaks between top-level keys
         if len(self.indents) == 1:
             super().write_line_break()
+
+
+def enum_representer(dumper: yaml.Dumper, data: Enum):
+    """Custom representer for Enum objects to serialize as their string values.
+    This tells PyYAML when it encounters an Enum object, serialize it as
+    a string scalar using its .value attribute."""
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
+
+
+# Register Enum representer with SafeDumper to handle enum serialization
+# in all YAML dumps (config, status, build commands).
+# Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
+ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
+ServeDeploySchemaDumper.add_representer(str, str_presenter)

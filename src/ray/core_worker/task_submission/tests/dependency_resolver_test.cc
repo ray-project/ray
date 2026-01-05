@@ -141,7 +141,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   bool ok = false;
@@ -157,7 +157,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
@@ -187,7 +187,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(data, obj);
+  store->Put(data, obj, /*has_reference=*/true);
   // Wait for the async callback to call
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_EQ(num_resolved, 1);
@@ -202,7 +202,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
@@ -228,7 +228,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_EQ(num_resolved, 0);
-  store->Put(data, obj);
+  store->Put(data, obj, /*has_reference=*/true);
 
   for (const auto &cb : actor_creator.callbacks) {
     cb(Status());
@@ -246,14 +246,14 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(data, obj1);
+  store->Put(data, obj1, /*has_reference=*/true);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
@@ -276,14 +276,14 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
@@ -310,7 +310,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -326,8 +326,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -348,7 +348,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -365,8 +365,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -388,7 +388,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -400,7 +400,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
+  store->Put(*data, obj1, /*has_reference=*/true);
 
   ASSERT_TRUE(resolver.CancelDependencyResolution(task.TaskId()));
   // Callback is not called.
@@ -423,12 +423,12 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
 
   ObjectID obj = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
-  store->Put(*data, obj);
+  store->Put(*data, obj, /*has_reference=*/true);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
@@ -464,15 +464,16 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
 
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [&](const ObjectID &object_id) {
+        std::optional<std::string> transport;
         if (object_id == obj1) {
-          return rpc::TensorTransport::NCCL;
+          transport.emplace("some direct transport");
         }
-        return rpc::TensorTransport::OBJECT_STORE;
+        return transport;
       });
 
   auto data = GenerateRandomObject();
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
