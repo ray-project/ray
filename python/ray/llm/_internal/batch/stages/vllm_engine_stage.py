@@ -8,7 +8,6 @@ import math
 import time
 import uuid
 from collections import Counter
-from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
@@ -22,6 +21,7 @@ else:
     MultiModalDataDict = Any
 
 import ray
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
@@ -52,22 +52,6 @@ except ImportError:
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
-
-
-class vLLMTaskType(str, Enum):
-    """The type of task to run on the vLLM engine."""
-
-    """Generate text."""
-    GENERATE = "generate"
-
-    """Generate embeddings."""
-    EMBED = "embed"
-
-    """Classification (e.g., sequence classification models)."""
-    CLASSIFY = "classify"
-
-    """Scoring (e.g., cross-encoder models)."""
-    SCORE = "score"
 
 
 class vLLMEngineRequest(BaseModel):
@@ -236,6 +220,8 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
+        # Flag to log deprecation warning only once
+        self._guided_decoding_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -388,11 +374,31 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            if "guided_decoding" in sampling_params:
-                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **maybe_convert_ndarray_to_list(
-                        sampling_params.pop("guided_decoding")
+            structured_outputs_config = None
+            # Handle new structured_outputs parameter (preferred)
+            if "structured_outputs" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("structured_outputs")
+                )
+                # Remove guided_decoding if present to avoid passing it to SamplingParams
+                sampling_params.pop("guided_decoding", None)
+            # Handle legacy guided_decoding parameter for backward compatibility
+            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
+            elif "guided_decoding" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("guided_decoding")
+                )
+                # Log deprecation warning only once to avoid log spam
+                if not self._guided_decoding_warning_logged:
+                    logger.warning(
+                        "The 'guided_decoding' parameter is deprecated. "
+                        "Please use 'structured_outputs' in sampling_params instead."
                     )
+                    self._guided_decoding_warning_logged = True
+
+            if structured_outputs_config:
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                    **structured_outputs_config
                 )
             else:
                 structured_outputs = None
@@ -408,7 +414,7 @@ class vLLMEngineWrapper:
             pooling_params = row.pop("pooling_params", {})
             params = vllm.PoolingParams(
                 **maybe_convert_ndarray_to_list(pooling_params),
-                task=self.task_type.value,
+                task=self.task_type,
             )
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
@@ -545,7 +551,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
@@ -573,7 +579,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
@@ -625,14 +631,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
@@ -653,7 +657,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
 
         # Set task_type for the wrapper to use.
-        engine_kwargs["task_type"] = task_type
+        engine_kwargs["task_type"] = self.task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
@@ -876,7 +880,7 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
-    def _get_task_type(self) -> vLLMTaskType:
+    def _get_task_type(self) -> TypeVLLMTaskType:
         return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
 
     def get_required_input_keys(self) -> Dict[str, str]:
