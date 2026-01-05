@@ -29,7 +29,7 @@ class QueueMonitorConfig:
         self.rabbitmq_http_url = rabbitmq_http_url
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class QueueMonitorActor:
 
     """
@@ -86,7 +86,6 @@ class QueueMonitorActor:
 
         try:
             queues = self._flower_broker.queues([self._config.queue_name])
-            print(f"queues: {queues}")
             if queues is not None:
                 for q in queues:
                     if q.get("name") == self._config.queue_name:
@@ -94,7 +93,13 @@ class QueueMonitorActor:
                         self._last_queue_length = queue_length
                         return queue_length
 
-            return self._last_queue_length
+            if self._last_queue_length is not None:
+                return self._last_queue_length
+            else:
+                logger.warning(
+                    f"No queue length found for queue '{self._config.queue_name}', returning 0"
+                )
+                return 0
 
         except Exception as e:
             logger.warning(
