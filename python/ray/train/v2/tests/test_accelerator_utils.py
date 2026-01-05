@@ -107,7 +107,7 @@ def test_accelerator_setup_callback(mock_gpu_cluster, mock_runtime_context):
             return DummyBackend
 
         def to_dict(self):
-            return {"framework": None}
+            return {}
 
     class DummyBackend(Backend):
         share_cuda_visible_devices = True

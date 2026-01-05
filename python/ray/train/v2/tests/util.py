@@ -32,11 +32,16 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
     DatasetsDetails,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
     RunConfiguration,
     RunStatus,
-    RuntimeConfiguration,
+    RuntimeConfig,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -189,16 +194,16 @@ def create_mock_train_run(
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
         run_configuration=RunConfiguration(
-            train_loop_config={"epochs": 10},
-            backend_config={"backend": "nccl"},
-            scaling_config={"num_workers": "2"},
+            backend_config=BackendConfigSchema(),
+            scaling_config=ScalingConfigSchema(),
             datasets_details=DatasetsDetails(
-                datasets=["dataset_1"], data_config={"datasets_to_split": "all"}
+                datasets=["dataset_1"],
+                data_config=DataConfigSchema(),
             ),
-            runtime_configuration=RuntimeConfiguration(
-                failure_config={"max_failures": 1},
+            runtime_config=RuntimeConfig(
+                failure_config=FailureConfigSchema(),
                 worker_runtime_env={"type": "conda"},
-                checkpoint_config={"type": "s3"},
+                checkpoint_config=CheckpointConfigSchema(),
                 storage_path="s3://bucket/path",
             ),
         ),

@@ -14,6 +14,7 @@ from xgboost.collective import CommunicatorContext
 import ray
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.v2._internal.util import TrainingFramework
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ class XGBoostConfig(BackendConfig):
                 yield
 
         return collective_communication_context
+
+    @property
+    def framework(self):
+        return TrainingFramework.XGBOOST
 
     @property
     def backend_cls(self):

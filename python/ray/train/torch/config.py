@@ -20,6 +20,7 @@ from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,10 @@ class TorchConfig(BackendConfig):
     @property
     def train_func_context(self):
         return TorchConfigContextManager
+
+    @property
+    def framework(self):
+        return TrainingFramework.TORCH
 
     def to_dict(self) -> Dict[str, str | int]:
         config_dict = {

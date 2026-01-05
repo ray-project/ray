@@ -34,11 +34,16 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
     DatasetsDetails,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
     RunConfiguration,
     RunStatus,
-    RuntimeConfiguration,
+    RuntimeConfig,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -177,16 +182,16 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
         run_configuration=RunConfiguration(
-            train_loop_config={"epochs": 10},
-            backend_config={"backend": "nccl"},
-            scaling_config={"num_workers": "2"},
+            backend_config=BackendConfigSchema(),
+            scaling_config=ScalingConfigSchema(),
             datasets_details=DatasetsDetails(
-                datasets=["dataset_1"], data_config={"datasets_to_split": "all"}
+                datasets=["dataset_1"],
+                data_config=DataConfigSchema(),
             ),
-            runtime_configuration=RuntimeConfiguration(
-                failure_config={"max_failures": 1},
+            runtime_config=RuntimeConfig(
+                failure_config=FailureConfigSchema(),
                 worker_runtime_env={"type": "conda"},
-                checkpoint_config={"num_to_keep": 1},
+                checkpoint_config=CheckpointConfigSchema(),
                 storage_path="s3://bucket/path",
             ),
         ),
@@ -845,9 +850,15 @@ def test_get_framework_version(ray_start_regular, fw):
         datasets={},
         dataset_config=DataConfig(),
     )
-    assert manager.get_train_run_framework(run_id) == fw
 
-    versions = _get_framework_version(fw)
+    # Validate the framework is set correctly
+    framework = manager.get_train_run_framework(run_id)
+    if framework is not None:
+        assert framework.value == fw
+
+    # Validate the framework version is set correctly
+    versions = _get_framework_version(None if fw is None else framework)
+
     assert "ray" in versions
     if fw is None:
         assert list(versions.keys()) == ["ray"]

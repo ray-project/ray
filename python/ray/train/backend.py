@@ -25,6 +25,10 @@ class BackendConfig(ABC):
     def train_func_context(self):
         return nullcontext
 
+    @property
+    def framework(self):
+        return None
+
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
 
@@ -39,7 +43,7 @@ class DefaultBackendConfig(BackendConfig):
     """Default no-op backend config used when none is provided."""
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"framework": None}
+        return {}
 
 
 @DeveloperAPI
