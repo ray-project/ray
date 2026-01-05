@@ -315,11 +315,21 @@ def _zip_blocks_with_slices(
     """Remote task: fetch blocks, apply slices, and zip together."""
     stats = BlockExecStats.builder()
 
+    all_block_refs = [ref for group in block_groups for ref in group]
+    all_blocks = ray.get(all_block_refs)
+
+    fetched_groups: List[
+        List[Block]
+    ] = []  # Reconstruct block groups from flattened list
+    idx = 0
+    for group in block_groups:
+        fetched_groups.append(all_blocks[idx : idx + len(group)])
+        idx += len(group)
+
     merged_blocks = []
-    for blocks, slices in zip(block_groups, slice_groups):
+    for blocks, slices in zip(fetched_groups, slice_groups):
         builder = DelegatingBlockBuilder()
-        for block_ref, (start, end) in zip(blocks, slices):
-            block = ray.get(block_ref)
+        for block, (start, end) in zip(blocks, slices):
             accessor = BlockAccessor.for_block(block)
             if start > 0 or end < accessor.num_rows():
                 block = accessor.slice(start, end, copy=False)
