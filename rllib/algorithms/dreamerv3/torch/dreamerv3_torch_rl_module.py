@@ -75,4 +75,11 @@ class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
         # Undo one-hot actions?
         if isinstance(self.action_space, gym.spaces.Discrete):
             output[Columns.ACTIONS] = torch.argmax(actions, dim=-1)
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # Split concatenated one-hot and argmax per sub-action
+            split_sizes = list(self.action_space.nvec)
+            split_actions = torch.split(actions, split_sizes, dim=-1)
+            output[Columns.ACTIONS] = torch.stack(
+                [torch.argmax(a, dim=-1) for a in split_actions], dim=-1
+            )
         return output

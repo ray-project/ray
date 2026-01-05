@@ -3,6 +3,8 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
+from typing import List
+
 import gymnasium as gym
 import numpy as np
 
@@ -10,6 +12,63 @@ from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
+
+
+class MultiDiscreteOneHotDistribution:
+    """Distribution wrapper for MultiDiscrete action spaces using concatenated one-hots.
+
+    This class wraps multiple OneHotCategorical distributions (one per sub-action)
+    and provides combined log_prob, entropy, sample, and mode methods.
+    """
+
+    def __init__(self, distributions: List, actions_dim: List[int]):
+        """Initialize with a list of OneHotCategorical distributions.
+
+        Args:
+            distributions: List of torch.distributions.OneHotCategorical, one per
+                sub-action dimension.
+            actions_dim: List of integers representing the number of classes per
+                sub-action (e.g., [3, 2, 2] for MultiDiscrete([3, 2, 2])).
+        """
+        self.distributions = distributions
+        self.actions_dim = actions_dim
+
+    def log_prob(self, actions):
+        """Compute log probability of concatenated one-hot actions.
+
+        Args:
+            actions: Concatenated one-hot tensor of shape [..., sum(actions_dim)].
+
+        Returns:
+            Sum of log probabilities over all sub-actions.
+        """
+        split_actions = torch.split(actions, self.actions_dim, dim=-1)
+        log_probs = [
+            dist.log_prob(action)
+            for dist, action in zip(self.distributions, split_actions)
+        ]
+        return torch.stack(log_probs, dim=-1).sum(dim=-1)
+
+    def entropy(self):
+        """Compute total entropy as sum of entropies over all sub-actions."""
+        return torch.stack(
+            [dist.entropy() for dist in self.distributions], dim=-1
+        ).sum(dim=-1)
+
+    def sample(self):
+        """Sample from all sub-action distributions and concatenate."""
+        return torch.cat([dist.sample() for dist in self.distributions], dim=-1)
+
+    @property
+    def mode(self):
+        """Return concatenated one-hot modes (argmax) for all sub-actions."""
+        modes = []
+        for dist in self.distributions:
+            probs = dist.probs
+            one_hot = torch.zeros_like(probs)
+            one_hot.scatter_(-1, probs.argmax(dim=-1, keepdim=True), 1.0)
+            modes.append(one_hot)
+        return torch.cat(modes, dim=-1)
 
 
 class ActorNetwork(nn.Module):
@@ -76,6 +135,23 @@ class ActorNetwork(nn.Module):
                 model_size=self.model_size,
                 output_layer_size=output_layer_size,
             )
+        # For MultiDiscrete actions, use shared MLP backbone + separate heads.
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+            self.actions_dim: List[int] = list(action_space.nvec)
+            # Total number of one-hot dimensions
+            self.total_action_dim = int(np.sum(self.actions_dim))
+            # Shared MLP backbone (output size matches model's hidden size)
+            self.mlp = MLP(
+                input_size=self.input_size,
+                model_size=self.model_size,
+                output_layer_size=None,  # No output layer, use hidden size
+            )
+            # Separate output heads for each sub-action dimension
+            hidden_size = self.mlp.output_size[0]
+            self.mlp_heads = nn.ModuleList([
+                nn.Linear(hidden_size, int(action_dim))
+                for action_dim in self.actions_dim
+            ])
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
@@ -139,6 +215,34 @@ class ActorNetwork(nn.Module):
 
             action = distr.rsample()
 
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # For MultiDiscrete: shared backbone output, then separate heads
+            backbone_out = action_logits  # Output from shared MLP backbone
+
+            actions_list = []
+            action_logits_list = []
+
+            for i, head in enumerate(self.mlp_heads):
+                # Get logits for this sub-action
+                logits = head(backbone_out)
+                probs = nn.functional.softmax(logits, dim=-1)
+
+                # Unimix: 99% neural network + 1% uniform per sub-action
+                probs = 0.99 * probs + 0.01 * (1.0 / self.actions_dim[i])
+                logits = torch.log(probs)
+                action_logits_list.append(logits)
+
+                # Sample with straight-through gradient
+                distr = torch.distributions.OneHotCategorical(logits=logits)
+                sample = distr.sample()
+                # Straight-through: gradient flows through probs
+                action = sample.float().detach() + (probs - probs.detach())
+                actions_list.append(action)
+
+            # Concatenate all one-hot actions: [B, sum(actions_dim)]
+            action = torch.cat(actions_list, dim=-1)
+            distr_params = torch.cat(action_logits_list, dim=-1)
+
         if return_distr_params:
             return action, distr_params
         return action
@@ -171,6 +275,15 @@ class ActorNetwork(nn.Module):
             # If action_space is a box with multiple dims, make individual dims
             # independent.
             distr = torch.distributions.Independent(distr, len(self.action_space.shape))
+
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # Split logits according to actions_dim and create distributions
+            split_logits = torch.split(action_dist_params_T_B, self.actions_dim, dim=-1)
+            distributions = [
+                torch.distributions.OneHotCategorical(logits=logits)
+                for logits in split_logits
+            ]
+            distr = MultiDiscreteOneHotDistribution(distributions, self.actions_dim)
 
         else:
             raise ValueError(f"Action space {self.action_space} not supported!")
