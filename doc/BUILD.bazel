@@ -726,3 +726,9 @@ filegroup(
     ],
     visibility = ["//release:__pkg__"],
 )
+
+filegroup(
+    name = "asynchronous_inference_example_configs",
+    srcs = glob(["source/serve/tutorials/asynchronous-inference/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)

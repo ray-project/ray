@@ -86,7 +86,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "2. To cause the tasks with infeasible requests to raise an error instead "
           "of hanging, set the 'RAY_enable_infeasible_task_early_exit=true'. "
           "This feature will be turned on by default in a future release of Ray.";
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";

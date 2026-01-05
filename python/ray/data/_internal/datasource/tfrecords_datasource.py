@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Unio
 
 import pyarrow
 
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
