@@ -2022,10 +2022,11 @@ def shutdown(_exiting_interpreter: bool = False):
         The behavior of ``ray.shutdown()`` differs depending on how the cluster
         was initialized:
 
-        * If the Ray cluster was started locally by ``ray.init()`` (i.e., no
-          ``address`` argument was provided, or ``address="local"``),
-          ``ray.shutdown()`` will terminate all the local Ray processes
-          (raylet, object store, etc.) that were spawned by ``ray.init()``.
+        * If a new local Ray cluster was started by ``ray.init()`` (i.e., no
+          ``address`` argument was provided and no existing cluster was found,
+          or ``address="local"`` was explicitly used), ``ray.shutdown()`` will
+          terminate all the local Ray processes (raylet, object store, etc.)
+          that were spawned by ``ray.init()``.
 
         * If you connected to an existing cluster (e.g., via
           ``ray.init(address="auto")`` or ``ray.init(address="ray://<ip>:<port>")``),
