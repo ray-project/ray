@@ -158,7 +158,8 @@ class HangingExecutionIssueDetector(IssueDetector):
                         try:
                             task_state = ray.util.state.get_task(
                                 task_info.task_id.hex(),
-                                timeout=1.0
+                                timeout=1.0,
+                                _explain=True,
                             )
                         except Exception as e:
                             logger.debug(
