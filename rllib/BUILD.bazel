@@ -2324,20 +2324,18 @@ py_test(
     deps = [":conftest"],
 )
 
-py_library(
-    name = "env_conftest",
-    srcs = ["env/tests/conftest.py"],
-)
-
 py_test(
     name = "env/tests/test_env_runner",
     size = "medium",
-    srcs = ["env/tests/test_env_runner.py"],
+    srcs = [
+        "env/tests/conftest.py",
+        "env/tests/test_env_runner.py",
+    ],
     tags = [
         "env",
         "team:rllib",
     ],
-    deps = [":env_conftest"],
+    deps = [":conftest"],
 )
 
 py_test(
