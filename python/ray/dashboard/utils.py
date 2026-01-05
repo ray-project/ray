@@ -720,6 +720,17 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     elif ray_address := os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE):
         address = ray_address
         logger.debug(f"Using RAY_ADDRESS={address}")
+    elif address in (None, "auto"):
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+            logger.debug(f"Using dashboard URL from Ray context {address}.")
 
     if address and "://" in address:
         module_string, _ = split_address(address)

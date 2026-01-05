@@ -16,6 +16,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
+    get_auth_headers,
     wait_until_server_available,
 )
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
@@ -798,7 +799,10 @@ def test_logs_list(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify():
-        response = requests.get(webui_url + f"/api/v0/logs?node_id={node_id}")
+        response = requests.get(
+            webui_url + f"/api/v0/logs?node_id={node_id}",
+            headers=get_auth_headers(),
+        )
         response.raise_for_status()
         result = json.loads(response.text)
         assert result["result"]
@@ -828,7 +832,8 @@ def test_logs_list(ray_start_with_dashboard):
     def verify_filter():
         # Test that logs/list can be filtered
         response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*"
+            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*",
+            headers=get_auth_headers(),
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -844,7 +849,8 @@ def test_logs_list(ray_start_with_dashboard):
 
     def verify_worker_logs():
         response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*"
+            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*",
+            headers=get_auth_headers(),
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -885,6 +891,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5",
             stream=True,
+            headers=get_auth_headers(),
         )
         if stream_response.status_code != 200:
             raise ValueError(stream_response.content.decode("utf-8"))
@@ -915,6 +922,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + "/api/v0/logs/stream?&lines=-1"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
+        headers=get_auth_headers(),
     )
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
@@ -946,6 +954,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"/api/v0/logs/file?&lines={LINES}"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
+        headers=get_auth_headers(),
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
     for line in streamed_string.split("\n")[-(LINES + 1) :]:
@@ -958,6 +967,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         webui_url
         + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
         + f"&pid={pid}",
+        headers=get_auth_headers(),
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
     for line in streamed_string.split("\n")[-(LINES + 1) :]:
@@ -985,6 +995,7 @@ def test_log_download_filename(ray_start_with_dashboard):
                 f"&lines=5&download_filename={download_filename}"
             ),
             stream=True,
+            headers=get_auth_headers(),
         )
         if stream_response.status_code != 200:
             raise ValueError(stream_response.content.decode("utf-8"))
@@ -1123,7 +1134,8 @@ def test_log_get_subdir(ray_start_with_dashboard):
         response = requests.get(
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}"
-            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}"
+            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}",
+            headers=get_auth_headers(),
         )
         assert response.status_code == 200, response.reason
         assert "test log" in response.text

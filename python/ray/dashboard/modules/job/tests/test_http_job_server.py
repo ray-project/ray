@@ -47,7 +47,10 @@ DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_s
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    headers = get_auth_headers({"Connection": "keep-alive"})
+    if not any(key.lower() == "authorization" for key in headers):
+        headers["Authorization"] = "TOK:<MY_TOKEN>"
+    return headers
 
 
 @pytest.fixture(scope="module")
@@ -646,13 +649,16 @@ def test_request_headers(job_sdk_client):
             "/api/jobs/",
             json_data={"entrypoint": "ls"},
         )
+        expected_headers = get_auth_headers({"Connection": "keep-alive"})
+        if not any(key.lower() == "authorization" for key in expected_headers):
+            expected_headers["Authorization"] = "TOK:<MY_TOKEN>"
         mock_request.assert_called_with(
             "POST",
             "http://127.0.0.1:8265/api/jobs/",
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
-            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+            headers=expected_headers,
             verify=True,
         )
 
