@@ -100,7 +100,7 @@ class TrainStateManager:
 
         backend_config = BackendConfigSchema(
             framework=backend_config.framework,
-            configs=backend_config.to_dict(),
+            config=backend_config.to_dict(),
         )
 
         run_configuration = RunConfiguration(
