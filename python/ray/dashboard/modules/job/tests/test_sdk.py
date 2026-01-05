@@ -17,6 +17,7 @@ from ray._private.ray_constants import (
 )
 from ray._private.test_utils import (
     format_web_url,
+    get_auth_headers,
     wait_until_server_available,
 )
 from ray._raylet import GcsClient
@@ -136,7 +137,9 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
     # We can't use a fixture with a shared Ray runtime because we need to set the
     # expiration_s env var before Ray starts.
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        headers = {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+        headers = get_auth_headers({"Connection": "keep-alive"})
+        if not any(key.lower() == "authorization" for key in headers):
+            headers["Authorization"] = "TOK:<MY_TOKEN>"
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         client = JobSubmissionClient(format_web_url(address), headers=headers)

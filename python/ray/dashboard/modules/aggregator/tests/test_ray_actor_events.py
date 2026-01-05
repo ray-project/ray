@@ -60,43 +60,66 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
 
     # Check that an actor definition and a lifecycle event are published.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_for_condition(lambda: len(httpserver.log) >= 1)
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
-    # We expect batched events containing definition then lifecycle
-    assert len(req_json) >= 2
-    # Verify event types and IDs exist
+
+    def has_definition_and_alive_state():
+        events = []
+        for req, _ in httpserver.log:
+            events.extend(json.loads(req.data))
+
+        if not any("actorDefinitionEvent" in event for event in events):
+            return False
+
+        for event in events:
+            if "actorLifecycleEvent" not in event:
+                continue
+            for state_transition in event["actorLifecycleEvent"]["stateTransitions"]:
+                if state_transition["state"] == "ALIVE":
+                    return True
+        return False
+
+    wait_for_condition(has_definition_and_alive_state)
+
+    events = []
+    for req, _ in httpserver.log:
+        events.extend(json.loads(req.data))
+
+    definition_events = [event for event in events if "actorDefinitionEvent" in event]
+    assert definition_events
+    definition_event = definition_events[0]
     assert (
-        base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex()
+        base64.b64decode(definition_event["actorDefinitionEvent"]["actorId"]).hex()
         == a._actor_id.hex()
     )
-    assert base64.b64decode(req_json[0]["nodeId"]).hex() == head_node_id
+    assert base64.b64decode(definition_event["nodeId"]).hex() == head_node_id
+
     # Verify ActorId and state for ActorLifecycleEvents
     has_alive_state = False
-    for actorLifeCycleEvent in req_json[1:]:
-        assert base64.b64decode(actorLifeCycleEvent["nodeId"]).hex() == head_node_id
+    for actor_lifecycle_event in (
+        event for event in events if "actorLifecycleEvent" in event
+    ):
+        assert base64.b64decode(actor_lifecycle_event["nodeId"]).hex() == head_node_id
         assert (
             base64.b64decode(
-                actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]
+                actor_lifecycle_event["actorLifecycleEvent"]["actorId"]
             ).hex()
             == a._actor_id.hex()
         )
-        for stateTransition in actorLifeCycleEvent["actorLifecycleEvent"][
+        for state_transition in actor_lifecycle_event["actorLifecycleEvent"][
             "stateTransitions"
         ]:
-            assert stateTransition["state"] in [
+            assert state_transition["state"] in [
                 "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION",
                 "ALIVE",
                 "RESTARTING",
                 "DEAD",
             ]
-            if stateTransition["state"] == "ALIVE":
+            if state_transition["state"] == "ALIVE":
                 has_alive_state = True
                 assert (
-                    base64.b64decode(stateTransition["nodeId"]).hex() in all_nodes_ids
+                    base64.b64decode(state_transition["nodeId"]).hex() in all_nodes_ids
                 )
-                assert base64.b64decode(stateTransition["workerId"]).hex() != ""
+                assert base64.b64decode(state_transition["workerId"]).hex() != ""
     assert has_alive_state
 
     # Kill the actor and verify we get a DEAD state with death cause
