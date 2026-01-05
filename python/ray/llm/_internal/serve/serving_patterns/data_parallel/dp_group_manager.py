@@ -187,9 +187,10 @@ class DPGroupManager:
         assert (
             group_index in self._master_info_events
         ), f"Attempted to reset group {group_index}, but no master_info_event exists."
-        event = self._master_info_events[group_index]
-        event.set()
-        event.clear()
+
+        # Release waiters on the stale event
+        self._master_info_events[group_index].set()
+        self._master_info_events[group_index] = asyncio.Event()
 
         group.dp_rank_to_replica_id.clear()
         group.master_info = None
@@ -203,9 +204,10 @@ class DPGroupManager:
     ) -> List[str]:
         """Check for and handle double-registration.
 
-        If a new replica is trying to register for a DP rank already occupied
-        by a different replica, this indicates a replica failure/restart.
-        Collects replicas to kill and resets the group for a clean restart.
+        If a new replica is trying to register for a DP rank already in use
+        (according to the internal _group_info state), this indicates
+        a replica failure/restart. Collects replicas to kill and resets the
+        group for a clean restart.
 
         Must be called while holding _group_info_lock.
 
