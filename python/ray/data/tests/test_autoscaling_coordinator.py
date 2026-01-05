@@ -94,9 +94,11 @@ CLUSTER_NODES_WITHOUT_HEAD = [
     ],
 )
 def test_basic(cluster_nodes):
-    with patch("ray.nodes", return_value=cluster_nodes), patch(
-        "time.time", mock_time
-    ), patch("ray.autoscaler.sdk.request_resources") as mock_request_resources:
+    with (
+        patch("ray.nodes", return_value=cluster_nodes),
+        patch("time.time", mock_time),
+        patch("ray.autoscaler.sdk.request_resources") as mock_request_resources,
+    ):
         global MOCKED_TIME
 
         MOCKED_TIME = 0
@@ -185,6 +187,62 @@ def test_basic(cluster_nodes):
         res2 = as_coordinator.get_allocated_resources("requester2")
         _remove_head_node_resources(res2)
         assert res2 == []
+
+
+def test_double_allocation_with_multiple_request_remaining():
+    """Test fair allocation when multiple requesters have request_remaining=True."""
+    cluster_nodes = [
+        {
+            "Resources": {
+                "CPU": 10,
+                "GPU": 5,
+                "object_store_memory": 1000,
+            },
+            "Alive": True,
+        }
+    ]
+
+    with (
+        patch("ray.nodes", return_value=cluster_nodes),
+        patch("time.time", mock_time),
+        patch("ray.autoscaler.sdk.request_resources"),
+    ):
+        coordinator = _AutoscalingCoordinatorActor()
+
+        # Requester1: asks for CPU=2, GPU=1 with request_remaining=True
+        req1 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
+        coordinator.request_resources(
+            requester_id="requester1",
+            resources=req1,
+            expire_after_s=100,
+            request_remaining=True,
+        )
+
+        # Requester2: asks for CPU=3, GPU=1 with request_remaining=True
+        req2 = [{"CPU": 3, "GPU": 1, "object_store_memory": 200}]
+        coordinator.request_resources(
+            requester_id="requester2",
+            resources=req2,
+            expire_after_s=100,
+            request_remaining=True,
+        )
+
+        # Get allocated resources
+        res1 = coordinator.get_allocated_resources("requester1")
+        res2 = coordinator.get_allocated_resources("requester2")
+
+        # After allocating specific requests (req1 and req2):
+        # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
+        # With fair allocation, each requester gets 1/2 of remaining resources
+        expected_remaining_per_requester = {
+            "CPU": 5 // 2,  # = 2
+            "GPU": 3 // 2,  # = 1
+            "object_store_memory": 700 // 2,  # = 350
+        }
+
+        # Both requesters should get their specific requests + fair share of remaining
+        assert res1 == req1 + [expected_remaining_per_requester]
+        assert res2 == req2 + [expected_remaining_per_requester]
 
 
 @pytest.fixture
@@ -394,6 +452,20 @@ def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinato
         counter_attr="_consecutive_failures_request_resources",
         error_msg_prefix="Failed to send resource request for test",
     )
+
+
+def test_coordinator_accepts_zero_resource_for_missing_resource_type(
+    teardown_autoscaling_coordinator,
+):
+    # This is a regression test for a bug where the coordinator crashes when you request
+    # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
+    coordinator = DefaultAutoscalingCoordinator()
+
+    coordinator.request_resources(
+        requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
+    )
+
+    assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
 
 
 if __name__ == "__main__":

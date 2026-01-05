@@ -37,13 +37,14 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     cluster.add_node(
         env_vars={
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_ACTOR_EVENT_PORT}",
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT",
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT",
         },
         _system_config={
             "enable_ray_event": True,
         },
     )
     cluster.wait_for_nodes()
+    head_node_id = cluster.head_node.node_id
     all_nodes_ids = [node.node_id for node in cluster.list_all_nodes()]
 
     class A:
@@ -69,9 +70,11 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
         base64.b64decode(req_json[0]["actorDefinitionEvent"]["actorId"]).hex()
         == a._actor_id.hex()
     )
+    assert base64.b64decode(req_json[0]["nodeId"]).hex() == head_node_id
     # Verify ActorId and state for ActorLifecycleEvents
     has_alive_state = False
     for actorLifeCycleEvent in req_json[1:]:
+        assert base64.b64decode(actorLifeCycleEvent["nodeId"]).hex() == head_node_id
         assert (
             base64.b64decode(
                 actorLifeCycleEvent["actorLifecycleEvent"]["actorId"]
