@@ -492,6 +492,52 @@ class TestMasterInfo:
         assert (addr_0, port_0) == ("192.168.0.1", 1111)
         assert (addr_1, port_1) == ("192.168.0.2", 2222)
 
+    @pytest.mark.asyncio
+    async def test_get_master_info_retries_when_master_info_reset(self, manager):
+        """Test retry when master_info is reset after event fires but before lock acquired.
+
+        This tests the race condition handling: if master_info is reset (e.g., due to
+        group restart) between event.wait() returning and reacquiring the lock, the
+        method should retry rather than returning stale/missing data.
+        """
+        replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank, replica_id="replica-0")
+
+        event = manager._master_info_events[0]
+        wait_count = 0
+
+        async def mock_wait():
+            nonlocal wait_count
+            wait_count += 1
+            if wait_count == 1:
+                # Simulate race: event fired, but master_info was reset before
+                # we could reacquire the lock. Return without setting master_info.
+                return
+            else:
+                # Second attempt: master properly set
+                manager._group_info[0].master_info = ("192.168.1.1", 8000)
+
+        event.wait = mock_wait
+
+        result = await manager.get_dp_master_info(group_index=0, wait_timeout=1.0)
+
+        assert wait_count == 2, "Should have retried once"
+        assert result == ("192.168.1.1", 8000)
+
+    @pytest.mark.asyncio
+    async def test_get_master_info_timeout_raises_after_max_retries(self, manager):
+        """Test that RuntimeError is raised after max_retries timeouts."""
+        replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank, replica_id="replica-0")
+
+        # Never set master_info - should timeout and raise after max_retries
+        with pytest.raises(RuntimeError, match="Failed to get master info"):
+            await manager.get_dp_master_info(
+                group_index=0,
+                max_retries=2,
+                wait_timeout=0.05,  # Short timeout for fast test
+            )
+
 
 class TestDoubleRegistration:
     """Test double-registration detection and group kill logic."""
