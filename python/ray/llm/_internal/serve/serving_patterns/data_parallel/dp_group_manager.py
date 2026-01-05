@@ -157,8 +157,9 @@ class DPGroupManager:
 
             group = self._group_info[group_index]
 
-            # Get replicas to kill if double-registration is detected
-            replicas_to_kill = self._handle_double_registration(
+            # Kills and group state reset must happen within the lock for
+            # atomicity.
+            await self._handle_double_registration(
                 group, group_index, dp_rank, replica_id
             )
 
@@ -169,10 +170,6 @@ class DPGroupManager:
                 f"Registered replica {replica_id} to group {group_index} "
                 f"with dp_rank {dp_rank} (replica_rank={replica_rank})"
             )
-
-        # Kill replicas outside the lock to avoid blocking
-        if replicas_to_kill:
-            await self._kill_replicas(replicas_to_kill, group_index)
 
         return dp_rank, group_index
 
@@ -195,19 +192,19 @@ class DPGroupManager:
         group.dp_rank_to_replica_id.clear()
         group.master_info = None
 
-    def _handle_double_registration(
+    async def _handle_double_registration(
         self,
         group: GroupInfo,
         group_index: int,
         dp_rank: int,
         replica_id: str,
-    ) -> List[str]:
+    ) -> None:
         """Check for and handle double-registration.
 
         If a new replica is trying to register for a DP rank already in use
         (according to the internal _group_info state), this indicates
-        a replica failure/restart. Collects replicas to kill and resets the
-        group for a clean restart.
+        a replica failure/restart. Kills all replicas in the group and resets
+        the group state atomically within the lock.
 
         Must be called while holding _group_info_lock.
 
@@ -216,13 +213,10 @@ class DPGroupManager:
             group_index: The index of the group.
             dp_rank: The data parallel rank being registered.
             replica_id: The replica ID attempting to register.
-
-        Returns:
-            List of replica IDs to kill (empty if no double-registration).
         """
         existing_replica_id = group.dp_rank_to_replica_id.get(dp_rank)
         if existing_replica_id is None:
-            return []
+            return
 
         # Same replica_id should never re-register
         assert existing_replica_id != replica_id, (
@@ -241,12 +235,10 @@ class DPGroupManager:
             rid for rid in group.dp_rank_to_replica_id.values() if rid != replica_id
         ]
 
-        # Clear the group state BEFORE killing replicas to prevent cascading kills.
-        # If we killed first, other replicas might detect the kill and try to
-        # re-register, triggering another round of double-registration detection.
-        self._reset_group(group, group_index)
+        await self._kill_replicas(replicas_to_kill, group_index)
 
-        return replicas_to_kill
+        # Only reset group state after killing replicas for fault tolerance
+        self._reset_group(group, group_index)
 
     async def _kill_replica(self, replica_id: str, group_index: int) -> None:
         """Kill a replica actor.
