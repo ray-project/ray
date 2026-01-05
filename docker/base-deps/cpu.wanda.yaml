@@ -3,7 +3,7 @@ froms: ["ubuntu:22.04"]
 dockerfile: docker/base-deps/Dockerfile
 srcs:
   - python/requirements_compiled.txt
-  - python/requirements_compiled_py313.txt
+  - python/requirements_compiled_py3.13.txt
   - python/deplocks/base_deps/$REQUIREMENTS_FILE
 build_args:
   - PYTHON_VERSION

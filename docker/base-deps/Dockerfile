@@ -70,7 +70,7 @@ ENV HOME=/home/ray
 WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
-COPY python/requirements_compiled_py313.txt /home/ray/requirements_compiled_py313.txt
+COPY python/requirements_compiled_py3.13.txt /home/ray/requirements_compiled_py3.13.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
