@@ -30,12 +30,12 @@ This notebook uses `jax[cuda]` in the examples for simplicity.
 ```python
 # Run below if you plan to use GPUs.
 %%bash
-pip install pandas, numpy, jax[cuda], flax, tiktoken, datasets, transformers, orbax, optax
+pip install pandas numpy jax[cuda] flax tiktoken datasets transformers orbax optax
 
 
 # Run below if you plan to use Google TPUs.
 # %%bash
-# pip install pandas, numpy, jax[tpu], flax, tiktoken, datasets, transformers, orbax, optax
+# pip install pandas numpy jax[tpu] flax tiktoken datasets transformers orbax optax
 ```
 
 Next, prepare the data that you’ll feed into the training loop.
@@ -153,7 +153,6 @@ import tiktoken
 import ray
 from ray import train
 import ray.data
-import ray.train
 from ray.train import Checkpoint
 
 ```
@@ -476,9 +475,9 @@ def train_loop_per_worker(config_dict: dict) -> None:
             loss, logits = loss_fn(model, (global_val_input, global_val_target))
             val_metrics.update(val_loss=loss, logits=logits)
             val_loss = float(val_metrics.compute())
-            metrics = {"step": step + 1, "val_loss": float(val_loss)}
+            metrics = {"step": step + 1, "train_loss": float(loss),"val_loss": float(val_loss)}
             
-
+            checkpoint = None
             if (step + 1) % config.checkpoint_every_n_steps == 0:
                 
                 # Orbax checkpointing is a barrier.
@@ -489,10 +488,10 @@ def train_loop_per_worker(config_dict: dict) -> None:
                 # Save a checkpoint and report validation metrics through Ray Train.
                 # The controller persists the checkpoint to the RunConfig storage path.
                 checkpoint = Checkpoint.from_directory(checkpoint_path) 
-                if world_rank == 0:
-                    train.report(metrics, checkpoint=checkpoint)
-                else:
-                    train.report(metrics, checkpoint=None)
+            if world_rank == 0:
+                train.report(metrics, checkpoint=checkpoint)
+            else:
+                train.report(metrics, checkpoint=None)
 
 ```
 
