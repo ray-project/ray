@@ -600,13 +600,67 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
         should_continue_on_error: bool = False,
     ):
         super().__init__(data_column, expected_input_keys)
+        self.model = model
+        self.should_continue_on_error = should_continue_on_error
+
+        # Setup vLLM engine kwargs.
+        self.task_type = task_type
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
+
+        # Set up the max pending requests.
+        pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
+        self.max_pending_requests = max_pending_requests or math.ceil(
+            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
+        )
+        if self.max_pending_requests > 0:
+            logger.info("Max pending requests is set to %d", self.max_pending_requests)
+
+        exclude_safetensors = (
+            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        )
+        if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
+            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        else:
+            logger.info("Downloading model and tokenizer.")
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+
+        # Download the model if needed.
+        model_source = download_model_files(
+            model_id=self.model,
+            mirror_config=None,
+            download_model=download_model,
+            download_extra_files=False,
+        )
+
+        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
+        self.model_source = model_source if not exclude_safetensors else self.model
+
+        self.llm = None
 
     def normalize_engine_kwargs(
         self,
-        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
-        pass
+        """
+        Normalize the engine kwargs.
+
+        Args:
+            engine_kwargs: The kwargs to normalize.
+
+        Returns:
+            The normalized kwargs.
+        """
+        # Remove model from engine kwargs if set.
+        model = engine_kwargs.pop("model", None)
+        if model is not None and model != self.model:
+            logger.warning(
+                "The model set in engine kwargs (%s) is different from the "
+                "stage (%s). Please remove 'model' from engine kwargs.",
+                model,
+                self.model,
+            )
+        return engine_kwargs
 
     def _generate_with_error_handling(
         self,
@@ -616,7 +670,9 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
         pass
 
     def __del__(self):
-        pass
+        if hasattr(self, "llm"):
+            # Kill the engine processes.
+            self.llm.shutdown()
 
 
 class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
@@ -663,44 +719,9 @@ class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
             dynamic_lora_loading_path,
             should_continue_on_error,
         )
-        self.model = model
-        self.should_continue_on_error = should_continue_on_error
-
-        # Setup vLLM engine kwargs.
-        self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
-
-        # Set up the max pending requests.
-        pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
-        self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
-        )
-        if self.max_pending_requests > 0:
-            logger.info("Max pending requests is set to %d", self.max_pending_requests)
-
-        exclude_safetensors = (
-            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
-        )
-        if exclude_safetensors:
-            logger.info("Excluding safetensors files when downloading the model.")
-            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
-        else:
-            logger.info("Downloading model and tokenizer.")
-            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
-
-        # Download the model if needed.
-        model_source = download_model_files(
-            model_id=self.model,
-            mirror_config=None,
-            download_model=download_model,
-            download_extra_files=False,
-        )
-
-        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
-        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=source,
+            model_source=self.model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
@@ -717,30 +738,6 @@ class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
                 "throughput. Please increase max_concurrent_batches to at least "
                 f"{math.ceil(max_num_seqs / batch_size)}."
             )
-
-    def normalize_engine_kwargs(
-        self,
-        engine_kwargs: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Normalize the engine kwargs.
-
-        Args:
-            engine_kwargs: The kwargs to normalize.
-
-        Returns:
-            The normalized kwargs.
-        """
-        # Remove model from engine kwargs if set.
-        model = engine_kwargs.pop("model", None)
-        if model is not None and model != self.model:
-            logger.warning(
-                "The model set in engine kwargs (%s) is different from the "
-                "stage (%s). Please remove 'model' from engine kwargs.",
-                model,
-                self.model,
-            )
-        return engine_kwargs
 
     async def _generate_with_error_handling(
         self,
@@ -827,11 +824,6 @@ class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
         # passed to the engine.
         if not self.engine_kwargs.get("disable_log_stats", False):
             await self.llm.engine.do_log_stats()
-
-    def __del__(self):
-        if hasattr(self, "llm"):
-            # Kill the engine processes.
-            self.llm.shutdown()
 
 
 
