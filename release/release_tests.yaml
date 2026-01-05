@@ -4547,7 +4547,7 @@
   python: "3.10"
   group: ray-examples
   team: serve
-  working_dir: //doc/source/serve/tutorials/video-analysis/content
+  working_dir: //doc/source/serve/tutorials/video-analysis
 
   cluster:
     byod:
