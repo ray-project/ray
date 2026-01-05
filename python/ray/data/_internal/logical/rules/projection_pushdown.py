@@ -1,7 +1,8 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
@@ -18,6 +19,9 @@ from ray.data.expressions import (
     Expr,
     StarExpr,
 )
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 
 def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
@@ -268,6 +272,94 @@ def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
     return [e for e in exprs if not isinstance(e, StarExpr)]
 
 
+def _create_upstream_alias_projection(
+    columns_to_rename: Iterable[str],
+    column_rename_map: Dict[str, str],
+    input_op: LogicalOperator,
+) -> Project:
+    """Create an upstream Project operator that renames columns.
+    This is used for ProjectionPassThrough."""
+    from ray.data.expressions import col
+
+    new_exprs: List[Expr] = []
+    for old_col in columns_to_rename:
+        if old_col in column_rename_map:
+            new_col = column_rename_map[old_col]
+            new_exprs.append(col(old_col).alias(new_col))
+        else:
+            new_exprs.append(col(old_col))
+
+    return Project(
+        input_op=input_op,
+        exprs=new_exprs,
+        compute=None,
+        ray_remote_args=None,
+    )
+
+
+def _create_downstream_selection_project(
+    column_rename_map: Dict[str, str],
+    input_op: LogicalOperator,
+) -> Project:
+    """Create a downstream Project operator that selects only the renamed columns.
+    This is used for ProjectionPassThrough."""
+    from ray.data.expressions import col
+
+    new_exprs = []
+    for new_col in column_rename_map.values():
+        new_exprs.append(col(new_col))
+
+    return Project(
+        input_op=input_op,
+        exprs=new_exprs,
+        compute=None,
+        ray_remote_args=None,
+    )
+
+
+def _get_columns_to_rename_for_input(
+    use_schema_analysis: bool,
+    schema: Optional["Schema"],
+    column_rename_map: Dict[str, str],
+    input_op_referenced_keys: List[str],
+) -> Optional[List[str]]:
+    """Determine which columns to include in the upstream project for a specific input.
+
+    Transformation examples:
+
+    Case 1: (use_schema_analysis=True, schema=None) → Cannot optimize
+        Input[unknown schema] → None (skip optimization)
+
+    Case 2: (use_schema_analysis=True, schema=Available) → Schema-based filtering
+        Input[cols: a,b,c]
+        + Requested: [b, d]         # Project wants columns b and d
+        + Keys: [a]                 # Operator needs key a
+        → Upstream selects: [a, b]  # Only b exists in schema; d doesn't, so skip it
+
+    Case 3: (use_schema_analysis=False, schema=Any) → No schema filtering
+        Input[cols: a,b,c]
+        + Requested: [b, d]         # Project wants columns b and d
+        + Keys: [a]                 # Operator needs key a
+        → Upstream selects: [a, b, d]  # Include all requested, even if d doesn't exist
+
+    Returns None if schema is required but unavailable.
+    """
+    if use_schema_analysis and schema is None:
+        # Case 1: Schema-based analysis required but schema unavailable
+        return None
+    elif use_schema_analysis and schema is not None:
+        # Case 2: Schema-based: Only push columns that exist in this input (Join, Zip)
+        input_schema_cols: Set[str] = set(schema.names)
+        # Columns in both projection and input.
+        projected_cols_in_input: Set[str] = (
+            set(column_rename_map.keys()) & input_schema_cols
+        )
+        return list(projected_cols_in_input | set(input_op_referenced_keys))
+    else:
+        # Case 3: Non-schema-based: Push all columns to all branches
+        return list(set(column_rename_map.keys()) | set(input_op_referenced_keys))
+
+
 class ProjectionPushdown(Rule):
     """
     Optimization rule that pushes projections (column selections) down the query plan.
@@ -283,6 +375,7 @@ class ProjectionPushdown(Rule):
         dag = plan.dag
         new_dag = dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
+        new_dag = new_dag._apply_transform(self._pass_projection_through_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
@@ -408,12 +501,201 @@ class ProjectionPushdown(Rule):
 
         return current_project
 
+    @classmethod
+    def _pass_projection_through_op(cls, op: LogicalOperator) -> LogicalOperator:
+        """Pass projections through operators that support it. This can optimize shuffle
+        performance by only selecting the keys/columns that the user chose.
+        """
+        if not isinstance(op, Project):
+            return op
+
+        curr_project: Project = op
+
+        # Simple projections are those that use col() or alias()
+        # no star() exprs, no binary(), etc...
+        is_simple_projection = all(
+            _is_col_expr(expr=expr) for expr in curr_project.exprs
+        )
+
+        # This is the candidate op to pass through
+        op_to_pass_through = curr_project.input_dependency
+
+        if not (
+            isinstance(op_to_pass_through, LogicalOperatorSupportsProjectionPassThrough)
+            and op_to_pass_through.supports_projection_pass_through()
+            and is_simple_projection
+        ):
+            return op
+
+        # Collect input columns for current projection
+        curr_project_referenced_cols = _collect_referenced_columns(
+            exprs=curr_project.exprs
+        )
+        assert (
+            curr_project_referenced_cols is not None
+        ), "Projection pass through is not supported for star(*) expressions"
+
+        # Create a mapping from old name -> new name
+        old_to_new_name_map: Dict[str, str] = _extract_input_columns_renaming_mapping(
+            projection_exprs=curr_project.exprs
+        )
+
+        # Filter out any columns not referenced by the project.
+        filtered_old_to_new_name_map: Dict[str, str] = {
+            # col(a).alias(b) or col(a)
+            col: old_to_new_name_map.get(col, col)
+            for col in curr_project_referenced_cols
+        }
+
+        # Short-circuit check: Skip optimization if conditions prevent safe transformation
+        if op_to_pass_through.requires_schema_based_branch_selection():
+            # Check if all inputs have schemas
+            all_schemas_exist = all(
+                input_op.infer_schema() is not None
+                for input_op in op_to_pass_through.input_dependencies
+            )
+            # Check if there are any non-trivial renames. The difference with simple
+            # projection is that it doesn't contain alias(new_name)
+            has_nontrivial_renames = any(
+                old != new for old, new in filtered_old_to_new_name_map.items()
+            )
+
+            # Skip optimization if schema analysis required but schemas missing + renames exist
+            if not all_schemas_exist and has_nontrivial_renames:
+                return op
+
+        # Apply unified projection pass-through logic
+        return cls._apply_projection_pass_through(
+            op=op_to_pass_through,
+            column_rename_map=filtered_old_to_new_name_map,
+        )
+
+    @classmethod
+    def _apply_projection_pass_through(
+        cls,
+        op: LogicalOperatorSupportsProjectionPassThrough,
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+        """Unified projection pass-through logic for all operators.
+
+        This method implements the 4 key steps:
+        1. Conditionally use schema analysis (if requires_schema_based_branch_selection() is True)
+        2. Always create upstream project(s)
+        3. Conditionally rename keys (if get_referenced_keys() is not None)
+        4. Conditionally create downstream project (if keys not in output)
+
+        Example: Join with keys NOT in output (most complex case)
+
+        Before:
+            Project[select left.name, right.value]
+                |
+            Join[left.id = right.id]
+               / \
+            Left                Right
+            [id=1, name="A"]    [id=1, value=100]
+            [id=2, name="B"]    [id=2, value=200]
+
+        After:
+            Project[select name, value]  <-- Step 4: downstream (removes join keys)
+                |
+            Join[left.id = right.id]
+               / \
+              /   \
+        Project   Project  <-- Step 2: upstream (schema-based selection + keys)
+        [id,name] [id,value]
+           |         |
+        Left      Right
+
+        Step-by-step breakdown:
+        1. Schema analysis: Left has [id,name], Right has [id,value]
+                          Project needs [name] from Left, [value] from Right
+        2. Upstream projects: Left gets [id,name] (adds join key)
+                            Right gets [id,value] (adds join key)
+        3. Rename keys: left.id -> id, right.id -> id
+        4. Downstream project: Remove id columns, keep only [name, value]
+        """
+        use_schema_analysis: bool = op.requires_schema_based_branch_selection()
+        referenced_keys_per_input: List[List[str]] = op.get_referenced_keys()
+
+        upstream_projects: List[Project] = []
+        renamed_keys_per_input: List[List[str]] = []
+
+        assert len(referenced_keys_per_input) == len(op.input_dependencies), (
+            f"ProjectionPushdown rule expected number of inputs to be equal to "
+            f"the number of input keys, but found mismatch: "
+            f"len(input_keys)={len(referenced_keys_per_input)} vs "
+            f"len(input_operators)={len(op.input_dependencies)}. "
+            f"This is a bug in the Ray Data."
+        )
+
+        for input_op, input_op_referenced_keys in zip(
+            op.input_dependencies, referenced_keys_per_input
+        ):
+            if op in input_op.output_dependencies:
+                input_op.output_dependencies.remove(op)
+
+            schema: Optional["Schema"] = input_op.infer_schema()
+
+            # Step 1: Determine which columns to include in the upstream project
+            columns_to_rename: Optional[Set[str]] = _get_columns_to_rename_for_input(
+                use_schema_analysis=use_schema_analysis,
+                schema=schema,
+                column_rename_map=column_rename_map,
+                input_op_referenced_keys=input_op_referenced_keys,
+            )
+
+            if columns_to_rename is None:
+                # Short-circuit: Schema unavailable, use original input
+                upstream_projects.append(input_op)
+                # Here, we use the old keys, because we know that
+                # the projection has trivial renames.
+                renamed_keys_per_input.append(input_op_referenced_keys)
+                continue
+
+            # Step 2: Create upstream project
+            upstream_project = _create_upstream_alias_projection(
+                columns_to_rename=columns_to_rename,
+                column_rename_map=column_rename_map,
+                input_op=input_op,
+            )
+            upstream_projects.append(upstream_project)
+
+            # Step 3: Rename keys for this input
+            input_op_renamed_keys = [
+                column_rename_map.get(old_key, old_key)
+                for old_key in input_op_referenced_keys
+            ]
+            renamed_keys_per_input.append(input_op_renamed_keys)
+
+        # Recreate operator with new inputs and renamed keys
+        new_op: LogicalOperatorSupportsProjectionPassThrough = (
+            op.apply_projection_pass_through(
+                renamed_keys=renamed_keys_per_input,
+                upstream_projects=upstream_projects,
+            )
+        )
+
+        # Step 4: Create downstream project if keys aren't all in output
+        # Flatten all keys from all inputs
+        all_keys: Set[str] = set()
+        for keys in referenced_keys_per_input:
+            all_keys.update(keys)
+
+        # Check if all keys are in the output projection
+        if all_keys and any(key not in column_rename_map.keys() for key in all_keys):
+            return _create_downstream_selection_project(
+                column_rename_map=column_rename_map,
+                input_op=new_op,
+            )
+
+        return new_op
+
 
 def _extract_input_columns_renaming_mapping(
     projection_exprs: List[Expr],
 ) -> Dict[str, str]:
-    """Fetches renaming mapping of all input columns names being renamed (replaced).
-    Format is source column name -> new column name.
+    """Fetches renaming mapping of all input columns names being renamed (replaced)
+    in alias() expressions. The format is source column name -> new column name.
     """
 
     return dict(
