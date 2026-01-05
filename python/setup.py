@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -250,11 +250,10 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
-            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
             "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0",
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -299,8 +298,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0",
                 "pyOpenSSL",
             ]
         )
@@ -324,7 +322,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack==1.7.0",
+        "ormsgpack>=1.7.0",
         "pyyaml",
         "scipy",
     ]
@@ -795,9 +793,8 @@ if __name__ == "__main__":
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.9",
+        python_requires=">=3.10",
         classifiers=[
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",

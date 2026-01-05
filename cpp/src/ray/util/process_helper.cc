@@ -152,7 +152,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
-  options.startup_token = ConfigInternal::Instance().startup_token;
+  if (ConfigInternal::Instance().worker_type != WorkerType::DRIVER) {
+    options.worker_id = WorkerID::FromHex(ConfigInternal::Instance().worker_id);
+  }
   options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
   rpc::JobConfig job_config;
   job_config.set_default_actor_lifetime(
