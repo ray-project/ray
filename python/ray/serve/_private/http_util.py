@@ -41,6 +41,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -825,6 +826,9 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
     """Enhanced configuration with component-specific options."""
 
     http_options = deepcopy(http_options)
+
+    # Warn if deprecated env var is set
+    warn_if_deprecated_env_var_set("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S")
 
     # Apply environment defaults
     if (RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or 0) > 0:
