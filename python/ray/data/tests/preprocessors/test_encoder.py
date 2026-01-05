@@ -1,5 +1,8 @@
+from typing import Any, Dict
+
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -15,6 +18,50 @@ from ray.data.preprocessors import (
     OneHotEncoder,
     OrdinalEncoder,
 )
+
+
+# Helper functions for parameterized OrdinalEncoder tests
+def _create_pandas_stats(unique_values: Dict[str, list]) -> Dict[str, Dict[Any, int]]:
+    """Create stats in pandas dict format: {value: index}."""
+    return {
+        f"unique_values({col})": {v: i for i, v in enumerate(sorted(values))}
+        for col, values in unique_values.items()
+    }
+
+
+def _create_arrow_stats(
+    unique_values: Dict[str, list],
+) -> Dict[str, tuple]:
+    """Create stats in Arrow tuple format: (keys_array, values_array)."""
+    result = {}
+    for col, values in unique_values.items():
+        sorted_values = sorted(values)
+        keys_array = pa.array(sorted_values)
+        values_array = pa.array(range(len(sorted_values)), type=pa.int64())
+        result[f"unique_values({col})"] = (keys_array, values_array)
+    return result
+
+
+def _stats_to_dict(stats_value) -> Dict[Any, int]:
+    """Convert stats to dict format regardless of whether it's Arrow or pandas format."""
+    if isinstance(stats_value, dict):
+        return stats_value
+    elif isinstance(stats_value, tuple):
+        # Arrow format: (keys_array, values_array)
+        keys_array, values_array = stats_value
+        return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
+    else:
+        raise ValueError(f"Unknown stats format: {type(stats_value)}")
+
+
+def _assert_stats_equal(actual_stats: Dict, expected_stats: Dict):
+    """Assert that stats are equal, regardless of Arrow or pandas format."""
+    for key, expected_value in expected_stats.items():
+        assert key in actual_stats, f"Missing key: {key}"
+        actual_value = _stats_to_dict(actual_stats[key])
+        assert (
+            actual_value == expected_value
+        ), f"Stats mismatch for {key}: expected {expected_value}, got {actual_value}"
 
 
 def test_ordinal_encoder_strings():
@@ -49,6 +96,325 @@ def test_ordinal_encoder_strings():
         ), f"Expected {original} to be encoded as {expected_encoding[original]}, but got {encoded}"  # noqa: E501
 
 
+def test_ordinal_encoder_arrow_transform():
+    """Test the OrdinalEncoder _transform_arrow method."""
+    # Create test data
+    col_a = ["red", "green", "blue", "red"]
+    col_b = ["warm", "cold", "hot", "cold"]
+    col_c = [1, 10, 5, 10]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+
+    encoder = OrdinalEncoder(["B", "C"])
+
+    # Manually set stats in Arrow tuple format (keys_array, values_array)
+    # B: sorted unique = [cold, hot, warm] -> indices [0, 1, 2]
+    # C: sorted unique = [1, 5, 10] -> indices [0, 1, 2]
+    encoder.stats_ = {
+        "unique_values(B)": (
+            pa.array(["cold", "hot", "warm"]),
+            pa.array([0, 1, 2], type=pa.int64()),
+        ),
+        "unique_values(C)": (
+            pa.array([1, 5, 10]),
+            pa.array([0, 1, 2], type=pa.int64()),
+        ),
+    }
+    encoder._fitted = True
+
+    # Verify stats are in Arrow tuple format
+    assert isinstance(encoder.stats_["unique_values(B)"], tuple)
+    keys_b, values_b = encoder.stats_["unique_values(B)"]
+    assert isinstance(keys_b, pa.Array)
+    assert isinstance(values_b, pa.Array)
+
+    # Create Arrow table for transformation
+    table = pa.Table.from_pandas(in_df)
+
+    # Transform using Arrow
+    result_table = encoder._transform_arrow(table)
+
+    # Verify result is an Arrow table
+    assert isinstance(result_table, pa.Table)
+
+    # Convert to pandas for easier comparison
+    result_df = result_table.to_pandas()
+
+    # Expected encoding: sorted unique values get indices 0, 1, 2, ...
+    # B: cold=0, hot=1, warm=2
+    # C: 1=0, 5=1, 10=2
+    expected_col_b = [2, 0, 1, 0]  # warm=2, cold=0, hot=1, cold=0
+    expected_col_c = [0, 2, 1, 2]  # 1=0, 10=2, 5=1, 10=2
+
+    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
+    assert (
+        result_df["B"].tolist() == expected_col_b
+    ), f"Column B mismatch: {result_df['B'].tolist()}"
+    assert (
+        result_df["C"].tolist() == expected_col_c
+    ), f"Column C mismatch: {result_df['C'].tolist()}"
+
+
+def test_ordinal_encoder_arrow_transform_append_mode():
+    """Test the OrdinalEncoder _transform_arrow method in append mode."""
+    col_a = ["red", "green", "blue"]
+    col_b = ["warm", "cold", "hot"]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+
+    encoder = OrdinalEncoder(["B"], output_columns=["B_encoded"])
+
+    # Manually set stats in Arrow tuple format
+    # B: sorted unique = [cold, hot, warm] -> indices [0, 1, 2]
+    encoder.stats_ = {
+        "unique_values(B)": (
+            pa.array(["cold", "hot", "warm"]),
+            pa.array([0, 1, 2], type=pa.int64()),
+        ),
+    }
+    encoder._fitted = True
+
+    table = pa.Table.from_pandas(in_df)
+    result_table = encoder._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Original columns should be unchanged
+    assert result_df["A"].tolist() == col_a
+    assert result_df["B"].tolist() == col_b
+
+    # New column should have encoded values
+    # B: cold=0, hot=1, warm=2
+    expected_b_encoded = [2, 0, 1]  # warm=2, cold=0, hot=1
+    assert result_df["B_encoded"].tolist() == expected_b_encoded
+
+
+def test_ordinal_encoder_arrow_transform_unknown_values():
+    """Test the OrdinalEncoder _transform_arrow method with unknown values."""
+    encoder = OrdinalEncoder(["B"])
+
+    # Manually set stats with only "warm" and "cold"
+    # B: sorted unique = [cold, warm] -> indices [0, 1]
+    encoder.stats_ = {
+        "unique_values(B)": (
+            pa.array(["cold", "warm"]),
+            pa.array([0, 1], type=pa.int64()),
+        ),
+    }
+    encoder._fitted = True
+
+    # Transform data with an unknown value
+    test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
+    table = pa.Table.from_pandas(test_df)
+    result_table = encoder._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # warm=1, cold=0, unknown should be null
+    # pc.index_in returns null for values not found
+    assert result_df["B"].tolist()[0] == 1  # warm
+    assert result_df["B"].tolist()[1] == 0  # cold
+    assert pd.isna(result_df["B"].tolist()[2])  # unknown -> null
+
+
+# =============================================================================
+# Parameterized tests for OrdinalEncoder (testing both pandas and arrow paths)
+# =============================================================================
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
+def test_ordinal_encoder_transform_scalars(batch_format):
+    """Test OrdinalEncoder transformation for scalar values with both pandas and arrow."""
+    col_a = ["red", "green", "blue", "red"]
+    col_b = ["warm", "cold", "hot", "cold"]
+    col_c = [1, 10, 5, 10]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+
+    encoder = OrdinalEncoder(["B", "C"])
+
+    # Create stats in the appropriate format
+    unique_values = {"B": ["cold", "hot", "warm"], "C": [1, 5, 10]}
+    if batch_format == "pandas":
+        encoder.stats_ = _create_pandas_stats(unique_values)
+    else:
+        encoder.stats_ = _create_arrow_stats(unique_values)
+    encoder._fitted = True
+
+    # Transform using the appropriate method
+    if batch_format == "pandas":
+        result_df = encoder._transform_pandas(in_df.copy())
+    else:
+        table = pa.Table.from_pandas(in_df)
+        result_table = encoder._transform_arrow(table)
+        result_df = result_table.to_pandas()
+
+    # Expected encoding: sorted unique values get indices 0, 1, 2, ...
+    # B: cold=0, hot=1, warm=2
+    # C: 1=0, 5=1, 10=2
+    expected_col_b = [2, 0, 1, 0]  # warm=2, cold=0, hot=1, cold=0
+    expected_col_c = [0, 2, 1, 2]  # 1=0, 10=2, 5=1, 10=2
+
+    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
+    assert (
+        result_df["B"].tolist() == expected_col_b
+    ), f"Column B mismatch: {result_df['B'].tolist()}"
+    assert (
+        result_df["C"].tolist() == expected_col_c
+    ), f"Column C mismatch: {result_df['C'].tolist()}"
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
+def test_ordinal_encoder_transform_append_mode(batch_format):
+    """Test OrdinalEncoder append mode with both pandas and arrow."""
+    col_a = ["red", "green", "blue"]
+    col_b = ["warm", "cold", "hot"]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+
+    encoder = OrdinalEncoder(["B"], output_columns=["B_encoded"])
+
+    # Create stats in the appropriate format
+    unique_values = {"B": ["cold", "hot", "warm"]}
+    if batch_format == "pandas":
+        encoder.stats_ = _create_pandas_stats(unique_values)
+    else:
+        encoder.stats_ = _create_arrow_stats(unique_values)
+    encoder._fitted = True
+
+    # Transform using the appropriate method
+    if batch_format == "pandas":
+        result_df = encoder._transform_pandas(in_df.copy())
+    else:
+        table = pa.Table.from_pandas(in_df)
+        result_table = encoder._transform_arrow(table)
+        result_df = result_table.to_pandas()
+
+    # Original columns should be unchanged
+    assert result_df["A"].tolist() == col_a
+    assert result_df["B"].tolist() == col_b
+
+    # New column should have encoded values
+    # B: cold=0, hot=1, warm=2
+    expected_b_encoded = [2, 0, 1]  # warm=2, cold=0, hot=1
+    assert result_df["B_encoded"].tolist() == expected_b_encoded
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
+def test_ordinal_encoder_transform_unknown_values(batch_format):
+    """Test OrdinalEncoder with unknown values using both pandas and arrow."""
+    encoder = OrdinalEncoder(["B"])
+
+    # Create stats with only "warm" and "cold" (not "unknown")
+    unique_values = {"B": ["cold", "warm"]}
+    if batch_format == "pandas":
+        encoder.stats_ = _create_pandas_stats(unique_values)
+    else:
+        encoder.stats_ = _create_arrow_stats(unique_values)
+    encoder._fitted = True
+
+    # Transform data with an unknown value
+    test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
+
+    if batch_format == "pandas":
+        result_df = encoder._transform_pandas(test_df.copy())
+    else:
+        table = pa.Table.from_pandas(test_df)
+        result_table = encoder._transform_arrow(table)
+        result_df = result_table.to_pandas()
+
+    # warm=1, cold=0, unknown should be null/None
+    assert result_df["B"].tolist()[0] == 1  # warm
+    assert result_df["B"].tolist()[1] == 0  # cold
+    assert pd.isna(result_df["B"].tolist()[2])  # unknown -> null
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
+def test_ordinal_encoder_transform_multiple_columns(batch_format):
+    """Test OrdinalEncoder with multiple columns using both pandas and arrow."""
+    in_df = pd.DataFrame(
+        {
+            "color": ["red", "blue", "green", "red"],
+            "size": ["small", "large", "medium", "small"],
+            "count": [1, 3, 2, 1],
+        }
+    )
+
+    encoder = OrdinalEncoder(["color", "size", "count"])
+
+    unique_values = {
+        "color": ["blue", "green", "red"],
+        "size": ["large", "medium", "small"],
+        "count": [1, 2, 3],
+    }
+    if batch_format == "pandas":
+        encoder.stats_ = _create_pandas_stats(unique_values)
+    else:
+        encoder.stats_ = _create_arrow_stats(unique_values)
+    encoder._fitted = True
+
+    if batch_format == "pandas":
+        result_df = encoder._transform_pandas(in_df.copy())
+    else:
+        table = pa.Table.from_pandas(in_df)
+        result_table = encoder._transform_arrow(table)
+        result_df = result_table.to_pandas()
+
+    # Verify encodings
+    # color: blue=0, green=1, red=2 -> [2, 0, 1, 2]
+    # size: large=0, medium=1, small=2 -> [2, 0, 1, 2]
+    # count: 1=0, 2=1, 3=2 -> [0, 2, 1, 0]
+    assert result_df["color"].tolist() == [2, 0, 1, 2]
+    assert result_df["size"].tolist() == [2, 0, 1, 2]
+    assert result_df["count"].tolist() == [0, 2, 1, 0]
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
+def test_ordinal_encoder_transform_integers(batch_format):
+    """Test OrdinalEncoder with integer columns using both pandas and arrow."""
+    in_df = pd.DataFrame({"values": [100, 50, 200, 50, 100]})
+
+    encoder = OrdinalEncoder(["values"])
+
+    unique_values = {"values": [50, 100, 200]}
+    if batch_format == "pandas":
+        encoder.stats_ = _create_pandas_stats(unique_values)
+    else:
+        encoder.stats_ = _create_arrow_stats(unique_values)
+    encoder._fitted = True
+
+    if batch_format == "pandas":
+        result_df = encoder._transform_pandas(in_df.copy())
+    else:
+        table = pa.Table.from_pandas(in_df)
+        result_table = encoder._transform_arrow(table)
+        result_df = result_table.to_pandas()
+
+    # 50=0, 100=1, 200=2 -> [1, 0, 2, 0, 1]
+    assert result_df["values"].tolist() == [1, 0, 2, 0, 1]
+
+
+def test_ordinal_encoder_list_fallback_to_pandas():
+    """Test that Arrow transform falls back to pandas for list columns."""
+    # This test verifies the fallback behavior when Arrow encounters list columns
+    col_d = [["warm", "cold"], ["hot"], ["warm", "hot", "cold"]]
+    in_df = pd.DataFrame({"D": col_d})
+
+    encoder = OrdinalEncoder(["D"], encode_lists=True)
+    # For list columns with fallback, we need pandas-format stats
+    encoder.stats_ = {"unique_values(D)": {"cold": 0, "hot": 1, "warm": 2}}
+    encoder._fitted = True
+
+    # Create Arrow table with list column
+    table = pa.Table.from_pandas(in_df)
+
+    # Verify column is detected as list type
+    assert pa.types.is_list(table.schema.field("D").type)
+
+    # Transform should fall back to pandas and work correctly
+    result_table = encoder._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Verify encoding: cold=0, hot=1, warm=2
+    expected = [[2, 0], [1], [2, 1, 0]]
+    result_lists = [list(arr) for arr in result_df["D"]]
+    assert result_lists == expected
+
+
 def test_ordinal_encoder():
     """Tests basic OrdinalEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
@@ -66,11 +432,16 @@ def test_ordinal_encoder():
 
     # Fit data.
     encoder.fit(ds)
-    assert encoder.stats_ == {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-        "unique_values(C)": {1: 0, 5: 1, 10: 2},
-        "unique_values(D)": {"cold": 0, "hot": 1, "warm": 2},
-    }
+    # Stats may be in Arrow tuple format or pandas dict format depending on
+    # preferred_batch_format. Use helper to verify regardless of format.
+    _assert_stats_equal(
+        encoder.stats_,
+        {
+            "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
+            "unique_values(C)": {1: 0, 5: 1, 10: 2},
+            "unique_values(D)": {"cold": 0, "hot": 1, "warm": 2},
+        },
+    )
 
     # Transform data.
     transformed = encoder.transform(ds)
@@ -89,7 +460,7 @@ def test_ordinal_encoder():
         }
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -115,7 +486,7 @@ def test_ordinal_encoder():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # append mode
     with pytest.raises(ValueError):
@@ -189,14 +560,18 @@ def test_ordinal_encoder_no_encode_list():
 
     # Fit data.
     encoder.fit(ds)
-    assert encoder.stats_["unique_values(B)"] == {"cold": 0, "hot": 1, "warm": 2}
-    assert encoder.stats_["unique_values(C)"] == {1: 0, 5: 1, 10: 2}
-    hash_dict = encoder.stats_["unique_values(C)"]
+    # Stats may be in Arrow tuple format or pandas dict format
+    assert _stats_to_dict(encoder.stats_["unique_values(B)"]) == {
+        "cold": 0,
+        "hot": 1,
+        "warm": 2,
+    }
+    assert _stats_to_dict(encoder.stats_["unique_values(C)"]) == {1: 0, 5: 1, 10: 2}
+    hash_dict = _stats_to_dict(encoder.stats_["unique_values(C)"])
     assert len(set(hash_dict.keys())) == len(set(hash_dict.values())) == len(hash_dict)
     assert max(hash_dict.values()) == len(hash_dict) - 1
 
     # Transform data.
-    print("transform")
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
@@ -440,7 +815,7 @@ def test_multi_hot_encoder():
         }
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -467,7 +842,7 @@ def test_multi_hot_encoder():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # append mode
     with pytest.raises(ValueError):
@@ -498,7 +873,8 @@ def test_multi_hot_encoder():
             "D_multihot_encoded": pred_processed_col_d,
         }
     )
-    assert pred_out_df.equals(pred_expected_df)
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # Test null behavior.
     null_col = [1, None]

@@ -105,7 +105,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
+        /*health_check_rpc_latency_ms_histogram=*/
+        fake_health_check_rpc_latency_ms_histogram_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -193,7 +196,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
+        /*health_check_rpc_latency_ms_histogram=*/
+        fake_health_check_rpc_latency_ms_histogram_,
     };
 
     gcs_server_.reset(
@@ -233,7 +239,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToAllJobs(
-      const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
+      const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncSubscribeAll(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -269,7 +275,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool SubscribeActor(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
       promise.set_value(status.ok());
@@ -423,7 +429,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -484,7 +490,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
+  observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());

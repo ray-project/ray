@@ -6,6 +6,7 @@ import math
 import random
 import threading
 import time
+import typing
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -27,7 +28,9 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    env_integer,
+)
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -44,7 +47,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    _create_sub_pb,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
@@ -68,6 +70,9 @@ from ray.data.context import (
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -382,34 +387,6 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
         assert self.shuffle_name is not None, "shuffle_name should not be None"
         assert self.reduce_name is not None, "reduce_name should not be None"
 
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Display all sub progress bars in the termainl, and return the number of bars."""
-        self._validate_sub_progress_bar_names()
-
-        # shuffle
-        progress_bars_created = 0
-        self.shuffle_bar = None
-        self.shuffle_bar, position = _create_sub_pb(
-            self.shuffle_name, self.num_output_rows_total(), position
-        )
-        progress_bars_created += 1
-        self.shuffle_metrics = OpRuntimeMetrics(self)
-
-        # reduce
-        self.reduce_bar = None
-        self.reduce_bar, position = _create_sub_pb(
-            self.reduce_name, self.num_output_rows_total(), position
-        )
-        progress_bars_created += 1
-        self.reduce_metrics = OpRuntimeMetrics(self)
-
-        return progress_bars_created
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        self.shuffle_bar.close()
-        self.reduce_bar.close()
-
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         self._validate_sub_progress_bar_names()
 
@@ -423,9 +400,7 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
 
         return [self.shuffle_name, self.reduce_name]
 
-    def set_sub_progress_bar(self, name, pg):
-        # No type-hints due to circular imports. `name` should be a `str`
-        # and `pg` should be a `SubProgressBar`
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self.shuffle_name is not None and self.shuffle_name == name:
             self.shuffle_bar = pg
         elif self.reduce_name is not None and self.reduce_name == name:
@@ -1025,12 +1000,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             gpu=0,
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
-        return self._is_finalized() and super().completed()
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
+        return self._is_finalized() and super().has_completed()
 
     def _is_finalized(self):
         return len(self._pending_finalization_partition_ids) == 0
@@ -1181,8 +1153,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - No more than 4 CPUs per aggregator
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
-
-        target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
+        target_num_cpus = min(
+            cap,
+            estimated_aggregator_memory_required / (4 * GiB),
+        )
 
         # Round resource to 2d decimal point (for readability)
         return round(target_num_cpus, 2)
@@ -1203,6 +1177,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
+    # Add 30% buffer to account for data skew
+    SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR = 1.3
+
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -1247,18 +1224,22 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        max_partitions_for_aggregator = math.ceil(
+            num_partitions / num_aggregators
+        )  # Max number of partitions that a single aggregator might handle
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
+        )  # Estimated byte size of a single partition
+
+        # Inputs (object store) - memory for receiving shuffled partitions
+        aggregator_shuffle_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
 
-        # Estimate of object store memory required to accommodate all partitions
-        # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            estimated_dataset_bytes / num_aggregators
+        # Output (object store) - memory for output partitions
+        output_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
-        # Estimate of memory required to accommodate single partition as an output
-        # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
@@ -1267,7 +1248,10 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             # Output (object store)
             output_object_store_memory_required
         )
-
+        total_with_skew = math.ceil(
+            aggregator_total_memory_required
+            * cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR
+        )
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
@@ -1275,10 +1259,12 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
             f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
             f"output={output_object_store_memory_required / MiB:.1f}MiB, "
-            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"shuffle_aggregator_memory_estimate_skew_factor={cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR}, "
+            f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
-        return aggregator_total_memory_required
+        return total_with_skew
 
 
 @dataclass

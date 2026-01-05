@@ -54,30 +54,17 @@ hedron_compile_commands_setup()
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python3_9",
-    python_version = "3.9",
-    register_toolchains = False,
-)
-
-python_register_toolchains(
     name = "python3_10",
     python_version = "3.10",
     register_toolchains = False,
 )
 
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
 
 load("@rules_python//python:pip.bzl", "pip_parse")
-
-pip_parse(
-    name = "py_deps_buildkite",
-    python_interpreter_target = python39,
-    requirements_lock = "//release:requirements_buildkite.txt",
-)
 
 # For CI scripts use only; not for ray testing.
 pip_parse(
@@ -86,17 +73,14 @@ pip_parse(
     requirements_lock = "//release:requirements_py310.txt",
 )
 
-load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
 load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")
 
-install_py_deps_buildkite()
 install_py_deps_py310()
 
-register_toolchains("//bazel:py39_toolchain")
+register_toolchains("//bazel:py310_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//bazel:py39_platform",
     "//bazel:py310_platform",
 )
 

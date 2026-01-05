@@ -60,13 +60,11 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
         generator_backpressure_num_objects);
   }
 
-  auto tensor_transport = rpc::TensorTransport::OBJECT_STORE;
   if (enable_tensor_transport) {
     // Currently, only actors support transferring tensors out-of-band.
     task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-    tensor_transport = rpc::TensorTransport::NCCL;
+    task.GetMutableMessage().set_tensor_transport("some direct transport");
   }
-  task.GetMutableMessage().set_tensor_transport(tensor_transport);
 
   return task;
 }
@@ -136,6 +134,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
       (override));
 
   MOCK_METHOD(std::string, GetSessionName, (), (const, override));
+
+  MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -792,7 +792,7 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       TaskID::Nil(),
       "");
   builder.SetActorTaskSpec(
-      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
+      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0, std::nullopt);
   TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -2807,7 +2807,7 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   ObjectID gpu_obj_ref = ObjectID::FromRandom();
   auto *arg = spec.GetMutableMessage().add_args();
   arg->set_is_inlined(false);
-  arg->set_tensor_transport(rpc::TensorTransport::NCCL);
+  arg->set_tensor_transport("random transport");
   arg->mutable_object_ref()->set_object_id(gpu_obj_ref.Binary());
 
   // `gpu_obj_ref` should have a local reference when the sender actor
