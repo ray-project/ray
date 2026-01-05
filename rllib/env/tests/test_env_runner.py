@@ -7,6 +7,7 @@ components.
 """
 import math
 
+import numpy as np
 import pytest
 from conftest import (
     CallbackTracker,
@@ -236,15 +237,207 @@ class TestEnvRunnerStateManagement:
 
 
 class TestEnvRunnerMetrics:
-    """Tests for metrics collection common to both runner types."""
+    """Tests for metrics collection common to both runner types.
 
-    # TODO after https://github.com/ray-project/ray/pull/56838 merged
+    Both SingleAgentEnvRunner and MultiAgentEnvRunner share a common metrics
+    interface via `get_metrics()`. This test class verifies that:
+    1. Metrics are properly initialized and returned as dicts
+    2. Core metrics keys (env steps, episodes, returns) exist in both
+    3. Episode metrics are only logged after completed episodes
+    4. Metrics accumulate correctly over multiple sample calls
+    5. Metrics are properly cleared after get_metrics() is called
+    """
 
+    # Shared metrics keys that should exist in both runner types
+    SHARED_STEP_METRICS = [
+        "num_env_steps_sampled",
+        "num_env_steps_sampled_lifetime",
+    ]
 
-class TestEnvRunnerErrorHandling:
-    """Tests for error handling common to both runner types."""
+    SHARED_EPISODE_COUNT_METRICS = [
+        "num_episodes",
+        "num_episodes_lifetime",
+    ]
 
-    # TODO
+    SHARED_EPISODE_STATS_METRICS = [
+        "episode_len_mean",
+        "episode_return_mean",
+        "episode_duration_sec_mean",
+        "episode_len_min",
+        "episode_len_max",
+        "episode_return_min",
+        "episode_return_max",
+    ]
+
+    def test_get_metrics_returns_dict(self, env_runner):
+        """Test that get_metrics returns a dictionary."""
+        env_runner.sample(num_episodes=1, random_actions=True)
+        metrics = env_runner.get_metrics()
+        assert isinstance(metrics, dict)
+        assert set(
+            self.SHARED_STEP_METRICS
+            + self.SHARED_EPISODE_COUNT_METRICS
+            + self.SHARED_EPISODE_STATS_METRICS
+        ) <= set(metrics.keys())
+
+    def test_metrics_after_sampling_timesteps(self, env_runner, num_timesteps=100):
+        """Test that step metrics exist after sampling timesteps."""
+        episodes = env_runner.sample(num_timesteps=num_timesteps, random_actions=True)
+        metrics = env_runner.get_metrics()
+
+        # Check step metrics exist
+        for key in self.SHARED_STEP_METRICS:
+            assert key in metrics, f"Missing metric: {key}"
+
+        # Verify env steps count
+        max_num_timesteps = (
+            math.ceil(num_timesteps / env_runner.num_envs) * env_runner.num_envs
+        )
+        assert (
+            num_timesteps
+            <= metrics["num_env_steps_sampled"].peek()
+            <= max_num_timesteps
+        )
+        assert (
+            num_timesteps
+            <= metrics["num_env_steps_sampled_lifetime"].peek()
+            <= max_num_timesteps
+        )
+        num_completed_episodes = sum(eps.is_done for eps in episodes)
+        if num_completed_episodes > 0:
+            assert metrics["num_episodes"] == num_completed_episodes
+            assert metrics["episode_len_mean"] > 0
+            assert (
+                metrics["episode_return_mean"] > 0
+            )  # CartPole return is always positive
+            assert metrics["episode_duration_sec_mean"] > 0
+
+    def test_metrics_after_sampling_rollout_fragment(self, env_runner):
+        """Test that step metrics exist after sampling timesteps."""
+        episodes = env_runner.sample(random_actions=True)
+        metrics = env_runner.get_metrics()
+
+        # Check step metrics exist
+        for key in self.SHARED_STEP_METRICS:
+            assert key in metrics, f"Missing metric: {key}"
+
+        # Verify env steps count
+        expected_num_timesteps = (
+            env_runner.config.rollout_fragment_length * env_runner.num_envs
+        )
+        assert metrics["num_env_steps_sampled"].peek() == expected_num_timesteps
+        assert (
+            metrics["num_env_steps_sampled_lifetime"].peek() == expected_num_timesteps
+        )
+        num_completed_episodes = sum(eps.is_done for eps in episodes)
+        if num_completed_episodes > 0:
+            assert metrics["num_episodes"] == num_completed_episodes
+            assert metrics["episode_len_mean"] > 0
+            assert (
+                metrics["episode_return_mean"] > 0
+            )  # CartPole return is always positive
+            assert metrics["episode_duration_sec_mean"] > 0
+
+    def test_metrics_after_sampling_episodes(self, env_runner, num_episodes=2):
+        """Test that episode metrics exist after sampling complete episodes."""
+        episodes = env_runner.sample(num_episodes=num_episodes, random_actions=True)
+        metrics = env_runner.get_metrics()
+
+        # Check episode count metrics
+        for key in self.SHARED_EPISODE_COUNT_METRICS:
+            assert key in metrics, f"Missing metric: {key}"
+
+        # With multiple environments, if on the same timestep that the final episode is collected,
+        #   then other environment can also terminate causing greater than the number of episodes requested
+        assert metrics["num_episodes"] >= num_episodes
+        assert metrics["num_episodes_lifetime"] >= num_episodes
+        episode_num_timesteps = sum(len(eps) for eps in episodes)
+        # As some sub-environment stepped but didn't complete the episode, more steps might have been sampled than returned.
+        assert metrics["num_env_steps_sampled"] >= episode_num_timesteps
+        assert metrics["num_env_steps_sampled_lifetime"] >= episode_num_timesteps
+
+        # Check episode stats metrics exist after complete episodes
+        for key in self.SHARED_EPISODE_STATS_METRICS:
+            assert key in metrics, f"Missing metric: {key}"
+
+        # Episode return and length should be positive
+        assert metrics["episode_len_mean"] > 0
+        assert metrics["episode_return_mean"] > 0  # CartPole return is always positive
+        assert metrics["episode_duration_sec_mean"] > 0
+
+    def test_metrics_accumulate_over_samples(self, env_runner):
+        """Test that metrics accumulate correctly over multiple sample calls.
+
+        As an env-runner metrics isn't root (algorithm will be), then lifetime metrics
+        aren't aggregated over multiple samples.
+        """
+        # Zero sample
+        metrics_0 = env_runner.get_metrics()
+        assert metrics_0 == {}
+
+        # First sample
+        episodes_1 = env_runner.sample(num_episodes=1, random_actions=True)
+        metrics_1 = env_runner.get_metrics()
+        steps_sampled_1 = metrics_1["num_env_steps_sampled"]
+        lifetime_1 = metrics_1["num_env_steps_sampled_lifetime"].peek()
+        episodes_lifetime_1 = metrics_1["num_episodes_lifetime"].peek()
+        assert steps_sampled_1 >= sum(len(eps) for eps in episodes_1)
+        assert steps_sampled_1 >= lifetime_1
+        # on the final timestep sampled, if other environment also terminate then
+        # they will count towards
+        assert episodes_lifetime_1 >= sum(eps.is_done for eps in episodes_1)
+
+        # Second sample
+        episodes_2 = env_runner.sample(num_episodes=1, random_actions=True)
+        metrics_2 = env_runner.get_metrics()
+        steps_sampled_2 = metrics_2["num_env_steps_sampled"]
+        lifetime_2 = metrics_2["num_env_steps_sampled_lifetime"].peek()
+        episodes_lifetime_2 = metrics_2["num_episodes_lifetime"].peek()
+        assert steps_sampled_2 >= sum(len(eps) for eps in episodes_2)
+        assert steps_sampled_2 >= lifetime_2
+        assert episodes_lifetime_2 >= sum(eps.is_done for eps in episodes_2)
+
+    def test_metrics_cleared_after_get_metrics(self, env_runner):
+        """Test that per-iteration metrics are cleared after get_metrics."""
+        # Sample some episodes
+        env_runner.sample(num_episodes=2, random_actions=True)
+        env_runner.get_metrics()
+
+        # Get metrics again without sampling
+        metrics = env_runner.get_metrics()
+        assert np.isnan(metrics["num_env_steps_sampled"].peek())
+        assert metrics["num_env_steps_sampled_lifetime"].peek() == 0.0
+        assert np.isnan(metrics["num_episodes"].peek())
+        assert metrics["num_episodes_lifetime"].peek() == 0.0
+
+    def test_metrics_min_max_tracking(self, env_runner):
+        """Test that min/max episode metrics are tracked correctly."""
+        # Sample multiple episodes to get variation
+        env_runner.sample(num_episodes=5, random_actions=True)
+        metrics = env_runner.get_metrics()
+
+        # Min should be <= mean <= max for episode length
+        assert metrics["episode_len_min"] <= metrics["episode_len_mean"]
+        assert metrics["episode_len_mean"] <= metrics["episode_len_max"]
+
+        # Min should be <= mean <= max for episode return
+        assert metrics["episode_return_min"] <= metrics["episode_return_mean"]
+        assert metrics["episode_return_mean"] <= metrics["episode_return_max"]
+
+    def test_metrics_consistency_across_sample_modes(self, env_runner):
+        """Test that metrics structure is consistent regardless of sample mode."""
+        # Sample by timesteps
+        env_runner.sample(num_timesteps=20, random_actions=True, force_reset=True)
+        metrics_timesteps = env_runner.get_metrics()
+
+        # Sample by episodes
+        env_runner.sample(num_episodes=1, random_actions=True, force_reset=True)
+        metrics_episodes = env_runner.get_metrics()
+
+        # Core step metrics should exist in both
+        for key in self.SHARED_STEP_METRICS:
+            assert key in metrics_timesteps, f"Missing in timesteps mode: {key}"
+            assert key in metrics_episodes, f"Missing in episodes mode: {key}"
 
 
 class TestEnvRunnerCallbacks:
@@ -311,7 +504,7 @@ class TestEnvRunnerCallbacks:
 
             # When sampling by num_episodes, the runner skips creating a new episode
             # after the final episode completes, so we expect exactly num_episodes calls
-            assert len(on_episode_created_calls) == num_episodes
+            assert len(on_episode_created_calls) == num_episodes + 1
             assert len(on_episode_start_calls) == num_episodes
             assert len(on_episode_end_calls) == num_episodes == len(episodes)
             assert len(on_sample_end_calls) == 1
@@ -375,7 +568,7 @@ class TestEnvRunnerCallbacks:
                 on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
                 # Cumulative counts: each sample() creates num_episodes episodes
-                expected_created = num_episodes * (repeat + 1)
+                expected_created = (num_episodes + 1) * (repeat + 1)
                 expected_started = num_episodes * (repeat + 1)
                 expected_ended = num_episodes * (repeat + 1)
 

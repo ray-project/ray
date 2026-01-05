@@ -1,6 +1,7 @@
 """Shared fixtures for env runner tests."""
 from typing import Any, Optional
 
+import gymnasium
 import pytest
 
 import ray
@@ -23,20 +24,79 @@ def ray_init():
     ray.shutdown()
 
 
-@pytest.fixture(params=["single_agent", "multi_agent"])
+# Parameter values for test generation
+RUNNER_TYPES = ["single_agent", "multi_agent"]
+NUM_ENVS_VALUES = [1, 3, 8]
+GYM_VECTORIZE_MODES = [
+    gymnasium.VectorizeMode.SYNC,
+    gymnasium.VectorizeMode.VECTOR_ENTRY_POINT,
+]
+
+
+def pytest_generate_tests(metafunc):
+    """Generate test parameter combinations for env_runner_config, avoiding redundant multi_agent vectorize modes."""
+    fixtures = metafunc.fixturenames
+
+    # Check if we need the full env_runner_config parameterization
+    if "env_runner_config" in fixtures or "env_runner" in fixtures:
+        params = []
+
+        # Single-agent: test all vectorize modes
+        for num_envs in NUM_ENVS_VALUES:
+            for vec_mode in GYM_VECTORIZE_MODES:
+                params.append(
+                    pytest.param(
+                        "single_agent",
+                        num_envs,
+                        vec_mode,
+                        id=f"single_agent-envs-{num_envs}-vec-mode-{vec_mode.value}",
+                    )
+                )
+
+        # Multi-agent: vectorize mode not applicable, only test num_envs
+        for num_envs in NUM_ENVS_VALUES:
+            params.append(
+                pytest.param(
+                    "multi_agent",
+                    num_envs,
+                    None,
+                    id=f"multi_agent-envs-{num_envs}",
+                )
+            )
+
+        metafunc.parametrize(
+            "runner_type,num_envs_per_env_runner,gym_env_vectorize_mode", params
+        )
+
+    # For fixtures that only need runner_type (not env_runner_config)
+    elif "runner_type" in fixtures:
+        metafunc.parametrize("runner_type", RUNNER_TYPES)
+
+        # Also handle num_envs_per_env_runner if present
+        if "num_envs_per_env_runner" in fixtures:
+            metafunc.parametrize("num_envs_per_env_runner", NUM_ENVS_VALUES)
+
+
+@pytest.fixture
 def runner_type(request):
-    """Parameterized fixture for runner type."""
-    return request.param
-
-
-@pytest.fixture(params=[1, 3])
-def num_envs_per_env_runner(request):
-    """Parameterized fixture for number of environments per runner."""
+    """Fixture for runner type - value provided by pytest_generate_tests."""
     return request.param
 
 
 @pytest.fixture
-def env_runner_config(runner_type, num_envs_per_env_runner):
+def num_envs_per_env_runner(request):
+    """Fixture for number of environments per runner - value provided by pytest_generate_tests."""
+    return request.param
+
+
+@pytest.fixture
+def gym_env_vectorize_mode(request):
+    """Fixture for gym vectorize mode - value provided by pytest_generate_tests."""
+    return request.param
+
+
+@pytest.fixture
+def env_runner_config(runner_type, num_envs_per_env_runner, gym_env_vectorize_mode):
     """Build appropriate config for each runner type."""
     if runner_type == "single_agent":
         return (
@@ -45,9 +105,11 @@ def env_runner_config(runner_type, num_envs_per_env_runner):
             .env_runners(
                 num_envs_per_env_runner=num_envs_per_env_runner,
                 rollout_fragment_length=10,
+                gym_env_vectorize_mode=gym_env_vectorize_mode,
             )
         )
     elif runner_type == "multi_agent":
+        # MultiAgentCartPole for a parallel environment to ensure a fair comparison
         return (
             PPOConfig()
             .environment(MultiAgentCartPole, env_config={"num_agents": 2})
