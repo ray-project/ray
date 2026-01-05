@@ -720,7 +720,10 @@ class TestReservationOpResourceAllocator:
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
         assert allocator._op_budgets[o3].gpu == 6
 
-    def test_gpu_not_reserved_for_non_gpu_operators(self, restore_data_context):
+    @pytest.mark.parametrize("max_actors", [4, float("inf")])
+    def test_gpu_not_reserved_for_non_gpu_operators(
+        self, restore_data_context, max_actors
+    ):
         """Test that GPU budget is not reserved for operators that don't use GPUs.
 
         This tests a realistic inference pipeline DAG:
@@ -743,23 +746,27 @@ class TestReservationOpResourceAllocator:
             )
         )
 
-        # Infer1: GPU operator with max_actors=4
+        # Infer1: GPU operator
         infer1_op = mock_map_op(read_op, ray_remote_args={"num_gpus": 1}, name="Infer1")
         infer1_op.min_max_resource_requirements = MagicMock(
             return_value=(
                 ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
-                ExecutionResources(cpu=0, gpu=4, object_store_memory=float("inf")),
+                ExecutionResources(
+                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
+                ),
             )
         )
 
-        # Infer2: GPU operator with max_actors=4
+        # Infer2: GPU operator
         infer2_op = mock_map_op(
             infer1_op, ray_remote_args={"num_gpus": 1}, name="Infer2"
         )
         infer2_op.min_max_resource_requirements = MagicMock(
             return_value=(
                 ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
-                ExecutionResources(cpu=0, gpu=4, object_store_memory=float("inf")),
+                ExecutionResources(
+                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
+                ),
             )
         )
 
