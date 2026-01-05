@@ -220,10 +220,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
   RAY_CHECK_GE(assigned_port, 0);
 
+  // Create EventAggregatorClient. Use deferred connection if port is invalid
+  // (minimal install writes -1 to indicate metrics agent not available).
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client;
+  if (options.metrics_agent_port > 0) {
+    event_aggregator_client = std::make_unique<rpc::EventAggregatorClientImpl>(
+        options.metrics_agent_port, *client_call_manager_);
+  } else {
+    event_aggregator_client =
+        std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  }
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager_),
+      std::move(event_aggregator_client),
       options.session_name,
       local_node_id);
 
@@ -831,18 +840,25 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
     // Initialize metrics agent client.
-    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
-    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-      if (server_status.ok()) {
-        stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
-        stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-      } else {
-        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
-                          "Metrics will not be exported. "
-                       << "Exporter agent status: " << server_status.ToString();
-      }
-    });
+    // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
+    if (options_.metrics_agent_port > 0) {
+      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
+      metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+        if (server_status.ok()) {
+          stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+          stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to establish connection to the metrics exporter agent. "
+                 "Metrics will not be exported. "
+              << "Exporter agent status: " << server_status.ToString();
+        }
+      });
+    } else {
+      RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
+                       "with dashboard support: `pip install 'ray[default]'`.";
+    }
   }
 }
 
