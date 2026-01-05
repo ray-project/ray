@@ -314,24 +314,32 @@ class DPGroupManager:
     async def get_dp_master_info(
         self,
         group_index: int,
+        max_retries: int = 3,
+        wait_timeout: float = 30.0,
     ) -> Tuple[str, int]:
         """Get the master info for a DP group.
 
         Blocks until the master info is available (set by dp_rank=0).
         The group must already exist (i.e., register() must be called first).
 
-        The while True loop handles a race condition: if master_info is reset
+        The bounded retry loop handles a race condition: if master_info is reset
         (due to group failure) between event.wait() returning and acquiring
         the lock, we need to wait again for the new master to set its info.
-        The loop ensures we always return valid master_info.
+        The loop ensures we always return valid master_info, with a bounded
+        number of retries to avoid indefinite hanging.
 
         Args:
             group_index: The index of the DP group.
+            max_retries: Maximum number of retry attempts.
+            wait_timeout: Timeout in seconds for each event.wait() call.
 
         Returns:
             Tuple of (dp_address, dp_rpc_port).
+
+        Raises:
+            RuntimeError: If master info is not available after max_retries.
         """
-        while True:
+        for attempt in range(max_retries):
             async with self._group_info_lock:
                 assert group_index in self._group_info, (
                     f"Group {group_index} does not exist. "
@@ -346,5 +354,16 @@ class DPGroupManager:
 
                 event = self._master_info_events[group_index]
 
-            # Otherwise wait
-            await event.wait()
+            # Wait with timeout to avoid indefinite blocking
+            try:
+                await asyncio.wait_for(event.wait(), timeout=wait_timeout)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Timeout waiting for master info for group {group_index}, "
+                    f"attempt {attempt + 1}/{max_retries}"
+                )
+
+        raise RuntimeError(
+            f"Failed to get master info for group {group_index} "
+            f"after {max_retries} attempts"
+        )
