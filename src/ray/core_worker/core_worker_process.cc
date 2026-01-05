@@ -164,12 +164,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #endif
   }
 
-  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager_),
-      options.session_name);
-
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
 #if defined(__APPLE__)
@@ -216,7 +210,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.language,
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
-                                                    options.startup_token,
                                                     &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
@@ -226,6 +219,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     QuickExit();
   }
   RAY_CHECK_GE(assigned_port, 0);
+
+  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
+      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                       *client_call_manager_),
+      options.session_name,
+      local_node_id);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -695,7 +695,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       worker_id_(options.worker_type == WorkerType::DRIVER
                      ? ComputeDriverIdFromJob(options_.job_id)
-                     : WorkerID::FromRandom()),
+                     : options_.worker_id),
       io_work_(io_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
