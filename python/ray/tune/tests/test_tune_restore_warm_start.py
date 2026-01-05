@@ -287,11 +287,18 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
+        # Handle different Ax versions with different import paths
+        try:
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+            from ax.modelbridge.registry import Models
+        except ModuleNotFoundError:
+            # Newer versions of Ax reorganized the imports
+            from ax.modelbridge.generation_node import GenerationStep
+            from ax.modelbridge.generation_strategy import GenerationStrategy
+            from ax.modelbridge.registry import Models
 
         # set generation strategy to sobol to ensure reproductibility
         try:
@@ -318,7 +325,18 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             )
 
         client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(parameters=space, objective_name="loss", minimize=True)
+        # Support both old and new Ax API for create_experiment
+        try:
+            from ax.service.utils.instantiation import ObjectiveProperties
+
+            client.create_experiment(
+                parameters=space,
+                objectives={"loss": ObjectiveProperties(minimize=True)},
+            )
+        except TypeError:
+            client.create_experiment(
+                parameters=space, objective_name="loss", minimize=True
+            )
 
         def cost(space):
             tune.report(

@@ -754,6 +754,8 @@ class SearchSpaceTest(unittest.TestCase):
         ignore = [
             "func",
             "qloguniform",  # There seems to be an issue here
+            "randn",  # Unbounded normal distributions not supported
+            "qrandn",  # Unbounded normal distributions not supported
         ]
 
         config = self.config.copy()

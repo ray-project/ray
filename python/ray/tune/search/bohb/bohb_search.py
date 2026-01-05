@@ -313,6 +313,13 @@ class TuneBOHB(Searcher):
                         par, lower=domain.lower, upper=domain.upper, log=False
                     )
                 elif isinstance(sampler, Normal):
+                    if domain.lower is None or domain.upper is None:
+                        raise ValueError(
+                            f"TuneBOHB does not support unbounded normal "
+                            f"distributions. Please specify bounds for "
+                            f"parameter '{par}' using tune.randn(...).clip(lower, upper) "
+                            f"or Float(lower, upper).normal(mean, sd)."
+                        )
                     return ConfigSpace.hyperparameters.NormalFloatHyperparameter(
                         par,
                         mu=sampler.mean,
