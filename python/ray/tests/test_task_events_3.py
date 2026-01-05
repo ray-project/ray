@@ -263,7 +263,7 @@ def test_enable_task_events_nested_actor(shutdown_only):
     }
 
     def _verify():
-        task_events = {(t.actor_id, t.name) for t in list_tasks()}
+        task_events = {(t.actor_id, t.name) for t in list_tasks(timeout=5)}
         assert task_events == expected_task_events
         return True
 
