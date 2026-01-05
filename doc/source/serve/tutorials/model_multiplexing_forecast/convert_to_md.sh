@@ -12,12 +12,12 @@ md_file="$md_dir/README.md"
 # Convert notebook to Markdown
 jupyter nbconvert "${nb}.ipynb" --to markdown --output "README.md" --output-dir "$md_dir"
 
-# Fix code blocks: change ```python blocks with ! commands to ```bash without !
+# Fix code blocks: change ```python blocks with ! commands to ```bash
 # This prevents Sphinx lexing warnings
 sed -i.bak '/^```python$/,/^```$/{
     /^```python$/{
         N
-        s/^```python\n!\(serve.*\)$/```bash\n\1/
+        s/^```python\n!\(serve.*\)$/```bash\n!\1/
     }
 }' "$md_file" && rm "${md_file}.bak"
 
