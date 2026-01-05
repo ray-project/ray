@@ -66,12 +66,12 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
 
     // Create and start server
     // Pass server token explicitly for testing scenarios with different tokens
-    std::optional<AuthenticationToken> server_auth_token;
+    std::shared_ptr<const AuthenticationToken> server_auth_token;
     if (!server_token.empty()) {
-      server_auth_token = AuthenticationToken(server_token);
+      server_auth_token = std::make_shared<AuthenticationToken>(server_token);
     } else {
       // Explicitly set empty token (no auth required)
-      server_auth_token = AuthenticationToken("");
+      server_auth_token = std::make_shared<AuthenticationToken>("");
     }
     grpc_server_.reset(new GrpcServer("test", 0, true, 1, 7200000, server_auth_token));
     grpc_server_->RegisterService(

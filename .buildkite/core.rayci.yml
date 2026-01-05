@@ -282,7 +282,7 @@ steps:
         --test-env=RAY_AUTH_MODE=token
         --test-env=RAY_AUTH_TOKEN=ci_test_token_000000000000000000000000000000000000000000000000
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - corebuild-multipy
       - forge
 
@@ -510,7 +510,7 @@ steps:
         --test-env=RAY_AUTH_MODE=token
         --test-env=RAY_AUTH_TOKEN=ci_test_token_000000000000000000000000000000000000000000000000
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - corebuild-multipy
@@ -534,7 +534,7 @@ steps:
         --test-env=RAY_AUTH_MODE=token
         --test-env=RAY_AUTH_TOKEN=ci_test_token_000000000000000000000000000000000000000000000000
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - corebuild-multipy

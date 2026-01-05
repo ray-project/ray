@@ -905,6 +905,21 @@ class ProxyStatus(str, Enum):
     # so this status won't show up on the dashboard.
     DRAINED = "DRAINED"
 
+    def to_numeric(self) -> int:
+        """Convert status to a numeric value for metrics.
+
+        Returns:
+            1 for STARTING, 2 for HEALTHY, 3 for UNHEALTHY,
+            4 for DRAINING, 5 for DRAINED. (0 is reserved for UNKNOWN)
+        """
+        return {
+            ProxyStatus.STARTING: 1,
+            ProxyStatus.HEALTHY: 2,
+            ProxyStatus.UNHEALTHY: 3,
+            ProxyStatus.DRAINING: 4,
+            ProxyStatus.DRAINED: 5,
+        }[self]
+
 
 @PublicAPI(stability="alpha")
 @dataclass
@@ -1564,13 +1579,6 @@ class TaskProcessorAdapter(ABC):
 
         Args:
             timeout: Maximum time in seconds to wait for the consumer to stop.
-        """
-        pass
-
-    @abstractmethod
-    def shutdown(self):
-        """
-        Shutdown the task processor and clean up resources.
         """
         pass
 
