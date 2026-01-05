@@ -236,6 +236,8 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        # Flag to log deprecation warning only once
+        self._guided_decoding_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -378,11 +380,31 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            if "guided_decoding" in sampling_params:
-                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **maybe_convert_ndarray_to_list(
-                        sampling_params.pop("guided_decoding")
+            structured_outputs_config = None
+            # Handle new structured_outputs parameter (preferred)
+            if "structured_outputs" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("structured_outputs")
+                )
+                # Remove guided_decoding if present to avoid passing it to SamplingParams
+                sampling_params.pop("guided_decoding", None)
+            # Handle legacy guided_decoding parameter for backward compatibility
+            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
+            elif "guided_decoding" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("guided_decoding")
+                )
+                # Log deprecation warning only once to avoid log spam
+                if not self._guided_decoding_warning_logged:
+                    logger.warning(
+                        "The 'guided_decoding' parameter is deprecated. "
+                        "Please use 'structured_outputs' in sampling_params instead."
                     )
+                    self._guided_decoding_warning_logged = True
+
+            if structured_outputs_config:
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                    **structured_outputs_config
                 )
             else:
                 structured_outputs = None

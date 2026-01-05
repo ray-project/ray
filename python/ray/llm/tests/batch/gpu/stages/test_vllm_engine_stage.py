@@ -495,9 +495,12 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
-    """Test the JSON output with xgrammar backend. We have to use
-    a real checkpoint as we need to verify the outputs.
+@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
+    """Test the JSON output with xgrammar backend.
+
+    This test verifies both the new structured_outputs API and backward
+    compatibility with the deprecated guided_decoding parameter.
     """
 
     class AnswerModel(BaseModel):
@@ -527,7 +530,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                "guided_decoding": {"json": json_schema},
+                param_key: {"json": json_schema},
             },
         },
     ]
