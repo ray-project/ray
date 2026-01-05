@@ -27,7 +27,7 @@ from ray_release.exception import (
     TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.job_manager import AnyscaleJobManager
+from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import (
     AZURE_CLOUD_STORAGE,
@@ -73,9 +73,9 @@ class AnyscaleJobRunner(CommandRunner):
     ):
         super().__init__(
             cluster_manager=cluster_manager,
-            file_manager=file_manager,
             working_dir=working_dir,
         )
+        self.file_manager = file_manager
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
@@ -394,7 +394,7 @@ class AnyscaleJobRunner(CommandRunner):
             _join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
-    def fetch_artifact(self):
+    def fetch_artifact(self) -> None:
         """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster
         head node.
 
@@ -431,9 +431,3 @@ class AnyscaleJobRunner(CommandRunner):
         return self._fetch_json(
             _join_cloud_storage_paths(self.path_in_bucket, self.output_json),
         )
-
-    def cleanup(self):
-        # We piggy back on s3 retention policy for clean up instead of doing this
-        # ourselves. We find many cases where users want the data to be available
-        # for a short-while for debugging purpose.
-        pass

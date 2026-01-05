@@ -457,10 +457,9 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
 
     Args:
         enabled: Whether this stage is enabled. Defaults to True.
-        model_source: Name or path of the Hugging Face model to use for the
-            multimodal processor. This is required to process multimodal data
-            according to a specific model. If not specified, will use the
-            processor-level model_source.
+        model_config_kwargs: Optional kwargs to pass to the model config.
+            See available model config kwargs at
+            https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig.
         chat_template_content_format: The content format to use for the chat
             template. This is used to format the chat template content according
             to a specific model. Choices are "string" or "openai". Defaults to
@@ -575,8 +574,8 @@ def build_processor(
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
-            can contain a `sampling_params` field which will be used by the
-            engine for row-specific sampling parameters.
+            can contain a `sampling_params` or `pooling_params` field which will be used
+            by the engine for row-specific sampling or pooling parameters respectively.
             Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
