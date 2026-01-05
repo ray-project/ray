@@ -1,19 +1,19 @@
 import unittest
-import numpy as np
 
+import numpy as np
 from gymnasium.spaces import Box, Discrete
 
-from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
-    vtrace_torch,
-    make_time_major,
-)
 from ray.rllib.algorithms.impala.tests.test_vtrace_old_api_stack import (
     _ground_truth_vtrace_calculation,
 )
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    make_time_major,
+    vtrace_torch,
+)
 from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
 
@@ -147,7 +147,8 @@ class TestVtraceRLModule(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -26,23 +26,22 @@
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 
 namespace ray {
 namespace core {
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                                    size_t data_size) {
-  auto metadata = const_cast<uint8_t *>(data);
+namespace {
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
+    const std::string &str) {
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(str.data()));
   auto meta_buffer =
-      std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
+      std::make_shared<ray::LocalMemoryBuffer>(metadata, str.size(), /*copy_data=*/true);
   return meta_buffer;
 }
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
-    const std::string &str) {
-  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
-}
+}  // namespace
 
 TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::vector<std::shared_ptr<RayObject>> results;
@@ -54,7 +53,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
-          nullptr,
+          /*reference_counting_enabled=*/true,
           nullptr,
           nullptr,
           [&](const RayObject &obj) { unhandled_count++; });
@@ -65,8 +64,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   // Check basic put and get.
   ASSERT_TRUE(memory_store->GetIfExists(id1) == nullptr);
-  memory_store->Put(obj1, id1);
-  memory_store->Put(obj2, id2);
+  // Set has_reference to true to ensure the put doesn't get deleted due to no reference.
+  memory_store->Put(obj1, id1, /*has_reference=*/true);
+  memory_store->Put(obj2, id2, /*has_reference=*/true);
   ASSERT_TRUE(memory_store->GetIfExists(id1) != nullptr);
   ASSERT_EQ(unhandled_count, 0);
 
@@ -76,17 +76,17 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   unhandled_count = 0;
 
   // Check delete after get.
-  memory_store->Put(obj1, id1);
-  memory_store->Put(obj1, id2);
-  RAY_UNUSED(memory_store->Get({id1}, 1, 100, context, false, &results));
-  RAY_UNUSED(memory_store->Get({id2}, 1, 100, context, false, &results));
+  memory_store->Put(obj1, id1, /*has_reference=*/true);
+  memory_store->Put(obj1, id2, /*has_reference=*/true);
+  RAY_UNUSED(memory_store->Get({id1}, 1, 100, context, &results));
+  RAY_UNUSED(memory_store->Get({id2}, 1, 100, context, &results));
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 
   // Check delete after async get.
   memory_store->GetAsync({id2}, [](std::shared_ptr<RayObject> obj) {});
-  memory_store->Put(obj1, id1);
-  memory_store->Put(obj2, id2);
+  memory_store->Put(obj1, id1, /*has_reference=*/true);
+  memory_store->Put(obj2, id2, /*has_reference=*/true);
   memory_store->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
@@ -119,9 +119,9 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   auto id2 = ObjectID::FromRandom();
   auto id3 = ObjectID::FromRandom();
 
-  memory_store->Put(obj1, id1);
-  memory_store->Put(obj2, id2);
-  memory_store->Put(obj3, id3);
+  memory_store->Put(obj1, id1, /*has_reference=*/true);
+  memory_store->Put(obj2, id2, /*has_reference=*/true);
+  memory_store->Put(obj3, id3, /*has_reference=*/true);
   memory_store->Delete({id3});
 
   MemoryStoreStats expected_item;
@@ -141,9 +141,9 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   ASSERT_EQ(item.num_local_objects, expected_item2.num_local_objects);
   ASSERT_EQ(item.num_local_objects_bytes, expected_item2.num_local_objects_bytes);
 
-  memory_store->Put(obj1, id1);
-  memory_store->Put(obj2, id2);
-  memory_store->Put(obj3, id3);
+  memory_store->Put(obj1, id1, /*has_reference=*/true);
+  memory_store->Put(obj2, id2, /*has_reference=*/true);
+  memory_store->Put(obj3, id3, /*has_reference=*/true);
   MemoryStoreStats expected_item3;
   fill_expected_memory_stats(expected_item3);
   item = memory_store->GetMemoryStoreStatisticalData();
@@ -195,8 +195,8 @@ TEST(TestMemoryStore, TestObjectAllocator) {
     auto buf = object.GetData();
     mock_buffer_manager.AcquireMemory(buf->Size());
     auto data_factory = [&mock_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
-      auto buf = object.GetData();
-      std::string data(reinterpret_cast<char *>(buf->Data()), buf->Size());
+      auto inner_buf = object.GetData();
+      std::string data(reinterpret_cast<char *>(inner_buf->Data()), inner_buf->Size());
       return std::make_shared<TestBuffer>(mock_buffer_manager, data);
     };
 
@@ -209,7 +209,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-                                              nullptr,
+                                              /*reference_counting_enabled=*/true,
                                               nullptr,
                                               nullptr,
                                               nullptr,
@@ -221,7 +221,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
     std::vector<rpc::ObjectReference> nested_refs;
     auto hello_object =
         std::make_shared<ray::RayObject>(hello_buffer, nullptr, nested_refs, true);
-    memory_store->Put(*hello_object, ObjectID::FromRandom());
+    memory_store->Put(*hello_object, ObjectID::FromRandom(), /*has_reference=*/true);
   }
   ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
 }
@@ -260,10 +260,10 @@ TEST_F(TestMemoryStoreWait, TestWaitNoWaiting) {
   absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
   int num_objects = 2;
 
-  memory_store->Put(memory_store_object, object_ids[0]);
-  memory_store->Put(plasma_store_object, object_ids[1]);
-  memory_store->Put(plasma_store_object, object_ids[2]);
-  memory_store->Put(memory_store_object, object_ids[3]);
+  memory_store->Put(memory_store_object, object_ids[0], /*has_reference=*/true);
+  memory_store->Put(plasma_store_object, object_ids[1], /*has_reference=*/true);
+  memory_store->Put(plasma_store_object, object_ids[2], /*has_reference=*/true);
+  memory_store->Put(memory_store_object, object_ids[3], /*has_reference=*/true);
 
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   const auto status = memory_store->Wait(
@@ -290,8 +290,8 @@ TEST_F(TestMemoryStoreWait, TestWaitWithWaiting) {
   absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
   int num_objects = 4;
 
-  memory_store->Put(memory_store_object, object_ids[0]);
-  memory_store->Put(plasma_store_object, object_ids[1]);
+  memory_store->Put(memory_store_object, object_ids[0], /*has_reference=*/true);
+  memory_store->Put(plasma_store_object, object_ids[1], /*has_reference=*/true);
 
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   auto future = std::async(std::launch::async, [&]() {
@@ -299,9 +299,9 @@ TEST_F(TestMemoryStoreWait, TestWaitWithWaiting) {
         object_ids_set, num_objects, 100, ctx, &ready, &plasma_object_ids);
   });
   ASSERT_EQ(future.wait_for(std::chrono::milliseconds(1)), std::future_status::timeout);
-  memory_store->Put(plasma_store_object, object_ids[2]);
+  memory_store->Put(plasma_store_object, object_ids[2], /*has_reference=*/true);
   ASSERT_EQ(future.wait_for(std::chrono::milliseconds(1)), std::future_status::timeout);
-  memory_store->Put(memory_store_object, object_ids[3]);
+  memory_store->Put(memory_store_object, object_ids[3], /*has_reference=*/true);
 
   const auto status = future.get();
 
@@ -317,7 +317,7 @@ TEST_F(TestMemoryStoreWait, TestWaitTimeout) {
   // object 0 in plasma
   // waits until 10ms timeout for 2 objects
   absl::flat_hash_set<ObjectID> object_ids_set = {ObjectID::FromRandom()};
-  memory_store->Put(plasma_store_object, *object_ids_set.begin());
+  memory_store->Put(plasma_store_object, *object_ids_set.begin(), /*has_reference=*/true);
   int num_objects = 2;
 
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;

@@ -14,20 +14,15 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <limits.h>
-
-#include <chrono>
 #include <cstring>
 #include <msgpack.hpp>
-#include <mutex>
-#include <random>
 #include <string>
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/random.h"
 #include "ray/util/visibility.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -131,12 +126,8 @@ class ActorID : public BaseID<ActorID> {
   static constexpr size_t kUniqueBytesLength = 12;
 
  public:
-  /// Length of `ActorID` in bytes.
   static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
-  /// Size of `ActorID` in bytes.
-  ///
-  /// \return Size of `ActorID` in bytes.
   static constexpr size_t Size() { return kLength; }
 
   /// Creates an `ActorID` by hashing the given information.
@@ -150,22 +141,13 @@ class ActorID : public BaseID<ActorID> {
                     const TaskID &parent_task_id,
                     const size_t parent_task_counter);
 
-  /// Creates a nil ActorID with the given job.
-  ///
-  /// \param job_id The job id to which this actor belongs.
-  ///
-  /// \return The `ActorID` with unique bytes being nil.
   static ActorID NilFromJob(const JobID &job_id);
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static ActorID FromRandom() = delete;
 
-  /// Constructor of `ActorID`.
   ActorID() : BaseID() {}
 
-  /// Get the job id to which this actor belongs.
-  ///
-  /// \return The job id to which this actor belongs.
   JobID JobId() const;
 
   MSGPACK_DEFINE(id_);
@@ -190,18 +172,11 @@ class TaskID : public BaseID<TaskID> {
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static TaskID FromRandom() = delete;
 
-  /// The ID generated for driver task.
   static TaskID ForDriverTask(const JobID &job_id);
 
   /// Generate driver task id for the given job.
   static TaskID FromRandom(const JobID &job_id);
 
-  /// Creates a TaskID for an actor creation task.
-  ///
-  /// \param actor_id The ID of the actor that will be created
-  ///        by this actor creation task.
-  ///
-  /// \return The ID of the actor creation task.
   static TaskID ForActorCreationTask(const ActorID &actor_id);
 
   /// Creates a TaskID for actor task.
@@ -241,17 +216,10 @@ class TaskID : public BaseID<TaskID> {
   /// \return The ID of the n-th execution of the task.
   static TaskID ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number);
 
-  /// Get the id of the actor to which this task belongs.
-  ///
-  /// \return The `ActorID` of the actor which creates this task.
   ActorID ActorId() const;
 
-  /// Returns whether this is the ID of an actor creation task.
   bool IsForActorCreationTask() const;
 
-  /// Get the id of the job to which this task belongs.
-  ///
-  /// \return The `JobID` of the job which creates this task.
   JobID JobId() const;
 
   MSGPACK_DEFINE(id_);
@@ -268,7 +236,6 @@ class ObjectID : public BaseID<ObjectID> {
   /// The maximum number of objects that can be returned or put by a task.
   static constexpr int64_t kMaxObjectIndex = ((int64_t)1 << kObjectIdIndexSize) - 1;
 
-  /// The length of ObjectID in bytes.
   static constexpr size_t kLength = kIndexBytesLength + TaskID::kLength;
 
   ObjectID() : BaseID() {}
@@ -288,9 +255,6 @@ class ObjectID : public BaseID<ObjectID> {
   /// this object.
   ObjectIDIndexType ObjectIndex() const;
 
-  /// Compute the task ID of the task that created the object.
-  ///
-  /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
   /// Compute the object ID of an object created by a task, either via an object put
@@ -302,12 +266,8 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The computed object ID.
   static ObjectID FromIndex(const TaskID &task_id, ObjectIDIndexType index);
 
-  /// Create an object id randomly.
-  ///
   /// Warning: this can duplicate IDs after a fork() call. We assume this
   /// never happens.
-  ///
-  /// \return A random object id.
   static ObjectID FromRandom();
 
   /// Compute the object ID that is used to track an actor's lifetime. This
@@ -321,6 +281,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// Whether this ObjectID represents an actor handle. This is the ObjectID
   /// returned by the actor's creation task.
   static bool IsActorID(const ObjectID &object_id);
+
   /// Return the ID of the actor that produces this object. For the actor
   /// creation task and for tasks executed by the actor, this will return a
   /// non-nil ActorID.
@@ -329,7 +290,6 @@ class ObjectID : public BaseID<ObjectID> {
   MSGPACK_DEFINE(id_);
 
  private:
-  /// A helper method to generate an ObjectID.
   static ObjectID GenerateObjectId(const std::string &task_id_binary,
                                    ObjectIDIndexType object_index = 0);
 
@@ -342,12 +302,8 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   static constexpr size_t kUniqueBytesLength = 14;
 
  public:
-  /// Length of `PlacementGroupID` in bytes.
   static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
-  /// Size of `PlacementGroupID` in bytes.
-  ///
-  /// \return Size of `PlacementGroupID` in bytes.
   static constexpr size_t Size() { return kLength; }
 
   /// Creates a `PlacementGroupID` by hashing the given information.
@@ -359,12 +315,8 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
   static PlacementGroupID FromRandom() = delete;
 
-  /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
 
-  /// Get the job id to which this placement group belongs.
-  ///
-  /// \return The job id to which this placement group belongs.
   JobID JobId() const;
 
   MSGPACK_DEFINE(id_);
@@ -374,6 +326,39 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 };
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
+
+class LeaseID : public BaseID<LeaseID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 4;
+
+ public:
+  static constexpr size_t kLength = kUniqueBytesLength + kUniqueIDSize;
+
+  static constexpr size_t Size() { return kLength; }
+
+  /// Creates a `LeaseID` from a specific worker ID.
+  ///
+  /// \param worker_id The worker ID from which this lease is requested.
+  /// \param counter The n-th lease requested by this worker, staring from 1
+  ///
+  /// \return The `LeaseID` for the worker lease.
+  static LeaseID FromWorker(const WorkerID &worker_id, uint32_t counter);
+
+  /// Creates a random `LeaseID`.
+  ///
+  /// \return A `LeaseID` generated with random bytes
+  /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  static LeaseID FromRandom();
+
+  LeaseID() : BaseID() {}
+
+  WorkerID WorkerId() const;
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
 
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
@@ -385,6 +370,8 @@ static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
 static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
               "PlacementGroupID size is not as expected");
+static_assert(sizeof(LeaseID) == LeaseID::kLength + sizeof(size_t),
+              "LeaseID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
@@ -392,6 +379,7 @@ std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const LeaseID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                           \
   class RAY_EXPORT type : public UniqueID {                                              \
@@ -590,6 +578,25 @@ struct DefaultLogKey<PlacementGroupID> {
   constexpr static std::string_view key = kLogKeyPlacementGroupID;
 };
 
+template <>
+struct DefaultLogKey<LeaseID> {
+  constexpr static std::string_view key = kLogKeyLeaseID;
+};
+
+inline ObjectID ObjectRefToId(const rpc::ObjectReference &object_ref) {
+  return ObjectID::FromBinary(object_ref.object_id());
+}
+
+inline std::vector<ObjectID> ObjectRefsToIds(
+    const std::vector<rpc::ObjectReference> &object_refs) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(object_refs.size());
+  for (const auto &ref : object_refs) {
+    object_ids.push_back(ObjectRefToId(ref));
+  }
+  return object_ids;
+}
+
 }  // namespace ray
 
 namespace std {
@@ -606,6 +613,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(LeaseID);
 #include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID

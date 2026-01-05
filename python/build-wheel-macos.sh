@@ -10,7 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.9" "3.10" "3.11" "3.12" "3.13")
+PY_MMS=("3.10" "3.11" "3.12" "3.13")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -82,7 +82,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     # build ray wheel
-    $PIP_CMD wheel -q -w dist . --no-deps
+    $PIP_CMD wheel -v -w dist . --no-deps
     # build ray-cpp wheel
     RAY_INSTALL_CPP=1 $PIP_CMD wheel -q -w dist . --no-deps
     mv dist/*.whl ../.whl/

@@ -2,10 +2,9 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Target,
     Row,
+    Target,
 )
-
 
 # Ray Train Metrics (Controller)
 CONTROLLER_STATE_PANEL = Panel(
@@ -298,6 +297,8 @@ all_panel_ids = [panel.id for panel in TRAIN_GRAFANA_PANELS]
 for row in TRAIN_GRAFANA_ROWS:
     all_panel_ids.append(row.id)
     all_panel_ids.extend(panel.id for panel in row.panels)
+
+all_panel_ids.sort()
 
 assert len(all_panel_ids) == len(
     set(all_panel_ids)

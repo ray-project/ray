@@ -186,7 +186,7 @@ Curriculum learning
 Debugging
 +++++++++
 
-- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_sampling_and_training.py>`__:
    Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
    :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
    When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling
@@ -363,6 +363,11 @@ Multi-agent RL
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
 
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
+    Implements self-play with the Footsies environment (two player zero-sum game).
+    This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
+    setting up a multi-agent self-play training scenario.
+
 - `Self-play with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__:
    Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve
    through direct self-play without building a complex, structured league.
@@ -506,8 +511,6 @@ Blog posts
 
 - `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
    Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL attention net architectures.
-- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
-   How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
 - `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
    Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
 - `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:

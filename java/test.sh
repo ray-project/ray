@@ -66,7 +66,7 @@ fi
 echo "Build java maven deps."
 bazel run //java:gen_pom_files
 bazel run //java:gen_proto_files
-bazel build //java:gen_maven_deps
+bazel run //java:gen_maven_deps
 
 echo "Build ray core."
 bazel run //:gen_ray_pkg
@@ -154,7 +154,7 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
+  java -cp bazel-bin/java/all_tests_shaded.jar "io.ray.docdemo.$class"
 done
 popd
 

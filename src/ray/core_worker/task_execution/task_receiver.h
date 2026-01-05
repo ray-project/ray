@@ -14,19 +14,13 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
-#include <queue>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -36,14 +30,13 @@
 #include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/server_call.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using RepeatedObjectRefCount =
     ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
@@ -110,6 +103,8 @@ class TaskReceiver {
   void SetActorReprName(const std::string &repr_name);
 
  private:
+  // True once shutdown begins. Requests to execute new tasks will be rejected.
+  std::atomic<bool> stopping_ = false;
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,

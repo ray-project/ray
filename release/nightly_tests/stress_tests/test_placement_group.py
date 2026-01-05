@@ -99,7 +99,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
 
 
 if __name__ == "__main__":
-    result = {"success": 0}
+    result = {}
 
     # Wait until the expected number of nodes have joined the cluster.
     ray.init(address="auto")
@@ -167,7 +167,6 @@ if __name__ == "__main__":
 
     result["avg_pg_create_time_ms"] = total_creating_time / total_trial * 1000
     result["avg_pg_remove_time_ms"] = total_removing_time / total_trial * 1000
-    result["success"] = 1
     result["perf_metrics"] = [
         {
             "perf_metric_name": "avg_pg_create_time_ms",

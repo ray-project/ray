@@ -3,21 +3,21 @@ import tempfile
 from typing import Dict
 
 import numpy as np
-import pyarrow as pa
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.air.util.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data.datasource import Partitioning
-from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
+from ray.data._internal.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -67,30 +67,9 @@ class TestReadImages:
                 "example://image-datasets/simple/image2.jpg",
                 "example://image-datasets/simple/image2.jpg",
             ],
-            meta_provider=FastFileMetadataProvider(),
+            meta_provider=DefaultFileMetadataProvider(),
         )
         assert ds.count() == 3
-
-    @pytest.mark.parametrize("ignore_missing_paths", [True, False])
-    def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
-        paths = [
-            "example://image-datasets/simple/image1.jpg",
-            "example://missing.jpg",
-            "example://image-datasets/missing/",
-        ]
-
-        if ignore_missing_paths:
-            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
-            # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
-                "ray/data/examples/data/image-datasets/simple/image1.jpg",
-            )
-        else:
-            with pytest.raises(FileNotFoundError):
-                ds = ray.data.read_images(
-                    paths, ignore_missing_paths=ignore_missing_paths
-                )
-                ds.materialize()
 
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
@@ -129,27 +108,6 @@ class TestReadImages:
         # "different-modes" contains 32x32 images with modes "CMYK", "L", and "RGB"
         ds = ray.data.read_images("example://image-datasets/different-modes", mode=mode)
         assert all([record["image"].shape == expected_shape for record in ds.take()])
-
-    def test_partitioning(
-        self, ray_start_regular_shared, enable_automatic_tensor_extension_cast
-    ):
-        root = "example://image-datasets/dir-partitioned"
-        partitioning = Partitioning("dir", base_dir=root, field_names=["label"])
-
-        ds = ray.data.read_images(root, partitioning=partitioning)
-
-        assert ds.schema().names == ["image", "label"]
-
-        image_type, label_type = ds.schema().types
-        assert isinstance(image_type, get_arrow_extension_fixed_shape_tensor_types())
-        assert pa.types.is_string(label_type)
-
-        df = ds.to_pandas()
-        assert sorted(df["label"]) == ["cat", "cat", "dog"]
-        if enable_automatic_tensor_extension_cast:
-            assert all(tensor.shape == (32, 32, 3) for tensor in df["image"])
-        else:
-            assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
     def test_random_shuffle(self, ray_start_regular_shared, restore_data_context):
         # NOTE: set preserve_order to True to allow consistent output behavior.
@@ -282,7 +240,7 @@ class TestReadImages:
         with pytest.warns(DeprecationWarning):
             ray.data.read_images(
                 paths=["example://image-datasets/simple/image1.jpg"],
-                meta_provider=FastFileMetadataProvider(),
+                meta_provider=DefaultFileMetadataProvider(),
             )
 
 

@@ -1,34 +1,38 @@
 import math
 import time
-from unittest.mock import MagicMock, PropertyMock, patch
+from typing import Any, Dict, Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
+from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
 def mock_map_op(
-    input_op,
-    ray_remote_args=None,
-    compute_strategy=None,
-    incremental_resource_usage=None,
+    input_op: PhysicalOperator,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    compute_strategy: Optional[ComputeStrategy] = None,
+    incremental_resource_usage: Optional[ExecutionResources] = None,
+    name="Map",
 ):
     op = MapOperator.create(
         MagicMock(),
@@ -36,7 +40,56 @@ def mock_map_op(
         DataContext.get_current(),
         ray_remote_args=ray_remote_args or {},
         compute_strategy=compute_strategy,
+        name=name,
     )
+    op.start(ExecutionOptions())
+    if incremental_resource_usage is not None:
+        op.incremental_resource_usage = MagicMock(
+            return_value=incremental_resource_usage
+        )
+    return op
+
+
+def mock_union_op(
+    input_ops,
+    incremental_resource_usage=None,
+):
+    op = UnionOperator(
+        DataContext.get_current(),
+        *input_ops,
+    )
+    op.start = MagicMock(side_effect=lambda _: None)
+    if incremental_resource_usage is not None:
+        op.incremental_resource_usage = MagicMock(
+            return_value=incremental_resource_usage
+        )
+    return op
+
+
+def mock_join_op(
+    left_input_op,
+    right_input_op,
+    incremental_resource_usage=None,
+):
+    left_input_op._logical_operators = [(MagicMock())]
+    right_input_op._logical_operators = [(MagicMock())]
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
+    ) as mock:
+        mock.return_value = ExecutionResources(cpu=1)
+
+        op = JoinOperator(
+            DataContext.get_current(),
+            left_input_op,
+            right_input_op,
+            ("id",),
+            ("id",),
+            "inner",
+            num_partitions=1,
+            partition_size_hint=1,
+        )
+
     op.start = MagicMock(side_effect=lambda _: None)
     if incremental_resource_usage is not None:
         op.incremental_resource_usage = MagicMock(
@@ -145,7 +198,7 @@ class TestResourceManager:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
 
         # Mock different metrics that contribute to the resource usage.
         mock_cpu = {
@@ -180,8 +233,15 @@ class TestResourceManager:
         }
 
         for op in [o1, o2, o3]:
+            op.update_resource_usage = MagicMock()
             op.current_processor_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            )
+            op.running_processor_usage = MagicMock(
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            )
+            op.pending_processor_usage = MagicMock(
+                return_value=ExecutionResources.zero()
             )
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
             op._metrics = MagicMock(
@@ -246,7 +306,7 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -271,14 +331,19 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Operators estimate pending task outputs using the target max block size.
-        # In this case, the target max block size is 2 and there is at most 1 block
-        # in the streaming generator buffer, so the estimated usage is 2.
+        # Operators estimate pending task outputs using the target max block size
+        # multiplied by MAX_SAFE_BLOCK_SIZE_FACTOR (1.5) during no-sample phase.
+        # In this case, the target max block size is 2, MAX_SAFE_BLOCK_SIZE_FACTOR
+        # is 1.5, and there is at most 1 block in the streaming generator buffer,
+        # so the estimated usage is 2 * 1.5 * 1 = 3.
         o2.metrics.on_input_dequeued(input)
         o2.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
+        # target_max_block_size * factor * max_blocks
+        expected_usage = 2 * MAX_SAFE_BLOCK_SIZE_FACTOR * 1
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 2
+        op2_usage = resource_manager.get_op_usage(o2).object_store_memory
+        assert op2_usage == expected_usage
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # When the task finishes, we move the data from the streaming generator to the
@@ -305,15 +370,19 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Task inputs count toward the previous operator's object store memory usage,
-        # and task outputs count toward the current operator's object store memory
-        # usage.
+        # Task inputs count toward the previous operator's object store memory
+        # usage, and task outputs count toward the current operator's object
+        # store memory usage. During no-sample phase, pending outputs are
+        # estimated using target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR.
         o3.metrics.on_input_dequeued(input)
         o3.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        assert resource_manager.get_op_usage(o3).object_store_memory == 2
+        # target_max_block_size (2) * factor (1.5) * max_blocks (1) = 3
+        expected_o3_usage = 2 * MAX_SAFE_BLOCK_SIZE_FACTOR * 1
+        op3_usage = resource_manager.get_op_usage(o3).object_store_memory
+        assert op3_usage == expected_o3_usage
 
         # Task inputs no longer count once the task is finished.
         o3.metrics.on_output_queued(input)
@@ -322,423 +391,6 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 1
-
-
-class TestReservationOpResourceAllocator:
-    """Tests for ReservationOpResourceAllocator."""
-
-    def test_basic(self, restore_data_context):
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
-        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o4 = LimitOperator(1, o3, DataContext.get_current())
-
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
-
-        topo, _ = build_streaming_topology(o4, ExecutionOptions())
-
-        global_limits = ExecutionResources.zero()
-
-        def mock_get_global_limits():
-            nonlocal global_limits
-            return global_limits
-
-        def can_submit_new_task(allocator, op):
-            """Helper to check if operator can submit new tasks based on budget."""
-            budget = allocator.get_budget(op)
-            if budget is None:
-                return True
-            return op.incremental_resource_usage().satisfies_limit(budget)
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager._mem_op_internal = op_internal_usage
-        resource_manager._mem_op_outputs = op_outputs_usages
-
-        resource_manager.get_global_limits = MagicMock(
-            side_effect=mock_get_global_limits
-        )
-
-        assert resource_manager.op_resource_allocator_enabled()
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        # Test initial state when no resources are used.
-        global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
-        allocator.update_usages()
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 0/125            | 0/125            | 0            |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 0/125            | 0/125            | 0            |
-        # +-----+------------------+------------------+--------------+
-        # o1 and o4 are not handled.
-        assert o1 not in allocator._op_reserved
-        assert o4 not in allocator._op_reserved
-        assert o1 not in allocator._op_budgets
-        assert o4 not in allocator._op_budgets
-        # Test reserved resources for o2 and o3.
-        assert allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
-        assert allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
-        assert allocator._reserved_for_op_outputs[o2] == 125
-        assert allocator._reserved_for_op_outputs[o3] == 125
-        # 50% of the global limits are shared.
-        assert allocator._total_shared == ExecutionResources(8, 0, 500)
-        # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
-        assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
-        assert allocator.max_task_output_bytes_to_read(o2) == 500
-        assert allocator.max_task_output_bytes_to_read(o3) == 500
-
-        # Test when each operator uses some resources.
-        op_usages[o2] = ExecutionResources(6, 0, 500)
-        op_internal_usage[o2] = 400
-        op_outputs_usages[o2] = 100
-        op_usages[o3] = ExecutionResources(2, 0, 125)
-        op_internal_usage[o3] = 30
-        op_outputs_usages[o3] = 25
-        op_usages[o4] = ExecutionResources(0, 0, 50)
-
-        allocator.update_usages()
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 125/0            | 100/25           | 400-125=275  |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 30/95            | (25+50)/50       | 0            |
-        # +-----+------------------+------------------+--------------+
-        # remaining shared = 1000/2 - 275 = 225
-        # Test budgets.
-        # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
-        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
-        # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
-        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
-        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert allocator.max_task_output_bytes_to_read(o2) == 138
-        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert allocator.max_task_output_bytes_to_read(o3) == 257
-
-        # Test global_limits updated.
-        global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        allocator.update_usages()
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 100/0            | 100/0            | 400-100=300  |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 30/70            | (25+50)/25       | 0            |
-        # +-----+------------------+------------------+--------------+
-        # remaining shared = 800/2 - 300 = 100
-        # Test reserved resources for o2 and o3.
-        assert allocator._op_reserved[o2] == ExecutionResources(3, 0, 100)
-        assert allocator._op_reserved[o3] == ExecutionResources(3, 0, 100)
-        assert allocator._reserved_for_op_outputs[o2] == 100
-        assert allocator._reserved_for_op_outputs[o3] == 100
-        # 50% of the global limits are shared.
-        assert allocator._total_shared == ExecutionResources(6, 0, 400)
-
-        # Test budgets.
-        # memory_budget[o2] = 0 + 100/2 = 50
-        assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
-        # memory_budget[o3] = 70 + 100/2 = 120
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
-        # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert allocator.max_task_output_bytes_to_read(o2) == 50
-        # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert allocator.max_task_output_bytes_to_read(o3) == 145
-
-    def test_reserve_incremental_resource_usage(self, restore_data_context):
-        """Test that we'll reserve at least incremental_resource_usage()
-        for each operator."""
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-        global_limits = ExecutionResources(cpu=7, gpu=0, object_store_memory=800)
-        incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=incremental_usage)
-        o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
-        o4 = mock_map_op(o3, incremental_resource_usage=incremental_usage)
-        o5 = mock_map_op(o4, incremental_resource_usage=incremental_usage)
-        topo, _ = build_streaming_topology(o5, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        allocator.update_usages()
-        # incremental_usage should be reserved for o2.
-        assert allocator._op_reserved[o2] == incremental_usage
-        # Remaining resources are CPU = 7 - 3 = 4, object_store_memory = 800 - 500 = 300.
-        # We have enough CPUs for o3's incremental_usage, but not enough
-        # object_store_memory. We'll still reserve the incremental_usage by
-        # oversubscribing object_store_memory.
-        assert allocator._op_reserved[o3] == incremental_usage
-        # Now the remaining resources are CPU = 4 - 3 = 1,
-        # object_store_memory = 300 - 500 = -200.
-        # We don't oversubscribing CPUs, we'll only reserve
-        # incremental_usage.object_store_memory.
-        assert allocator._op_reserved[o4] == ExecutionResources(
-            0, 0, incremental_usage.object_store_memory
-        )
-        # Same for o5
-        assert allocator._op_reserved[o5] == ExecutionResources(
-            0, 0, incremental_usage.object_store_memory
-        )
-        assert allocator._total_shared == ExecutionResources(1, 0, 0)
-        for op in [o2, o3, o4]:
-            assert allocator._reserved_for_op_outputs[op] == 50
-
-    @patch(
-        "ray.data._internal.execution.interfaces.op_runtime_metrics.OpRuntimeMetrics."
-        "obj_store_mem_max_pending_output_per_task",
-        new_callable=PropertyMock(return_value=100),
-    )
-    def test_reserve_min_resources_for_gpu_ops(
-        self, mock_property, restore_data_context
-    ):
-        """Test that we'll reserve enough resources for ActorPoolMapOperator
-        that uses GPU."""
-        global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(
-            o1,
-            ray_remote_args={"num_cpus": 0, "num_gpus": 1},
-            compute_strategy=ray.data.ActorPoolStrategy(size=8),
-        )
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        allocator.update_usages()
-
-        assert allocator._op_reserved[o2].object_store_memory == 800
-
-    def test_does_not_reserve_more_than_max_resource_usage(self):
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = MapOperator.create(
-            MagicMock(),
-            o1,
-            DataContext.get_current(),
-        )
-        o2.min_max_resource_requirements = MagicMock(
-            return_value=(
-                ExecutionResources(cpu=0, object_store_memory=0),
-                ExecutionResources(cpu=1, object_store_memory=1),
-            )
-        )
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        # Mock an extremely large cluster.
-        resource_manager.get_global_limits = MagicMock(
-            return_value=ExecutionResources(cpu=1024, object_store_memory=1024**4)
-        )
-        allocator = resource_manager._op_resource_allocator
-
-        allocator.update_usages()
-
-        # The operator's max resource usage is 1 CPU and 1 byte object store memory, so
-        # we'll reserve that despite the large global limits.
-        assert allocator._op_reserved[o2] == ExecutionResources(
-            cpu=1, object_store_memory=1
-        )
-
-    def test_only_handle_eligible_ops(self, restore_data_context):
-        """Test that we only handle non-completed map ops."""
-        DataContext.get_current().op_resource_reservation_enabled = True
-
-        input = make_ref_bundles([[x] for x in range(1)])
-        o1 = InputDataBuffer(DataContext.get_current(), input)
-        o2 = mock_map_op(o1)
-        o3 = LimitOperator(1, o2, DataContext.get_current())
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        resource_manager.get_global_limits = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-
-        assert resource_manager.op_resource_allocator_enabled()
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        allocator.update_usages()
-        assert o1 not in allocator._op_budgets
-        assert o2 in allocator._op_budgets
-        assert o3 not in allocator._op_budgets
-
-        o2.mark_execution_finished()
-        allocator.update_usages()
-        assert o2 not in allocator._op_budgets
-
-    def test_gpu_allocation(self, restore_data_context):
-        """Test GPU allocation for GPU vs non-GPU operators."""
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-
-        # Non-GPU operator
-        o2 = mock_map_op(o1)
-        o2.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 0, 0), ExecutionResources(0, 0, 0))
-        )
-
-        # GPU operator
-        o3 = mock_map_op(o2, ray_remote_args={"num_gpus": 1})
-        o3.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
-        )
-
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
-
-        global_limits = ExecutionResources(gpu=4)
-        op_usages = {
-            o1: ExecutionResources.zero(),
-            o2: ExecutionResources.zero(),
-            o3: ExecutionResources(gpu=1),  # GPU op using 1 GPU
-        }
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
-        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
-
-        # Non-GPU operator should get 0 GPU
-        assert allocator._op_budgets[o2].gpu == 0
-
-        # GPU operator should get remaining GPUs (4 total - 1 used = 3 available)
-        assert allocator._op_budgets[o3].gpu == 3
-
-    def test_multiple_gpu_operators(self, restore_data_context):
-        """Test GPU allocation for multiple GPU operators."""
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-
-        # Two GPU operators
-        o2 = mock_map_op(o1, ray_remote_args={"num_gpus": 1})
-        o2.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
-        )
-
-        o3 = mock_map_op(o2, ray_remote_args={"num_gpus": 1})
-        o3.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
-        )
-
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
-
-        global_limits = ExecutionResources(gpu=4)
-        op_usages = {
-            o1: ExecutionResources.zero(),
-            o2: ExecutionResources(gpu=1),  # Using 1 GPU
-            o3: ExecutionResources(gpu=0),  # Not using GPU yet
-        }
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
-
-        # o2: 4 total - 1 used = 3 available
-        assert allocator._op_budgets[o2].gpu == 3
-
-        # o3: 4 total - 0 used = 4 available
-        assert allocator._op_budgets[o3].gpu == 4
-
-    def test_gpu_usage_exceeds_global_limits(self, restore_data_context):
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-
-        # One GPU operator
-        o2 = mock_map_op(o1, ray_remote_args={"num_gpus": 1})
-        o2.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 2, 0))
-        )
-
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
-
-        global_limits = ExecutionResources(gpu=1)
-        op_usages = {
-            o1: ExecutionResources.zero(),
-            # o2 uses 2 GPUs but only 1 is available. This can happen if you set
-            # `concurrency` to 2 but there's only 1 GPU in the cluster. In this case,
-            # one actor will be running and the other will be stuck pending.
-            o2: ExecutionResources(gpu=2),
-        }
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
-
-        assert allocator._op_budgets[o2].gpu == 0
 
 
 if __name__ == "__main__":

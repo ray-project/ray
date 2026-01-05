@@ -88,10 +88,12 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     with filepath.open("w") as file:
         file.write("F" * 100)
 
-    uri = get_uri_for_directory(dir_to_upload)
+    uri = get_uri_for_directory(dir_to_upload, include_gitignore=True)
     assert get_directory_size_bytes(dir_to_upload) > 0
 
-    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+    uploaded = upload_package_if_needed(
+        uri, tmpdir, dir_to_upload, include_gitignore=True
+    )
     assert uploaded
 
     manager = WorkingDirPlugin(tmpdir, gcs_client)
@@ -193,8 +195,8 @@ def test_lazy_reads(
 
     @ray.remote
     def test_import():
-        import test_module
         import file_module
+        import test_module
 
         assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
         return test_module.one(), file_module.hello()
@@ -236,8 +238,8 @@ def test_lazy_reads(
     @ray.remote
     class Actor:
         def test_import(self):
-            import test_module
             import file_module
+            import test_module
 
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return test_module.one(), file_module.hello()
@@ -297,8 +299,8 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
 
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
-    import test_module
     import file_module
+    import test_module
 
     @ray.remote
     def test_import():

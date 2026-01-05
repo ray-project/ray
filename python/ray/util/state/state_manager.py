@@ -1,20 +1,20 @@
 import dataclasses
 import inspect
+import json
 import logging
 from functools import wraps
 from typing import List, Optional, Tuple
-import json
 
 import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
-import ray
-import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.consts as dashboard_consts
-from ray._private import ray_constants
+import ray.dashboard.modules.log.log_consts as log_consts
+from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
-from ray._raylet import GcsClient, ActorID, JobID, TaskID, NodeID
+from ray._private import ray_constants
+from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
@@ -54,7 +54,6 @@ from ray.util.state.common import (
     SupportedFilterType,
 )
 from ray.util.state.exception import DataSourceUnavailable
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 
@@ -145,14 +144,16 @@ class StateDataSourceClient:
         )
 
     def get_raylet_stub(self, ip: str, port: int):
+        from ray._private.grpc_utils import init_grpc_channel
+
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            build_address(ip, port), options, asynchronous=True
-        )
+        channel = init_grpc_channel(build_address(ip, port), options, asynchronous=True)
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
         """Returns None if the agent on the node is not registered in Internal KV."""
+        from ray._private.grpc_utils import init_grpc_channel
+
         agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -162,7 +163,7 @@ class StateDataSourceClient:
             return None
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
+        channel = init_grpc_channel(
             build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)

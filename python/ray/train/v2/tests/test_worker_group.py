@@ -28,9 +28,12 @@ from ray.train.v2._internal.execution.worker_group import (
     Worker,
     WorkerGroup,
     WorkerGroupContext,
+    WorkerGroupState,
 )
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
+
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -128,22 +131,15 @@ def test_actor_start_failure():
         wg._start()
 
 
-@pytest.mark.parametrize("error_type", [RayActorError, RuntimeError])
-def test_callback_start_failure(error_type):
+def test_callback_start_failure():
     class FailingCallback(WorkerGroupCallback):
         def after_worker_group_start(self, worker_group):
-            raise error_type
+            raise RuntimeError("Worker failed to start.")
 
     wg = _default_inactive_worker_group(callbacks=[FailingCallback()])
 
-    if error_type is RayActorError:
-        # Actor errors are wrapped in WorkerGroupStartupFailedError.
-        with pytest.raises(WorkerGroupStartupFailedError):
-            wg._start()
-    else:
-        # Other errors are bugs in user code and should not be wrapped.
-        with pytest.raises(error_type):
-            wg._start()
+    with pytest.raises(RuntimeError):
+        wg._start()
 
     wg.shutdown()
 
@@ -225,25 +221,30 @@ def test_poll_status_finished():
     assert not status.errors
 
 
-@pytest.mark.parametrize("training_failure", [True, False])
-@pytest.mark.parametrize("poll_failure", [True, False])
-def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
+@pytest.mark.parametrize("actor_failure", [True, False])
+def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
+    """Tests that the worker group raises the correct errors when the
+    actor fails or the user code raises an error on any worker."""
+
+    dummy_file = tmp_path / "dummy.txt"
+
     def train_fn():
-        if training_failure:
-            raise RuntimeError("train error")
+        # Error when the worker group initialization is finished.
+        while not dummy_file.exists():
+            time.sleep(0.01)
 
-    if poll_failure:
-
-        def patched_poll_status(worker_self):
-            raise RuntimeError("poll error")
-
-        monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
+        if actor_failure:
+            os._exit(1)
+        else:
+            raise RuntimeError("Mock user code error")
 
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(train_fn),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
+
+    dummy_file.touch()
     while not wg.poll_status().finished:
         time.sleep(0.01)
 
@@ -252,9 +253,8 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
     assert len(status.worker_statuses) == 4
     assert status.finished
-    if poll_failure:
+    if actor_failure:
         assert len(status.errors) == 4
-        assert ["poll" in str(error) for error in status.errors.values()]
         assert [
             isinstance(error, WorkerHealthCheckFailedError)
             for error in status.errors.values()
@@ -263,11 +263,11 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
             isinstance(error.health_check_failure, RuntimeError)
             for error in status.errors.values()
         ]
-    elif training_failure:
-        assert len(status.errors) == 4
-        assert ["train" in str(error) for error in status.errors.values()]
     else:
-        assert not status.errors
+        assert len(status.errors) == 4
+        assert all(
+            ["user code error" in str(error) for error in status.errors.values()]
+        )
 
 
 def test_poll_status_healthcheck_timeout(monkeypatch):
@@ -297,6 +297,33 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
         wg.shutdown()
 
 
+@pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
+def test_flush_worker_result_queue(queue_backlog_length):
+    """Test that the worker group is still considered running while the
+    result queue is not fully consumed."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    def populate_result_queue():
+        # Note that the result queue is a thread-safe queue of maxsize 1.
+        get_train_context().get_result_queue().put("result")
+
+    for _ in range(queue_backlog_length):
+        wg.execute(populate_result_queue)
+
+        status = wg.poll_status()
+        assert all(
+            worker_status.training_report
+            for worker_status in status.worker_statuses.values()
+        )
+        assert not status.finished
+
+    status = wg.poll_status()
+    assert status.finished
+
+    wg.shutdown()
+
+
 def test_group_workers_by_ip():
     def create_workers(node_ids):
         return [
@@ -315,7 +342,7 @@ def test_group_workers_by_ip():
         ]
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert ips == expected, (
@@ -324,7 +351,9 @@ def test_group_workers_by_ip():
     )
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers, _first_id="1")
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
+        workers, _first_id="1"
+    )
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert (
@@ -361,7 +390,7 @@ def test_local_rank_assignment():
                 expected local rank.
         """
         workers = create_workers(pids=pids, node_ids=node_ids, gpu_ids=gpu_ids)
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+        workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         # Build local ranks according to the logics in
         # TODO: Replace this with the actual implementation later
@@ -434,31 +463,6 @@ def test_setup_worker_group(tmp_path):
     worker_group.shutdown()
 
 
-@pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
-def test_flush_worker_result_queue(queue_backlog_length):
-    """Make sure that the result queue is fully consumed before the worker exits."""
-    wg = _default_inactive_worker_group()
-    wg._start()
-
-    def populate_result_queue():
-        # Note that the result queue is a thread-safe queue of maxsize 1.
-        get_train_context().get_result_queue().put("result")
-
-    for _ in range(queue_backlog_length):
-        wg.execute(populate_result_queue)
-
-        status = wg.poll_status()
-        assert all(
-            worker_status.training_result
-            for worker_status in status.worker_statuses.values()
-        )
-
-    status = wg.poll_status()
-    assert status.finished
-
-    wg.shutdown()
-
-
 def test_worker_group_callback():
     """Check that all worker group callback hooks are called."""
 
@@ -479,6 +483,9 @@ def test_worker_group_callback():
         def before_worker_group_shutdown(self, worker_group):
             self.shutdown_hook_called = True
 
+        def after_worker_group_shutdown(self, worker_group_context):
+            self.after_worker_group_shutdown_hook_called = True
+
         def after_worker_group_poll_status(self, worker_group_status):
             assert len(worker_group_status.worker_statuses) == 4
             self.poll_status_hook_called = True
@@ -493,23 +500,7 @@ def test_worker_group_callback():
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
-
-
-def test_worker_group_abort():
-    class AssertCallback(WorkerGroupCallback):
-        def __init__(self):
-            self.abort_hook_called = False
-
-        def before_worker_group_abort(self, worker_group_context):
-            self.abort_hook_called = True
-
-    hooks = AssertCallback()
-    wg = _default_inactive_worker_group(callbacks=[hooks])
-
-    wg._start()
-    wg.abort()
-    assert hooks.abort_hook_called
-    wg.shutdown()
+    assert hooks.after_worker_group_shutdown_hook_called
 
 
 def test_worker_log_file_paths():
@@ -522,6 +513,46 @@ def test_worker_log_file_paths():
     for worker in workers:
         assert worker.log_file_path is not None
         assert "ray-train-app-worker" in worker.log_file_path
+
+    wg.shutdown()
+
+
+def test_worker_group_abort(monkeypatch):
+    class AssertCallback(WorkerGroupCallback):
+        def __init__(self):
+            self.abort_hook_called = False
+
+        def before_worker_group_abort(self, worker_group_context):
+            self.abort_hook_called = True
+
+        def after_worker_group_abort(self, worker_group_context):
+            self.after_worker_group_abort_hook_called = True
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+
+    wg._start()
+
+    # Track shutdown calls without preventing actual cleanup
+    shutdown_call_count = 0
+    original_shutdown = WorkerGroupState.shutdown
+
+    def track_shutdown_calls(self):
+        nonlocal shutdown_call_count
+        shutdown_call_count += 1
+        return original_shutdown(self)
+
+    monkeypatch.setattr(WorkerGroupState, "shutdown", track_shutdown_calls)
+
+    wg.abort()
+    assert (
+        shutdown_call_count == 1
+    ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
+    assert hooks.abort_hook_called
+    assert hooks.after_worker_group_abort_hook_called
+
+    # Bypass _assert_active method, allowing for shutdown
+    monkeypatch.setattr(wg, "_assert_active", lambda: None)
 
     wg.shutdown()
 

@@ -46,6 +46,11 @@ using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecor
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static absl::Mutex stats_mutex;
 
+inline OpenCensusProtoExporter *&GetOpenCensusExporter() {
+  static OpenCensusProtoExporter *exporter = nullptr;
+  return exporter;
+}
+
 // Returns true if OpenCensus should be enabled.
 static inline bool should_enable_open_census() {
   return !RayConfig::instance().enable_open_telemetry() ||
@@ -61,12 +66,10 @@ static inline bool should_enable_open_census() {
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param worker_id[in] The worker ID of the current component.
 static inline void Init(
     const TagsType &global_tags,
-    const int metrics_agent_port,
-    const WorkerID &worker_id,
+    const WorkerID &worker_id = WorkerID::Nil(),
     int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
     int64_t max_grpc_payload_size = RayConfig::instance().agent_max_grpc_message_size()) {
   absl::MutexLock lock(&stats_mutex);
@@ -99,12 +102,9 @@ static inline void Init(
         StatsConfig::instance().GetReportInterval());
     opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
         StatsConfig::instance().GetHarvestInterval());
-    OpenCensusProtoExporter::Register(metrics_agent_port,
-                                      (*metrics_io_service),
-                                      "127.0.0.1",
-                                      worker_id,
-                                      metrics_report_batch_size,
-                                      max_grpc_payload_size);
+
+    GetOpenCensusExporter() = OpenCensusProtoExporter::Register(
+        *metrics_io_service, worker_id, metrics_report_batch_size, max_grpc_payload_size);
   }
 
   StatsConfig::instance().SetGlobalTags(global_tags);
@@ -114,25 +114,26 @@ static inline void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
-static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
-                                             const Status &metrics_agent_server_status) {
+static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
   }
-  if (!metrics_agent_server_status.ok()) {
-    RAY_LOG(ERROR) << "Failed to initialize OpenTelemetry exporter. Data will not be "
-                      "exported to the "
-                   << "metrics agent. Server status: " << metrics_agent_server_status;
-    return;
-  }
-  OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+  OpenTelemetryMetricRecorder::GetInstance().Start(
       /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=*/
+      /*timeout=, set the timeout to be half of the interval to avoid potential request
+         queueing.*/
       std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
+}
+
+static inline void ConnectOpenCensusExporter(const int metrics_agent_port) {
+  absl::MutexLock lock(&stats_mutex);
+  if (GetOpenCensusExporter() != nullptr) {
+    GetOpenCensusExporter()->Connect(metrics_agent_port);
+  }
 }
 
 /// Shutdown the initialized stats library.
@@ -151,6 +152,7 @@ static inline void Shutdown() {
     opencensus::stats::DeltaProducer::Get()->Shutdown();
     opencensus::stats::StatsExporter::Shutdown();
     metrics_io_service_pool = nullptr;
+    GetOpenCensusExporter() = nullptr;
   }
   StatsConfig::instance().SetIsInitialized(false);
   RAY_LOG(INFO) << "Stats module has shutdown.";

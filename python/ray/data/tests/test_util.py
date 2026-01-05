@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,8 @@ from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.util import (
     _op_name_white_list,
@@ -23,9 +25,9 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    _check_pyarrow_version,
     find_partition_index,
     iterate_with_retry,
+    merge_resources_to_ray_remote_args,
     rows_same,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -45,6 +47,79 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     if clear_after_check:
         with _recorded_operators_lock:
             _recorded_operators.clear()
+
+
+# Utilities for structural logical plan inspection
+# These provide type-safe alternatives to string-based plan matching
+
+
+def plan_has_operator(plan: LogicalPlan, op_type: Type[LogicalOperator]) -> bool:
+    """Check if plan contains at least one operator of given type.
+
+    Args:
+        plan: The logical plan to inspect
+        op_type: The operator type to search for
+
+    Returns:
+        True if at least one operator of the given type exists in the plan
+    """
+    return any(isinstance(op, op_type) for op in plan.dag.post_order_iter())
+
+
+def plan_operator_comes_before(
+    plan: LogicalPlan,
+    first_type: Type[LogicalOperator],
+    second_type: Type[LogicalOperator],
+) -> bool:
+    """Check if any operator of first_type comes before any operator of second_type.
+
+    Args:
+        plan: The logical plan to inspect
+        first_type: The operator type that should come first
+        second_type: The operator type that should come second
+
+    Returns:
+        True if at least one operator of first_type appears before at least one
+        operator of second_type in post-order traversal, False otherwise.
+    """
+    operators = list(plan.dag.post_order_iter())
+    first_indices = [i for i, op in enumerate(operators) if isinstance(op, first_type)]
+    second_indices = [
+        i for i, op in enumerate(operators) if isinstance(op, second_type)
+    ]
+
+    if not first_indices or not second_indices:
+        return False
+
+    # Check if the earliest first_type comes before the earliest second_type
+    return min(first_indices) < min(second_indices)
+
+
+def get_operators_of_type(
+    plan: LogicalPlan, op_type: Type[LogicalOperator]
+) -> List[LogicalOperator]:
+    """Get all operators of a specific type from the plan.
+
+    Args:
+        plan: The logical plan to inspect
+        op_type: The operator type to search for
+
+    Returns:
+        List of all operators of the given type in post-order traversal
+    """
+    return [op for op in plan.dag.post_order_iter() if isinstance(op, op_type)]
+
+
+def get_operator_types(plan: LogicalPlan) -> List[str]:
+    """Get list of operator type names in post-order traversal.
+
+    Args:
+        plan: The logical plan to inspect
+
+    Returns:
+        List of operator class names in the order they appear in post-order traversal
+    """
+    return [type(op).__name__ for op in plan.dag.post_order_iter()]
 
 
 def test_cached_remote_fn():
@@ -136,36 +211,6 @@ def test_make_hashable():
     )
 
 
-def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
-    # Test that pyarrow versions outside of the defined bounds cause an ImportError to
-    # be raised.
-    with pytest.raises(ImportError):
-        _check_pyarrow_version()
-
-
-def test_check_pyarrow_version_bounds_disabled(
-    unsupported_pyarrow_version,
-    disable_pyarrow_version_check,
-):
-    # Test that pyarrow versions outside of the defined bounds DO NOT cause an
-    # ImportError to be raised if the environment variable disabling the check is set.
-
-    # Confirm that ImportError is not raised.
-    try:
-        _check_pyarrow_version()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-
-def test_check_pyarrow_version_supported():
-    # Test that the pyarrow installed in this testing environment satisfies the pyarrow
-    # version bounds.
-    try:
-        _check_pyarrow_version()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
     ctx = ray.data.context.DataContext.get_current()
@@ -204,13 +249,9 @@ def get_parquet_read_logical_op(
     datasource = ParquetDatasource(paths="example://iris.parquet")
     if "parallelism" not in read_kwargs:
         read_kwargs["parallelism"] = 10
-    mem_size = None
-    if "mem_size" in read_kwargs:
-        mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
         datasource_or_legacy_reader=datasource,
-        mem_size=mem_size,
         ray_remote_args=ray_remote_args,
         **read_kwargs,
     )
@@ -343,6 +384,21 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+def test_merge_resources_to_ray_remote_args():
+    ray_remote_args = {}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
+    assert ray_remote_args == {"num_cpus": 1, "num_gpus": 1, "memory": 1}
+
+    ray_remote_args = {"other_resource": 1}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
+    assert ray_remote_args == {
+        "num_cpus": 1,
+        "num_gpus": 1,
+        "memory": 1,
+        "other_resource": 1,
+    }
 
 
 @pytest.mark.parametrize(

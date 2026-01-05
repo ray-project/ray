@@ -1,15 +1,15 @@
 import os
 import signal
-import time
 import sys
+import time
 import warnings
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
-from ray._common.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -159,6 +159,20 @@ def test_ids(ray_start_regular):
     with warnings.catch_warnings(record=True) as w:
         assert rtc.get_node_id() == rtc.node_id.hex()
         assert any("Use get_node_id() instead" in str(warning.message) for warning in w)
+
+    # session name
+    assert isinstance(rtc.get_session_name(), str)
+    session_name = rtc.get_session_name()
+    assert len(session_name) > 0
+
+    @ray.remote
+    def verify_session_name(expected_session_name):
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_session_name(), str)
+        assert rtc.get_session_name() == expected_session_name
+        return True
+
+    ray.get(verify_session_name.remote(session_name))
 
     # job id
     assert isinstance(rtc.get_job_id(), str)

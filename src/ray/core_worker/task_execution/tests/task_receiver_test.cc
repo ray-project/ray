@@ -21,8 +21,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/common/test_util.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -122,6 +123,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string DebugString() override { return ""; }
 
   std::string GetSessionName() const override { return "test-session-name"; }
+
+  NodeID GetNodeID() const override { return NodeID::Nil(); }
 };
 
 class TaskReceiverTest : public ::testing::Test {

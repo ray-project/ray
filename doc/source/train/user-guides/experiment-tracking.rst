@@ -182,8 +182,9 @@ If applicable, make sure that you properly set up credentials on each training w
 
         .. testcode::
             :skipif: True
-
-            mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
+            
+            mlflow.set_tracking_uri(uri="file://some_shared_storage_path/mlruns")
+            mlflow.start_run()
 
         **Remote, hosted by Databricks**
 
@@ -242,7 +243,7 @@ Refer to the tracking libraries' documentation for semantics.
 
        def train_func():
             if ray.train.get_context().get_world_rank() == 0:
-                   wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
+                   wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stabilizes"})
 
 .. tip::
 

@@ -16,11 +16,11 @@ const LabeledDatum: React.FC<LabeledDatumProps> = ({
     <Grid container item xs={12}>
       <Grid item xs={6}>
         <Box
-          sx={
+          sx={(theme) =>
             tooltip
               ? {
                   textDecorationLine: "underline",
-                  textDecorationColor: "#a6c3e3",
+                  textDecorationColor: theme.palette.primary.light,
                   textDecorationThickness: "1px",
                   textDecorationStyle: "dotted",
                   cursor: "help",

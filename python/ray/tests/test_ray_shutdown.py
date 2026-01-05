@@ -1,21 +1,21 @@
+import multiprocessing
+import os
+import platform
+import signal
 import sys
 import time
-import platform
-import os
-import signal
-import multiprocessing
 
 import pytest
+
 import ray
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
-
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
-from ray.util.state import get_worker, list_tasks
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import get_worker, list_tasks
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 WAIT_TIMEOUT = 20
 
@@ -320,14 +320,6 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
             if target_path in " ".join(child.cmdline()):
                 return raylet, child
         raise ValueError("runtime env agent not found")
-
-    # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
-    worker = cluster.add_node(num_cpus=0)
-    raylet, agent = get_raylet_runtime_env_agent_procs(worker)
-    agent.terminate()
-    exit_code = raylet.wait()
-    # When the agent is terminated
-    assert exit_code == 0
 
     # Make sure raylet exits gracefully upon agent terminated by SIGKILL.
     # TODO(sang): Make raylet exits ungracefully in this case. It is currently

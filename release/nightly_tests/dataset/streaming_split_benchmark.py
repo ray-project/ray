@@ -9,6 +9,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-workers", type=int, required=True)
     parser.add_argument(
+        "--equal-split",
+        action="store_true",
+        help=(
+            "If set, splitting will be equalized, ie every worker will get "
+            "exactly same # of rows (hence some rows might be dropped)"
+        ),
+    )
+    parser.add_argument(
         "--early-stop",
         action="store_true",
         help="If set, each worker will read only half of the data",
@@ -44,7 +52,9 @@ def main(args):
 
     def benchmark_fn():
         splits = ds.streaming_split(
-            args.num_workers, equal=True, locality_hints=locality_hints
+            args.num_workers,
+            equal=bool(args.equal_split),
+            locality_hints=locality_hints,
         )
         future = [
             consumers[i].consume.remote(split, max_rows_to_read_per_worker)
@@ -63,7 +73,9 @@ def main(args):
 class ConsumingActor:
     def consume(self, split, max_rows_to_read: Optional[int] = None):
         rows_read = 0
-        for _ in split.iter_batches():
+        for batch in split.iter_batches():
+            rows_read += len(batch["label"])
+
             if max_rows_to_read is not None:
                 if rows_read >= max_rows_to_read:
                     break

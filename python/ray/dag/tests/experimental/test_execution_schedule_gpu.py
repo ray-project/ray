@@ -1,22 +1,22 @@
 # coding: utf-8
 import os
 import sys
+from typing import Optional
 
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
-from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
-from ray.dag.dag_node_operation import _DAGNodeOperationType
-import torch
-from typing import Optional
 from ray.dag.compiled_dag_node import CompiledDAG
+from ray.dag.dag_node_operation import _DAGNodeOperationType
+from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 if not USE_GPU:
     pytest.skip("Skipping, these tests require GPUs.", allow_module_level=True)

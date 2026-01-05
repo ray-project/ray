@@ -93,9 +93,9 @@ from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
-    COMPONENT_MODULE_TO_ENV_CONNECTOR,
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -104,14 +104,14 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
 

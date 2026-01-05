@@ -52,26 +52,13 @@ def update_file_version(
     """
     Modify the version in the files to the specified version.
     """
-
-    def list_java_files():
-        """
-        Scan the directories and return the sorted list of
-            pom.xml and pom_template.xml files.
-        """
-        files = []
-        for current_root_dir, _, file_names in os.walk(root_dir):
-            for file_name in file_names:
-                if file_name in ["pom.xml", "pom_template.xml"]:
-                    files.append(os.path.join(current_root_dir, file_name))
-        return sorted(files)
-
     non_java_files = [
         "ci/ray_ci/utils.py",
         "python/ray/_version.py",
         "src/ray/common/constants.h",
     ]
     non_java_files.sort()
-    java_files = list_java_files()
+    java_files = list_java_files(root_dir)
     assert len(java_files) > 0
 
     def replace_version_in_file(file_path: str, old_version: str):

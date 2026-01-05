@@ -1,0 +1,42 @@
+{
+  "my_glaive_toolcall_en_demo": {
+      "file_name": "glaive_toolcall_en_demo.json",
+      "formatting": "sharegpt",
+      "columns": {
+          "messages": "conversations",
+          "tools": "tools"
+      }
+  },
+
+  "my_ultrafeedback": {
+    "file_name": "ultrafeedback.jsonl",
+    "ranking": true,
+    "columns": {
+      "prompt": "prompt",
+      "chosen": "chosen",
+      "rejected": "rejected"
+    }
+  },
+
+  "my_kto_en_demo": {
+    "file_name": "/mnt/cluster_storage/kto_en_demo.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "messages",
+      "kto_tag": "label"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant"
+    }
+  },
+
+  "my_cpt_c4": {
+    "file_name": "/mnt/cluster_storage/c4.jsonl",
+    "columns": {
+      "prompt": "text"
+    }
+  }
+}

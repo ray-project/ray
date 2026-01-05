@@ -22,7 +22,7 @@ namespace ray {
 uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
                                           uint64_t base_ms,
                                           uint64_t max_backoff_ms) {
-  uint64_t delay = static_cast<uint64_t>(pow(2, attempt));
+  auto delay = static_cast<uint64_t>(pow(2, attempt));
   // Use max_backoff_ms if there is an overflow.
   if (delay == 0) {
     return max_backoff_ms;

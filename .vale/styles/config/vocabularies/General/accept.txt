@@ -23,6 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
+agentic
 Alibaba
 Alpaca
 Anyscale
@@ -33,6 +34,7 @@ autoscales
 bool
 breakpoint
 BTS
+bursty
 chatbot
 CLI
 configs
@@ -45,8 +47,11 @@ deserialize
 deserializes
 dev
 dev to prod
-disable
+[d|D]isable[d]
+[d|D]isable
 DLinear
+Dockerfile
+docstrings
 DPO
 EKS
 ETDataset
@@ -55,20 +60,24 @@ Flink
 g[Rr][Pp][Cc]
 GGUF
 GKE
+GPT
 GPTQ
 GPU(s)?
 hostfile
 http
 HTTP
+Karpenter
 KServe
 KTO
 kubectl
 Kubernetes
 Kueue
+LLMServer
 LMs
 LSH
 MCP
 Megatron
+Mixtral
 MLflow
 MLOps
 namespace
@@ -76,6 +85,7 @@ NER
 Nsight
 NumPy
 NVIDIA
+NVLink
 OOM
 open-source
 PACK
@@ -86,6 +96,9 @@ pretraining
 productionize
 Pythonic
 QPS
+Quantizing
+Quickstarts
+Qwen
 retrigger
 RISECamp
 RLHF
@@ -96,14 +109,18 @@ SFT
 ShareGPT
 SLA
 SLAs
+SSE
 streamable
 Softmax
 streamable
 subprocess
 teardown
+tiktoken
+tokenization
 uncaptured
 URI(s)?
 UUID
+USD
 uv
 verl
 VM(s)?

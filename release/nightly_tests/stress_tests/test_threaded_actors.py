@@ -7,7 +7,7 @@ import threading
 import time
 
 from ray._private.test_utils import monitor_memory_usage
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 
 from collections import namedtuple
 from queue import Queue
@@ -154,7 +154,7 @@ def main():
     # Report the result.
     ray.get(monitor_actor.stop_run.remote())
 
-    result = {"success": 0}
+    result = {}
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps(result))
 

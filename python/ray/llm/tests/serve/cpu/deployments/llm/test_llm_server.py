@@ -8,8 +8,12 @@ import numpy as np
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import LoraConfig
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -151,6 +155,89 @@ class TestLLMServer:
 
         # Validate embedding response
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
+
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("temperature", [0.0])
+    @pytest.mark.parametrize("language", ["en", "hi"])
+    @pytest.mark.asyncio
+    async def test_transcription_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_transcription_request,
+        stream: bool,
+        temperature: float,
+        language: Optional[str],
+    ):
+        """Test transcription API from LLMServer perspective."""
+
+        # Create transcription request
+        request = mock_transcription_request
+
+        print(
+            f"\n\n_____ TRANSCRIPTION SERVER ({'STREAMING' if stream else 'NON-STREAMING'}) language={language} temperature={temperature} _____\n\n"
+        )
+
+        # Get the response
+        batched_chunks = serve_handle.transcriptions.remote(request)
+
+        if stream:
+            # Collect streaming responses
+            chunks = []
+            async for batch in batched_chunks:
+                if isinstance(batch, list):
+                    chunks.extend(batch)
+                else:
+                    chunks.append(batch)
+
+            # Check that we got responses
+            assert len(chunks) > 0
+
+            # Validate streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks, temperature, language
+            )
+        else:
+            # Collect non-streaming response
+            chunks = []
+            async for batch in batched_chunks:
+                chunks.append(batch)
+
+            # Check that we got one response
+            assert len(chunks) == 1
+
+            # Validate non-streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks[0], temperature, language
+            )
+
+    @pytest.mark.asyncio
+    async def test_score_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_score_request,
+    ):
+        """Test score API from LLMServer perspective."""
+
+        # Create score request
+        request = mock_score_request
+
+        print("\n\n_____ SCORE SERVER _____\n\n")
+
+        # Get the response
+        batched_chunks = serve_handle.score.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate score response
+        LLMResponseValidator.validate_score_response(chunks[0])
 
     @pytest.mark.asyncio
     async def test_check_health(self, mock_llm_config):
@@ -345,7 +432,7 @@ class TestLLMServer:
     async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
-            "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
+            "ray.llm._internal.serve.core.server.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
             server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
             await server.start()
@@ -415,6 +502,114 @@ class TestLLMServer:
         assert np.isclose(
             std_var_llm_server, std_var_engine, atol=1.0
         ), f"{std_var_llm_server=}, {std_var_engine=}"
+
+
+class TestGetDeploymentOptions:
+    def test_placement_group_config(self):
+        """Test that placement_group_config is correctly parsed."""
+
+        # Test the default resource bundle
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
+            {"GPU": 1} for _ in range(5)
+        ]
+
+        # Test the custom placement group config
+        # Note: The first bundle gets merged with replica actor resources (CPU: 1, GPU: 0)
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+            placement_group_config={
+                "bundles": [{"CPU": 1, "XPU": 1}] + [{"XPU": 1}] * 5,
+                "strategy": "PACK",
+            },
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+        # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
+        # All bundles get GPU: 1.0 added as accelerator hint (and CPU: 0.0 for workers)
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 2.0, "GPU": 1.0, "XPU": 1}
+        ] + [{"CPU": 0.0, "GPU": 1.0, "XPU": 1} for _ in range(5)]
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+    def test_get_serve_options_with_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="A100-40G",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
+        ]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
+
+    def test_get_serve_options_without_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is not set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
 
 
 if __name__ == "__main__":

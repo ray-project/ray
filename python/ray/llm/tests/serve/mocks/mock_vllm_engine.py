@@ -2,10 +2,14 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
@@ -13,12 +17,13 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
-    LLMConfig,
-)
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
@@ -37,6 +42,8 @@ class MockVLLMEngine(LLMEngine):
         self.llm_config = llm_config
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
+        self._is_sleeping = False
+        self._is_paused = False
 
     async def start(self):
         """Start the mock engine."""
@@ -66,8 +73,75 @@ class MockVLLMEngine(LLMEngine):
         if not self.started:
             raise RuntimeError("Engine not started")
 
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the mock engine to sleep.
+
+        This mimics vLLM's behavior: resets prefix cache and sets sleeping state.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        # vLLM resets prefix cache on sleep
+        await self.reset_prefix_cache()
+        self._is_sleeping = True
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the mock engine from sleep.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        self._is_sleeping = False
+
+    async def is_sleeping(self) -> bool:
+        """Check if the mock engine is sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        return self._is_sleeping
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the mock engine.
+
+        This mimics vLLM's behavior: halts generation while keeping weights in GPU.
+
+        Args:
+            **kwargs: Engine-specific options (wait_for_inflight_requests, clear_cache).
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        # vLLM optionally clears cache on pause
+        if kwargs.get("clear_cache", True):
+            await self.reset_prefix_cache()
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the mock engine after pause.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check if the mock engine is paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        return self._is_paused
+
     async def chat(
-        self, request: ChatCompletionRequest
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         """Mock chat completion."""
         if not self.started:
@@ -89,7 +163,9 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
     async def completions(
-        self, request: CompletionRequest
+        self,
+        request: CompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         """Mock text completion."""
         if not self.started:
@@ -105,7 +181,9 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
     async def embeddings(
-        self, request: EmbeddingRequest
+        self,
+        request: EmbeddingRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, EmbeddingResponse, ErrorResponse], None]:
         """Mock embeddings generation."""
         if not self.started:
@@ -127,10 +205,66 @@ class MockVLLMEngine(LLMEngine):
         response = EmbeddingResponse(
             object="list",
             data=embedding_data,
-            model=getattr(request, "model", "mock-model"),
+            model=request.model or self.llm_config.model_id,
             usage={
                 "prompt_tokens": len(str(request.input).split()),
                 "total_tokens": len(str(request.input).split()),
+            },
+        )
+        yield response
+
+    async def transcriptions(
+        self,
+        request: TranscriptionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
+        """Mock transcription generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract audio file info
+        language = getattr(request, "language", "en")
+        temperature = getattr(request, "temperature", 0.0)
+
+        # Generate transcription response
+        async for response in self._generate_transcription_response(
+            request=request, language=language, temperature=temperature
+        ):
+            yield response
+
+    async def score(
+        self,
+        request: ScoreRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
+        """Mock score generation for text pairs."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract text_1 and text_2 from the request
+        text_1 = getattr(request, "text_1", "")
+        text_2 = getattr(request, "text_2", "")
+
+        # Convert to lists if they aren't already
+        text_1_list = text_1 if isinstance(text_1, list) else [text_1]
+        text_2_list = text_2 if isinstance(text_2, list) else [text_2]
+
+        # Generate mock scores for each pair
+        score_data = []
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
+            # Generate a random score (can be any float value)
+            score = random.uniform(-10.0, 10.0)
+
+            score_data.append({"object": "score", "score": score, "index": i})
+
+        # Create the response
+        response = ScoreResponse(
+            object="list",
+            data=score_data,
+            model=request.model or self.llm_config.model_id,
+            usage={
+                "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+                "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
         yield response
@@ -141,6 +275,8 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock chat completion response."""
 
         request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
+        # # Use request.model if provided, otherwise fall back to llm_config.model_id
+        model_name = request.model or self.llm_config.model_id
         lora_prefix = (
             ""
             if request.model not in self._current_lora_model
@@ -149,7 +285,6 @@ class MockVLLMEngine(LLMEngine):
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
-            model_name = getattr(request, "model", "mock-model")
 
             for i in range(max_tokens):
                 if i == 0:
@@ -199,7 +334,7 @@ class MockVLLMEngine(LLMEngine):
                 id=request_id,
                 object="chat.completion",
                 created=int(asyncio.get_event_loop().time()),
-                model=getattr(request, "model", "mock-model"),
+                model=model_name,
                 choices=[choice],
                 usage={
                     "prompt_tokens": len(prompt_text.split()),
@@ -216,6 +351,7 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock completion response."""
 
         request_id = request.request_id or f"cmpl-{random.randint(1000, 9999)}"
+        model_name = request.model or self.llm_config.model_id
         lora_prefix = (
             ""
             if request.model not in self._current_lora_model
@@ -224,7 +360,6 @@ class MockVLLMEngine(LLMEngine):
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
-            model_name = getattr(request, "model", "mock-model")
 
             for i in range(max_tokens):
                 if i == 0:
@@ -266,7 +401,7 @@ class MockVLLMEngine(LLMEngine):
                 id=request_id,
                 object="text_completion",
                 created=int(asyncio.get_event_loop().time()),
-                model=getattr(request, "model", "mock-model"),
+                model=model_name,
                 choices=[choice],
                 usage={
                     "prompt_tokens": len(prompt_text.split()),
@@ -275,6 +410,96 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            yield response
+
+    async def _generate_transcription_response(
+        self,
+        request: TranscriptionRequest,
+        language: str,
+        temperature: float,
+    ) -> AsyncGenerator[Union[str, TranscriptionResponse], None]:
+        """Generate mock transcription response."""
+
+        request_id = request.request_id or f"transcribe-{random.randint(1000, 9999)}"
+        lora_prefix = (
+            ""
+            if request.model not in self._current_lora_model
+            else f"[lora_model] {request.model}: "
+        )
+
+        # Generate mock transcription text with LoRA prefix
+        mock_transcription_text = (
+            f"Mock transcription in {language} language with temperature {temperature}"
+        )
+        if lora_prefix:
+            mock_transcription_text = f"{lora_prefix}{mock_transcription_text}"
+
+        model_name = request.model or self.llm_config.model_id
+
+        if request.stream:
+            # Streaming response - return SSE formatted strings
+            created_time = int(asyncio.get_event_loop().time())
+
+            # Split transcription into words for streaming
+            words = mock_transcription_text.split()
+
+            for i, word in enumerate(words):
+                # Create streaming chunk
+                choice = {
+                    "delta": {
+                        "content": word + (" " if i < len(words) - 1 else ""),
+                    },
+                }
+
+                chunk_data = {
+                    "delta": None,
+                    "type": None,
+                    "logprobs": None,
+                    "id": request_id,
+                    "object": "transcription.chunk",
+                    "created": created_time,
+                    "model": model_name,
+                    "choices": [choice],
+                }
+
+                # Format as SSE
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                await asyncio.sleep(0.01)  # Simulate processing time
+
+            # Send final chunk with finish_reason
+            final_choice = {
+                "delta": {
+                    "content": "",
+                    "finish_reason": "stop",
+                    "stop_reason": None,
+                },
+            }
+
+            final_chunk_data = {
+                "delta": None,
+                "type": None,
+                "logprobs": None,
+                "id": request_id,
+                "object": "transcription.chunk",
+                "created": created_time,
+                "model": model_name,
+                "choices": [final_choice],
+            }
+
+            yield f"data: {json.dumps(final_chunk_data)}\n\n"
+
+            # Send final [DONE] message
+            yield "data: [DONE]\n\n"
+        else:
+            # Non-streaming response - return response object
+            response = TranscriptionResponse(
+                text=mock_transcription_text,
+                logprobs=None,
+                usage={
+                    "seconds": 5.0,
+                    "type": "duration",
+                },
+            )
             yield response
 
 

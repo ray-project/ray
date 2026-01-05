@@ -25,9 +25,8 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -72,18 +71,13 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
-      const rpc::TensorTransport &tensor_transport)>;
+      const std::optional<std::string> &tensor_transport)>;
 
   CoreWorkerOptions()
-      : store_socket(""),
-        raylet_socket(""),
-        enable_logging(false),
-        log_dir(""),
+      : enable_logging(false),
         install_failure_signal_handler(false),
         interactive(false),
-        node_ip_address(""),
         node_manager_port(0),
-        driver_name(""),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
         check_signals(nullptr),
@@ -98,17 +92,11 @@ struct CoreWorkerOptions {
         cancel_async_actor_task(nullptr),
         actor_shutdown_callback(nullptr),
         is_local_mode(false),
-        terminate_asyncio_thread(nullptr),
-        serialized_job_config(""),
         metrics_agent_port(-1),
         runtime_env_hash(0),
         cluster_id(ClusterID::Nil()),
-        session_name(""),
-        entrypoint(""),
         worker_launch_time_ms(-1),
-        worker_launched_time_ms(-1),
-        debug_source(""),
-        enable_resource_isolation(false) {}
+        worker_launched_time_ms(-1) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -153,7 +141,7 @@ struct CoreWorkerOptions {
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
-  std::function<void(bool triggered_by_global_gc)> gc_collect;
+  std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
@@ -179,8 +167,6 @@ struct CoreWorkerOptions {
   std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
-  /// The function to destroy asyncio event and loops.
-  std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.
@@ -188,12 +174,10 @@ struct CoreWorkerOptions {
   int metrics_agent_port;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The startup token of the process assigned to it
-  /// during startup via command line arguments.
-  /// This is needed because the actual core worker process
-  /// may not have the same pid as the process the worker pool
-  /// starts (due to shim processes).
-  StartupToken startup_token{0};
+  /// The worker ID assigned by raylet when starting the worker process.
+  /// This is set for non-driver workers started by raylet. For drivers,
+  /// this should be Nil and the worker ID will be computed from the job ID.
+  WorkerID worker_id;
   /// Cluster ID associated with the core worker.
   ClusterID cluster_id;
   /// The function to allocate a new object for the memory store.
@@ -212,10 +196,6 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
-
-  // If true, core worker enables resource isolation through cgroupv2 by reserving
-  // resources for ray system processes.
-  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

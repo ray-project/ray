@@ -1,12 +1,12 @@
-import numpy as np
-
-import ray
-import ray.autoscaler.sdk
-
 import json
 import os
 from time import perf_counter
+
+import numpy as np
 from tqdm import tqdm
+
+import ray
+import ray.autoscaler.sdk
 
 NUM_NODES = 50
 OBJECT_SIZE = 2**30
@@ -63,7 +63,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
             "broadcast_time": duration,
             "object_size": OBJECT_SIZE,
             "num_nodes": NUM_NODES,
-            "success": "1",
         }
         perf_metric_name = f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes"
         results["perf_metrics"] = [

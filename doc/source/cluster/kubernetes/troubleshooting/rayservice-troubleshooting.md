@@ -85,6 +85,7 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 * {ref}`kuberay-raysvc-issue8`
 * {ref}`kuberay-raysvc-issue9`
 * {ref}`kuberay-raysvc-issue10`
+* {ref}`kuberay-raysvc-issue11`
 
 (kuberay-raysvc-issue1)=
 ### Issue 1: Ray Serve script is incorrect
@@ -309,3 +310,30 @@ If the annotation isn't set, KubeRay automatically uses each RayCluster custom r
 Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata.
 Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource.
 See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
+
+(kuberay-raysvc-issue11)=
+### Issue 11: RayService stuck in Initializing — use the initializing timeout to fail fast
+
+If one or more underlying Pods are scheduled but fail to start (for example, ImagePullBackOff, CrashLoopBackOff, or other container startup errors), a `RayService` can remain in the Initializing state indefinitely. This state consumes cluster resources and makes the root cause harder to diagnose.
+
+#### What to do
+KubeRay exposes a configurable initializing timeout via the annotation `ray.io/initializing-timeout`. When the timeout expires, the operator marks the `RayService` as failed and starts cleanup of associated `RayCluster` resources. Enabling the timeout requires only adding the annotation to the `RayService` metadata — no other CRD changes are necessary.
+
+#### Operator behavior after timeout
+- The `RayServiceReady` condition is set to `False` with reason `InitializingTimeout`.
+- The `RayService` is placed into a **terminal (failed)** state; updating the spec will not trigger a retry. Recovery requires deleting and recreating the `RayService`.
+- Cluster names on the `RayService` CR are cleared, which triggers cleanup of the underlying `RayCluster` resources. Deletions still respect `RayClusterDeletionDelaySeconds`.
+- A `Warning` event is emitted that documents the timeout and the failure reason.
+
+#### Enable the timeout
+Add the annotation to your `RayService` metadata. The annotation accepts either Go duration strings (for example, `"30m"` or `"1h"`) or integer seconds (for example, `"1800"`):
+
+```yaml
+metadata:
+  annotations:
+    ray.io/initializing-timeout: "30m"
+```
+
+#### Guidance
+- Pick a timeout that balances expected startup work with failing fast to conserve cluster resources.
+- See the upstream discussion [kuberay#4138](https://github.com/ray-project/kuberay/issues/4138) for more implementation details.

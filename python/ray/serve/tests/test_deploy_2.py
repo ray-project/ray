@@ -123,7 +123,7 @@ def test_http_proxy_request_cancellation(serve_instance):
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
-        time.sleep(1)
+        wait_for_condition(lambda: ray.get(s.cur_num_waiters.remote()) == 1)
         assert not first_blocking_fut.done()
 
         # Send more requests, these should be queued in handle.
@@ -134,8 +134,7 @@ def test_http_proxy_request_cancellation(serve_instance):
             pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
-        time.sleep(1)
-        assert all(f.done() for f in rest_blocking_futs)
+        wait_for_condition(lambda: all(f.done() for f in rest_blocking_futs))
 
         # Now unblock the first request.
         ray.get(s.send.remote())
@@ -325,12 +324,17 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "upscale_delay_s": 30.0,
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
 
@@ -347,13 +351,21 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     if use_options:
         A = serve.deployment(A).options(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 2,
+            },
             graceful_shutdown_timeout_s=1,
         )
     else:
         A = serve.deployment(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 2,
+            },
             graceful_shutdown_timeout_s=1,
         )(A)
 
@@ -376,14 +388,19 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
-        "look_back_period_s": 30.0,
+        "look_back_period_s": 2.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
     for i in range(3):

@@ -55,7 +55,12 @@ const ActorDetailPage = () => {
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <Box sx={{ padding: 2, backgroundColor: "white" }}>
+      <Box
+        sx={(theme) => ({
+          padding: 2,
+          backgroundColor: theme.palette.background.paper,
+        })}
+      >
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
@@ -67,7 +72,12 @@ const ActorDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box
+      sx={(theme) => ({
+        padding: 2,
+        backgroundColor: theme.palette.background.paper,
+      })}
+    >
       <MetadataSection
         metadataList={[
           {
@@ -191,19 +201,19 @@ const ActorDetailPage = () => {
               <div>
                 <CpuStackTraceLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <MemoryProfilingButton
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
               </div>

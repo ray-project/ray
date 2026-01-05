@@ -60,9 +60,12 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -83,6 +86,7 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
+    WorkerID,
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
@@ -631,6 +635,10 @@ class Worker:
         """Set the cached job id to speed `current_job_id()`."""
         self._cached_job_id = job_id
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
@@ -797,6 +805,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
+        _tensor_transport: Optional[str] = None,
     ):
         """Put value in the local object store.
 
@@ -813,7 +822,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this only supports one-sided transports like "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -829,9 +838,26 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
+        tensors = None
+        from ray.experimental.gpu_object_manager.util import (
+            normalize_and_validate_tensor_transport,
+            validate_one_sided,
+        )
 
+        tensor_transport = None
+        if _tensor_transport is not None:
+            tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
+            )
+            validate_one_sided(tensor_transport, "ray.put")
         try:
-            serialized_value = self.get_serialization_context().serialize(value)
+            if tensor_transport is not None:
+                (
+                    serialized_value,
+                    tensors,
+                ) = self.get_serialization_context().serialize_gpu_objects(value)
+            else:
+                serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -852,13 +878,17 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return self.core_worker.put_object(
+        ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
+            tensor_transport=tensor_transport,
         )
+        if tensors:
+            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+        return ret
 
     def raise_errors(self, serialized_objects, object_refs):
         out = self.deserialize_objects(serialized_objects, object_refs)
@@ -867,21 +897,27 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, serialized_objects, object_refs):
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        use_object_store: bool = False,
+    ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # If using a non-object store transport, then tensors will be sent
-            # out-of-band. Get them before deserializing the object store data.
-            if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ):
+            if tensor_transport is None:
+                # The object is not a gpu object, so we cannot use other external transport to
+                # fetch it.
                 continue
 
             object_id = obj_ref.hex()
             if object_id not in gpu_objects:
+                # If using a non-object store transport, then tensors will be sent
+                # out-of-band. Get them before deserializing the object store data.
+                # The user can set use_object_store to fetch the RDT object
+                # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -900,6 +936,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
+        use_object_store: bool = False,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -918,6 +955,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
+            use_object_store: [Alpha] To fetch an RDT object through the object store.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -930,7 +968,6 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -942,7 +979,7 @@ class Worker:
         )
 
         debugger_breakpoint = b""
-        for data, metadata, _ in serialized_objects:
+        for _, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -954,12 +991,16 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        values = self.deserialize_objects(serialized_objects, object_refs)
+        values = self.deserialize_objects(
+            serialized_objects, object_refs, use_object_store
+        )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
-            for i, value in enumerate(values):
+            for value in values:
                 if isinstance(value, RayError):
-                    if isinstance(value, ray.exceptions.ObjectLostError):
+                    if isinstance(
+                        value, ray.exceptions.ObjectLostError
+                    ) and not isinstance(value, ray.exceptions.OwnerDiedError):
                         global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
@@ -1081,6 +1122,10 @@ class Worker:
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+    def shutdown_gpu_object_manager(self):
+        if self._gpu_object_manager:
+            self._gpu_object_manager.shutdown()
 
 
 _connect_or_shutdown_lock = threading.RLock()
@@ -1494,19 +1539,18 @@ def init(
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
-        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
-            fractional i.e. 0.5 means half a cpu core.
-            By default, the min of 20% and 1 core will be reserved.
-            Must be >= 0.5 cores and < total number of available cores.
-            Cannot be less than 0.5 cores.
+        system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
+            Cores can be fractional i.e. 1.5 means one and a half a cpu core.
+            By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
+            is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system))
             This option only works if enable_resource_isolation is True.
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
-            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
-            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
+            By default, the value will be atleast 500MB, and at most 10GB. The default value is
+            calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system))
             This option only works if enable_resource_isolation is True.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
-            The raylet must have read/write permissions to this path.
+            The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
@@ -1767,13 +1811,16 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
+    if _node_ip_address is not None:
+        _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
-            "DeprecationWarning: local mode is an experimental feature that is no "
-            "longer maintained and will be removed in the future."
-            " For debugging consider using Ray Distributed Debugger. ",
-            DeprecationWarning,
+            "`local_mode` is an experimental feature that is no "
+            "longer maintained and will be removed in the near future. "
+            "For debugging consider using the Ray distributed debugger.",
+            FutureWarning,
             stacklevel=2,
         )
     else:
@@ -1800,6 +1847,9 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # Setup and verify authentication for new cluster
+        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._common.usage import usage_lib
@@ -1887,6 +1937,9 @@ def init(
                 "_node_name cannot be configured when connecting to "
                 "an existing cluster."
             )
+
+        # Setup and verify authentication for connecting to existing cluster
+        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=False)
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
@@ -2043,6 +2096,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
@@ -2098,7 +2152,7 @@ def custom_excepthook(type, value, tb):
         worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
-        ray._private.state.state._check_connected()
+        ray._private.state.state._connect_and_get_accessor()
         ray._private.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
@@ -2397,7 +2451,6 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
-# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
 @with_connect_or_shutdown_lock
 def connect(
     node,
@@ -2410,13 +2463,12 @@ def connect(
     namespace: Optional[str] = None,
     job_config=None,
     runtime_env_hash: int = 0,
-    startup_token: int = 0,
+    worker_id: WorkerID = WorkerID.nil(),
     ray_debugger_external: bool = False,
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
-    enable_resource_isolation: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2432,8 +2484,8 @@ def connect(
         namespace: Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash: The hash of the runtime env for this worker.
-        startup_token: The startup token of the process assigned to
-            it during startup as a command line argument.
+        worker_id: The worker ID assigned by raylet when starting the worker
+            process (hex string). Nil for drivers.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
@@ -2445,7 +2497,6 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
-        enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2554,13 +2605,24 @@ def connect(
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config._client_job and job_config.runtime_env:
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
         runtime_env = upload_py_modules_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_working_dir_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
@@ -2579,7 +2641,7 @@ def connect(
         # We also want to skip adding script directory when running from dashboard.
         code_paths = []
         if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+            namespace and namespace == ray._raylet.RAY_INTERNAL_DASHBOARD_NAMESPACE
         ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2617,14 +2679,13 @@ def connect(
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
-        startup_token,
+        worker_id,
         session_name,
         node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
         debug_source,
-        enable_resource_isolation,
     )
 
     if mode == SCRIPT_MODE:
@@ -2774,15 +2835,15 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
     ...
 
 
@@ -2814,6 +2875,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
+    _use_object_store: bool = False,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2849,7 +2911,12 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-
+        _use_object_store: [Alpha] To fetch an RDT object through the object store
+            instead of using its designated tensor transport. You can set this to True
+            for cases where the caller does not support the object's tensor transport,
+            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
+            When this is False (default), Ray will use the object store for normal objects,
+            and attempt to use the object's tensor transport for RDT objects.
     Returns:
         A Python object or a list of Python objects.
 
@@ -2866,13 +2933,17 @@ def get(
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.warning(
-                "Using blocking ray.get inside async actor. "
-                "This blocks the event loop. Please use `await` "
-                "on object ref with asyncio.gather if you want to "
-                "yield execution to the event loop instead."
-            )
-            blocking_get_inside_async_warned = True
+            if ray_constants.env_bool(
+                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                True,
+            ):
+                logger.warning(
+                    "Using blocking ray.get inside async actor. "
+                    "This blocks the event loop. Please use `await` "
+                    "on object ref with asyncio.gather if you want to "
+                    "yield execution to the event loop instead."
+                )
+                blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
@@ -2908,10 +2979,16 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout, use_object_store=_use_object_store
+        )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
+                # If the object was lost and it wasn't due to owner death, it may be
+                # because the object store is full and objects needed to be evicted.
+                if isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(
+                    value, ray.exceptions.OwnerDiedError
+                ):
                     worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -2944,6 +3021,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
+    _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2963,6 +3041,9 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
+            Currently, this only supports one-sided tensor transports such as "nixl".
+            When this is None (default), Ray will use the object store.
 
     Returns:
         The object ref assigned to this value.
@@ -2973,13 +3054,11 @@ def put(
     if _owner is None:
         serialize_owner_address = None
     elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray._private.state.state.global_state_accessor` is not None
-        ray._private.state.state._check_connected()
+        # Ensure GlobalState is connected
+        ray._private.state.state._connect_and_get_accessor()
         serialize_owner_address = (
             ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.global_state_accessor.get_actor_info(
-                    _owner._actor_id
-                )
+                ray._private.state.state.get_actor_info(_owner._actor_id)
             )
         )
         if not serialize_owner_address:
@@ -2989,7 +3068,11 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value,
+                owner_address=serialize_owner_address,
+                _tensor_transport=_tensor_transport,
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -3248,12 +3331,14 @@ def cancel(
         If the specified Task is pending execution, it is cancelled and not
         executed. If the Task is currently executing, the behavior depends
         on the execution model of an Actor. If it is a regular Actor
-        or a threaded Actor, the execution isn't cancelled.
-        Actor Tasks cannot be interrupted because Actors have
-        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        or a threaded Actor, Ray sets a cancellation flag that can be checked
+        via `ray.get_runtime_context().is_canceled()` within the task body.
+        This allows for graceful cancellation by periodically checking the
+        cancellation status. If it is an async Actor, Ray cancels a `asyncio.Task`.
         The semantic of cancellation is equivalent to asyncio's cancellation.
         https://docs.python.org/3/library/asyncio-task.html#task-cancellation
-        If the Task has finished, nothing happens.
+        Note: `is_canceled()` is not supported for async actors and will raise
+        a RuntimeError. If the Task has finished, nothing happens.
 
         Only `force=False` is allowed for an Actor Task. Otherwise, it raises
         `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
@@ -3261,8 +3346,7 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted. Also note that
-        only async actor tasks can be interrupted.
+        if the Task has been scheduled or interrupted.
 
         If `recursive=True`, all the child Tasks and actor Tasks
         are cancelled.
@@ -3326,6 +3410,10 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
+    def __call__(self, __t: Type[T]) -> ActorClass[T]:
+        ...
+
+    @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
 
@@ -3383,12 +3471,6 @@ class RemoteDecorator(Protocol):
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-        ...
-
-    # Pass on typing actors for now. The following makes it so no type errors
-    # are generated for actors.
-    @overload
-    def __call__(self, __t: type) -> Any:
         ...
 
 
@@ -3486,6 +3568,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, Any]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3641,10 +3724,14 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+        label_selector: [Experimental] If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy: [Experimental] If specified, expresses soft constraints for scheduling
+                through a list of dicts of decorator options to fall back on when scheduling on a node.
+                Decorator options are evaluated together during scheduling. The first satisfied
+                dict of options is used. Currently only `label_selector` is a supported option.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.
@@ -3710,8 +3797,6 @@ def remote(
             node id based affinity scheduling.
             See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
             for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
         _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.

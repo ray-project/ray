@@ -16,10 +16,11 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import (
-    unify_schemas_with_validation,
+from ray.data.block import (
+    BlockMetadata,
+    BlockMetadataWithSchema,
+    _take_first_non_empty_schema,
 )
-from ray.data.block import BlockMetadata, BlockMetadataWithSchema
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -171,18 +172,18 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
-    schemas = []
+    bundle_list = list(bundles)
+    schema = _take_first_non_empty_schema(
+        ref_bundle.schema for ref_bundle in bundle_list
+    )
 
-    for ref_bundle in bundles:
+    for ref_bundle in bundle_list:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
-        schemas.append(ref_bundle.schema)
-    unified_schema = unify_schemas_with_validation(schemas)
-    return BlockList(
-        blocks, metadata, owned_by_consumer=owns_blocks, schema=unified_schema
-    )
+
+    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks, schema=schema)
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

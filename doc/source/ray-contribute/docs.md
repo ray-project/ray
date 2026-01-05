@@ -25,7 +25,7 @@ The editorial style is enforced in CI by Vale. For more information, see
 If you want to contribute to the Ray documentation, you need a way to build it.
 Don't install Ray in the environment you plan to use to build documentation. The requirements for the docs build system are generally not compatible with those you need to run Ray itself.
 
-Follow the these instructions to build the documentation:
+Follow these instructions to build the documentation:
 
 ### Fork Ray
 1. [Fork the Ray repository](https://docs.ray.io/en/master/ray-contribute/development.html#fork-the-ray-repository)
@@ -50,10 +50,10 @@ conda activate docs
 Install the documentation dependencies with the following command:
 
 ```shell
-pip install -r requirements-doc.txt
+pip install -r requirements-doc.lock.txt
 ```
 
-Don't use `-U` in this step. You don't want to upgrade dependencies because `requirements-doc.txt` pins exact versions you need to build the docs.
+Don't use `-U` in this step; `requirements-doc.lock.txt` is a lock file that pins the exact versions of all the required dependencies.
 
 ### Build documentation
 Before building, clean your environment first by running:
@@ -100,7 +100,7 @@ It's considered good practice to check the output of your build to make sure eve
 
 Before committing any changes, make sure you run the
 [linter](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting)
-with `../scripts/format.sh` from the `doc` folder,
+with `pre-commit run` from the `doc` folder,
 to make sure your changes are formatted correctly.
 
 ### Code completion and other developer tooling

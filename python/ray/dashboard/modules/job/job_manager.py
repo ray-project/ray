@@ -10,7 +10,8 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.utils import run_background_task
+from ray._common.utils import Timer, run_background_task
+from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
 from ray._raylet import GcsClient
@@ -32,8 +33,8 @@ from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.dashboard.utils import close_logger_file_descriptor
-from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
-from ray.job_submission import JobStatus
+from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
+from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -70,7 +71,9 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_client: GcsClient, logs_dir: str):
+    def __init__(
+        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+    ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
@@ -78,6 +81,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self._timeout_check_timer = timeout_check_timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -145,6 +149,9 @@ class JobManager:
         self.monitored_jobs.add(job_id)
         try:
             await self._monitor_job_internal(job_id, job_supervisor)
+        except Exception as e:
+            logger.error("Unhandled exception in job monitoring!", exc_info=e)
+            raise e
         finally:
             self.monitored_jobs.remove(job_id)
 
@@ -158,18 +165,34 @@ class JobManager:
             )
         )
 
-        is_alive = True
+        job_status = None
+        job_info = None
+        ping_obj_ref = None
 
-        while is_alive:
+        while True:
             try:
-                job_status = await self._job_info_client.get_status(job_id)
+                # NOTE: Job monitoring loop sleeps before proceeding with monitoring
+                #       sequence to consolidate the control-flow of the pacing
+                #       in a single place, rather than having it spread across
+                #       many branches
+                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
+
+                job_status = await self._job_info_client.get_status(
+                    job_id, timeout=None
+                )
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
                     # to FAILED.
-                    job_info = await self._job_info_client.get_info(job_id)
+                    if job_info is None:
+                        job_info = await self._job_info_client.get_info(
+                            job_id, timeout=None
+                        )
 
-                    if time.time() - job_info.start_time / 1000 > timeout:
+                    if (
+                        self._timeout_check_timer.time() - job_info.start_time / 1000
+                        > timeout
+                    ):
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
@@ -208,10 +231,11 @@ class JobManager:
                             job_id,
                             JobStatus.FAILED,
                             message=err_msg,
+                            error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+                            timeout=None,
                         )
-                        is_alive = False
                         logger.error(err_msg)
-                        continue
+                        break
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
@@ -234,81 +258,103 @@ class JobManager:
                                 "Unexpected error occurred: "
                                 "failed to get job supervisor."
                             ),
+                            error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                            timeout=None,
                         )
-                        is_alive = False
-                        continue
+                        break
 
-                await job_supervisor.ping.remote()
+                # Check to see if `JobSupervisor` is alive and reachable
+                if ping_obj_ref is None:
+                    ping_obj_ref = job_supervisor.ping.options(
+                        max_task_retries=-1
+                    ).remote()
+                ready, _ = ray.wait([ping_obj_ref], timeout=0)
+                if ready:
+                    ray.get(ping_obj_ref)
+                    ping_obj_ref = None
+                else:
+                    continue
 
-                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
-                is_alive = False
-                job_status = await self._job_info_client.get_status(job_id)
-                job_error_message = None
-                if job_status == JobStatus.FAILED:
-                    job_error_message = (
-                        "See more details from the dashboard "
-                        "`Job` page or the state API `ray list jobs`."
-                    )
-
-                job_error_message = ""
-                if job_status.is_terminal():
+                job_status = await self._job_info_client.get_status(
+                    job_id, timeout=None
+                )
+                target_job_error_message = ""
+                target_job_error_type: Optional[JobErrorType] = None
+                if job_status is not None and job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
-                elif isinstance(e, RuntimeEnvSetupError):
-                    logger.info(f"Failed to set up runtime_env for job {job_id}.")
-                    job_error_message = f"runtime_env setup failed: {e}"
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=job_error_message,
-                    )
-                elif isinstance(e, ActorUnschedulableError):
-                    logger.info(
-                        f"Failed to schedule job {job_id} because the supervisor actor "
-                        f"could not be scheduled: {e}"
-                    )
-                    job_error_message = (
-                        f"Job supervisor actor could not be scheduled: {e}"
-                    )
-                    await self._job_info_client.put_status(
-                        job_id,
-                        JobStatus.FAILED,
-                        message=job_error_message,
-                    )
                 else:
-                    logger.warning(
-                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
-                    )
-                    job_error_message = f"Unexpected error occurred: {e}"
+                    if isinstance(e, RuntimeEnvSetupError):
+                        logger.error(f"Failed to set up runtime_env for job {job_id}.")
+
+                        target_job_error_message = f"runtime_env setup failed: {e}"
+                        target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
+
+                    elif isinstance(e, ActorUnschedulableError):
+                        logger.error(
+                            f"Failed to schedule job {job_id} because the supervisor "
+                            f"actor could not be scheduled: {e}"
+                        )
+
+                        target_job_error_message = (
+                            f"Job supervisor actor could not be scheduled: {e}"
+                        )
+                        target_job_error_type = (
+                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
+                        )
+
+                    elif isinstance(e, ActorDiedError):
+                        logger.error(f"Job supervisor actor for {job_id} died: {e}")
+                        target_job_error_message = f"Job supervisor actor died: {e}"
+                        target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+
+                    else:
+                        logger.error(
+                            f"Job monitoring for job {job_id} failed "
+                            f"unexpectedly: {e}.",
+                            exc_info=e,
+                        )
+
+                        target_job_error_message = f"Unexpected error occurred: {e}"
+                        target_job_error_type = (
+                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
+                        )
+
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
                         job_status,
-                        message=job_error_message,
+                        message=target_job_error_message,
+                        error_type=target_job_error_type
+                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                        timeout=None,
                     )
 
                 # Log error message to the job driver file for easy access.
-                if job_error_message:
+                if target_job_error_message:
                     log_path = self._log_client.get_log_file_path(job_id)
                     os.makedirs(os.path.dirname(log_path), exist_ok=True)
                     with open(log_path, "a") as log_file:
-                        log_file.write(job_error_message)
+                        log_file.write(target_job_error_message)
 
                 # Log events
                 if self.event_logger:
                     event_log = (
                         f"Completed a ray job {job_id} with a status {job_status}."
                     )
-                    if job_error_message:
-                        event_log += f" {job_error_message}"
+                    if target_job_error_message:
+                        event_log += f" {target_job_error_message}"
                         self.event_logger.error(event_log, submission_id=job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=job_id)
 
+                break
+
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
@@ -361,6 +407,8 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -575,6 +623,7 @@ class JobManager:
                     f"Failed to start supervisor actor {submission_id}: '{e}'"
                     f". Full traceback:\n{tb_str}"
                 ),
+                error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
             )
         finally:
             close_logger_file_descriptor(driver_logger)

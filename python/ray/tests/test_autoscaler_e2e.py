@@ -4,13 +4,14 @@ import sys
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray._common.network_utils import build_address
-from ray._private.test_utils import (
-    get_metric_check_condition,
-    MetricSamplePattern,
-)
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import (
+    MetricSamplePattern,
+    PrometheusTimeseries,
+    get_metric_check_condition,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
@@ -124,12 +125,15 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
     actor = Actor.remote()
     ray.get(actor.ping.remote())
 
-    assert "Total Demands" in subprocess.check_output("ray status", shell=True).decode()
     assert (
-        "Total Demands" in subprocess.check_output("ray status -v", shell=True).decode()
+        "Pending Demands" in subprocess.check_output("ray status", shell=True).decode()
     )
     assert (
-        "Total Demands"
+        "Pending Demands"
+        in subprocess.check_output("ray status -v", shell=True).decode()
+    )
+    assert (
+        "Pending Demands"
         in subprocess.check_output("ray status --verbose", shell=True).decode()
     )
 
@@ -171,6 +175,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
         def ping(self):
             return True
 
+    timeseries = PrometheusTimeseries()
     zero_reported_condition = get_metric_check_condition(
         [
             MetricSamplePattern(
@@ -196,6 +201,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
                 partial_label_match={"NodeType": "ray.head.default"},
             ),
         ],
+        timeseries,
         export_addr=autoscaler_export_addr,
     )
     wait_for_condition(zero_reported_condition)
@@ -236,6 +242,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
                 partial_label_match={"NodeType": "ray.head.default"},
             ),
         ],
+        timeseries,
         export_addr=autoscaler_export_addr,
     )
     wait_for_condition(two_cpu_no_pending_condition)

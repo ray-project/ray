@@ -1,13 +1,15 @@
-import pytest
-import numpy as np
+import asyncio
+import gc
+import json
+import os
+import random
+import signal
 import sys
 import time
-import gc
-import os
-import signal
-import random
-import asyncio
 from typing import Optional
+
+import numpy as np
+import pytest
 from pydantic import BaseModel
 
 import ray
@@ -47,7 +49,6 @@ def test_caller_death(monkeypatch, shutdown_only):
     This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
     be retried indefinitely.
     """
-    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
     ray.init()
 
     @ray.remote
@@ -190,7 +191,16 @@ def test_many_tasks_lineage_reconstruction_mini_stress_test(
         )
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5:25:25",
+            json.dumps(
+                {
+                    "CoreWorkerService.grpc_client.ReportGeneratorItemReturns": {
+                        "num_failures": 5,
+                        "req_failure_prob": 25,
+                        "resp_failure_prob": 25,
+                        "in_flight_failure_prob": 25,
+                    }
+                }
+            ),
         )
         cluster = ray_start_cluster
         cluster.add_node(

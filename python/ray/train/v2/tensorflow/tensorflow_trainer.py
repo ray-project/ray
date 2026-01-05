@@ -118,7 +118,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=True),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
@@ -156,10 +156,8 @@ class TensorflowTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
-        resume_from_checkpoint: A checkpoint to resume training from.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(

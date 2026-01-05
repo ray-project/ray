@@ -27,13 +27,21 @@ from ray.includes.common cimport (
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
+    kRayInternalNamespacePrefix,
+    kRuntimeEnvAgentPortName,
+    kMetricsAgentPortName,
+    kMetricsExportPortName,
+    kDashboardAgentListenPortName,
+    kGcsServerPortName,
 )
 
 from ray.exceptions import (
     RayActorError,
+    ActorAlreadyExistsError,
     ActorDiedError,
     RayError,
     RaySystemError,
+    AuthenticationError,
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
@@ -87,7 +95,7 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
     elif status.IsInvalidArgument():
         raise ValueError(message)
     elif status.IsAlreadyExists():
-        raise ValueError(message)
+        raise ActorAlreadyExistsError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -104,6 +112,8 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
         raise ValueError(message)
     elif status.IsIOError():
         raise IOError(message)
+    elif status.IsUnauthenticated():
+        raise AuthenticationError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
@@ -159,3 +169,44 @@ RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
 RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
 RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
 RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
+
+RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
+# Prefix for namespaces which are used internally by ray.
+# Jobs within these namespaces should be hidden from users
+
+# Port names for local port discovery
+RUNTIME_ENV_AGENT_PORT_NAME = kRuntimeEnvAgentPortName.decode()
+METRICS_AGENT_PORT_NAME = kMetricsAgentPortName.decode()
+METRICS_EXPORT_PORT_NAME = kMetricsExportPortName.decode()
+DASHBOARD_AGENT_LISTEN_PORT_NAME = kDashboardAgentListenPortName.decode()
+GCS_SERVER_PORT_NAME = kGcsServerPortName.decode()
+# and should not be considered user activity.
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Util functions for async handling
+
+cdef incremented_fut():
+    fut = concurrent.futures.Future()
+    cpython.Py_INCREF(fut)
+    return fut
+
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
+    assert isinstance(fut, concurrent.futures.Future)
+
+    assert not fut.done()
+    try:
+        ret, exc = result
+        if exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(ret)
+    finally:
+        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
+        # and we DECREF it here to balance it.
+        cpython.Py_DECREF(fut)
+
+cdef raise_or_return(tup):
+    ret, exc = tup
+    if exc:
+        raise exc
+    return ret

@@ -8,7 +8,9 @@ from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
+import ray
 from ray import serve
+from ray._common.test_utils import SignalActor
 from ray.serve._private.test_utils import get_application_url
 
 
@@ -109,6 +111,8 @@ def test_server_disconnect(serve_instance):
 def test_unary_streaming_websocket_same_deployment(serve_instance):
     app = FastAPI()
 
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     @serve.ingress(app)
     class RenaissanceMan:
@@ -121,6 +125,7 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
             def gen():
                 for i in range(5):
                     yield "hi"
+                    ray.get(signal_actor.wait.remote())
 
             return StreamingResponse(gen(), media_type="text/plain")
 
@@ -141,6 +146,7 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
         r.raise_for_status()
         for chunk in r.iter_text():
             assert chunk == "hi"
+            ray.get(signal_actor.send.remote())
 
     url = get_application_url(is_websocket=True)
     with connect(f"{url}/ws") as ws:

@@ -227,7 +227,6 @@ type WorkerRowProps = {
  */
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   const {
-    ip,
     mem,
     raylet: { nodeId },
   } = node;
@@ -278,11 +277,11 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Log
         </Link>
         <br />
-        <CpuProfilingLink pid={pid} ip={ip} type="" />
+        <CpuProfilingLink pid={pid} nodeId={nodeId} type="" />
         <br />
-        <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <CpuStackTraceLink pid={pid} nodeId={nodeId} type="" />
         <br />
-        <MemoryProfilingButton pid={pid} ip={ip} />
+        <MemoryProfilingButton pid={pid} nodeId={nodeId} />
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>

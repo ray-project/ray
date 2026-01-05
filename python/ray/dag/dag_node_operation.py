@@ -1,12 +1,12 @@
-from functools import total_ordering
-from enum import Enum
-from typing import Set, Tuple, List, Dict, Optional
 import copy
-import logging
-import ray
 import heapq
+import logging
 from collections import defaultdict
+from enum import Enum
+from functools import total_ordering
+from typing import Dict, List, Optional, Set, Tuple
 
+import ray
 
 logger = logging.getLogger(__name__)
 

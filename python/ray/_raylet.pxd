@@ -31,7 +31,6 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
-    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -72,6 +71,7 @@ cdef extern from "Python.h":
     ctypedef struct CPyThreadState "PyThreadState":
         int recursion_limit
         int recursion_remaining
+        int c_recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
@@ -110,8 +110,12 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
+        # Python object to store optional tensor transport string
+        object _tensor_transport
 
     cdef CObjectID native(self)
+
+    cdef optional[c_string] c_tensor_transport(self)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -137,8 +141,18 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executor
+        object _gc_thread
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
+    cdef put_serialized_object_and_increment_local_ref(
+        self,
+        serialized_object,
+        optional[c_string] c_tensor_transport,
+        c_bool pin_object=*,
+        owner_address=*,
+        c_bool inline_small_object=*,
+        c_bool _is_experimental_channel=*,
+    )
     cdef store_task_output(
             self, serialized_object,
             const CObjectID &return_id,
@@ -153,7 +167,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             ref_generator_id=*, # CObjectID
-            CTensorTransport c_tensor_transport=*,
+            optional[c_string] c_tensor_transport=*,
         )
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)

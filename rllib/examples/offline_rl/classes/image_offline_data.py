@@ -1,9 +1,9 @@
 import io
 import logging
-import numpy as np
-
-from PIL import Image
 from typing import Any, Dict
+
+import numpy as np
+from PIL import Image
 
 from ray import data
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig

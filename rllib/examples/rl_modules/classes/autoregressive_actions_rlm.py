@@ -3,14 +3,14 @@ from typing import Dict
 import gymnasium as gym
 
 from ray.rllib.core import Columns
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchMultiDistribution,
 )
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import one_hot

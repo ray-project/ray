@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.context import DataContext
 
 
 class IssueType(str, Enum):
@@ -22,9 +21,18 @@ class Issue:
 
 
 class IssueDetector(ABC):
-    def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        self._executor = executor
-        self._ctx = ctx
+    @classmethod
+    @abstractmethod
+    def from_executor(cls, executor: "StreamingExecutor") -> "IssueDetector":
+        """Factory method to create an issue detector from a StreamingExecutor.
+
+        Args:
+            executor: The StreamingExecutor instance to extract dependencies from.
+
+        Returns:
+            An instance of the issue detector.
+        """
+        pass
 
     @abstractmethod
     def detect(self) -> List[Issue]:

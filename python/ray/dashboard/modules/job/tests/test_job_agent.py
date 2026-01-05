@@ -9,11 +9,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
-from ray._common.network_utils import build_address
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -248,8 +248,12 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     agent_client, head_client = job_sdk_client
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -299,8 +303,12 @@ async def test_submit_job_rejects_browsers(
     agent_client = JobAgentSubmissionBrowserClient(agent_address)
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -386,7 +394,9 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         runtime_env = {"working_dir": tmp_dir}
-        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, include_gitignore=True, scratch_dir=tmp_dir, logger=logger
+        )
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         request = validate_request_type(
@@ -428,7 +438,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
-            if "Runtime env is setting up." in line:
+            if (
+                "Runtime env is setting up." in line
+                or "Running entrypoint for job" in line
+            ):
                 continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
@@ -539,7 +552,7 @@ async def test_job_log_in_multiple_node(
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
-            assert result_log in resp.logs, resp.logs
+            assert result_log in resp.logs, f"logs: {resp.logs}"
 
             job_check_status[index] = True
         return True
