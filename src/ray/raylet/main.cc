@@ -1038,18 +1038,18 @@ int main(int argc, char *argv[]) {
     if (actual_metrics_agent_port > 0) {
       metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
           "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
-      metrics_agent_client->WaitForServerReady([actual_metrics_agent_port](
-                                                   const ray::Status &server_status) {
-        if (server_status.ok()) {
-          ray::stats::ConnectOpenCensusExporter(actual_metrics_agent_port);
-          ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to establish connection to the metrics exporter agent. "
-                 "Metrics will not be exported. "
-              << "Exporter agent status: " << server_status.ToString();
-        }
-      });
+      metrics_agent_client->WaitForServerReady(
+          [actual_metrics_agent_port](const ray::Status &server_status) {
+            if (server_status.ok()) {
+              ray::stats::ConnectOpenCensusExporter(actual_metrics_agent_port);
+              ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
+            } else {
+              RAY_LOG(ERROR)
+                  << "Failed to establish connection to the metrics exporter agent. "
+                     "Metrics will not be exported. "
+                  << "Exporter agent status: " << server_status.ToString();
+            }
+          });
     } else {
       RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
                        "with dashboard support: `pip install 'ray[default]'`.";
