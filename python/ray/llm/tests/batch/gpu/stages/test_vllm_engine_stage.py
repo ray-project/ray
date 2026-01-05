@@ -359,7 +359,7 @@ async def test_vllm_wrapper_embed_pooling_params(
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -415,7 +415,7 @@ async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
