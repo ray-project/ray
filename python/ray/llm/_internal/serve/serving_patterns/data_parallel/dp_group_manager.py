@@ -365,6 +365,12 @@ class DPGroupManager:
                     f"attempt {attempt + 1}/{max_retries}"
                 )
 
+        # Final check after the last event.wait()
+        async with self._group_info_lock:
+            group = self._group_info[group_index]
+            if group.master_info is not None:
+                return group.master_info
+
         raise RuntimeError(
             f"Failed to get master info for group {group_index} "
             f"after {max_retries} attempts"
