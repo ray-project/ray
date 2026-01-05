@@ -41,7 +41,7 @@ class RayletClientWithIoContext {
   /// Get the agents pids from raylet.
   /// \param callback The callback to set the agents pids.
   /// \param timeout_ms The timeout in milliseconds.
-  void GetAgentPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+  void GetAgentPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                     int64_t timeout_ms);
 
  private:
