@@ -7,12 +7,12 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.extensions.tensor_extension import (
-    ArrowTensorArray,
     ArrowTensorType,
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
