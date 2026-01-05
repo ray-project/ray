@@ -656,8 +656,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 self.model,
             )
 
-        # Set task_type for the wrapper to use.
-        engine_kwargs["task_type"] = self.task_type
+        # Set task_type for the wrapper to use, but only if not already set.
+        # The processor may have already set this value.
+        if "task_type" not in engine_kwargs:
+            engine_kwargs["task_type"] = self.task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
