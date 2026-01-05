@@ -92,7 +92,8 @@ class TaskEventBufferTest : public ::testing::Test {
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
+        "test_session_name",
+        NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -158,6 +159,7 @@ class TaskEventBufferTest : public ::testing::Test {
         1,
         /*is_actor_task_event=*/false,
         "test_session_name",
+        NodeID::Nil(),
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -175,6 +177,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              running_ts,
                                              /*is_actor_task_event=*/false,
                                              "test_session_name",
+                                             NodeID::Nil(),
                                              nullptr,
                                              state_update);
   }
@@ -188,7 +191,8 @@ class TaskEventBufferTest : public ::testing::Test {
                                               "",
                                               "test_event",
                                               1,
-                                              "test_session_name");
+                                              "test_session_name",
+                                              NodeID::Nil());
   }
 
   static void CompareTaskEventData(const rpc::TaskEventData &actual_data,
@@ -462,7 +466,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           CompareTaskEventData(*actual_data, expected_task_event_data);
           return Status::OK();
         });
@@ -518,12 +522,12 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
         .Times(2)
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN));
           return Status::OK();
         })
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           callback(Status::OK());
           return Status::OK();
         });
@@ -678,7 +682,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
         .Times(num_events / batch_size)
         .WillRepeatedly([&batch_size](std::unique_ptr<rpc::TaskEventData> actual_data,
-                                      ray::gcs::StatusCallback callback) {
+                                      ray::rpc::StatusCallback callback) {
           EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
           callback(Status::OK());
           return Status::OK();
@@ -785,7 +789,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           // Sort and compare
           CompareTaskEventData(*actual_data, expected_data);
           return Status::OK();
@@ -860,7 +864,7 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) 
 
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                    ray::gcs::StatusCallback callback) {
+                    ray::rpc::StatusCallback callback) {
         EXPECT_EQ(actual_data->num_profile_events_dropped(), num_profile_dropped);
         EXPECT_EQ(actual_data->events_by_task_size(), num_limit_profile_events);
         return Status::OK();
@@ -948,7 +952,8 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
                                                           node_ip,
                                                           event_name,
                                                           start_time,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
 
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
@@ -1019,7 +1024,8 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
                                                           "192.168.1.2",
                                                           "profile_test",
                                                           5000,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
@@ -1071,7 +1077,8 @@ TEST_P(TaskEventBufferTestDifferentDestination,
                                                           "192.168.1.3",
                                                           "mixed_test",
                                                           7000,
-                                                          "test_session_name");
+                                                          "test_session_name",
+                                                          NodeID::Nil());
   // Expect data flushed match. Generate the expected data
   rpc::TaskEventData expected_task_event_data;
   rpc::events::RayEventsData expected_ray_events_data;
@@ -1107,7 +1114,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           CompareTaskEventData(*actual_data, expected_task_event_data);
           return Status::OK();
         });

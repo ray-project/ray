@@ -953,10 +953,12 @@ cdef store_task_errors(
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
-    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    # MAX_APPLICATION_ERROR_LENGTH characters of the error message.
     if application_error != NULL:
-        application_error[0] = str(failure_object)[
-            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+        if ray_constants.MAX_APPLICATION_ERROR_LENGTH == 0:
+            application_error[0] = b""
+        else:
+            application_error[0] = str(failure_object)[-ray_constants.MAX_APPLICATION_ERROR_LENGTH:]
 
     errors = []
     for _ in range(returns[0].size()):
@@ -2682,7 +2684,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port,
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, cluster_id, entrypoint,
+                  WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
         self.is_local_mode = local_mode
 
@@ -2733,7 +2735,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.runtime_env_hash = runtime_env_hash
-        options.startup_token = startup_token
+        options.worker_id = worker_id.native()
         options.session_name = session_name
         options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
