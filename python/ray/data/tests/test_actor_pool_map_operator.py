@@ -670,7 +670,7 @@ def test_min_max_resource_requirements(restore_data_context):
             min_size=1,
             max_size=2,
         ),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_gpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
 
@@ -679,10 +679,35 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    assert (
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-        and max_resource_usage_bound == ExecutionResources.for_limits()
+    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources(
+        gpu=2, object_store_memory=float("inf")
     )
+
+
+def test_min_max_resource_requirements_unbounded(restore_data_context):
+    """Test that unbounded actor pools return infinite max resources."""
+    data_context = ray.data.DataContext.get_current()
+    # ActorPoolStrategy() with no max_size defaults to unbounded (max_size=inf)
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(),
+        ray_remote_args={"num_gpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    # Unbounded pools should return infinite max resources
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources.for_limits()
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -791,7 +816,7 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
 
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
-    assert actor_pool_map_op.completed()
+    assert actor_pool_map_op.has_completed()
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

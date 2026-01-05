@@ -28,6 +28,11 @@ from ray.includes.common cimport (
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
     kRayInternalNamespacePrefix,
+    kRuntimeEnvAgentPortName,
+    kMetricsAgentPortName,
+    kMetricsExportPortName,
+    kDashboardAgentListenPortName,
+    kGcsServerPortName,
 )
 
 from ray.exceptions import (
@@ -168,6 +173,13 @@ RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
 RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
+
+# Port names for local port discovery
+RUNTIME_ENV_AGENT_PORT_NAME = kRuntimeEnvAgentPortName.decode()
+METRICS_AGENT_PORT_NAME = kMetricsAgentPortName.decode()
+METRICS_EXPORT_PORT_NAME = kMetricsExportPortName.decode()
+DASHBOARD_AGENT_LISTEN_PORT_NAME = kDashboardAgentListenPortName.decode()
+GCS_SERVER_PORT_NAME = kGcsServerPortName.decode()
 # and should not be considered user activity.
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
