@@ -151,10 +151,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvVariable) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-env");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
@@ -168,10 +168,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-file");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 
   // Clean up
   remove(temp_token_path.c_str());
@@ -185,10 +185,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromDefaultPath) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-default");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 }
 
 // Parametrized test for token loading precedence: env var > user-specified file > default
@@ -250,7 +250,7 @@ TEST_P(AuthenticationTokenLoaderPrecedenceTest, Precedence) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected(param.expected_token);
   EXPECT_TRUE(token_opt->Equals(expected));
 
@@ -273,8 +273,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  EXPECT_FALSE(token_opt.has_value());
-  EXPECT_FALSE(loader.GetToken().has_value());
+  EXPECT_TRUE(token_opt == nullptr);
+  EXPECT_TRUE(loader.GetToken() == nullptr);
 
   // Re-enable for other tests
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
@@ -304,8 +304,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
   auto token_opt2 = loader.GetToken();
 
   // Should still return the cached token
-  ASSERT_TRUE(token_opt1.has_value());
-  ASSERT_TRUE(token_opt2.has_value());
+  ASSERT_TRUE(token_opt1 != nullptr);
+  ASSERT_TRUE(token_opt2 != nullptr);
   EXPECT_TRUE(token_opt1->Equals(*token_opt2));
   AuthenticationToken expected("cached-token");
   EXPECT_TRUE(token_opt2->Equals(expected));
@@ -320,7 +320,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   auto token_opt = loader.GetToken();
 
   // Whitespace should be trimmed
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("token-with-spaces");
   EXPECT_TRUE(token_opt->Equals(expected));
 }
@@ -335,47 +335,18 @@ TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
 
   auto &loader = AuthenticationTokenLoader::instance();
 
-  // Without ignore_auth_mode, should return nullopt (auth is disabled)
+  // Without ignore_auth_mode, should return nullptr (auth is disabled)
   auto token_opt_no_ignore = loader.GetToken();
-  EXPECT_FALSE(token_opt_no_ignore.has_value());
+  EXPECT_TRUE(token_opt_no_ignore == nullptr);
 
   // Reset cache to test ignore_auth_mode
   loader.ResetCache();
 
   // With ignore_auth_mode=true, should load token despite auth being disabled
   auto token_opt_ignore = loader.GetToken(true);
-  ASSERT_TRUE(token_opt_ignore.has_value());
+  ASSERT_TRUE(token_opt_ignore != nullptr);
   AuthenticationToken expected("test-token-ignore-auth");
   EXPECT_TRUE(token_opt_ignore->Equals(expected));
-
-  // Re-enable auth for other tests
-  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
-}
-
-TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeHasToken) {
-  // Disable auth mode
-  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
-  AuthenticationTokenLoader::instance().ResetCache();
-
-  // Set token in environment
-  set_env_var("RAY_AUTH_TOKEN", "test-token-has-ignore");
-
-  auto &loader = AuthenticationTokenLoader::instance();
-
-  // Without ignore_auth_mode, should return false (auth is disabled)
-  EXPECT_FALSE(loader.HasToken());
-
-  // Reset cache to test ignore_auth_mode
-  loader.ResetCache();
-
-  // With ignore_auth_mode=true, should return true despite auth being disabled
-  EXPECT_TRUE(loader.HasToken(true));
-
-  // Also verify we can get the actual token value
-  auto token_opt = loader.GetToken(true);
-  ASSERT_TRUE(token_opt.has_value());
-  AuthenticationToken expected("test-token-has-ignore");
-  EXPECT_TRUE(token_opt->Equals(expected));
 
   // Re-enable auth for other tests
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");

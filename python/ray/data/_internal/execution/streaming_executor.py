@@ -2,6 +2,7 @@ import logging
 import math
 import threading
 import time
+import typing
 from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import (
@@ -26,7 +27,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -44,11 +44,15 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.rich_progress import RichExecutionProgressManager
+from ray.data._internal.progress.tqdm_progress import TqdmExecutionProgressManager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +88,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
-        self._global_info: Optional[ProgressBar] = None
-        self._progress_manager: Optional[RichExecutionProgressManager] = None
+        self._progress_manager: Optional["BaseExecutionProgressManager"] = None
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -117,6 +120,14 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
+        self._initialize_metrics_gauges()
+
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    def _initialize_metrics_gauges(self) -> None:
+        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
@@ -149,10 +160,6 @@ class StreamingExecutor(Executor, threading.Thread):
             tag_keys=("dataset", "operator"),
         )
 
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
-
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> OutputIterator:
@@ -181,6 +188,13 @@ class StreamingExecutor(Executor, threading.Thread):
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
 
+        self._resource_manager = ResourceManager(
+            self._topology,
+            self._options,
+            lambda: self._cluster_autoscaler.get_total_resources(),
+            self._data_context,
+        )
+
         # Setup progress bars
         if self._use_rich_progress():
             self._progress_manager = RichExecutionProgressManager(
@@ -188,22 +202,11 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             self._progress_manager.start()
         else:
-            self._global_info = ProgressBar(
-                "Running", dag.num_output_rows_total(), unit="row"
+            self._progress_manager = TqdmExecutionProgressManager(
+                self._dataset_id, self._topology
             )
-            num_progress_bars = 1
-            for op_state in list(self._topology.values()):
-                if not isinstance(op_state.op, InputDataBuffer):
-                    num_progress_bars += op_state.initialize_progress_bars(
-                        num_progress_bars, self._options.verbose_progress
-                    )
+            self._progress_manager.start()
 
-        self._resource_manager = ResourceManager(
-            self._topology,
-            self._options,
-            lambda: self._cluster_autoscaler.get_total_resources(),
-            self._data_context,
-        )
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
         )
@@ -292,24 +295,15 @@ class StreamingExecutor(Executor, threading.Thread):
             else:
                 desc = f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
 
-            if self._use_rich_progress() and self._progress_manager:
-                self._progress_manager.close_with_finishing_description(
-                    desc, exception is None
-                )
-            elif not self._use_rich_progress() and self._global_info:
-                logger.info(desc)
-                self._global_info.set_description(desc)
-                self._global_info.close()
+            self._progress_manager.close_with_finishing_description(
+                desc, exception is None
+            )
+            logger.info(desc)
 
             timer = Timer()
 
-            for op, state in self._topology.items():
+            for op in self._topology.keys():
                 op.shutdown(timer, force=force)
-                if not self._use_rich_progress():
-                    # we only close sub-progress bars for the tqdm
-                    # implementation because closing is centrally
-                    # managed in the rich implementation.
-                    state.close_progress_bars()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -432,6 +426,11 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        if self._resource_manager is not None:
+            self._resource_manager.set_external_consumer_bytes(num_bytes)
+
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
         stats = self._initial_stats or DatasetStats(metadata={}, parent=None)
@@ -496,9 +495,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if not self._use_rich_progress() and i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
-                self._refresh_progress_bars(topology)
-            if self._use_rich_progress() and i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
@@ -506,10 +503,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._actor_autoscaler.try_trigger_scaling()
 
         update_operator_states(topology)
-        if self._use_rich_progress():
-            self._refresh_progress_manager(topology)
-        else:
-            self._refresh_progress_bars(topology)
+        self._refresh_progress_manager(topology)
 
         self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
@@ -519,7 +513,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Log metrics of newly completed operators.
         for op, state in topology.items():
-            if op.completed() and not self._has_op_completed[op]:
+            if op.has_completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
@@ -529,25 +523,16 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
-        return not all(op.completed() for op in topology)
-
-    def _refresh_progress_bars(self, topology: Topology):
-        # Update the progress bar to reflect scheduling decisions.
-        assert not self._use_rich_progress()
-        for op_state in topology.values():
-            op_state.refresh_progress_bar(self._resource_manager)
-        # Refresh the global progress bar to update elapsed time progress.
-        if self._global_info:
-            self._global_info.refresh()
+        return not all(op.has_completed() for op in topology)
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
-        assert self._use_rich_progress()
         if self._progress_manager:
             for op_state in topology.values():
                 if not isinstance(op_state.op, InputDataBuffer):
-                    op_state.update_display_metrics(self._resource_manager)
-                    self._progress_manager.update_operator_progress(op_state)
+                    self._progress_manager.update_operator_progress(
+                        op_state, self._resource_manager
+                    )
             self._progress_manager.refresh()
 
     def _consumer_idling(self) -> bool:
@@ -617,13 +602,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 pending_str = f"{pending_usage.gpu:.4g} GPU"
             resources_status += f" (pending: {pending_str})"
 
-        if self._use_rich_progress() and self._progress_manager:
-            self._progress_manager.update_resource_status(resources_status)
-        elif not self._use_rich_progress() and self._global_info:
-            resources_status = (
-                f"Running Dataset: {self._dataset_id}. {resources_status}"
-            )
-            self._global_info.set_description(resources_status)
+        self._progress_manager.update_total_resource_status(resources_status)
 
     def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
         return f"{op.name}_{topology_index}"
@@ -749,11 +728,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        state.update_display_metrics(resource_manager)
         logger.debug(
             f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
-            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}, "
-            f"Metrics: {state.op_display_metrics.display_str()}"
+            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
 
@@ -786,12 +763,7 @@ class _ClosingIterator(OutputIterator):
             bundle = state.get_output_blocking(output_split_idx)
 
             # Update progress-bars
-            using_rich = self._executor._use_rich_progress()
-            if not using_rich and self._executor._global_info:
-                self._executor._global_info.update(
-                    bundle.num_rows(), op.num_output_rows_total()
-                )
-            elif using_rich and self._executor._progress_manager:
+            if self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(
                     bundle.num_rows() or 0, op.num_output_rows_total()
                 )

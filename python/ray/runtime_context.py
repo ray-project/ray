@@ -70,12 +70,12 @@ class RuntimeContext(object):
             job ID will be hex format.
 
         Raises:
-            AssertionError: If not called in a driver or worker. Generally,
-                this means that ray.init() was not called.
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Job ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Job ID is not available because Ray has not been initialized."
+            )
         job_id = self.worker.current_job_id
         return job_id.hex()
 
@@ -106,24 +106,71 @@ class RuntimeContext(object):
             A node id in hex format for this worker or driver.
 
         Raises:
-            AssertionError: If not called in a driver or worker. Generally,
-                this means that ray.init() was not called.
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Node ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Node ID is not available because Ray has not been initialized."
+            )
         node_id = self.worker.current_node_id
         return node_id.hex()
+
+    def get_session_name(self) -> str:
+        """Get the session name for the Ray cluster this process is connected to.
+
+        The session name uniquely identifies a Ray cluster instance. This is the
+        same value that appears as the ``SessionName`` label in Ray metrics,
+        making it useful for filtering metrics when multiple clusters run the same
+        application name.
+
+        This can be called from within a driver, task, or actor.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+
+                ray.init()
+                session_name = ray.get_runtime_context().get_session_name()
+                print(f"Session Name: {session_name}")
+
+                @ray.remote
+                def get_session_name():
+                    return ray.get_runtime_context().get_session_name()
+
+                # Session name is the same across all processes in the cluster
+                assert ray.get(get_session_name.remote()) == session_name
+
+                # Use SessionName label to filter metrics by cluster, e.g.:
+                # ray_serve_http_request_latency_ms_bucket{SessionName="<session_name>"}
+
+        Returns:
+            A session name string for the Ray cluster (e.g.,
+            "session_2025-01-01_00-00-00_000000_1234").
+
+        Raises:
+            RuntimeError: If Ray has not been initialized.
+        """
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Session name is not available because Ray has not been initialized."
+            )
+        return self.worker.node.session_name
 
     def get_worker_id(self) -> str:
         """Get current worker ID for this worker or driver process.
 
         Returns:
             A worker id in hex format for this worker or driver process.
+
+        Raises:
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Worker ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Worker ID is not available because Ray has not been initialized."
+            )
         return self.worker.worker_id.hex()
 
     @property
@@ -550,6 +597,29 @@ class RuntimeContext(object):
 
         return worker.current_node_labels
 
+    def is_canceled(self) -> bool:
+        """Check if the current task has been canceled.
+
+        This can be used to periodically check if ray.cancel() has been
+        called on the current task and perform graceful cleanup.
+
+        Returns:
+            True if the task has been canceled, False otherwise.
+
+        Raises:
+            RuntimeError: If called from a driver or async actor context.
+        """
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            raise RuntimeError(
+                "This method is only available when the process is a worker. "
+                f"Current mode: {self.worker.mode}"
+            )
+
+        if self.worker.core_worker.current_actor_is_asyncio():
+            raise RuntimeError("This method is not supported in an async actor.")
+
+        return self.worker.is_canceled
+
 
 _runtime_context = None
 _runtime_context_lock = threading.Lock()
@@ -570,6 +640,8 @@ def get_runtime_context() -> RuntimeContext:
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
+            # Get the session name (used as SessionName label in Ray metrics).
+            ray.get_runtime_context().get_session_name()
             # Get the actor id.
             ray.get_runtime_context().get_actor_id()
             # Get the task id.

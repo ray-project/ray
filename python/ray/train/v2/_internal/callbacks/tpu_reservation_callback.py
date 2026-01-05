@@ -22,24 +22,24 @@ class TPUReservationCallback(ControllerCallback):
             num_workers: The number of workers to be started.
 
         Returns:
-            A dictionary defining a `bundle_label_selector` to gang schedule
+            A dictionary defining a `label_selector` to gang schedule
             the worker group on the reserved TPU slice.
         """
-        bundle_label_selector = None
+        label_selector = None
 
         if scaling_config.use_tpu and num_workers > 1:
             assert scaling_config.accelerator_type is not None
             assert scaling_config.topology is not None
 
-            slice_name = reserve_tpu_slice(
+            reservation = reserve_tpu_slice(
                 topology=scaling_config.topology,
                 accelerator_type=scaling_config.accelerator_type,
             )
-            if not slice_name:
+
+            if not reservation:
                 raise RuntimeError("Failed to reserve TPU slice.")
 
-            bundle_label_selector = {
-                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
-            }
+            slice_name, _ = reservation
+            label_selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
 
-        return bundle_label_selector
+        return label_selector

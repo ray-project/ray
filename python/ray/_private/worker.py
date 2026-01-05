@@ -66,7 +66,6 @@ from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -87,6 +86,7 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
+    WorkerID,
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
@@ -635,6 +635,10 @@ class Worker:
         """Set the cached job id to speed `current_job_id()`."""
         self._cached_job_id = job_id
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
@@ -801,7 +805,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: str = "object_store",
+        _tensor_transport: Optional[str] = None,
     ):
         """Put value in the local object store.
 
@@ -818,7 +822,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this supports "object_store" and "nixl".
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this only supports one-sided transports like "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -835,18 +839,19 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        tensor_transport: TensorTransportEnum = TensorTransportEnum.from_str(
-            _tensor_transport
+        from ray.experimental.gpu_object_manager.util import (
+            normalize_and_validate_tensor_transport,
+            validate_one_sided,
         )
-        if tensor_transport not in [
-            TensorTransportEnum.OBJECT_STORE,
-            TensorTransportEnum.NIXL,
-        ]:
-            raise ValueError(
-                "Currently, Ray Direct Transport only supports 'object_store' and 'nixl' for tensor transport in ray.put()."
+
+        tensor_transport = None
+        if _tensor_transport is not None:
+            tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
             )
+            validate_one_sided(tensor_transport, "ray.put")
         try:
-            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            if tensor_transport is not None:
                 (
                     serialized_value,
                     tensors,
@@ -879,7 +884,7 @@ class Worker:
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
-            tensor_transport_val=tensor_transport.value,
+            tensor_transport=tensor_transport,
         )
         if tensors:
             self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
@@ -896,43 +901,23 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        tensor_transport_hint: Optional[TensorTransportEnum] = None,
+        use_object_store: bool = False,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # TODO: Here tensor_transport_hint is set by the user in ray.get(), tensor_transport is set
-            # in serialize_objects by ray.method(tensor_transport="xxx"), and obj_ref.tensor_transport()
-            # is set by ray.put(). We may clean up this logic in the future.
-            if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ) and (
-                obj_ref is None
-                or obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
-            ):
+            if tensor_transport is None:
                 # The object is not a gpu object, so we cannot use other external transport to
                 # fetch it.
                 continue
-
-            # If the object is a gpu object, we can choose to use the object store or other external
-            # transport to fetch it. The `tensor_transport_hint` has the highest priority, then the
-            # tensor_transport in obj_ref.tensor_transport(), then the tensor_transport in serialize_objects,
-            # then the default value `OBJECT_STORE`.
-            chosen_tensor_transport = (
-                tensor_transport_hint
-                or (
-                    TensorTransportEnum(obj_ref.tensor_transport()) if obj_ref else None
-                )
-                or tensor_transport
-                or TensorTransportEnum.OBJECT_STORE
-            )
 
             object_id = obj_ref.hex()
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
+                # The user can set use_object_store to fetch the RDT object
+                # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport=chosen_tensor_transport
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -951,7 +936,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-        _tensor_transport: Optional[str] = None,
+        use_object_store: bool = False,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -970,7 +955,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
+            use_object_store: [Alpha] To fetch an RDT object through the object store.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -983,16 +968,6 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-        tensor_transport: TensorTransportEnum = (
-            TensorTransportEnum.from_str(_tensor_transport)
-            if _tensor_transport is not None
-            else None
-        )
-        assert tensor_transport in [
-            TensorTransportEnum.OBJECT_STORE,
-            TensorTransportEnum.NIXL,
-            None,
-        ], "Currently, RDT only supports 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -1004,7 +979,7 @@ class Worker:
         )
 
         debugger_breakpoint = b""
-        for data, metadata, _ in serialized_objects:
+        for _, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -1017,11 +992,11 @@ class Worker:
             return None, debugger_breakpoint
 
         values = self.deserialize_objects(
-            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+            serialized_objects, object_refs, use_object_store
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
-            for i, value in enumerate(values):
+            for value in values:
                 if isinstance(value, RayError):
                     if isinstance(
                         value, ray.exceptions.ObjectLostError
@@ -1836,6 +1811,9 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
+    if _node_ip_address is not None:
+        _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
@@ -2468,7 +2446,7 @@ def connect(
     namespace: Optional[str] = None,
     job_config=None,
     runtime_env_hash: int = 0,
-    startup_token: int = 0,
+    worker_id: WorkerID = WorkerID.nil(),
     ray_debugger_external: bool = False,
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
@@ -2489,8 +2467,8 @@ def connect(
         namespace: Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash: The hash of the runtime env for this worker.
-        startup_token: The startup token of the process assigned to
-            it during startup as a command line argument.
+        worker_id: The worker ID assigned by raylet when starting the worker
+            process (hex string). Nil for drivers.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
@@ -2684,7 +2662,7 @@ def connect(
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
-        startup_token,
+        worker_id,
         session_name,
         node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
@@ -2840,15 +2818,15 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
     ...
 
 
@@ -2880,7 +2858,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
-    _tensor_transport: Optional[str] = None,
+    _use_object_store: bool = False,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2916,8 +2894,12 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
-
+        _use_object_store: [Alpha] To fetch an RDT object through the object store
+            instead of using its designated tensor transport. You can set this to True
+            for cases where the caller does not support the object's tensor transport,
+            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
+            When this is False (default), Ray will use the object store for normal objects,
+            and attempt to use the object's tensor transport for RDT objects.
     Returns:
         A Python object or a list of Python objects.
 
@@ -2981,7 +2963,7 @@ def get(
             )
 
         values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout=timeout, _tensor_transport=_tensor_transport
+            object_refs, timeout, use_object_store=_use_object_store
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
@@ -3022,7 +3004,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-    _tensor_transport: str = "object_store",
+    _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -3042,7 +3024,9 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, this supports "object_store" and "nixl" for tensor transport in ray.put().
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
+            Currently, this only supports one-sided tensor transports such as "nixl".
+            When this is None (default), Ray will use the object store.
 
     Returns:
         The object ref assigned to this value.
@@ -3330,12 +3314,14 @@ def cancel(
         If the specified Task is pending execution, it is cancelled and not
         executed. If the Task is currently executing, the behavior depends
         on the execution model of an Actor. If it is a regular Actor
-        or a threaded Actor, the execution isn't cancelled.
-        Actor Tasks cannot be interrupted because Actors have
-        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        or a threaded Actor, Ray sets a cancellation flag that can be checked
+        via `ray.get_runtime_context().is_canceled()` within the task body.
+        This allows for graceful cancellation by periodically checking the
+        cancellation status. If it is an async Actor, Ray cancels a `asyncio.Task`.
         The semantic of cancellation is equivalent to asyncio's cancellation.
         https://docs.python.org/3/library/asyncio-task.html#task-cancellation
-        If the Task has finished, nothing happens.
+        Note: `is_canceled()` is not supported for async actors and will raise
+        a RuntimeError. If the Task has finished, nothing happens.
 
         Only `force=False` is allowed for an Actor Task. Otherwise, it raises
         `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
@@ -3343,8 +3329,7 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted. Also note that
-        only async actor tasks can be interrupted.
+        if the Task has been scheduled or interrupted.
 
         If `recursive=True`, all the child Tasks and actor Tasks
         are cancelled.
