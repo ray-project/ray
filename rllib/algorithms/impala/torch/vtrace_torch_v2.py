@@ -70,7 +70,6 @@ def make_time_major(
     return tensor
 
 
-@torch.jit.script
 def _vtrace_torch_impl(
     target_action_log_probs: "torch.Tensor",
     behaviour_action_log_probs: "torch.Tensor",
