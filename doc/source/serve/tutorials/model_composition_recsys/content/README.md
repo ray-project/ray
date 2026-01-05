@@ -94,6 +94,9 @@ class ItemRankingModel:
     For this example, the code uses a simple scoring function.
     """
     
+    # Mock item catalog. In production, this probably comes from a database.
+    CANDIDATE_ITEMS = [f"item_{i}" for i in range(1000)]
+    
     def __init__(self):
         # In production, this is your cloud storage path or model registry
         # self.model = load_model("/models/ranking_model.pkl")
@@ -101,19 +104,18 @@ class ItemRankingModel:
     
     async def rank_items(
         self, 
-        user_features: Dict[str, float], 
-        candidate_items: List[str]
+        user_features: Dict[str, float]
     ) -> List[Dict[str, any]]:
         """Rank candidate items for the user."""
         # Simulate model inference time
         await asyncio.sleep(0.05)
         
         # In production:
-        # scores = self.model.predict(user_features, candidate_items)
+        # scores = self.model.predict(user_features, self.CANDIDATE_ITEMS)
         
         # Mock scoring: combine user engagement with item popularity
         ranked_items = []
-        for item_id in candidate_items:
+        for item_id in self.CANDIDATE_ITEMS:
             # Simple mock scoring based on user engagement and item hash
             item_popularity = (hash(item_id) % 100) / 100.0
             score = (
@@ -147,23 +149,18 @@ class RecommendationService:
         """Generate recommendations for a user."""
         data = await request.json()
         user_id = data["user_id"]
-        candidate_items = data.get("candidate_items", [])
         top_k = data.get("top_k", 5)
         
         # Step 1: Extract user features
         user_features = await self.user_feature_extractor.extract_features.remote(user_id)
         
         # Step 2: Rank candidate items
-        ranked_items = await self.ranking_model.rank_items.remote(
-            user_features, 
-            candidate_items
-        )
+        ranked_items = await self.ranking_model.rank_items.remote(user_features)
         
         # Step 3: Return top-k recommendations
         return {
             "user_id": user_id,
-            "recommendations": ranked_items[:top_k],
-            "total_candidates": len(candidate_items)
+            "recommendations": ranked_items[:top_k]
         }
 
 
@@ -172,7 +169,6 @@ app = RecommendationService.bind(
     user_feature_extractor=UserFeatureExtractor.bind(),
     ranking_model=ItemRankingModel.bind()
 )
-
 ```
 
 Each deployment in the composition can scale independently based on its resource needs and traffic patterns. The `RecommendationService` orchestrates calls to the other deployments using deployment handles.
@@ -214,17 +210,11 @@ response = requests.post(
     "http://localhost:8000",
     json={
         "user_id": "user_42",
-        "candidate_items": [
-            "item_101", "item_102", "item_103", 
-            "item_104", "item_105", "item_106",
-            "item_107", "item_108", "item_109", "item_110"
-        ],
         "top_k": 5
     }
 )
 
 print(response.json())
-
 ```
 
 Output:
@@ -237,15 +227,14 @@ Output:
     {"item_id": "item_110", "score": 0.756},
     {"item_id": "item_101", "score": 0.723},
     {"item_id": "item_105", "score": 0.689}
-  ],
-  "total_candidates": 10
+  ]
 }
 ```
 
 The request flows through the pipeline:
 1. `RecommendationService` receives the request.
 2. `UserFeatureExtractor` extracts user features (~10&nbsp;ms).
-3. `ItemRankingModel` scores all candidate items (~50&nbsp;ms).
+3. `ItemRankingModel` scores all candidate items from its catalog (~50&nbsp;ms).
 4. `RecommendationService` returns top-k items.
 
 ### Test with multiple users
@@ -258,20 +247,14 @@ Send requests for different users to see the pipeline in action:
 import requests
 import random
 
-# Generate sample candidate items
-all_items = [f"item_{i}" for i in range(1000)]
-
 # Test with multiple users
 for i in range(100):
     user_id = f"user_{random.randint(1, 1000)}"
-    # Each user gets a random subset of candidate items
-    candidate_items = random.sample(all_items, k=50)
     
     response = requests.post(
         "http://localhost:8000",
         json={
             "user_id": user_id,
-            "candidate_items": candidate_items,
             "top_k": 3
         }
     )
@@ -281,7 +264,6 @@ for i in range(100):
     print(f"Request {i+1} - {user_id}: {top_items}")
 
 print(f"\nSent 100 requests total")
-
 ```
 
 Each component processes requests independently and can scale based on load. For example:
@@ -349,13 +331,11 @@ response = requests.post(
     headers={"Authorization": f"Bearer {TOKEN}"},
     json={
         "user_id": "user_42",
-        "candidate_items": [f"item_{i}" for i in range(100, 120)],
         "top_k": 5
     }
 )
 
 print(response.json())
-
 ```
 
 ### Shutdown
@@ -532,7 +512,7 @@ class ItemRankingModel:
 # Configure timeout per call
 ranked = await self.ranking_model.rank_items.options(
     timeout_s=60
-).remote(features, items)
+).remote(features)
 ```
 
 ### High latency between components
@@ -540,12 +520,11 @@ ranked = await self.ranking_model.rank_items.options(
 If you observe high latency and low throughput between deployments:
 
 1. **Check for `.result()` usage**: Make sure you're using `await` instead of `.result()` when calling deployment handles. Using `.result()` blocks the replica from processing other requests, which severely impacts performance. See [Use co-routines for blocking operations](#use-co-routines-for-blocking-operations) for the correct pattern.
-2. **Check replica placement**: Ensure replicas are on the same nodes when possible.
-3. **Monitor queue depth**: High queue depth indicates insufficient replicas.
+2. **Check replica placement**: Co-locate communicating deployments on the same nodes to reduce network overhead.
+3. **Monitor queue depth**: High queue depth indicates insufficient number of replicas.
 4. **Profile each component**: Identify which stage is the bottleneck.
-5. **Consider batching**: Batch requests to improve throughput.
+5. **Consider batching**: [Dynamically batch requests](https://docs.ray.io/en/latest/serve/advanced-guides/dyn-req-batch.html) to improve throughput.
 
 ## Summary
 
 This tutorial shows you how to use model composition to build recommendation systems with independent deployments, configure each component with different resources and scaling policies, orchestrate multi-stage pipelines with deployment handles, deploy both locally and in production, monitor per-component metrics, optimize pipeline performance, and troubleshoot common issues.
-
