@@ -1,5 +1,6 @@
 """The stage that runs vLLM engine."""
 
+from abc import ABC
 import asyncio
 import copy
 import dataclasses
@@ -217,33 +218,7 @@ class vLLMEngineBaseWrapper:
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         dynamic_lora_loading_path: Optional[str] = None,
-        **kwargs,
-    ):
-        pass
-
-    def shutdown(self):
-        pass
-
-    def get_scheduler_config(self):
-        pass
-
-
-class vLLMEngineWrapper(vLLMEngineBaseWrapper):
-    """Wrapper around the vLLM engine to handle async requests.
-
-    Args:
-        *args: The positional arguments for the engine.
-        max_pending_requests: The maximum number of pending requests in the queue.
-        dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
-        **kwargs: The keyword arguments for the engine.
-    """
-
-    def __init__(
-        self,
-        idx_in_batch_column: str,
-        max_pending_requests: int = -1,
-        dynamic_lora_loading_path: Optional[str] = None,
-        **kwargs,
+        kwargs: Optional[Dict[str, Any]] = None,
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
@@ -280,6 +255,51 @@ class vLLMEngineWrapper(vLLMEngineBaseWrapper):
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
+        
+        self.engine = None
+        self._vllm_config = None
+
+
+    def shutdown(self):
+        """Shutdown the vLLM v1 engine. This kills child processes forked
+        by the vLLM engine. If not called, the child processes will be
+        orphaned and will not be killed when the parent process exits,
+        and they won't be able to be tracked by Ray anymore.
+        """
+        if hasattr(self.engine, "shutdown"):
+            logger.info("Shutting down vLLM engine")
+            self.engine.shutdown()
+
+    def get_scheduler_config(self):
+        return self._vllm_config.scheduler_config
+
+
+class vLLMEngineWrapper(vLLMEngineBaseWrapper):
+    """Wrapper around the vLLM engine to handle async requests.
+
+    Args:
+        *args: The positional arguments for the engine.
+        max_pending_requests: The maximum number of pending requests in the queue.
+        dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
+        **kwargs: The keyword arguments for the engine.
+    """
+
+    def __init__(
+        self,
+        idx_in_batch_column: str,
+        max_pending_requests: int = -1,
+        dynamic_lora_loading_path: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(idx_in_batch_column, max_pending_requests, dynamic_lora_loading_path, kwargs=kwargs)
+
+        try:
+            import vllm
+        except ImportError as e:
+            raise ImportError(
+                "vLLM is not installed or failed to import. Please run "
+                "`pip install ray[llm]` to install required dependencies."
+            ) from e
 
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
@@ -543,18 +563,6 @@ class vLLMEngineWrapper(vLLMEngineBaseWrapper):
             "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
-    def shutdown(self):
-        """Shutdown the vLLM v1 engine. This kills child processes forked
-        by the vLLM engine. If not called, the child processes will be
-        orphaned and will not be killed when the parent process exits,
-        and they won't be able to be tracked by Ray anymore.
-        """
-        if hasattr(self.engine, "shutdown"):
-            logger.info("Shutting down vLLM engine")
-            self.engine.shutdown()
-
-    def get_scheduler_config(self):
-        return self._vllm_config.scheduler_config
 
 
 
@@ -591,7 +599,7 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
     ):
-        pass
+        super().__init__(data_column, expected_input_keys)
 
     def normalize_engine_kwargs(
         self,
@@ -642,7 +650,19 @@ class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
         """
-        StatefulStageUDF.__init__(self, data_column, expected_input_keys)
+        vLLMEngineStageBaseUDF.__init__(
+            self,
+            data_column,
+            expected_input_keys,
+            batch_size,
+            max_concurrent_batches,
+            model,
+            engine_kwargs,
+            task_type,
+            max_pending_requests,
+            dynamic_lora_loading_path,
+            should_continue_on_error,
+        )
         self.model = model
         self.should_continue_on_error = should_continue_on_error
 

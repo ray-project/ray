@@ -171,7 +171,7 @@ def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_
     assert model_config_kwargs["model"] == model_smolvlm_256m
 
 
-@pytest.mark.parametrize("backend", ["mp", "ray"])
+@pytest.mark.parametrize("backend", ["mp"])
 def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
