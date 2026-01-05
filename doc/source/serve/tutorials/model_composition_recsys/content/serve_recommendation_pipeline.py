@@ -37,7 +37,11 @@ class UserFeatureExtractor:
 
 # Component 2: Item Ranking Model
 @serve.deployment(
-    num_replicas=3,
+    autoscaling_config={
+        "min_replicas": 1,
+        "max_replicas": 5,
+        "target_ongoing_requests": 3
+    },
     ray_actor_options={"num_cpus": 2}
 )
 class ItemRankingModel:
@@ -47,7 +51,7 @@ class ItemRankingModel:
     For this example, the code uses a simple scoring function.
     """
     
-    # Mock item catalog. In production, this probably comes from a database.
+    # Mock item catalog. In production, this comes from a database query.
     CANDIDATE_ITEMS = [f"item_{i}" for i in range(1000)]
     
     def __init__(self):
@@ -55,21 +59,10 @@ class ItemRankingModel:
         # self.model = load_model("/models/ranking_model.pkl")
         pass
     
-    async def rank_items(
-        self, 
-        user_features: Dict[str, float]
-    ) -> List[Dict[str, any]]:
-        """Rank candidate items for the user."""
-        # Simulate model inference time
-        await asyncio.sleep(0.05)
-        
-        # In production:
-        # scores = self.model.predict(user_features, self.CANDIDATE_ITEMS)
-        
-        # Mock scoring: combine user engagement with item popularity
+    def _score_items(self, user_features: Dict[str, float]) -> List[Dict[str, any]]:
+        """Score and rank items for a single user."""
         ranked_items = []
         for item_id in self.CANDIDATE_ITEMS:
-            # Simple mock scoring based on user engagement and item hash
             item_popularity = (hash(item_id) % 100) / 100.0
             score = (
                 user_features["engagement_score"] * 0.6 + 
@@ -79,10 +72,22 @@ class ItemRankingModel:
                 "item_id": item_id,
                 "score": round(score, 3)
             })
-        
-        # Sort by score descending
         ranked_items.sort(key=lambda x: x["score"], reverse=True)
         return ranked_items
+    
+    @serve.batch(max_batch_size=32, batch_wait_timeout_s=0.01)
+    async def rank_items(
+        self, 
+        user_features_batch: List[Dict[str, float]]
+    ) -> List[List[Dict[str, any]]]:
+        """Rank candidate items for a batch of users."""
+        # Simulate model inference time
+        await asyncio.sleep(0.05)
+        
+        # In production, use vectorized batch inference:
+        # return self.model.batch_predict(user_features_batch, self.CANDIDATE_ITEMS)
+        
+        return [self._score_items(features) for features in user_features_batch]
 
 
 # Component 3: Recommendation Service (Orchestrator)
@@ -107,7 +112,7 @@ class RecommendationService:
         # Step 1: Extract user features
         user_features = await self.user_feature_extractor.extract_features.remote(user_id)
         
-        # Step 2: Rank candidate items
+        # Step 2: Rank candidate items (batched automatically by @serve.batch)
         ranked_items = await self.ranking_model.rank_items.remote(user_features)
         
         # Step 3: Return top-k recommendations

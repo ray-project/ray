@@ -16,7 +16,7 @@ Or use this script: bash convert_to_md.sh
 <a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/model_composition_recsys/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial shows you how to build a recommendation system using Ray Serve's model composition pattern. Model composition lets you break complex ML pipelines into independent deployments that scale and update separately.
+# This tutorial shows you how to build a recommendation system using Ray Serve's model composition pattern. Model composition breaks complex ML pipelines into independent deployments that you can scale and update separately.
 
 ## Why model composition for recommendation systems?
 
@@ -29,19 +29,12 @@ Recommendation systems typically involve multiple stages: feature extraction, ca
 
 See [Model Composition](https://docs.ray.io/en/latest/serve/model-composition.html) for the core concepts and patterns.
 
-Use model composition when you have:
-- Multi-stage ML pipelines with distinct models.
-- Components that scale differently (for example lightweight feature extraction vs. heavy ranking).
-- Multiple teams contributing models to the same system.
-- Need to A/B test individual components.
-
 ## Configure a composed deployment
 
 Build a recommendation system with three components:
 1. **UserFeatureExtractor**: Extracts user features (demographics, history, preferences).
 2. **ItemRankingModel**: Scores items based on user features.
 3. **RecommendationService**: Orchestrates the pipeline and returns top recommendations.
-
 
 
 ```python
@@ -84,7 +77,11 @@ class UserFeatureExtractor:
 
 # Component 2: Item Ranking Model
 @serve.deployment(
-    num_replicas=3,
+    autoscaling_config={
+        "min_replicas": 1,
+        "max_replicas": 5,
+        "target_ongoing_requests": 3
+    },
     ray_actor_options={"num_cpus": 2}
 )
 class ItemRankingModel:
@@ -94,7 +91,7 @@ class ItemRankingModel:
     For this example, the code uses a simple scoring function.
     """
     
-    # Mock item catalog. In production, this probably comes from a database.
+    # Mock item catalog. In production, this comes from a database query.
     CANDIDATE_ITEMS = [f"item_{i}" for i in range(1000)]
     
     def __init__(self):
@@ -102,21 +99,10 @@ class ItemRankingModel:
         # self.model = load_model("/models/ranking_model.pkl")
         pass
     
-    async def rank_items(
-        self, 
-        user_features: Dict[str, float]
-    ) -> List[Dict[str, any]]:
-        """Rank candidate items for the user."""
-        # Simulate model inference time
-        await asyncio.sleep(0.05)
-        
-        # In production:
-        # scores = self.model.predict(user_features, self.CANDIDATE_ITEMS)
-        
-        # Mock scoring: combine user engagement with item popularity
+    def _score_items(self, user_features: Dict[str, float]) -> List[Dict[str, any]]:
+        """Score and rank items for a single user."""
         ranked_items = []
         for item_id in self.CANDIDATE_ITEMS:
-            # Simple mock scoring based on user engagement and item hash
             item_popularity = (hash(item_id) % 100) / 100.0
             score = (
                 user_features["engagement_score"] * 0.6 + 
@@ -126,10 +112,22 @@ class ItemRankingModel:
                 "item_id": item_id,
                 "score": round(score, 3)
             })
-        
-        # Sort by score descending
         ranked_items.sort(key=lambda x: x["score"], reverse=True)
         return ranked_items
+    
+    @serve.batch(max_batch_size=32, batch_wait_timeout_s=0.01)
+    async def rank_items(
+        self, 
+        user_features_batch: List[Dict[str, float]]
+    ) -> List[List[Dict[str, any]]]:
+        """Rank candidate items for a batch of users."""
+        # Simulate model inference time
+        await asyncio.sleep(0.05)
+        
+        # In production, use vectorized batch inference:
+        # return self.model.batch_predict(user_features_batch, self.CANDIDATE_ITEMS)
+        
+        return [self._score_items(features) for features in user_features_batch]
 
 
 # Component 3: Recommendation Service (Orchestrator)
@@ -154,7 +152,7 @@ class RecommendationService:
         # Step 1: Extract user features
         user_features = await self.user_feature_extractor.extract_features.remote(user_id)
         
-        # Step 2: Rank candidate items
+        # Step 2: Rank candidate items (batched automatically by @serve.batch)
         ranked_items = await self.ranking_model.rank_items.remote(user_features)
         
         # Step 3: Return top-k recommendations
@@ -173,6 +171,12 @@ app = RecommendationService.bind(
 
 Each deployment in the composition can scale independently based on its resource needs and traffic patterns. The `RecommendationService` orchestrates calls to the other deployments using deployment handles.
 
+**Note:** The `ItemRankingModel` uses several performance optimizations:
+- **Autoscaling**: Automatically scales replicas based on traffic via `autoscaling_config`. See [Autoscaling](https://docs.ray.io/en/latest/serve/autoscaling-guide.html).
+- **Request batching**: The `@serve.batch` decorator groups concurrent requests for efficient batch inference. See [Dynamic Request Batching](https://docs.ray.io/en/latest/serve/advanced-guides/dyn-req-batch.html).
+
+# **Warning:** When calling deployment handles inside a deployment, always use `await` instead of `.result()`. The `.result()` method blocks the replica from processing other requests while waiting. Using `await` enables the deployment to handle other requests concurrently.
+
 See [Model Composition](https://docs.ray.io/en/latest/serve/model-composition.html) for details on deployment handles and orchestration patterns.
 
 ## Deploy locally
@@ -184,9 +188,8 @@ Test your composed pipeline on your local machine before moving to production.
 In a terminal, run:
 
 
-
 ```bash
-serve run serve_recommendation_pipeline:app --non-blocking
+!serve run serve_recommendation_pipeline:app --non-blocking
 ```
 
 **Note:** When running in a notebook, the `--non-blocking` flag returns control immediately so you can continue executing cells. Without it, `serve run` blocks the notebook. In a terminal, you can omit this flag to stream logs to the console.
@@ -237,39 +240,37 @@ The request flows through the pipeline:
 3. `ItemRankingModel` scores all candidate items from its catalog (~50&nbsp;ms).
 4. `RecommendationService` returns top-k items.
 
-### Test with multiple users
+### Test concurrent requests
 
-Send requests for different users to see the pipeline in action:
+Send concurrent requests to trigger autoscaling and see the pipeline handle load:
 
 
 ```python
-# client_multiple_requests.py
+# client_concurrent_requests.py
 import requests
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Test with multiple users
-for i in range(100):
-    user_id = f"user_{random.randint(1, 1000)}"
-    
+def send_request(user_id):
     response = requests.post(
         "http://localhost:8000",
-        json={
-            "user_id": user_id,
-            "top_k": 3
-        }
+        json={"user_id": user_id, "top_k": 3}
     )
-    
-    result = response.json()
-    top_items = [rec["item_id"] for rec in result["recommendations"]]
-    print(f"Request {i+1} - {user_id}: {top_items}")
+    return user_id, response.json()
 
-print(f"\nSent 100 requests total")
+user_ids = [f"user_{random.randint(1, 1000)}" for _ in range(100)]
+
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(send_request, uid) for uid in user_ids]
+    for future in as_completed(futures):
+        user_id, result = future.result()
+        top_items = [rec["item_id"] for rec in result["recommendations"]]
+        print(f"{user_id}: {top_items}")
+
+print("\nSent 100 concurrent requests")
 ```
 
-Each component processes requests independently and can scale based on load. For example:
-- `UserFeatureExtractor` (2 replicas) handles feature extraction.
-- `ItemRankingModel` (3 replicas with 2 CPUs each) handles compute-intensive ranking.
-- `RecommendationService` (1 replica) orchestrates the pipeline.
+Under concurrent load, Ray Serve automatically scales the `ItemRankingModel` replicas based on the `autoscaling_config`. When traffic exceeds `target_ongoing_requests` per replica, new replicas spin up (up to `max_replicas`). When traffic drops, replicas scale back down to `min_replicas`.
 
 ### Shutdown
 
@@ -277,7 +278,7 @@ Shutdown your service:
 
 
 ```bash
-serve shutdown -y
+!serve shutdown -y
 ```
 
 ## Deploy to production with Anyscale Services
@@ -367,164 +368,6 @@ To view metrics in an Anyscale Service or Workspace:
 
 From there, you can also open Grafana by clicking **View tab in Grafana**.
 
-## Performance tips
-
-Optimize your composed pipeline for better throughput and lower latency.
-
-### Scale deployments independently
-
-Identify bottlenecks and scale specific components:
-
-```python
-# Scale feature extraction for high traffic
-@serve.deployment(num_replicas=5)
-class UserFeatureExtractor:
-    ...
-
-# Scale ranking model with more resources
-@serve.deployment(
-    num_replicas=10,
-    ray_actor_options={"num_cpus": 4, "num_gpus": 1}
-)
-class ItemRankingModel:
-    ...
-```
-
-### Use autoscaling
-
-Configure autoscaling for components with variable load:
-
-```python
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 2,
-        "max_replicas": 10,
-        "target_ongoing_requests": 5
-    }
-)
-class ItemRankingModel:
-    ...
-```
-
-### Batch requests for ranking models
-
-Improve throughput by batching ranking requests:
-
-```python
-@serve.deployment
-class ItemRankingModel:
-    @serve.batch(max_batch_size=32, batch_wait_timeout_s=0.01)
-    async def rank_items(self, requests):
-        # Process batch of requests together
-        ...
-```
-
-### Use co-routines for blocking operations
-
-Use async operations for blocking operations:
-
-```python
-@serve.deployment
-class UserFeatureExtractor:
-    async def extract_features(self, user_id: str):
-        # Use async database client
-        features = await db.query_async(user_id)
-        return features
-```
-
-:::warning
-When calling deployment handles inside a deployment, always use `await` instead of `.result()`. The `.result()` method blocks the deployment from processing other requests while waiting for the remote call to finish. Using `await` lets the deployment handle other requests concurrently:
-
-```python
-@serve.deployment
-class RecommendationService:
-    def __init__(self, user_feature_extractor: DeploymentHandle):
-        self.user_feature_extractor = user_feature_extractor
-    
-    async def __call__(self, request):
-        user_id = (await request.json())["user_id"]
-        
-        # Correct: Non-blocking - allows other requests to be processed
-        features = await self.user_feature_extractor.extract_features.remote(user_id)
-        
-        # Avoid: Blocks the replica from handling other requests
-        # features = self.user_feature_extractor.extract_features.remote(user_id).result()
-        
-        return features
-```
-:::
-
-## Troubleshooting
-
-Common issues you might encounter when using model composition.
-
-### Missing deployment handle
-
-```
-TypeError: __init__() missing 1 required positional argument: 'ranking_model'
-```
-
-Make sure you bind all deployment handles when building the application:
-
-```python
-# Correct: All handles bound
-app = RecommendationService.bind(
-    user_feature_extractor=UserFeatureExtractor.bind(),
-    ranking_model=ItemRankingModel.bind()
-)
-
-# Incorrect: Missing ranking_model handle
-app = RecommendationService.bind(
-    user_feature_extractor=UserFeatureExtractor.bind()
-)
-```
-
-### AttributeError: 'DeploymentHandle' object has no attribute 'X'
-
-```
-AttributeError: 'DeploymentHandle' object has no attribute 'extract_features'
-```
-
-Make sure you call methods on the handle using `.remote()`:
-
-```python
-# Correct
-features = await self.user_feature_extractor.extract_features.remote(user_id)
-
-# Incorrect
-features = await self.user_feature_extractor.extract_features(user_id)
-```
-
-### Timeout errors
-
-```
-RayTaskError: Task timed out after 30 seconds
-```
-
-Check for deadlocks or increase timeout for slow components such as model inference or database operations:
-
-```python
-# Set `max_ongoing_requests` to monitor which replica is not receiving responses fast enough
-@serve.deployment(max_ongoing_requests=10)
-class ItemRankingModel:
-    ...
-
-# Configure timeout per call
-ranked = await self.ranking_model.rank_items.options(
-    timeout_s=60
-).remote(features)
-```
-
-### High latency between components
-
-If you observe high latency and low throughput between deployments:
-
-1. **Check for `.result()` usage**: Make sure you're using `await` instead of `.result()` when calling deployment handles. Using `.result()` blocks the replica from processing other requests, which severely impacts performance. See [Use co-routines for blocking operations](#use-co-routines-for-blocking-operations) for the correct pattern.
-2. **Check replica placement**: Co-locate communicating deployments on the same nodes to reduce network overhead.
-3. **Monitor queue depth**: High queue depth indicates insufficient number of replicas.
-4. **Profile each component**: Identify which stage is the bottleneck.
-5. **Consider batching**: [Dynamically batch requests](https://docs.ray.io/en/latest/serve/advanced-guides/dyn-req-batch.html) to improve throughput.
-
 ## Summary
 
-This tutorial shows you how to use model composition to build recommendation systems with independent deployments, configure each component with different resources and scaling policies, orchestrate multi-stage pipelines with deployment handles, deploy both locally and in production, monitor per-component metrics, optimize pipeline performance, and troubleshoot common issues.
+This tutorial showed you how to build a recommendation system with Ray Serve using a model composition pattern. You learned to create independent deployments for each pipeline stage, configure autoscaling for changing traffic, orchestrate multi-stage workflows with deployment handles, deploy to production with Anyscale Services, and monitor per-component metrics.

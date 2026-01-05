@@ -1,21 +1,22 @@
-# client_multiple_requests.py
+# client_concurrent_requests.py
 import requests
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Test with multiple users
-for i in range(100):
-    user_id = f"user_{random.randint(1, 1000)}"
-    
+def send_request(user_id):
     response = requests.post(
         "http://localhost:8000",
-        json={
-            "user_id": user_id,
-            "top_k": 3
-        }
+        json={"user_id": user_id, "top_k": 3}
     )
-    
-    result = response.json()
-    top_items = [rec["item_id"] for rec in result["recommendations"]]
-    print(f"Request {i+1} - {user_id}: {top_items}")
+    return user_id, response.json()
 
-print(f"\nSent 100 requests total")
+user_ids = [f"user_{random.randint(1, 1000)}" for _ in range(100)]
+
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(send_request, uid) for uid in user_ids]
+    for future in as_completed(futures):
+        user_id, result = future.result()
+        top_items = [rec["item_id"] for rec in result["recommendations"]]
+        print(f"{user_id}: {top_items}")
+
+print("\nSent 100 concurrent requests")
