@@ -864,8 +864,8 @@ class ReportHead(SubprocessModule):
                 http_port = node_info.dashboard_agent_listen_port
                 grpc_port = node_info.metrics_agent_port
                 if grpc_port <= 0:
-                    # Agent not started or not available
-                    return None
+                    # Agent not started or not available, check other nodes
+                    continue
                 return node_id, ip, http_port, grpc_port
         return None
 
