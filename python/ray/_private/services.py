@@ -886,7 +886,7 @@ def start_ray_process(
     # Jemalloc memory profiling.
     if os.environ.get("LD_PRELOAD") is None:
         jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
-        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF, "")
         jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
         jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
         jemalloc_env_vars = propagate_jemalloc_env_var(

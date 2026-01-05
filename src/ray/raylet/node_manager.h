@@ -520,7 +520,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
                               pid_t pid,
-                              const StartupToken &worker_startup_token,
                               std::function<void(Status, int)> send_reply_callback = {});
   // Register a new driver into worker pool.
   Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
