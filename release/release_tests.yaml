@@ -4544,14 +4544,14 @@
 
 - name: video_analysis_pipeline  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.10"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/video-analysis/content
 
   cluster:
     byod:
-      type: gpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: gpu
       post_build_script: byod_serve_video_analysis.sh
     cluster_compute: ci/aws.yaml
 
