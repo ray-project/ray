@@ -16,7 +16,7 @@ Or use this script: bash convert_to_md.sh
 <a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/model_composition_recsys/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
 </div>
 
-# This tutorial shows you how to build a recommendation system using Ray Serve's model composition pattern. Model composition breaks complex ML pipelines into independent deployments that you can scale and update separately.
+This tutorial shows you how to build a recommendation system using Ray Serve's model composition pattern. Model composition breaks complex ML pipelines into independent deployments that you can scale and update separately.
 
 ## Why model composition for recommendation systems?
 
@@ -175,7 +175,7 @@ Each deployment in the composition can scale independently based on its resource
 - **Autoscaling**: Automatically scales replicas based on traffic via `autoscaling_config`. See [Autoscaling](https://docs.ray.io/en/latest/serve/autoscaling-guide.html).
 - **Request batching**: The `@serve.batch` decorator groups concurrent requests for efficient batch inference. See [Dynamic Request Batching](https://docs.ray.io/en/latest/serve/advanced-guides/dyn-req-batch.html).
 
-# **Warning:** When calling deployment handles inside a deployment, always use `await` instead of `.result()`. The `.result()` method blocks the replica from processing other requests while waiting. Using `await` enables the deployment to handle other requests concurrently.
+**Warning:** When calling deployment handles inside a deployment, always use `await` instead of `.result()`. The `.result()` method blocks the replica from processing other requests while waiting. Using `await` enables the deployment to handle other requests concurrently.
 
 See [Model Composition](https://docs.ray.io/en/latest/serve/model-composition.html) for details on deployment handles and orchestration patterns.
 
@@ -370,4 +370,4 @@ From there, you can also open Grafana by clicking **View tab in Grafana**.
 
 ## Summary
 
-This tutorial showed you how to build a recommendation system with Ray Serve using a model composition pattern. You learned to create independent deployments for each pipeline stage, configure autoscaling for changing traffic, orchestrate multi-stage workflows with deployment handles, deploy to production with Anyscale Services, and monitor per-component metrics.
+In this tutorial, you learned how how to build a recommendation system with Ray Serve using a model composition pattern. You learned to create independent deployments for each pipeline stage, configure autoscaling for changing traffic, orchestrate multi-stage workflows with deployment handles, deploy to production with Anyscale Services, and monitor per-component metrics.
