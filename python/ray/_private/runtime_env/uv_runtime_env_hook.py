@@ -346,7 +346,11 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # 4. platform.python_version() (since uv run uses the same Python as the driver)
     if not options.python:
         env_vars = runtime_env.get("env_vars") or {}
-        uv_python = env_vars.get("UV_PYTHON") or os.environ.get("UV_PYTHON") or platform.python_version()
+        uv_python = (
+            env_vars.get("UV_PYTHON")
+            or os.environ.get("UV_PYTHON")
+            or platform.python_version()
+        )
         remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
