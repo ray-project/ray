@@ -163,12 +163,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #endif
   }
 
-  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager_),
-      options.session_name);
-
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
 #if defined(__APPLE__)
@@ -215,7 +209,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.language,
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
-                                                    options.startup_token,
                                                     &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
@@ -225,6 +218,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     QuickExit();
   }
   RAY_CHECK_GE(assigned_port, 0);
+
+  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
+      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                       *client_call_manager_),
+      options.session_name,
+      local_node_id);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -551,10 +551,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       lease_request_rate_limiter,
       /*tensor_transport_getter=*/
       [](const ObjectID &object_id) {
-        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
-        // supported for actor tasks. Therefore, normal tasks should always use
-        // OBJECT_STORE.
-        return rpc::TensorTransport::OBJECT_STORE;
+        // Currently, RDT is only supported for actor tasks.
+        return std::nullopt;
       },
       io_service_,
       *scheduler_placement_time_ms_histogram_);
@@ -699,7 +697,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       worker_id_(options.worker_type == WorkerType::DRIVER
                      ? ComputeDriverIdFromJob(options_.job_id)
-                     : WorkerID::FromRandom()),
+                     : options_.worker_id),
       io_work_(io_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
@@ -799,7 +797,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // for java worker or in constructor of CoreWorker for python worker.
 
   // We need init stats before using it/spawning threads.
-  stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  stats::Init(global_tags, worker_id_);
   task_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTaskByStateGaugeMetric()));
   actor_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
@@ -839,6 +837,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
+        stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
       } else {
         RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "

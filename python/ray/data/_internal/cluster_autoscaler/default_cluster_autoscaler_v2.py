@@ -19,7 +19,6 @@ from ray.data._internal.execution.interfaces.execution_options import ExecutionR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = getLogger(__name__)
 
@@ -87,7 +86,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def __init__(
         self,
-        topology: "Topology",
         resource_manager: "ResourceManager",
         execution_id: str,
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
@@ -118,7 +116,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
-        super().__init__(topology, resource_manager, execution_id)
 
     def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
         """Get the unique node resource specs and their count in the cluster."""

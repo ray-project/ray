@@ -127,7 +127,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           new GcsClientOptions(rayConfig),
           rayConfig.logDir,
           serializedJobConfig,
-          rayConfig.getStartupToken(),
+          rayConfig.getWorkerId().getBytes(),
           rayConfig.runtimeEnvHash);
 
       taskExecutor = new NativeTaskExecutor(this);
@@ -261,7 +261,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       GcsClientOptions gcsClientOptions,
       String logDir,
       byte[] serializedJobConfig,
-      int startupToken,
+      byte[] workerId,
       int runtimeEnvHash);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
