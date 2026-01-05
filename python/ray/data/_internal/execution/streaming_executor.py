@@ -848,9 +848,13 @@ def _format_metrics_table(metrics_dict: dict) -> str:
     if other_metrics:
         categorized["Other"] = dict(sorted(other_metrics.items()))
 
+    # Sort categories alphabetically, keeping "Other" at the end
+    sorted_categories = sorted(categorized.keys(), key=lambda c: (c == "Other", c))
+
     # Build table data
     table_data = []
-    for category, cat_metrics in categorized.items():
+    for category in sorted_categories:
+        cat_metrics = categorized[category]
         first_in_cat = True
         for k, v in cat_metrics.items():
             cat_display = category if first_in_cat else ""

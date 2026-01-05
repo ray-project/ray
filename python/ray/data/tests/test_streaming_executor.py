@@ -1434,6 +1434,22 @@ def test_format_metrics_table():
 ┌──────────────┬──────────────────────────────────────────────────┬─────────────────────────┐
 │ category     │ metric                                           │ value                   │
 ├──────────────┼──────────────────────────────────────────────────┼─────────────────────────┤
+│ Actors       │ num_alive_actors                                 │ 0                       │
+│              │ num_pending_actors                               │ 0                       │
+│              │ num_restarting_actors                            │ 0                       │
+│ Averages     │ average_bytes_inputs_per_task                    │ None                    │
+│              │ average_bytes_outputs_per_task                   │ None                    │
+│              │ average_bytes_per_output                         │ None                    │
+│              │ average_max_uss_per_task                         │ None                    │
+│              │ average_num_inputs_per_task                      │ None                    │
+│              │ average_num_outputs_per_task                     │ None                    │
+│              │ average_rows_inputs_per_task                     │ None                    │
+│              │ average_rows_outputs_per_task                    │ None                    │
+│              │ average_task_completion_excl_backpressure_time_s │ None                    │
+│              │ average_total_task_completion_time_s             │ None                    │
+│ Block Stats  │ block_size_bytes                                 │ (samples: 0, avg: 0.00) │
+│              │ block_size_rows                                  │ (samples: 0, avg: 0.00) │
+│              │ num_output_blocks_per_task_s                     │ None                    │
 │ Inputs       │ bytes_inputs_of_submitted_tasks                  │ 0                       │
 │              │ bytes_inputs_received                            │ 322116                  │
 │              │ bytes_task_inputs_processed                      │ 0                       │
@@ -1441,31 +1457,6 @@ def test_format_metrics_table():
 │              │ num_row_inputs_received                          │ 20124                   │
 │              │ num_task_inputs_processed                        │ 0                       │
 │              │ rows_inputs_of_submitted_tasks                   │ 0                       │
-│ Outputs      │ block_outputs_taken                              │ 1                       │
-│              │ bytes_outputs_of_finished_tasks                  │ 0                       │
-│              │ bytes_outputs_taken                              │ 322116                  │
-│              │ bytes_task_outputs_generated                     │ 0                       │
-│              │ num_outputs_of_finished_tasks                    │ 0                       │
-│              │ num_outputs_taken                                │ 1                       │
-│              │ num_task_outputs_generated                       │ 0                       │
-│              │ row_outputs_taken                                │ 20124                   │
-│              │ rows_outputs_of_finished_tasks                   │ 0                       │
-│              │ rows_task_outputs_generated                      │ 0                       │
-│ Tasks        │ num_tasks_failed                                 │ 0                       │
-│              │ num_tasks_finished                               │ 0                       │
-│              │ num_tasks_have_outputs                           │ 0                       │
-│              │ num_tasks_running                                │ 0                       │
-│              │ num_tasks_submitted                              │ 0                       │
-│ Timing       │ block_completion_time                            │ (samples: 0, avg: 0.00) │
-│              │ block_generation_time                            │ 0                       │
-│              │ task_completion_time                             │ (samples: 0, avg: 0.00) │
-│              │ task_completion_time_excl_backpressure_s         │ 0                       │
-│              │ task_completion_time_total_s                     │ 0                       │
-│              │ task_output_backpressure_time                    │ 0                       │
-│              │ task_submission_backpressure_time                │ 0                       │
-│ Block Stats  │ block_size_bytes                                 │ (samples: 0, avg: 0.00) │
-│              │ block_size_rows                                  │ (samples: 0, avg: 0.00) │
-│              │ num_output_blocks_per_task_s                     │ None                    │
 │ Object Store │ num_external_inqueue_blocks                      │ 0                       │
 │              │ num_external_inqueue_bytes                       │ 0                       │
 │              │ num_external_outqueue_blocks                     │ 0                       │
@@ -1478,21 +1469,30 @@ def test_format_metrics_table():
 │              │ obj_store_mem_pending_task_inputs                │ 0                       │
 │              │ obj_store_mem_spilled                            │ 0                       │
 │              │ obj_store_mem_used                               │ 0                       │
-│ Actors       │ num_alive_actors                                 │ 0                       │
-│              │ num_pending_actors                               │ 0                       │
-│              │ num_restarting_actors                            │ 0                       │
+│ Outputs      │ block_outputs_taken                              │ 1                       │
+│              │ bytes_outputs_of_finished_tasks                  │ 0                       │
+│              │ bytes_outputs_taken                              │ 322116                  │
+│              │ bytes_task_outputs_generated                     │ 0                       │
+│              │ num_outputs_of_finished_tasks                    │ 0                       │
+│              │ num_outputs_taken                                │ 1                       │
+│              │ num_task_outputs_generated                       │ 0                       │
+│              │ row_outputs_taken                                │ 20124                   │
+│              │ rows_outputs_of_finished_tasks                   │ 0                       │
+│              │ rows_task_outputs_generated                      │ 0                       │
 │ Resources    │ cpu_usage                                        │ 0                       │
 │              │ gpu_usage                                        │ 0                       │
-│ Averages     │ average_bytes_inputs_per_task                    │ None                    │
-│              │ average_bytes_outputs_per_task                   │ None                    │
-│              │ average_bytes_per_output                         │ None                    │
-│              │ average_max_uss_per_task                         │ None                    │
-│              │ average_num_inputs_per_task                      │ None                    │
-│              │ average_num_outputs_per_task                     │ None                    │
-│              │ average_rows_inputs_per_task                     │ None                    │
-│              │ average_rows_outputs_per_task                    │ None                    │
-│              │ average_task_completion_excl_backpressure_time_s │ None                    │
-│              │ average_total_task_completion_time_s             │ None                    │
+│ Tasks        │ num_tasks_failed                                 │ 0                       │
+│              │ num_tasks_finished                               │ 0                       │
+│              │ num_tasks_have_outputs                           │ 0                       │
+│              │ num_tasks_running                                │ 0                       │
+│              │ num_tasks_submitted                              │ 0                       │
+│ Timing       │ block_completion_time                            │ (samples: 0, avg: 0.00) │
+│              │ block_generation_time                            │ 0                       │
+│              │ task_completion_time                             │ (samples: 0, avg: 0.00) │
+│              │ task_completion_time_excl_backpressure_s         │ 0                       │
+│              │ task_completion_time_total_s                     │ 0                       │
+│              │ task_output_backpressure_time                    │ 0                       │
+│              │ task_submission_backpressure_time                │ 0                       │
 └──────────────┴──────────────────────────────────────────────────┴─────────────────────────┘"""
 
     assert _format_metrics_table(metrics_dict) == expected
