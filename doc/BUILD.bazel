@@ -729,3 +729,10 @@ filegroup(
     srcs = glob(["source/serve/tutorials/asynchronous-inference/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
+
+
+filegroup(
+    name = "video_analysis_pipeline_example_configs",
+    srcs = glob(["source/serve/tutorials/video-analysis/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
