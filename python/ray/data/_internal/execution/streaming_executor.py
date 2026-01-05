@@ -5,6 +5,7 @@ import time
 import typing
 from typing import Dict, List, Optional, Tuple
 
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
@@ -847,40 +848,21 @@ def _format_metrics_table(metrics_dict: dict) -> str:
     if other_metrics:
         categorized["Other"] = dict(sorted(other_metrics.items()))
 
-    # Calculate column widths for pivot table (category | metric | value)
-    cat_width = max(len(cat) for cat in categorized.keys())
-    key_width = max(len(str(k)) for k in metrics_dict.keys())
-    val_width = max(len(str(v)) for v in metrics_dict.values())
-    cat_width = max(cat_width, len("category"))
-    key_width = max(key_width, len("metric"))
-    val_width = max(val_width, len("value"))
-
-    # Build pivot table
-    lines = []
-    lines.append(
-        f"┌{'─' * (cat_width + 2)}┬{'─' * (key_width + 2)}┬{'─' * (val_width + 2)}┐"
-    )
-    lines.append(
-        f"│ {'category':<{cat_width}} │ {'metric':<{key_width}} │ {'value':<{val_width}} │"
-    )
-    lines.append(
-        f"╞{'═' * (cat_width + 2)}╪{'═' * (key_width + 2)}╪{'═' * (val_width + 2)}╡"
-    )
-
+    # Build table data
+    table_data = []
     for category, cat_metrics in categorized.items():
         first_in_cat = True
         for k, v in cat_metrics.items():
             cat_display = category if first_in_cat else ""
-            lines.append(
-                f"│ {cat_display:<{cat_width}} │ {str(k):<{key_width}} │ {str(v):<{val_width}} │"
-            )
+            # Convert None to string "None" since tabulate renders None as empty
+            table_data.append([cat_display, k, v if v is not None else "None"])
             first_in_cat = False
 
-    lines.append(
-        f"└{'─' * (cat_width + 2)}┴{'─' * (key_width + 2)}┴{'─' * (val_width + 2)}┘"
+    return tabulate(
+        table_data,
+        headers=["category", "metric", "value"],
+        tablefmt="simple_outline",
     )
-
-    return "\n".join(lines)
 
 
 def _log_op_metrics(topology: Topology) -> None:
