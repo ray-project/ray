@@ -47,26 +47,28 @@ class ItemRankingModel:
     For this example, the code uses a simple scoring function.
     """
     
+    # Mock item catalog. In production, this probably comes from a database.
+    CANDIDATE_ITEMS = [f"item_{i}" for i in range(1000)]
+    
     def __init__(self):
-        # In production: Load model weights
-        # self.model = load_model("s3://models/ranking_model.pkl")
+        # In production, this is your cloud storage path or model registry
+        # self.model = load_model("/models/ranking_model.pkl")
         pass
     
     async def rank_items(
         self, 
-        user_features: Dict[str, float], 
-        candidate_items: List[str]
+        user_features: Dict[str, float]
     ) -> List[Dict[str, any]]:
         """Rank candidate items for the user."""
         # Simulate model inference time
         await asyncio.sleep(0.05)
         
         # In production:
-        # scores = self.model.predict(user_features, candidate_items)
+        # scores = self.model.predict(user_features, self.CANDIDATE_ITEMS)
         
         # Mock scoring: combine user engagement with item popularity
         ranked_items = []
-        for item_id in candidate_items:
+        for item_id in self.CANDIDATE_ITEMS:
             # Simple mock scoring based on user engagement and item hash
             item_popularity = (hash(item_id) % 100) / 100.0
             score = (
@@ -100,23 +102,18 @@ class RecommendationService:
         """Generate recommendations for a user."""
         data = await request.json()
         user_id = data["user_id"]
-        candidate_items = data.get("candidate_items", [])
         top_k = data.get("top_k", 5)
         
         # Step 1: Extract user features
         user_features = await self.user_feature_extractor.extract_features.remote(user_id)
         
         # Step 2: Rank candidate items
-        ranked_items = await self.ranking_model.rank_items.remote(
-            user_features, 
-            candidate_items
-        )
+        ranked_items = await self.ranking_model.rank_items.remote(user_features)
         
         # Step 3: Return top-k recommendations
         return {
             "user_id": user_id,
-            "recommendations": ranked_items[:top_k],
-            "total_candidates": len(candidate_items)
+            "recommendations": ranked_items[:top_k]
         }
 
 

@@ -9,7 +9,6 @@ response = requests.post(
     headers={"Authorization": f"Bearer {TOKEN}"},
     json={
         "user_id": "user_42",
-        "candidate_items": [f"item_{i}" for i in range(100, 120)],
         "top_k": 5
     }
 )
