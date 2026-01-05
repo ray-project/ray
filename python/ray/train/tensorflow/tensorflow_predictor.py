@@ -132,7 +132,10 @@ class TensorflowPredictor(DLPredictor):
                 # List outputs are not supported by default TensorflowPredictor.
                 def build_model() -> tf.keras.Model:
                     input = tf.keras.layers.Input(shape=(1,))
-                    model = tf.keras.models.Model(inputs=input, outputs=[input, input])
+                    # Use Lambda to connect input to output (required for Keras 3)
+                    identity = tf.keras.layers.Lambda(lambda x: x)
+                    out = identity(input)
+                    model = tf.keras.models.Model(inputs=input, outputs=[out, out])
                     return model
 
                 # Use a custom predictor to format model output as a dict.

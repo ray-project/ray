@@ -38,6 +38,8 @@ class _MockModule(pl.LightningModule):
         return None
 
     def training_step(self, train_batch, batch_idx):
+        self.log("loss", self.loss)
+        self.log("acc", self.acc)
         return {"loss": self.loss, "acc": self.acc}
 
     def validation_step(self, val_batch, batch_idx):
