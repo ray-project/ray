@@ -339,7 +339,7 @@ class BackendConfig(BaseModel):
 class RunConfiguration(BaseModel):
     """The configuration for a Train run, including train loop config, backend config, scaling config, datasets details, and runtime configuration."""
 
-    train_loop_config: Optional[Dict[str, Any]] = Field(
+    train_loop_config: Optional[Union[Dict[str, Any], str]] = Field(
         default=None, description="The user defined train loop config for a Train run."
     )
     backend_config: BackendConfig = Field(
