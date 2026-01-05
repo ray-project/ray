@@ -22,8 +22,8 @@ DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
 
 if [[ "${ARROW_VERSION-}" == "9.*" ]]; then
   pip install tensorflow-metadata==1.13.1
-  pip install numpy==1.26.4 pandas==1.5.3 modin==0.22.2
-  pip install protobuf==3.9.2
+  pip install --upgrade numpy==1.26.4 pandas==1.5.3 modin==0.22.2
+  pip install --upgrade protobuf==3.9.2
 fi
 
 if [[ "${ARROW_VERSION-}" == "21.*" ]]; then
@@ -33,7 +33,7 @@ fi
 
 if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
+  pip install --upgrade numpy==1.23.5
 fi
 
 if [[ "${DOCTEST-}" == "1" ]]; then
