@@ -10,6 +10,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     PrometheusTimeseries,
+    get_auth_headers,
     raw_metric_timeseries,
 )
 from ray._private.worker import RayContext
@@ -381,7 +382,10 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
             if sample.labels["Name"] == "object_store_memory":
                 object_store_memory_bytes_from_metrics += sample.value
 
-        r = requests.get(f"http://{ctx.dashboard_url}/nodes?view=summary")
+        r = requests.get(
+            f"http://{ctx.dashboard_url}/nodes?view=summary",
+            headers=get_auth_headers(),
+        )
         object_store_memory_bytes_from_dashboard = int(
             r.json()["data"]["summary"][0]["raylet"]["objectStoreAvailableMemory"]
         )

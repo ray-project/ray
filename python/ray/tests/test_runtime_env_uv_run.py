@@ -467,6 +467,14 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
     runtime_env_json = (
         '{"env_vars": {"PYTHONPATH": "' + ":".join(sys.path) + '"}, "working_dir": "."}'
     )
+    job_env = {
+        "PATH": os.environ["PATH"],
+        "RAY_ADDRESS": webui_url,
+    }
+    for key in ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH", "HOME"):
+        if key in os.environ:
+            job_env[key] = os.environ[key]
+
     subprocess.run(
         [
             "ray",
@@ -485,10 +493,7 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={
-            "PATH": os.environ["PATH"],
-            "RAY_ADDRESS": webui_url,
-        },
+        env=job_env,
         cwd=working_dir,
         check=True,
     )
