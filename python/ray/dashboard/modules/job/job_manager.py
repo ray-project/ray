@@ -37,10 +37,6 @@ from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    SchedulingStrategyT,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -421,32 +417,31 @@ class JobManager:
             runtime_env["config"] = config
         return runtime_env
 
-    async def _get_scheduling_strategy(
-        self, resources_specified: bool
-    ) -> SchedulingStrategyT:
-        """Get the scheduling strategy for the job.
+    async def _get_label_selector(self, resources_specified: bool) -> Dict:
+        """Determine the scheduling strategy for the job using a label selector.
 
         If resources_specified is true, or if the environment variable is set to
-        allow the job to run on worker nodes, we will use Ray's default actor
-        placement strategy. Otherwise, we will force the job to use the head node.
+        allow the job to run on worker nodes, we will not use any label constraints.
+        Otherwise, we will force the job to use the head node via a label selector
+        specifying the head node id.
 
         Args:
             resources_specified: Whether the job specified any resources
                 (CPUs, GPUs, or custom resources).
 
         Returns:
-            The scheduling strategy to use for the job.
+            The label selector to use for the job.
         """
         if resources_specified:
-            return "DEFAULT"
+            return {}
 
         if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
             logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
-                "driver instead of running it on the head node."
+                "driver instead of running it on the head node via a label selector."
             )
-            return "DEFAULT"
+            return {}
 
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
@@ -456,18 +451,15 @@ class JobManager:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
-                "it on the head node."
+                "it on the head node via a label selector."
             )
-            scheduling_strategy = "DEFAULT"
-        else:
-            logger.info(
-                "Head node ID found in GCS; scheduling job driver on "
-                f"head node {head_node_id}"
-            )
-            scheduling_strategy = NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        return scheduling_strategy
+            return {}
+
+        logger.info(
+            "Head node ID found in GCS; scheduling job driver on "
+            f"head node {head_node_id} using a label selector"
+        )
+        return {"ray.io/node-id": head_node_id}
 
     async def submit_job(
         self,
@@ -576,9 +568,7 @@ class JobManager:
                     entrypoint_label_selector not in [None, {}],
                 ]
             )
-            scheduling_strategy = await self._get_scheduling_strategy(
-                resources_specified
-            )
+            label_selector = await self._get_label_selector(resources_specified)
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
@@ -592,7 +582,7 @@ class JobManager:
                 num_gpus=entrypoint_num_gpus,
                 memory=entrypoint_memory,
                 resources=entrypoint_resources,
-                scheduling_strategy=scheduling_strategy,
+                label_selector=label_selector,
                 runtime_env=self._get_supervisor_runtime_env(
                     runtime_env, submission_id, resources_specified
                 ),

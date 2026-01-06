@@ -47,7 +47,6 @@ from ray.core.generated import (
     node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -1701,13 +1700,8 @@ class WorkerKillerActor(ResourceKillerActor):
                 proc = psutil.Process(pid)
                 proc.kill()
 
-            scheduling_strategy = (
-                ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                    node_id=process_to_kill_node_id,
-                    soft=False,
-                )
-            )
-            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+            label_selector = {"ray.io/node-id": process_to_kill_node_id}
+            kill_process.options(label_selector=label_selector).remote(
                 process_to_kill_pid
             )
             logging.info(
@@ -1733,9 +1727,7 @@ def get_and_run_resource_killer(
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     resource_killer = resource_killer_cls.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=head_node_id, soft=False
-        ),
+        label_selector={"ray.io/node-id": head_node_id},
         namespace=namespace,
         name="ResourceKiller",
         lifetime=lifetime,

@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_uninitialized():
@@ -205,21 +204,13 @@ def test_get_local_locations_multi_nodes(ray_start_cluster):
     @ray.remote
     def caller():
         obj_ref = gen_big_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
+            label_selector={"ray.io/node-id": worker_node_id}
         ).remote(3)
         ray.wait([obj_ref])
         # The dataframe consists of 3 MiB of NumPy NDArrays.
         assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
-    ray.get(
-        caller.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote()
-    )
+    ray.get(caller.options(label_selector={"ray.io/node-id": head_node_id}).remote())
 
 
 def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
@@ -240,22 +231,14 @@ def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
     @ray.remote
     def caller():
         gen = gen_big_objects.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
+            label_selector={"ray.io/node-id": worker_node_id}
         ).remote(3, 10)
         for obj_ref in gen:
             # No need to ray.wait, the object ref must have been ready before it's
             # yielded.
             assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
-    ray.get(
-        caller.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote()
-    )
+    ray.get(caller.options(label_selector={"ray.io/node-id": head_node_id}).remote())
 
 
 if __name__ == "__main__":

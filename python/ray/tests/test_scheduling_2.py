@@ -262,16 +262,10 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     )
 
     assert worker_node_id == ray.get(
-        get_node_id.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            )
-        ).remote()
+        get_node_id.options(label_selector={"ray.io/node-id": worker_node_id}).remote()
     )
     assert head_node_id == ray.get(
-        get_node_id.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
-        ).remote()
+        get_node_id.options(label_selector={"ray.io/node-id": head_node_id}).remote()
     )
 
     # Doesn't fail when the node doesn't exist since soft is true.
@@ -295,9 +289,7 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.NodeID.from_random().hex(), soft=False
-                )
+                label_selector={"ray.io/node-id": ray.NodeID.from_random().hex()}
             ).remote()
         )
 
@@ -305,9 +297,7 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=False
-                ),
+                label_selector={"ray.io/node-id": head_node_id},
                 resources={"not_exist": 1},
             ).remote()
         )
@@ -345,24 +335,20 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
-    actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False)
-    ).remote()
+    actor = Actor.options(label_selector={"ray.io/node-id": worker_node_id}).remote()
     assert worker_node_id == ray.get(actor.get_node_id.remote())
 
-    actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
-    ).remote()
+    actor = Actor.options(label_selector={"ray.io/node-id": head_node_id}).remote()
     assert head_node_id == ray.get(actor.get_node_id.remote())
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False),
+        label_selector={"ray.io/node-id": worker_node_id},
         num_cpus=0,
     ).remote()
     assert worker_node_id == ray.get(actor.get_node_id.remote())
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False),
+        label_selector={"ray.io/node-id": head_node_id},
         num_cpus=0,
     ).remote()
     assert head_node_id == ray.get(actor.get_node_id.remote())
@@ -395,18 +381,14 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     # Fail when the node doesn't exist.
     with pytest.raises(ray.exceptions.ActorUnschedulableError):
         actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.NodeID.from_random().hex(), soft=False
-            )
+            label_selector={"ray.io/node-id": ray.NodeID.from_random().hex()}
         ).remote()
         ray.get(actor.get_node_id.remote())
 
     # Fail when the node is infeasible.
     with pytest.raises(ray.exceptions.ActorUnschedulableError):
         actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            ),
+            label_selector={"ray.io/node-id": worker_node_id},
             resources={"not_exist": 1},
         ).remote()
         ray.get(actor.get_node_id.remote())
@@ -434,10 +416,7 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
     # Submit a first task that has affinity to the worker node.
     # It should be placed on the worker node and occupy the resources.
     worker_node_ref = get_node_id.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node.node_id,
-            soft=False,
-        ),
+        label_selector={"ray.io/node-id": worker_node.node_id},
     ).remote()
 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
@@ -588,13 +567,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     tasks = []
     tasks.append(f.remote(10000))
     # This is not reported since there is feasible node.
-    tasks.append(
-        f.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            )
-        ).remote(0)
-    )
+    tasks.append(f.options(label_selector={"ray.io/node-id": worker_node_id}).remote(0))
     # This is reported since there is no feasible node and soft is True.
     tasks.append(
         f.options(
