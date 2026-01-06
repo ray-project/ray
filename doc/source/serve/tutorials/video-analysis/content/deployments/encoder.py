@@ -64,10 +64,6 @@ class VideoEncoder:
         
         # Process images
         inputs = self.processor(images=pil_images, return_tensors="pt").to(self.device)
-        # inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
 
         # Get embeddings
         with torch.no_grad():
