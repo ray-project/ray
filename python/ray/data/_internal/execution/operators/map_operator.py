@@ -589,7 +589,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler.finalize()
         while self._block_ref_bundler.has_next():
             # Handle any leftover bundles in the bundler.
-            bundled_input, original_inputs = self._block_ref_bundler.get_next()
+            (
+                bundled_input,
+                original_inputs,
+            ) = self._block_ref_bundler.get_next_with_original()
             for og_inputs in original_inputs:
                 self._metrics.on_input_dequeued(og_inputs)
             self._add_bundled_input(bundled_input)

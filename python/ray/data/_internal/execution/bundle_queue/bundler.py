@@ -251,4 +251,5 @@ class RebundleQueue(BaseBundleQueue):
         self._reset_metrics()
         self._pending_bundles.clear()
         self._ready_bundles.clear()
+        self._consumed_bundles.clear()
         self._total_pending_rows = 0

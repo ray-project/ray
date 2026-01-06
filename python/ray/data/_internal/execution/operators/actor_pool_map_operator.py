@@ -22,7 +22,6 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
-import math
 
 from typing_extensions import override
 
