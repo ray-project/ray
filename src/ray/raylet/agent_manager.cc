@@ -122,5 +122,7 @@ AgentManager::~AgentManager() {
   }
 }
 
+pid_t AgentManager::GetPid() { return process_.GetId(); }
+
 }  // namespace raylet
 }  // namespace ray
