@@ -52,7 +52,7 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-
 apt-get update
 apt-get install -y \
   nodejs build-essential python-is-python3 \
-  python3-pip openjdk-8-jre wget jq \
+  python3-pip python3-docutils openjdk-8-jre wget jq \
   "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
