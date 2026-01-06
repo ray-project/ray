@@ -241,7 +241,6 @@ exclude_patterns = [
     "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
     "serve/tutorials/asynchronous-inference/content/README.md",
     "serve/tutorials/video-analysis/**/*.ipynb",
-    "serve/tutorials/video-analysis/**/*.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

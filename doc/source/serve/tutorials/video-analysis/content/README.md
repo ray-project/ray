@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Video analysis pipeline with Ray Serve
 
 This notebook demonstrates how to build a production-grade video analysis pipeline with [Ray Serve](https://docs.ray.io/en/latest/serve/). The pipeline processes videos from S3 and extracts:
