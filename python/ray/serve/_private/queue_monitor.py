@@ -76,12 +76,15 @@ class QueueMonitorActor:
 
         try:
             queues = await self._broker.queues([self._config.queue_name])
+            print(f"queues: {queues}")
             if queues is not None:
                 for q in queues:
                     if q.get("name") == self._config.queue_name:
                         queue_length = q.get("messages")
                         self._last_queue_length = queue_length
                         return queue_length
+
+            print(f"last_queue_length: {self._last_queue_length}")
 
             if self._last_queue_length is not None:
                 return self._last_queue_length
@@ -92,6 +95,7 @@ class QueueMonitorActor:
                 return 0
 
         except Exception as e:
+            print(f"error 123123: {e}")
             logger.warning(
                 f"Failed to query queue length: {e}. Using last known value: {self._last_queue_length}"
             )

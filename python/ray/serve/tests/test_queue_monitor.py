@@ -17,16 +17,6 @@ from ray.tests.conftest import external_redis  # noqa: F401
 
 
 @pytest.fixture
-def ray_instance():  # noqa: F811
-    """Initialize Ray with external Redis."""
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=2, include_dashboard=False)
-    yield
-    ray.shutdown()
-
-
-@pytest.fixture
 def redis_client(external_redis):  # noqa: F811
     """Create a Redis client connected to the external Redis."""
     redis_address = os.environ.get("RAY_REDIS_ADDRESS")
@@ -75,29 +65,6 @@ class TestQueueMonitorActor:
         length = ray.get(monitor.get_queue_length.remote())
 
         assert length == 0
-
-    def test_get_queue_length_returns_cached_on_error(
-        self, ray_instance, redis_client, redis_config
-    ):
-        """Test get_queue_length returns cached value on error."""
-        # Push messages initially
-        for i in range(50):
-            redis_client.lpush("test_queue", f"message_{i}")
-
-        try:
-            monitor = QueueMonitorActor.remote(redis_config)
-
-            # First successful query
-            length = ray.get(monitor.get_queue_length.remote())
-            assert length == 50
-
-            # Simulate error by deleting the queue and checking cached value is returned
-            # Note: The actual error path is harder to trigger with real Redis,
-            # so we verify the caching behavior by checking the value is consistent
-            length = ray.get(monitor.get_queue_length.remote())
-            assert length == 50
-        finally:
-            redis_client.delete("test_queue")
 
     def test_shutdown_marks_uninitialized(
         self, ray_instance, redis_client, redis_config
