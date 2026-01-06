@@ -218,7 +218,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     )
                     total = state.op.num_output_rows_total()
                     tid = progress.add_task(
-                        "",
+                        name,
                         total=total if total is not None else 1,
                         start=True,
                         rate_str="? rows/s",
