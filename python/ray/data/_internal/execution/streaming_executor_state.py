@@ -27,11 +27,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
     InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.ranker import Ranker
@@ -39,11 +35,9 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -178,47 +172,6 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
-@dataclass
-class OpDisplayMetrics:
-    """Metrics of an operator. Used for display purposes."""
-
-    cpu: float = 0.0
-    gpu: float = 0.0
-    object_store_memory: float = 0.0
-    tasks: int = 0
-    actors: int = 0
-    queued: int = 0
-    task_backpressured: bool = False
-    output_backpressured: bool = False
-    extra_info: str = ""
-
-    def display_str(self) -> str:
-        """Format metrics object to a displayable string."""
-        metrics = []
-        # resource metrics
-        gpu_str = f" {self.gpu:.1f} GPU," if self.gpu else ""
-        mem_str = memory_string(self.object_store_memory)
-        metrics.append(f"{self.cpu:.1f} CPU,{gpu_str} {mem_str} object store")
-        # task
-        task_str = f"Tasks: {self.tasks}"
-        if self.task_backpressured or self.output_backpressured:
-            backpressured = []
-            if self.task_backpressured:
-                backpressured.append("tasks")
-            if self.output_backpressured:
-                backpressured.append("outputs")
-            task_str += f" [backpressured: {','.join(backpressured)}]"
-        if self.extra_info:
-            task_str += f": {self.extra_info}"
-        metrics.append(task_str)
-        # actors
-        if self.actors:
-            metrics.append(f"Actors: {self.actors}")
-        # queue
-        metrics.append(f"Queued blocks: {self.queued}")
-        return "; ".join(metrics) + ";"
-
-
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -240,7 +193,6 @@ class OpState:
         # thread-safe type such as `deque`.
         self.output_queue: OpBufferQueue = OpBufferQueue()
         self.op = op
-        self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -252,54 +204,11 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Progress Manager
-        self.op_display_metrics = OpDisplayMetrics()
         self.progress_manager_uuid: Optional[UUID] = None
         self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
-
-    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
-        """Create progress bars at the given index (line offset in console).
-
-        For AllToAllOperator, zero or more sub progress bar would be created.
-        Return the number of enabled progress bars created for this operator.
-        """
-        contains_sub_progress_bars = isinstance(
-            self.op, AllToAllOperator
-        ) or isinstance(self.op, HashShuffleProgressBarMixin)
-        # Only show 1:1 ops when in verbose progress mode.
-
-        ctx = DataContext.get_current()
-        progress_bar_enabled = (
-            ctx.enable_progress_bars
-            and ctx.enable_operator_progress_bars
-            and (contains_sub_progress_bars or verbose_progress)
-        )
-        self.progress_bar = ProgressBar(
-            "- " + self.op.name,
-            self.op.num_output_rows_total(),
-            unit="row",
-            position=index,
-            enabled=progress_bar_enabled,
-        )
-        num_progress_bars = 1
-        if contains_sub_progress_bars:
-            # Initialize must be called for sub progress bars, even the
-            # bars are not enabled via the DataContext.
-            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
-        return num_progress_bars if progress_bar_enabled else 0
-
-    def close_progress_bars(self):
-        """Close all progress bars for this operator."""
-        if self.progress_bar:
-            self.progress_bar.close()
-            contains_sub_progress_bars = isinstance(
-                self.op, AllToAllOperator
-            ) or isinstance(self.op, HashShuffleProgressBarMixin)
-            if contains_sub_progress_bars:
-                # Close all sub progress bars.
-                self.op.close_sub_progress_bars()
 
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
@@ -329,26 +238,6 @@ class OpState:
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
-    def update_display_metrics(self, resource_manager: ResourceManager):
-        """Update display metrics with current metrics."""
-        usage = resource_manager.get_op_usage(self.op)
-        self.op_display_metrics.cpu = usage.cpu
-        self.op_display_metrics.gpu = usage.gpu
-        self.op_display_metrics.object_store_memory = usage.object_store_memory
-
-        self.op_display_metrics.tasks = self.op.num_active_tasks()
-        self.op_display_metrics.queued = self.total_enqueued_input_blocks()
-        self.op_display_metrics.actors = self.op.get_actor_info().running
-
-        self.op_display_metrics.task_backpressured = (
-            self.op._in_task_submission_backpressure
-        )
-        self.op_display_metrics.output_backpressured = (
-            self.op._in_task_output_backpressure
-        )
-
-        self.op_display_metrics.extra_info = self.op.progress_str()
-
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
@@ -368,10 +257,6 @@ class OpState:
         actor_info = self.op.get_actor_info()
         if ref.num_rows() is not None:
             self.output_row_count += ref.num_rows()
-            if self.progress_bar:
-                self.progress_bar.update(
-                    ref.num_rows(), self.op.num_output_rows_total()
-                )
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -382,18 +267,12 @@ class OpState:
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
-    def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
-        """Update the console with the latest operator progress."""
-        if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str(resource_manager))
-            self.progress_bar.refresh()
-
-    def summary_str(
+    def summary_str_raw(
         self, resource_manager: ResourceManager, verbose: bool = False
     ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: Tasks: {active}"
+        desc = f"Tasks: {active}"
         if (
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
@@ -401,10 +280,12 @@ class OpState:
             backpressure_types = []
             if self.op._in_task_submission_backpressure:
                 # The op is backpressured from submitting new tasks.
-                backpressure_types.append("tasks")
+                policy = self.op._task_submission_backpressure_policy or ""
+                backpressure_types.append(f"tasks({policy})")
             if self.op._in_task_output_backpressure:
                 # The op is backpressured from producing new outputs.
-                backpressure_types.append("outputs")
+                policy = self.op._task_output_backpressure_policy or ""
+                backpressure_types.append(f"outputs({policy})")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
@@ -420,6 +301,11 @@ class OpState:
             desc += f"; {suffix}"
 
         return desc
+
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
+        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -533,7 +419,7 @@ def process_completed_tasks(
     states, call `update_operator_states()` afterwards.
 
     Args:
-        topology: The toplogy of operators.
+        topology: The topology of operators.
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
@@ -552,16 +438,20 @@ def process_completed_tasks(
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
         max_bytes_to_read = None
+        # Track the first policy that limits output (returning 0 bytes)
+        limiting_policy = None
         for policy in backpressure_policies:
             policy_limit = policy.max_task_output_bytes_to_read(op)
             if policy_limit is not None:
+                if policy_limit == 0 and limiting_policy is None:
+                    limiting_policy = policy.name
                 if max_bytes_to_read is None:
                     max_bytes_to_read = policy_limit
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
         # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
 
@@ -647,7 +537,7 @@ def update_operator_states(topology: Topology) -> None:
             continue
         all_inputs_done = True
         for idx, dep in enumerate(op.input_dependencies):
-            if dep.completed() and not topology[dep].output_queue:
+            if dep.has_completed() and not topology[dep].output_queue:
                 if not op_state.input_done_called[idx]:
                     op.input_done(idx)
                     op_state.input_done_called[idx] = True
@@ -664,7 +554,7 @@ def update_operator_states(topology: Topology) -> None:
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
-            dep.completed() for dep in op.output_dependencies
+            dep.has_completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
@@ -672,7 +562,7 @@ def update_operator_states(topology: Topology) -> None:
         # Drain external input queue if current operator is execution finished.
         # This is needed when the limit is reached, and `mark_execution_finished`
         # is called manually.
-        if op.execution_finished():
+        if op.has_execution_finished():
             for input_queue in op_state.input_queues:
                 # Drain input queue
                 input_queue.clear()
@@ -704,8 +594,13 @@ def get_eligible_operators(
 
     for op, state in topology.items():
         # Operator is considered being in task-submission back-pressure if any
-        # back-pressure policy is violated
-        in_backpressure = any(not p.can_add_input(op) for p in backpressure_policies)
+        # back-pressure policy is violated. Track the first triggered policy.
+        triggered_policy = None
+        for p in backpressure_policies:
+            if not p.can_add_input(op):
+                triggered_policy = p.name
+                break
+        in_backpressure = triggered_policy is not None
 
         op_runnable = False
 
@@ -713,7 +608,11 @@ def get_eligible_operators(
         #   - It's not completed
         #   - It can accept at least one input
         #   - Its input queue has a valid bundle
-        if not op.completed() and op.should_add_input() and state.has_pending_bundles():
+        if (
+            not op.has_completed()
+            and op.should_add_input()
+            and state.has_pending_bundles()
+        ):
             if not in_backpressure:
                 op_runnable = True
                 eligible_ops.append(op)
@@ -727,8 +626,7 @@ def get_eligible_operators(
         )
 
         # Signal whether op in backpressure for stats collections
-        # TODO(hchen): also report which policy triggers backpressure.
-        op.notify_in_task_submission_backpressure(in_backpressure)
+        op.notify_in_task_submission_backpressure(in_backpressure, triggered_policy)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
     # limits in case when topology is entirely idle (no active tasks running)

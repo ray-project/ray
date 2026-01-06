@@ -34,7 +34,7 @@ chmod +x /tmp/bazel
 
 echo "--- Install uv"
 
-UV_PYTHON_VERSION=3.9
+UV_PYTHON_VERSION=3.10
 curl -LsSf https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install "${UV_PYTHON_VERSION}"

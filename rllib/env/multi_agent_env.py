@@ -417,7 +417,7 @@ def make_multi_agent(
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
                 if not self.observation_spaces[i].contains(obs[i]):
-                    print("===> MultiEnv does not contain obs.")
+                    logger.warning("MultiEnv does not contain obs.")
 
             return obs, infos
 

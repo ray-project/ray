@@ -12,7 +12,7 @@ LLM processor builder
     :nosignatures:
     :toctree: doc/
 
-    ~build_llm_processor
+    ~build_processor
 
 Processor
 ---------

@@ -13,7 +13,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
@@ -674,7 +674,7 @@ def test_downscale_multiple_deployments():
     # but it has more replicas of all deployments so
     # we should stop replicas from node2.
     assert len(deployment_to_replicas_to_stop[d1_id]) == 1
-    assert deployment_to_replicas_to_stop[d1_id] < {d1_r2_id, d1_r3_id}
+    assert deployment_to_replicas_to_stop[d1_id].issubset({d1_r2_id, d1_r3_id})
 
     scheduler.on_replica_stopping(d1_r3_id)
     scheduler.on_replica_stopping(d2_r3_id)
@@ -737,7 +737,7 @@ def test_downscale_head_node():
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    assert deployment_to_replicas_to_stop[dep_id] < {r2_id, r3_id}
+    assert deployment_to_replicas_to_stop[dep_id].issubset({r2_id, r3_id})
     scheduler.on_replica_stopping(deployment_to_replicas_to_stop[dep_id].pop())
 
     deployment_to_replicas_to_stop = scheduler.schedule(
@@ -861,16 +861,16 @@ def test_downscale_single_deployment():
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    assert deployment_to_replicas_to_stop[dep_id] == {r1_id, r2_id}
+    assert deployment_to_replicas_to_stop[dep_id] <= {r1_id, r2_id}
     scheduler.on_replica_stopping(r1_id)
     scheduler.on_replica_stopping(r2_id)
     scheduler.on_deployment_deleted(dep_id)
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs compact strategy."
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-class TestCompactScheduling:
+class TestPackScheduling:
     def test_basic(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")

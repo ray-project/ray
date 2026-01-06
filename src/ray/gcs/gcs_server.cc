@@ -131,14 +131,18 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           config.node_ip_address,
           ClusterID::Nil(),
           RayConfig::instance().gcs_server_rpc_client_thread_num()),
+      // Use deferred connection - will connect when actual port is known.
       event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
-          config_.metrics_agent_port, event_aggregator_client_call_manager_)),
+          event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
-          metrics_.event_recorder_dropped_events_counter)),
+          metrics_.event_recorder_dropped_events_counter,
+          config.node_id.empty() ? NodeID::Nil() : NodeID::FromHex(config.node_id))),
+      gcs_node_id_(config.node_id.empty() ? NodeID::Nil()
+                                          : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -148,6 +152,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  RAY_LOG(INFO).WithField(gcs_node_id_) << "GCS node ID initialized from config";
+
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
@@ -200,11 +206,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
-  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
-      config_.metrics_agent_port,
-      io_context_provider_.GetDefaultIOContext(),
-      client_call_manager_);
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -294,22 +295,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
-  // Init metrics and event exporter.
-  metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    if (server_status.ok()) {
-      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
-      ray_event_recorder_->StartExportingEvents();
-    } else {
-      RAY_LOG(ERROR)
-          << "Failed to establish connection to the event+metrics exporter agent. "
-             "Events and metrics will not be exported. "
-          << "Exporter agent status: " << server_status.ToString();
-    }
-  });
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+  if (port_ready_callback_) {
+    port_ready_callback_(rpc_server_.GetPort());
+  }
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
@@ -328,6 +319,13 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       [this] { TryGlobalGC(); },
       /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
       "GCSServer.deadline_timer.gcs_global_gc");
+
+  // If the metrics agent port is already known (not dynamically assigned),
+  // initialize the metrics exporter now. Otherwise, it will be initialized
+  // when the raylet registers and reports the actual port.
+  if (config_.metrics_agent_port > 0) {
+    InitMetricsExporter(config_.metrics_agent_port);
+  }
 
   is_started_ = true;
 }
@@ -378,8 +376,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+  gcs_healthcheck_manager_ =
+      GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
+                                    node_death_callback,
+                                    metrics_.health_check_rpc_latency_ms_histogram);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -449,6 +449,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*is_local_node_with_raylet=*/false);
 }
 
@@ -607,9 +608,23 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
+  if (RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms() > 0 &&
+      RayConfig::instance().gcs_resource_broadcast_max_batch_size() == 1) {
+    RAY_LOG(WARNING) << "Configuration inconsistency detected: "
+                        "gcs_resource_broadcast_max_batch_delay_ms > 0 "
+                     << "but gcs_resource_broadcast_max_batch_size = 1. The delay "
+                        "setting will have no effect "
+                     << "since only one message can be batched at a time. Consider "
+                        "increasing batch_size or "
+                     << "setting delay_ms to 0.";
+  }
+
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
       kGCSNodeID.Binary(),
+      /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
+      /* batch_delay_ms */
+      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
       });
@@ -827,6 +842,19 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+
+        // Initialize the metrics exporter when the head node registers,
+        // but only if we haven't already initialized it (i.e., when using
+        // dynamic port assignment where config_.metrics_agent_port was 0).
+        if (node->is_head_node() && !metrics_exporter_initialized_) {
+          int actual_port = node->metrics_agent_port();
+          if (actual_port > 0) {
+            InitMetricsExporter(actual_port);
+          } else {
+            RAY_LOG(WARNING) << "Metrics agent may not be started or configured. "
+                             << "metrics_agent_port=" << actual_port;
+          }
+        }
         auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
             node_id, node->node_manager_address(), node->node_manager_port());
 
@@ -938,11 +966,11 @@ void GcsServer::PrintDebugState() const {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Main service Event stats:\n\n"
-                  << io_context_provider_.GetDefaultIOContext().stats().StatsString()
+                  << io_context_provider_.GetDefaultIOContext().stats()->StatsString()
                   << "\n\n";
     for (const auto &io_context : io_context_provider_.GetAllDedicatedIOContexts()) {
       RAY_LOG(INFO) << io_context->GetName() << " Event stats:\n\n"
-                    << io_context->GetIoService().stats().StatsString() << "\n\n";
+                    << io_context->GetIoService().stats()->StatsString() << "\n\n";
     }
   }
 }
@@ -955,6 +983,35 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
                             config_.enable_redis_ssl};
 }
 
+void GcsServer::InitMetricsExporter(int metrics_agent_port) {
+  RAY_CHECK(!metrics_exporter_initialized_)
+      << "InitMetricsExporter should only be called once.";
+  metrics_exporter_initialized_ = true;
+
+  event_aggregator_client_->Connect(metrics_agent_port);
+
+  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
+      "127.0.0.1",
+      metrics_agent_port,
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
+
+  metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
+                                                const Status &server_status) {
+    if (server_status.ok()) {
+      stats::ConnectOpenCensusExporter(metrics_agent_port);
+      stats::InitOpenTelemetryExporter(metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+      RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
+  });
+}
+
 void GcsServer::TryGlobalGC() {
   if (cluster_lease_manager_->GetPendingQueueSize() == 0) {
     task_pending_schedule_detected_ = 0;
@@ -964,7 +1021,8 @@ void GcsServer::TryGlobalGC() {
   // To avoid spurious triggers, only those after two consecutive
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+  if (task_pending_schedule_detected_++ > 0 &&
+      global_gc_throttler_->CheckAndUpdateIfPossible()) {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 
@@ -975,8 +1033,8 @@ void GcsServer::TryGlobalGC() {
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
+
     ray_syncer_->BroadcastMessage(std::move(msg));
-    global_gc_throttler_->RunNow();
   }
 }
 

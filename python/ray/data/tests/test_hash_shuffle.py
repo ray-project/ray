@@ -149,6 +149,13 @@ class JoinTestCase:
             },
         ),
         # Case 7: No dataset size estimates available (fallback to default memory request)
+        # Memory calculation (fallback):
+        #   max_mem_per_agg = 32 GiB / 32 = 1 GiB
+        #   modest_mem = 1 GiB / 2 = 512 MiB
+        #   memory = min(512 MiB, DEFAULT_1GiB) = 512 MiB = 536870912
+        # CPU calculation:
+        #   cap = min(4.0, 32.0 * 0.25 / 32) = 0.25
+        #   target = min(0.25, 536870912 / 4 GiB) = 0.12
         JoinTestCase(
             left_size_bytes=None,
             right_size_bytes=None,
@@ -160,9 +167,8 @@ class JoinTestCase:
             expected_num_aggregators=32,  # min(200, min(1000, 128 (default max))
             expected_ray_remote_args={
                 "max_concurrency": 7,  # ceil(200 / 32)
-                "num_cpus": 0.25,  # 32 * 25% / 32
-                # Default fallback of 2Gb
-                "memory": 1073741824,
+                "num_cpus": 0.12,
+                "memory": 536870912,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
@@ -313,6 +319,13 @@ class HashOperatorTestCase:
             },
         ),
         # Case 6: No dataset size estimate inferred (fallback to default memory request)
+        # Memory calculation (fallback):
+        #   max_mem_per_agg = 32 GiB / 32 = 1 GiB
+        #   modest_mem = 1 GiB / 2 = 512 MiB
+        #   memory = min(512 MiB, DEFAULT_1GiB) = 512 MiB = 536870912
+        # CPU calculation:
+        #   cap = min(4.0, 32.0 * 0.25 / 32) = 0.25
+        #   target = min(0.25, 536870912 / 4 GiB) = 0.12
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=None,
@@ -322,8 +335,8 @@ class HashOperatorTestCase:
             expected_num_aggregators=32,
             expected_ray_remote_args={
                 "max_concurrency": 7,
-                "num_cpus": 0.25,
-                "memory": 1073741824,
+                "num_cpus": 0.12,
+                "memory": 536870912,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
@@ -380,6 +393,14 @@ def test_hash_aggregate_operator_remote_args(
     "tc",
     [
         # Case 1: Auto-derived partitions with limited CPUs
+        # Memory calculation:
+        #   max_partitions_per_agg = ceil(16 / 4) = 4
+        #   partition_size = ceil(2 GiB / 16) = 128 MiB
+        #   shuffle + output = 2 * (128 MiB * 4) = 1024 MiB
+        #   with 1.3x skew factor: ceil(1024 MiB * 1.3) = 1395864372
+        # CPU calculation:
+        #   cap = min(4.0, 4.0 * 0.25 / 4) = 0.25
+        #   target = min(0.25, 1395864372 / 4 GiB) = 0.25
         HashOperatorTestCase(
             input_size_bytes=2 * GiB,
             input_num_blocks=16,
@@ -389,13 +410,21 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=4,
             expected_ray_remote_args={
                 "max_concurrency": 4,
-                "num_cpus": 0.16,
-                "memory": 671088640,
+                "num_cpus": 0.25,
+                "memory": 1395864372,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
         ),
         # Case 2: Single partition produced
+        # Memory calculation:
+        #   max_partitions_per_agg = ceil(1 / 1) = 1
+        #   partition_size = ceil(512 MiB / 1) = 512 MiB
+        #   shuffle + output = 2 * (512 MiB * 1) = 1024 MiB
+        #   with 1.3x skew factor: ceil(1024 MiB * 1.3) = 1395864372
+        # CPU calculation:
+        #   cap = min(4.0, 8.0 * 0.25 / 1) = 2.0
+        #   target = min(2.0, 1395864372 / 4 GiB) = 0.33
         HashOperatorTestCase(
             input_size_bytes=512 * MiB,
             input_num_blocks=8,
@@ -405,13 +434,21 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=1,
             expected_ray_remote_args={
                 "max_concurrency": 1,
-                "num_cpus": 0.25,
-                "memory": 1073741824,
+                "num_cpus": 0.33,
+                "memory": 1395864372,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
         ),
         # Case 3: Many CPUs
+        # Memory calculation:
+        #   max_partitions_per_agg = ceil(32 / 32) = 1
+        #   partition_size = ceil(16 GiB / 32) = 512 MiB
+        #   shuffle + output = 2 * (512 MiB * 1) = 1024 MiB
+        #   with 1.3x skew factor: ceil(1024 MiB * 1.3) = 1395864372
+        # CPU calculation:
+        #   cap = min(4.0, 256.0 * 0.25 / 32) = 2.0
+        #   target = min(2.0, 1395864372 / 4 GiB) = 0.33
         HashOperatorTestCase(
             input_size_bytes=16 * GiB,
             input_num_blocks=128,
@@ -421,13 +458,21 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=32,
             expected_ray_remote_args={
                 "max_concurrency": 1,
-                "num_cpus": 0.25,
-                "memory": 1073741824,
+                "num_cpus": 0.33,
+                "memory": 1395864372,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
         ),
         # Case 4: Testing num_cpus derived from memory allocation
+        # Memory calculation:
+        #   max_partitions_per_agg = ceil(200 / 128) = 2
+        #   partition_size = ceil(50 GiB / 200) = 256 MiB
+        #   shuffle + output = 2 * (256 MiB * 2) = 1024 MiB
+        #   with 1.3x skew factor: ceil(1024 MiB * 1.3) = 1395864372
+        # CPU calculation:
+        #   cap = min(4.0, 1024 * 0.25 / 128) = 2.0
+        #   target = min(2.0, 1395864372 / 4 GiB) = 0.33
         HashOperatorTestCase(
             input_size_bytes=50 * GiB,
             input_num_blocks=200,
@@ -437,13 +482,20 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=128,  # min(200, min(1000, 128 (default max))
             expected_ray_remote_args={
                 "max_concurrency": 2,  # ceil(200 / 128)
-                "num_cpus": 0.16,  # ~0.6Gb / 4Gb = ~0.16
-                "memory": 687865856,
+                "num_cpus": 0.33,
+                "memory": 1395864372,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
         ),
         # Case 5: No dataset size estimate inferred (fallback to default memory request)
+        # Memory calculation (fallback):
+        #   max_mem_per_agg = 32 GiB / 32 = 1 GiB
+        #   modest_mem = 1 GiB / 2 = 512 MiB
+        #   memory = min(512 MiB, DEFAULT_1GiB) = 512 MiB = 536870912
+        # CPU calculation:
+        #   cap = min(4.0, 32.0 * 0.25 / 32) = 0.25
+        #   target = min(0.25, 536870912 / 4 GiB) = 0.12
         HashOperatorTestCase(
             input_size_bytes=None,
             input_num_blocks=None,
@@ -453,8 +505,8 @@ def test_hash_aggregate_operator_remote_args(
             expected_num_aggregators=32,
             expected_ray_remote_args={
                 "max_concurrency": 7,
-                "num_cpus": 0.25,
-                "memory": 1073741824,
+                "num_cpus": 0.12,
+                "memory": 536870912,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
@@ -566,3 +618,9 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
 
         # Verify that memory is still present
         assert "memory" in op._aggregator_pool._aggregator_ray_remote_args
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

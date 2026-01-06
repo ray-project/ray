@@ -11,6 +11,10 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import (
+    MAX_SAFE_BLOCK_SIZE_FACTOR,
+    DataContext,
+)
 
 
 def test_average_max_uss_per_task():
@@ -211,6 +215,127 @@ def test_block_size_rows_histogram():
 
         # Reset for next test
         metrics.block_size_rows._bucket_counts[expected_bucket] = 0
+
+
+@pytest.fixture
+def metrics_config_no_sample_with_target(restore_data_context):  # noqa: F811
+    """Fixture for no-sample scenario with target_max_block_size set."""
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 128 * 1024 * 1024  # 128MB
+    ctx._max_num_blocks_in_streaming_gen_buffer = 2
+
+    op = MagicMock()
+    op.data_context = ctx
+    metrics = OpRuntimeMetrics(op)
+    return metrics
+
+
+@pytest.fixture
+def metrics_config_no_sample_with_none(restore_data_context):  # noqa: F811
+    """Fixture for no-sample scenario with target_max_block_size=None."""
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = None
+    ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
+    op = MagicMock()
+    op.data_context = ctx
+    metrics = OpRuntimeMetrics(op)
+    return metrics
+
+
+@pytest.fixture
+def metrics_config_with_sample(restore_data_context):  # noqa: F811
+    """Fixture for scenario with average_bytes_per_output available."""
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 128 * 1024 * 1024  # 128MB
+    ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
+    op = MagicMock()
+    op.data_context = ctx
+    metrics = OpRuntimeMetrics(op)
+
+    # Simulate having samples: set bytes_task_outputs_generated and
+    # num_task_outputs_generated to make average_bytes_per_output available
+    actual_block_size = 150 * 1024 * 1024  # 150MB
+    metrics.bytes_task_outputs_generated = actual_block_size
+    metrics.num_task_outputs_generated = 1
+
+    return metrics
+
+
+@pytest.fixture
+def metrics_config_pending_outputs_no_sample(
+    restore_data_context,  # noqa: F811
+):
+    """Fixture for pending outputs during no-sample with target set."""
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 64 * 1024 * 1024  # 64MB
+    ctx._max_num_blocks_in_streaming_gen_buffer = 2
+
+    op = MagicMock()
+    op.data_context = ctx
+    metrics = OpRuntimeMetrics(op)
+    metrics.num_tasks_running = 3
+    return metrics
+
+
+@pytest.fixture
+def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
+    """Fixture for pending outputs during no-sample with target=None."""
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = None
+    ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
+    op = MagicMock()
+    op.data_context = ctx
+    metrics = OpRuntimeMetrics(op)
+    metrics.num_tasks_running = 2
+    return metrics
+
+
+@pytest.mark.parametrize(
+    "metrics_fixture,test_property,expected_calculator",
+    [
+        (
+            "metrics_config_no_sample_with_target",
+            "obj_store_mem_max_pending_output_per_task",
+            lambda m: (
+                m._op.data_context.target_max_block_size
+                * MAX_SAFE_BLOCK_SIZE_FACTOR
+                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
+            ),
+        ),
+        (
+            "metrics_config_with_sample",
+            "obj_store_mem_max_pending_output_per_task",
+            lambda m: (
+                m.average_bytes_per_output
+                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
+            ),
+        ),
+        (
+            "metrics_config_pending_outputs_no_sample",
+            "obj_store_mem_pending_task_outputs",
+            lambda m: (
+                m.num_tasks_running
+                * m._op.data_context.target_max_block_size
+                * MAX_SAFE_BLOCK_SIZE_FACTOR
+                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
+            ),
+        ),
+    ],
+)
+def test_obj_store_mem_estimation(
+    request, metrics_fixture, test_property, expected_calculator
+):
+    """Test object store memory estimation for various scenarios."""
+    metrics = request.getfixturevalue(metrics_fixture)
+    actual = getattr(metrics, test_property)
+    expected = expected_calculator(metrics)
+
+    assert (
+        actual == expected
+    ), f"Expected {test_property} to be {expected}, got {actual}"
 
 
 if __name__ == "__main__":
