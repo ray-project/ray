@@ -46,6 +46,21 @@ def _create_dataset(
 
 # Pytest parameterization for all dataset creation formats
 DATASET_FORMATS = ["pandas", "arrow"]
+MAP_DATASET_FORMATS = ["arrow"]
+
+
+def _create_map_dataset(dataset_format: str):
+    """Create a dataset backed by an Arrow MapArray column."""
+
+    map_items = [
+        {"attrs": {"color": "red", "size": "M"}},
+        {"attrs": {"brand": "Ray"}},
+    ]
+    map_type = pa.map_(pa.string(), pa.string())
+    arrow_table = pa.table(
+        {"attrs": pa.array([row["attrs"] for row in map_items], type=map_type)}
+    )
+    return _create_dataset(map_items, dataset_format, arrow_table)
 
 
 # ──────────────────────────────────────
@@ -527,6 +542,112 @@ class TestStructNamespace:
                 "zip": ["10001", "90001"],
             }
         )
+        assert rows_same(result, expected)
+
+
+# ──────────────────────────────────────
+# Map Namespace Tests
+# ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("dataset_format", MAP_DATASET_FORMATS)
+class TestMapNamespace:
+    """Tests for map namespace operations."""
+
+    def test_map_keys(self, dataset_format):
+        ds = _create_map_dataset(dataset_format)
+
+        result = ds.with_column("keys", col("attrs").map.keys()).to_pandas()
+        result = result.drop(columns=["attrs"])
+
+        expected = pd.DataFrame({"keys": [["color", "size"], ["brand"]]})
+        assert rows_same(result, expected)
+
+    def test_map_values(self, dataset_format):
+        ds = _create_map_dataset(dataset_format)
+
+        result = ds.with_column("values", col("attrs").map.values()).to_pandas()
+        result = result.drop(columns=["attrs"])
+
+        expected = pd.DataFrame({"values": [["red", "M"], ["Ray"]]})
+        assert rows_same(result, expected)
+
+    def test_physical_map_extraction(self, dataset_format):
+        """Test extraction works on List<Struct> (Physical Maps)."""
+        # Construct List<Struct<k, v>>
+        struct_type = pa.struct([pa.field("k", pa.string()), pa.field("v", pa.int64())])
+        list_type = pa.list_(struct_type)
+
+        data_py = [[{"k": "a", "v": 1}], [{"k": "b", "v": 2}]]
+        arrow_table = pa.Table.from_arrays(
+            [pa.array(data_py, type=list_type)], names=["data"]
+        )
+
+        items_data = [{"data": row} for row in data_py]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = (
+            ds.with_column("keys", col("data").map.keys())
+            .with_column("values", col("data").map.values())
+            .to_pandas()
+        )
+
+        expected = pd.DataFrame(
+            {
+                "data": data_py,
+                "keys": [["a"], ["b"]],
+                "values": [[1], [2]],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_map_sliced_offsets(self, dataset_format):
+        """Test extraction works correctly on sliced Arrow arrays (offset > 0)."""
+        items = [{"m": {"id": i}} for i in range(10)]
+        map_type = pa.map_(pa.string(), pa.int64())
+        arrays = pa.array([row["m"] for row in items], type=map_type)
+        table = pa.Table.from_arrays([arrays], names=["m"])
+
+        # Force offsets by slicing the table before ingestion
+        sliced_table = table.slice(offset=7, length=3)
+        ds = ray.data.from_arrow(sliced_table)
+
+        result = ds.with_column("vals", col("m").map.values()).to_pandas()
+        result = result.drop(columns=["m"])
+
+        expected = pd.DataFrame({"vals": [[7], [8], [9]]})
+        assert rows_same(result, expected)
+
+    def test_map_nulls_and_empty(self, dataset_format):
+        """Test handling of null maps and empty maps."""
+        items_data = [{"m": {"a": 1}}, {"m": {}}, {"m": None}]
+
+        map_type = pa.map_(pa.string(), pa.int64())
+        arrays = pa.array([row["m"] for row in items_data], type=map_type)
+        arrow_table = pa.Table.from_arrays([arrays], names=["m"])
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        # Use take_all() to avoid pandas casting errors with mixed None/list types
+        rows = (
+            ds.with_column("keys", col("m").map.keys())
+            .with_column("values", col("m").map.values())
+            .take_all()
+        )
+
+        assert list(rows[0]["keys"]) == ["a"] and list(rows[0]["values"]) == [1]
+        assert len(rows[1]["keys"]) == 0 and len(rows[1]["values"]) == 0
+        assert rows[2]["keys"] is None and rows[2]["values"] is None
+
+    def test_map_chaining(self, dataset_format):
+        ds = _create_map_dataset(dataset_format)
+
+        # map.keys() returns a list, so .list.len() should apply
+        result = ds.with_column(
+            "num_keys", col("attrs").map.keys().list.len()
+        ).to_pandas()
+        result = result.drop(columns=["attrs"])
+
+        expected = pd.DataFrame({"num_keys": [2, 1]})
         assert rows_same(result, expected)
 
 
