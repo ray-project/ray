@@ -416,90 +416,8 @@ def test_ordinal_encoder_list_fallback_to_pandas():
 
 
 # =============================================================================
-# Tests for batch size optimization (vectorized vs dict lookup)
+# Tests for vectorized Arrow encoding
 # =============================================================================
-
-
-def test_ordinal_encoder_vectorized_path():
-    """Test OrdinalEncoder uses vectorized path for large batches."""
-    from ray.data.preprocessors.encoder import _ARROW_VECTORIZED_THRESHOLD
-
-    # Create a large batch that exceeds the threshold
-    num_rows = _ARROW_VECTORIZED_THRESHOLD + 100
-    values = ["a", "b", "c"] * (num_rows // 3 + 1)
-    values = values[:num_rows]
-    in_df = pd.DataFrame({"col": values})
-
-    encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b", "c"]})
-    encoder._fitted = True
-
-    table = pa.Table.from_pandas(in_df)
-    assert table.num_rows >= _ARROW_VECTORIZED_THRESHOLD
-
-    result_table = encoder._transform_arrow(table)
-    result_df = result_table.to_pandas()
-
-    expected = [{"a": 0, "b": 1, "c": 2}[v] for v in values]
-    assert result_df["col"].tolist() == expected
-
-
-def test_ordinal_encoder_dict_path():
-    """Test OrdinalEncoder uses dict lookup path for small batches."""
-    from ray.data.preprocessors.encoder import _ARROW_VECTORIZED_THRESHOLD
-
-    # Create a small batch below the threshold
-    num_rows = min(100, _ARROW_VECTORIZED_THRESHOLD - 1)
-    values = ["x", "y", "z"] * (num_rows // 3 + 1)
-    values = values[:num_rows]
-    in_df = pd.DataFrame({"col": values})
-
-    encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["x", "y", "z"]})
-    encoder._fitted = True
-
-    table = pa.Table.from_pandas(in_df)
-    assert table.num_rows < _ARROW_VECTORIZED_THRESHOLD
-
-    result_table = encoder._transform_arrow(table)
-    result_df = result_table.to_pandas()
-
-    expected = [{"x": 0, "y": 1, "z": 2}[v] for v in values]
-    assert result_df["col"].tolist() == expected
-
-
-def test_ordinal_encoder_vectorized_and_dict_produce_same_results():
-    """Test that vectorized and dict paths produce identical results."""
-    from ray.data.preprocessors.encoder import _ARROW_VECTORIZED_THRESHOLD
-
-    # Create test data
-    values = ["red", "green", "blue", "red", "green"]
-    unique_values = {"col": ["blue", "green", "red"]}
-
-    # Test with small batch (dict path)
-    small_df = pd.DataFrame({"col": values})
-    encoder_small = OrdinalEncoder(["col"])
-    encoder_small.stats_ = _create_arrow_stats(unique_values)
-    encoder_small._fitted = True
-
-    small_table = pa.Table.from_pandas(small_df)
-    assert small_table.num_rows < _ARROW_VECTORIZED_THRESHOLD
-    small_result = encoder_small._transform_arrow(small_table).to_pandas()
-
-    # Test with large batch (vectorized path)
-    large_values = values * (_ARROW_VECTORIZED_THRESHOLD // len(values) + 1)
-    large_df = pd.DataFrame({"col": large_values})
-    encoder_large = OrdinalEncoder(["col"])
-    encoder_large.stats_ = _create_arrow_stats(unique_values)
-    encoder_large._fitted = True
-
-    large_table = pa.Table.from_pandas(large_df)
-    assert large_table.num_rows >= _ARROW_VECTORIZED_THRESHOLD
-    large_result = encoder_large._transform_arrow(large_table).to_pandas()
-
-    # Both should encode the same values the same way
-    # Compare first len(values) rows
-    assert small_result["col"].tolist() == large_result["col"].tolist()[: len(values)]
 
 
 def test_ordinal_encoder_arrow_array_caching():
@@ -523,25 +441,6 @@ def test_ordinal_encoder_arrow_array_caching():
     assert values1.to_pylist() == [0, 1, 2]
 
 
-def test_ordinal_encoder_dict_caching():
-    """Test that _get_cached_lookup_dict caches results correctly."""
-    encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["x", "y", "z"]})
-    encoder._fitted = True
-
-    # First call should create the cache
-    dict1 = encoder._get_cached_lookup_dict("col")
-    assert hasattr(encoder, "_lookup_dict_col")
-
-    # Second call should return cached dict
-    dict2 = encoder._get_cached_lookup_dict("col")
-
-    # Should be the same object (cached)
-    assert dict1 is dict2
-
-    assert dict1 == {"x": 0, "y": 1, "z": 2}
-
-
 def test_ordinal_encoder_encode_column_vectorized():
     """Test _encode_column_vectorized method directly."""
     encoder = OrdinalEncoder(["col"])
@@ -557,23 +456,8 @@ def test_ordinal_encoder_encode_column_vectorized():
     assert result.to_pylist() == [1, 0, 2, 0, 1]
 
 
-def test_ordinal_encoder_encode_column_dict():
-    """Test _encode_column_dict method directly."""
-    encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b", "c"]})
-    encoder._fitted = True
-
-    # Create a chunked array to encode
-    column = pa.chunked_array([["c", "b", "a", "c"]])
-
-    result = encoder._encode_column_dict(column, "col")
-
-    # a=0, b=1, c=2
-    assert result.to_pylist() == [2, 1, 0, 2]
-
-
 def test_ordinal_encoder_encode_column_with_unknown_values():
-    """Test both encoding methods handle unknown values correctly."""
+    """Test encoding handles unknown values correctly."""
     encoder = OrdinalEncoder(["col"])
     encoder.stats_ = _create_arrow_stats({"col": ["a", "b"]})
     encoder._fitted = True
@@ -581,65 +465,17 @@ def test_ordinal_encoder_encode_column_with_unknown_values():
     # Column with unknown value "c"
     column = pa.chunked_array([["a", "b", "c"]])
 
-    # Vectorized path - unknown values become null
-    vectorized_result = encoder._encode_column_vectorized(column, "col")
-    assert vectorized_result.to_pylist()[0] == 0  # a
-    assert vectorized_result.to_pylist()[1] == 1  # b
-    assert vectorized_result.to_pylist()[2] is None  # c (unknown)
-
-    # Dict path - unknown values become None
-    dict_result = encoder._encode_column_dict(column, "col")
-    assert dict_result.to_pylist()[0] == 0  # a
-    assert dict_result.to_pylist()[1] == 1  # b
-    assert dict_result.to_pylist()[2] is None  # c (unknown)
+    result = encoder._encode_column_vectorized(column, "col")
+    assert result.to_pylist()[0] == 0  # a
+    assert result.to_pylist()[1] == 1  # b
+    assert result.to_pylist()[2] is None  # c (unknown)
 
 
-def test_ordinal_encoder_threshold_boundary():
-    """Test behavior exactly at the threshold boundary."""
-    from ray.data.preprocessors.encoder import _ARROW_VECTORIZED_THRESHOLD
-
-    unique_values = {"col": ["a", "b"]}
-
-    # Exactly at threshold - should use vectorized
-    at_threshold_values = ["a", "b"] * (_ARROW_VECTORIZED_THRESHOLD // 2)
-    at_threshold_df = pd.DataFrame({"col": at_threshold_values})
-
-    encoder_at = OrdinalEncoder(["col"])
-    encoder_at.stats_ = _create_arrow_stats(unique_values)
-    encoder_at._fitted = True
-
-    table_at = pa.Table.from_pandas(at_threshold_df)
-    assert table_at.num_rows == _ARROW_VECTORIZED_THRESHOLD
-
-    result_at = encoder_at._transform_arrow(table_at).to_pandas()
-    expected = [{"a": 0, "b": 1}[v] for v in at_threshold_values]
-    assert result_at["col"].tolist() == expected
-
-    # One below threshold - should use dict
-    below_threshold_values = at_threshold_values[:-1]
-    below_threshold_df = pd.DataFrame({"col": below_threshold_values})
-
-    encoder_below = OrdinalEncoder(["col"])
-    encoder_below.stats_ = _create_arrow_stats(unique_values)
-    encoder_below._fitted = True
-
-    table_below = pa.Table.from_pandas(below_threshold_df)
-    assert table_below.num_rows == _ARROW_VECTORIZED_THRESHOLD - 1
-
-    result_below = encoder_below._transform_arrow(table_below).to_pandas()
-    expected_below = [{"a": 0, "b": 1}[v] for v in below_threshold_values]
-    assert result_below["col"].tolist() == expected_below
-
-
-def test_ordinal_encoder_multiple_columns_batch_optimization():
-    """Test batch optimization works correctly with multiple columns."""
-    from ray.data.preprocessors.encoder import _ARROW_VECTORIZED_THRESHOLD
-
-    # Create data with multiple columns
-    num_rows = 100  # Small batch to use dict path
-    col_a = ["x", "y"] * (num_rows // 2)
-    col_b = [1, 2, 3] * (num_rows // 3 + 1)
-    col_b = col_b[:num_rows]
+def test_ordinal_encoder_vectorized_multiple_columns():
+    """Test vectorized encoding works correctly with multiple columns."""
+    col_a = ["x", "y"] * 50
+    col_b = [1, 2, 3] * 34
+    col_b = col_b[:100]
 
     in_df = pd.DataFrame({"A": col_a, "B": col_b})
 
@@ -651,8 +487,6 @@ def test_ordinal_encoder_multiple_columns_batch_optimization():
     encoder._fitted = True
 
     table = pa.Table.from_pandas(in_df)
-    assert table.num_rows < _ARROW_VECTORIZED_THRESHOLD
-
     result_table = encoder._transform_arrow(table)
     result_df = result_table.to_pandas()
 

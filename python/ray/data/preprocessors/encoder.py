@@ -38,12 +38,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Threshold for switching between Python dict and PyArrow pc.index_in
-# Below this: Python dict is faster (avoids hash table rebuild overhead)
-# Above this: PyArrow is faster (vectorized C++ amortizes overhead)
-_ARROW_VECTORIZED_THRESHOLD = 50
-
-
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
 class OrdinalEncoder(SerializablePreprocessorBase):
@@ -209,12 +203,6 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         via _determine_transform_to_use when a PyArrow schema is available. However,
         for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
         until runtime, so we fall back to pandas here if list columns are found.
-
-        This method uses an adaptive strategy based on batch size:
-        - Large batches (>= threshold): Use PyArrow's vectorized pc.index_in
-        - Small batches (< threshold): Use cached Python dict lookup
-
-        The threshold is defined by _ARROW_VECTORIZED_THRESHOLD (default 50).
         """
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
@@ -237,18 +225,9 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 f"null values. Consider imputing missing values first."
             )
 
-        num_rows = table.num_rows
-        use_vectorized = num_rows >= _ARROW_VECTORIZED_THRESHOLD
-
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
-
-            if use_vectorized:
-                # Large batch: use PyArrow's vectorized pc.index_in
-                encoded_column = self._encode_column_vectorized(column, input_col)
-            else:
-                # Small batch: use cached Python dict lookup
-                encoded_column = self._encode_column_dict(column, input_col)
+            encoded_column = self._encode_column_vectorized(column, input_col)
 
             # Add or replace the column in the table
             if output_col in table.column_names:
@@ -284,28 +263,10 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             setattr(self, cache_key, (keys_array, values_array))
         return getattr(self, cache_key)
 
-    def _get_cached_lookup_dict(self, input_col: str) -> Dict[Any, int]:
-        """Get cached Python dict for O(1) lookups.
-
-        Args:
-            input_col: The name of the column to get the lookup dict for.
-
-        Returns:
-            Dict mapping values to their ordinal encodings.
-        """
-        cache_key = f"_lookup_dict_{input_col}"
-        if not hasattr(self, cache_key):
-            # Reuse existing _get_ordinal_map which handles both dict and Arrow formats
-            setattr(self, cache_key, self._get_ordinal_map(input_col))
-        return getattr(self, cache_key)
-
     def _encode_column_vectorized(
         self, column: pa.ChunkedArray, input_col: str
     ) -> pa.Array:
-        """Encode column using PyArrow's vectorized pc.index_in.
-
-        Best for large batches where the hash table rebuild cost is amortized.
-        """
+        """Encode column using PyArrow's vectorized pc.index_in."""
         keys_array, values_array = self._get_arrow_arrays(input_col)
 
         if keys_array.type != column.type:
@@ -313,16 +274,6 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
         indices = pc.index_in(column, keys_array)
         return pc.take(values_array, indices)
-
-    def _encode_column_dict(self, column: pa.ChunkedArray, input_col: str) -> pa.Array:
-        """Encode column using cached Python dict lookup.
-
-        Best for small batches where pc.index_in's hash table rebuild is expensive.
-        """
-        lookup_dict = self._get_cached_lookup_dict(input_col)
-        column_values = column.to_pylist()
-        encoded_values = [lookup_dict.get(v) for v in column_values]
-        return pa.array(encoded_values, type=pa.int64())
 
     @classmethod
     @DeveloperAPI
