@@ -3,7 +3,7 @@
 Port Service Discovery
 ======================
 
-This document describes how Ray components discover each other's ports.
+This document describes Ray's dynamic port assignment and discovery.
 
 Design Principle
 ----------------
@@ -28,11 +28,11 @@ Ray uses two discovery mechanisms based on process relationships:
      - Scope
      - Mechanism
    * - **Raylet Internal**
-     - Raylet discovers its children's ports
+     - Raylet discovers child process ports
      - File-based (Agents) or IPC (Workers)
    * - **GCS**
-     - Everything else
-     - GcsNodeInfo / Actor Table
+     - All other Ray components
+     - Node Table / Actor Table
 
 Raylet Internal Port Discovery
 ------------------------------
@@ -58,9 +58,8 @@ and languages (C++/Python). Raylet spawns two agents:
    - ``runtime_env_agent_port``: gRPC (default: random)
 
 After binding, agents write their ports to
-`{session_dir}/{port_name}_{node_id_hex} <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/util/port_persistence.h#L42>`_.
-Raylet polls these files and waits for all agent ports before
-`registering the node to GCS <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.cc#L313>`_.
+``{session_dir}/{port_name}_{node_id_hex}`` (see `port_persistence.h <https://github.com/ray-project/ray/blob/master/src/ray/util/port_persistence.h>`_).
+Raylet polls these files and waits for all agent ports before registering the node to GCS.
 
 IPC-Based: Raylet ↔ Core Workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -79,24 +78,22 @@ OS only supports binding to a specific port or port 0 (random). There's no sysca
 for "bind to any port within this range". So Raylet must manage the range itself.
 
 Raylet maintains a ``free_ports_`` queue. When a worker registers, Raylet assigns
-it an unused port from the queue. The worker binds, then confirms with
-`AnnounceWorkerPort <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/core_worker/core_worker.cc#L551>`_.
+it an unused port from the queue. The worker binds, then confirms with ``AnnounceWorkerPort``.
 
 If the worker fails to bind the port (e.g., port already in use by external process),
 it crashes. Raylet detects the socket disconnect via
-`HandleClientConnectionError <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.cc#L1083>`_,
-which returns the port to the queue and starts a new worker.
+`NodeManager::HandleClientConnectionError <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.h>`_, which returns the port to the queue and starts a new worker.
 
 GCS Port Discovery
 ------------------
 
 Raylet Internal Port Discovery only serves Raylet discovering its own children's ports.
-For anyone else to discover ports—whether cross-node or same-node—they query GCS.
+For everything else they query GCS.
 
 Two common examples:
 
-GcsNodeInfo
-~~~~~~~~~~~
+Node Table
+~~~~~~~~~~
 
 Each Raylet registers a GcsNodeInfo to GCS, containing its own ports
 (``node_manager_port``, ``object_manager_port``) and agent ports
@@ -105,19 +102,17 @@ Each Raylet registers a GcsNodeInfo to GCS, containing its own ports
 Other components query GCS for this information:
 
 - Object Manager needs ``object_manager_port`` of remote nodes to pull objects across nodes
-- Core Worker needs ``node_manager_port`` of remote nodes to schedule tasks there
+- Core Worker needs ``node_manager_port`` of remote nodes for task cancellation, and object recovery
 - Dashboard needs ``runtime_env_agent_port`` of each node to collect runtime env info
 - Ray Client Server needs ``runtime_env_agent_port`` to set up runtime environments for client jobs
 - ...
 
-ActorTableData
-~~~~~~~~~~~~~~
+Actor Table
+~~~~~~~~~~~
 
 Actors are stateful—callers must reach the same worker every time. Actor method
 calls require direct RPC to a specific worker.
 
 When an actor is created, its worker address (``address.ip_address`` and ``address.port``)
-is registered to GCS
-(`HandleRegisterActor <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/gcs/gcs_actor_manager.cc#L306>`_).
+is registered to GCS via `GcsActorManager::HandleRegisterActor <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/gcs/gcs_actor_manager.h>`_.
 Callers query GCS to get the address, then communicate directly with the worker.
-
