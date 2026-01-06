@@ -9,6 +9,7 @@ from typing import Optional
 import pytest
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     PrometheusTimeseries,
@@ -715,7 +716,7 @@ def _get_dashboard_agent_address(cluster_info):
 
     # Get agent address from internal KV
     node_id = ray.nodes()[0]["NodeID"]
-    key = f"DASHBOARD_AGENT_ADDR_{node_id}"
+    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
     agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
     )
