@@ -141,7 +141,7 @@ def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schem
     return None
 
 
-def _apply_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_batch_format(given_batch_format: Optional[str]) -> Optional[str]:
     if given_batch_format == "default":
         given_batch_format = DEFAULT_BATCH_FORMAT
     if given_batch_format not in VALID_BATCH_FORMATS:
