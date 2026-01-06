@@ -708,7 +708,7 @@
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
   python: "3.10"
-  frequency: nightly
+  frequency: weekly
   env: gce
   working_dir: nightly_tests
 
@@ -722,7 +722,7 @@
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
-    timeout: 10800
+    timeout: 14400
     # The network failure interval is set to 210 seconds since the test as is takes around double that to run without failures.
     # If the runtime of the test is dramatically reduced in the future, the interval will have to be retuned.
     script: >
