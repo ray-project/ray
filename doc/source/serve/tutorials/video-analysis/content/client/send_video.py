@@ -5,6 +5,7 @@ Client script to send video to the Ray Serve API.
 Usage:
     python -m client.send_video --video s3://bucket/path/to/video.mp4
     python -m client.send_video --video s3://bucket/video.mp4 --chunk-duration 5.0
+    python -m client.send_video --video s3://bucket/video.mp4 --token YOUR_TOKEN
 """
 
 import argparse
@@ -21,6 +22,7 @@ def main():
     parser.add_argument("--num-frames", type=int, default=16, help="Frames per chunk")
     parser.add_argument("--chunk-duration", type=float, default=10.0, help="Chunk duration in seconds")
     parser.add_argument("--url", type=str, default="http://127.0.0.1:8000", help="Server URL")
+    parser.add_argument("--token", type=str, default=None, help="Bearer token for Authorization header")
     args = parser.parse_args()
     
     # Generate random stream ID if not provided
@@ -41,8 +43,12 @@ def main():
     
     start = time.perf_counter()
     
+    headers = {}
+    if args.token:
+        headers["Authorization"] = f"Bearer {args.token}"
+    
     with httpx.Client(timeout=300.0) as client:
-        response = client.post(f"{args.url}/analyze", json=payload)
+        response = client.post(f"{args.url}/analyze", json=payload, headers=headers)
     
     latency_ms = (time.perf_counter() - start) * 1000
     
@@ -56,7 +62,6 @@ def main():
     print("✅ Response")
     print("=" * 60)
     print(f"Stream ID: {result['stream_id']}")
-    print(f"Embedding dim: {result['embedding_dim']}")
     print(f"Video duration: {result['video_duration']:.1f}s")
     print(f"Chunks processed: {result['num_chunks']}")
     print()

@@ -240,7 +240,6 @@ exclude_patterns = [
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
     "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
     "serve/tutorials/asynchronous-inference/content/README.md",
-    "serve/tutorials/video-analysis/**/*.md",
     "serve/tutorials/video-analysis/**/*.ipynb",
 ] + autogen_files
 

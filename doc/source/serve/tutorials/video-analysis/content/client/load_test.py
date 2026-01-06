@@ -5,6 +5,7 @@ Load testing script for the Ray Serve video API.
 Usage:
     python -m client.load_test --video s3://bucket/path/to/video.mp4 --concurrency 4
     python -m client.load_test --video s3://bucket/video.mp4 --concurrency 8 --url http://localhost:8000
+    python -m client.load_test --video s3://bucket/video.mp4 --concurrency 4 --token YOUR_TOKEN
 
 Press Ctrl+C to stop and save results to CSV.
 """
@@ -105,6 +106,7 @@ class LoadTester:
         num_frames: int = 16,
         chunk_duration: float = 10.0,
         timeout: float = 300.0,
+        token: Optional[str] = None,
     ):
         self.video_path = video_path
         self.url = url
@@ -112,6 +114,7 @@ class LoadTester:
         self.num_frames = num_frames
         self.chunk_duration = chunk_duration
         self.timeout = timeout
+        self.token = token
         
         self.results: list[RequestResult] = []
         self.stats = LoadTestStats()
@@ -140,8 +143,12 @@ class LoadTester:
         start = time.perf_counter()
         start_timestamp = time.time()
         
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        
         try:
-            response = await client.post(f"{self.url}/analyze", json=payload)
+            response = await client.post(f"{self.url}/analyze", json=payload, headers=headers)
             end = time.perf_counter()
             latency_ms = (end - start) * 1000
             
@@ -315,6 +322,7 @@ def main():
     parser.add_argument("--chunk-duration", type=float, default=10.0, help="Chunk duration in seconds")
     parser.add_argument("--timeout", type=float, default=300.0, help="Request timeout in seconds")
     parser.add_argument("--output", type=str, default=None, help="Output CSV path (default: load_test_<timestamp>.csv)")
+    parser.add_argument("--token", type=str, default=None, help="Bearer token for Authorization header")
     args = parser.parse_args()
     
     # Generate output path if not provided
@@ -329,6 +337,7 @@ def main():
         num_frames=args.num_frames,
         chunk_duration=args.chunk_duration,
         timeout=args.timeout,
+        token=args.token,
     )
     
     # Track interrupt count for force exit
