@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from ray.serve._private.queue_monitor import QueueMonitorConfig
 
 
@@ -26,3 +30,7 @@ class TestQueueMonitorConfig:
         assert config.broker_url == "amqp://guest:guest@localhost:5672//"
         assert config.queue_name == "my_queue"
         assert config.rabbitmq_http_url == "http://user:pass@localhost:15672/api/"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
