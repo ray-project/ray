@@ -2327,10 +2327,7 @@ py_test(
 py_test(
     name = "env/tests/test_env_runner",
     size = "medium",
-    srcs = [
-        "env/tests/conftest.py",
-        "env/tests/test_env_runner.py",
-    ],
+    srcs = ["env/tests/test_env_runner.py"],
     tags = [
         "env",
         "team:rllib",
