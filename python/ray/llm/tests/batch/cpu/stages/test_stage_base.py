@@ -127,41 +127,14 @@ async def _iterate_udf_results(udf, batch):
         return list(udf(batch))
 
 
-@pytest.mark.parametrize("udf_class_name", ["async", "sync"])
+@pytest.mark.parametrize("synchronous_engine", [True, False])
 class TestStatefulStageUDFUnified:
     """Unified test suite for both StatefulStageUDF (async) and StatefulStageSyncUDF (sync)."""
 
     @pytest.fixture
-    def SimpleUDF(self, udf_class_name):
+    def SimpleUDF(self, synchronous_engine):
         """Create SimpleUDF class for either async or sync version."""
-        if udf_class_name == "async":
-
-            class SimpleUDF(StatefulStageUDF):
-                def __init__(
-                    self,
-                    data_column: str,
-                    expected_input_keys: Optional[List[str]] = None,
-                    udf_output_missing_idx_in_batch_column: bool = False,
-                ):
-                    super().__init__(data_column, expected_input_keys)
-                    self.udf_output_missing_idx_in_batch_column = (
-                        udf_output_missing_idx_in_batch_column
-                    )
-
-                async def udf(
-                    self, rows: list[Dict[str, Any]]
-                ) -> AsyncIterator[Dict[str, Any]]:
-                    # Intentionally output in a reversed order to test OOO.
-                    for row in rows[::-1]:
-                        ret = {"processed": row["value"] * 2}
-                        if not self.udf_output_missing_idx_in_batch_column:
-                            ret[self.IDX_IN_BATCH_COLUMN] = row[
-                                self.IDX_IN_BATCH_COLUMN
-                            ]
-                        yield ret
-
-        else:  # sync
-
+        if synchronous_engine:
             class SimpleUDF(StatefulStageSyncUDF):
                 def __init__(
                     self,
@@ -185,11 +158,34 @@ class TestStatefulStageUDFUnified:
                                 self.IDX_IN_BATCH_COLUMN
                             ]
                         yield ret
+        else:
+            class SimpleUDF(StatefulStageUDF):
+                def __init__(
+                    self,
+                    data_column: str,
+                    expected_input_keys: Optional[List[str]] = None,
+                    udf_output_missing_idx_in_batch_column: bool = False,
+                ):
+                    super().__init__(data_column, expected_input_keys)
+                    self.udf_output_missing_idx_in_batch_column = (
+                        udf_output_missing_idx_in_batch_column
+                    )
 
+                async def udf(
+                    self, rows: list[Dict[str, Any]]
+                ) -> AsyncIterator[Dict[str, Any]]:
+                    # Intentionally output in a reversed order to test OOO.
+                    for row in rows[::-1]:
+                        ret = {"processed": row["value"] * 2}
+                        if not self.udf_output_missing_idx_in_batch_column:
+                            ret[self.IDX_IN_BATCH_COLUMN] = row[
+                                self.IDX_IN_BATCH_COLUMN
+                            ]
+                        yield ret
         return SimpleUDF
 
     @pytest.mark.asyncio
-    async def test_basic_processing(self, SimpleUDF, udf_class_name):
+    async def test_basic_processing(self, SimpleUDF, synchronous_engine):
         udf = SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {
@@ -209,7 +205,7 @@ class TestStatefulStageUDFUnified:
             assert data["value"] == val
 
     @pytest.mark.asyncio
-    async def test_missing_data_column(self, SimpleUDF, udf_class_name):
+    async def test_missing_data_column(self, SimpleUDF, synchronous_engine):
         udf = SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {"extra": ["a"]}
@@ -218,7 +214,7 @@ class TestStatefulStageUDFUnified:
             await _iterate_udf_results(udf, batch)
 
     @pytest.mark.asyncio
-    async def test_missing_required_key(self, SimpleUDF, udf_class_name):
+    async def test_missing_required_key(self, SimpleUDF, synchronous_engine):
         udf = SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {"__data": [{"wrong_key": 1}]}
@@ -227,7 +223,7 @@ class TestStatefulStageUDFUnified:
             await _iterate_udf_results(udf, batch)
 
     @pytest.mark.asyncio
-    async def test_missing_idx_in_batch_column(self, SimpleUDF, udf_class_name):
+    async def test_missing_idx_in_batch_column(self, SimpleUDF, synchronous_engine):
         udf = SimpleUDF(
             data_column="__data",
             expected_input_keys=["value"],
@@ -240,28 +236,25 @@ class TestStatefulStageUDFUnified:
             await _iterate_udf_results(udf, batch)
 
     @pytest.mark.asyncio
-    async def test_error_rows_bypass_udf(self, udf_class_name):
+    async def test_error_rows_bypass_udf(self, SimpleUDF, synchronous_engine):
         """Error rows with __inference_error__ bypass the UDF entirely."""
 
-        if udf_class_name == "async":
-
-            class FailOnMissingValueUDF(StatefulStageUDF):
-                async def udf(
+        if synchronous_engine:
+            class FailOnMissingValueUDF(StatefulStageSyncUDF):
+                def udf(
                     self, rows: list[Dict[str, Any]]
-                ) -> AsyncIterator[Dict[str, Any]]:
+                ) -> Iterator[Dict[str, Any]]:
                     for row in rows:
                         # Would crash on error rows missing 'value' field
                         yield {
                             self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                             "processed": row["value"] * 2,
                         }
-
-        else:  # sync
-
-            class FailOnMissingValueUDF(StatefulStageSyncUDF):
-                def udf(
+        else:
+            class FailOnMissingValueUDF(StatefulStageUDF):
+                async def udf(
                     self, rows: list[Dict[str, Any]]
-                ) -> Iterator[Dict[str, Any]]:
+                ) -> AsyncIterator[Dict[str, Any]]:
                     for row in rows:
                         # Would crash on error rows missing 'value' field
                         yield {
@@ -297,26 +290,23 @@ class TestStatefulStageUDFUnified:
         assert "processed" not in results[1]
 
     @pytest.mark.asyncio
-    async def test_all_error_rows_in_batch(self, udf_class_name):
+    async def test_all_error_rows_in_batch(self, SimpleUDF, synchronous_engine):
         """Batch with all error rows should pass through without calling UDF."""
 
-        if udf_class_name == "async":
-
-            class FailIfCalledUDF(StatefulStageUDF):
-                async def udf(
-                    self, rows: list[Dict[str, Any]]
-                ) -> AsyncIterator[Dict[str, Any]]:
-                    raise AssertionError(
-                        "UDF should not be called for all-error batch"
-                    )
-                    yield  # Make this a generator
-
-        else:  # sync
-
+        if synchronous_engine:
             class FailIfCalledUDF(StatefulStageSyncUDF):
                 def udf(
                     self, rows: list[Dict[str, Any]]
                 ) -> Iterator[Dict[str, Any]]:
+                    raise AssertionError(
+                        "UDF should not be called for all-error batch"
+                    )
+                    yield  # Make this a generator
+        else:
+            class FailIfCalledUDF(StatefulStageUDF):
+                async def udf(
+                    self, rows: list[Dict[str, Any]]
+                ) -> AsyncIterator[Dict[str, Any]]:
                     raise AssertionError(
                         "UDF should not be called for all-error batch"
                     )

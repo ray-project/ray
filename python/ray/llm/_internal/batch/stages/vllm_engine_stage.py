@@ -460,7 +460,7 @@ class vLLMEngineBaseWrapper:
     def _get_lora_request(self, row: Dict[str, Any]) -> Optional[Any]:
         if "model" not in row or row["model"] == self.model:
             return None
-        
+
         lora_name = row["model"]
         if is_remote_path(lora_name):
             raise ValueError(
