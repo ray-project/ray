@@ -2359,9 +2359,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
