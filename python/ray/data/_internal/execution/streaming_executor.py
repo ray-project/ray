@@ -44,8 +44,7 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress.rich_progress import RichExecutionProgressManager
-from ray.data._internal.progress.tqdm_progress import TqdmExecutionProgressManager
+from ray.data._internal.progress.utils import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
@@ -195,17 +194,14 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
-        # Setup progress bars
-        if self._use_rich_progress():
-            self._progress_manager = RichExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
-        else:
-            self._progress_manager = TqdmExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
+        # Setup progress manager
+        self._progress_manager = get_progress_manager(
+            self._data_context,
+            self._dataset_id,
+            self._topology,
+            self._options.verbose_progress,
+        )
+        self._progress_manager.start()
 
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager

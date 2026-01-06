@@ -119,7 +119,13 @@ class BaseExecutionProgressManager(ABC):
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 50
 
     @abstractmethod
-    def __init__(self, dataset_id: str, topology: "Topology"):
+    def __init__(
+        self,
+        dataset_id: str,
+        topology: "Topology",
+        show_op_progress: bool,
+        verbose_progress: bool,
+    ):
         """Initialize the progress manager, create all necessary progress bars
         and sub-progress bars for the given topology. Sub-progress bars are
         created for operators that implement the SubProgressBarMixin.
@@ -127,6 +133,10 @@ class BaseExecutionProgressManager(ABC):
         Args:
             dataset_id: id of Dataset
             topology: operation topology built via `build_streaming_topology`
+            show_op_progress: whether to show individual operator progress
+                (only for non-AllToAll by default).
+            verbose_progress: whether to show individual operator progress for
+                non-AllToAll operators as well.
         """
         ...
 
@@ -208,7 +218,13 @@ class NoopSubProgressBar(BaseProgressBar):
 class NoopExecutionProgressManager(BaseExecutionProgressManager):
     """Noop Data Execution Progress Display Manager (Progress Display Disabled)"""
 
-    def __init__(self, dataset_id: str, topology: "Topology", show_op_progress):
+    def __init__(
+        self,
+        dataset_id: str,
+        topology: "Topology",
+        show_op_progress: bool,
+        verbose_progress: bool,
+    ):
         for state in topology.values():
             op = state.op
             if not isinstance(op, SubProgressBarMixin):
