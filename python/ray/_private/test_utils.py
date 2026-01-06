@@ -433,6 +433,7 @@ def wait_for_dashboard_agent_available(cluster):
 
     wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
+
 def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
     """Wait for the aggregator agent to be ready by checking socket connectivity."""
     gcs_client = GcsClient(address=address)
