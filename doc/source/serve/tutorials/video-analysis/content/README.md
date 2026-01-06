@@ -105,13 +105,13 @@ from scripts.download_stock_videos import download_sample_videos
 
 # Download sample videos (checks for existing manifest first, skips Pexels API if found)
 S3_PREFIX = "anyscale-example/stock-videos/"
-video_paths = await download_sample_videos(
+video_paths = asyncio.get_event_loop().run_until_complete(download_sample_videos(
     api_key=PEXELS_API_KEY,
     bucket=S3_BUCKET,
     total=1,  # Just need one sample video
     s3_prefix=S3_PREFIX,
     overwrite=False
-)
+))
 
 if not video_paths:
     raise RuntimeError("No videos downloaded")
