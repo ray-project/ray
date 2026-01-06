@@ -105,7 +105,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._session = None
         self._preserve_proto_field_name = preserve_proto_field_name
 
-        if HTTP_EXPOSABLE_EVENT_TYPES.strip() == "ALL":
+        if HTTP_EXPOSABLE_EVENT_TYPES.strip().upper() == "ALL":
             self._allow_all_event_types = True
             self._exposable_event_types_list = []
         else:
