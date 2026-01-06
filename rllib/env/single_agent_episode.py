@@ -615,7 +615,7 @@ class SingleAgentEpisode:
         # able to concatenate.
         assert not self.is_done
         # Make sure the timesteps match.
-        assert self.t == other.t_started
+        assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
         # Validate `other`.
         other.validate()
 
