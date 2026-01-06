@@ -629,11 +629,6 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         self.engine = vllm.LLM(**kwargs)
 
         # Lock to prevent concurrent access to the vLLM engine.
-        # This is necessary because when using the multiprocessing backend,
-        # the engine's internal queue.get() releases the GIL, which can allow
-        # another Ray Data task to start executing on the same actor and
-        # add more requests before the first task's _run_engine() completes.
-        # This causes results from multiple batches to be mixed together.
         self._generate_lock = threading.Lock()
 
     def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
@@ -651,74 +646,35 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         Returns:
             List of tuples (idx_in_batch, output_dict) for each row.
         """
-        if not rows:
-            return []
-
-        import vllm
-
-        # Acquire lock to prevent concurrent access to the vLLM engine.
-        # This is critical because vLLM's internal _run_engine() processes
-        # ALL pending requests, not just the ones from the current generate() call.
-        # Without the lock, concurrent Ray Data tasks could add requests while
-        # another task's _run_engine() is still running, causing results to be
-        # mixed between batches.
+        # This is necessary because vllm.LLM is not thread-safe and processes all pending requests.
+        # Without the lock and when max_concurrent_batches > 1, concurrent Ray Data tasks could
+        # add requests while another is still running, mixing results between batches.
         with self._generate_lock:
-            # Prepare requests using _prepare_llm_request
-            requests: List[vLLMEngineRequest] = []
-            for row in rows:
-                request = self._prepare_llm_request(row)
-                requests.append(request)
+            requests = [self._prepare_llm_request(row) for row in rows]
 
-            # Build prompts from requests using shared helper method
-            prompts: List[vllm.inputs.data.TextPrompt | vllm.inputs.data.TokensPrompt] = []
-            params_list: List[vllm.SamplingParams | vllm.PoolingParams] = []
+            prompts = [self._build_llm_prompt(request) for request in requests]
+            params_list = [request.params for request in requests]
 
-            for request in requests:
-                llm_prompt = self._build_llm_prompt(request)
-                prompts.append(llm_prompt)
-                params_list.append(request.params)
-
-            # Call appropriate method based on task type
             if self._is_pooling_task():
-                # For pooling tasks, use encode() with appropriate pooling_task
-                # All params in params_list are PoolingParams for these task types
-                pooling_params_list = params_list
-
-                # Extract truncate_prompt_tokens from pooling params if needed
-                # vLLM 0.12.0 ignores truncate_prompt_tokens in the pooling_params.
-                # TODO (jeffreywang): Remove the following once
-                # https://github.com/vllm-project/vllm/issues/31012 is fixed.
-                truncate_prompt_tokens = None
-                if pooling_params_list:
-                    truncate_prompt_tokens = pooling_params_list[0].truncate_prompt_tokens
-
-                pooling_task = self._get_pooling_task()
-
+                # TODO: Does vLLM.LLM respect truncate_prompt_tokens in the pooling_params?
                 results = self.engine.encode(
                     prompts=prompts,
-                    pooling_params=pooling_params_list,
-                    truncate_prompt_tokens=truncate_prompt_tokens,
-                    pooling_task=pooling_task,
-                    use_tqdm=False,  # Disable tqdm in Ray actor context
+                    pooling_params=params_list,
+                    # truncate_prompt_tokens=truncate_prompt_tokens,
+                    pooling_task=self._get_pooling_task(),
                 )
             else:
-                # For generation tasks, use generate()
-                # All params in params_list are SamplingParams for GENERATE task type
-                sampling_params_list = params_list
                 results = self.engine.generate(
                     prompts=prompts,
-                    sampling_params=sampling_params_list,
-                    use_tqdm=False,  # Disable tqdm in Ray actor context
+                    sampling_params=params_list,
                 )
 
-        # Process results and return with idx_in_batch
         output_list = []
         for result, request in zip(results, requests):
-            # Set the original prompt on the result (vLLM may not populate it correctly)
             result.prompt = request.prompt
-            output_data = vLLMOutputData.from_vllm_engine_output(result)
-            output_dict = output_data.model_dump()
-            output_list.append((request.idx_in_batch, output_dict))
+            output_list.append((request.idx_in_batch,
+                vLLMOutputData.from_vllm_engine_output(result).model_dump()
+            ))
 
         return output_list
 
