@@ -16,7 +16,6 @@ RUN \
 
 set -euo pipefail
 
-
 if [[ "$HOSTTYPE" =~ ^x86_64 ]]; then
     ARCH="x86_64"
 elif [[ "$HOSTTYPE" =~ ^aarch64 ]]; then
