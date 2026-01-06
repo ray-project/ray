@@ -11,6 +11,7 @@ import ray
 from ray._private.ray_constants import env_bool, env_float, env_integer
 from ray._private.worker import WORKER_MODE
 from ray.data._internal.logging import update_dataset_logger_for_worker
+from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -237,7 +238,7 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
-    2.0,
+    1.75,
 )
 
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
@@ -252,7 +253,12 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
 
 
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
-    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", True
+)
+
+
+DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
+    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
 
@@ -485,11 +491,9 @@ class DataContext:
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
-            later. If `None`, this type of backpressure is disabled.
-        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
-            bundles before applying backpressure. If `None`, no limit is applied.
+            later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
-        of an operator based on it's and downstream's queue size.
+            of an operator based on its and downstream operators' queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -629,8 +633,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: float = None
-    downstream_capacity_backpressure_max_queued_bundles: int = None
+    downstream_capacity_backpressure_ratio: Optional[
+        float
+    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
@@ -639,6 +644,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    _checkpoint_config: Optional[CheckpointConfig] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -663,6 +670,10 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+        # Unique id of the current execution of the data pipeline.
+        # This value increments only upon re-execution of the exact same pipeline.
+        self._execution_idx = 0
 
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
@@ -827,6 +838,34 @@ class DataContext:
         workers.
         """
         self.dataset_logger_id = dataset_id
+
+    @property
+    def checkpoint_config(self) -> Optional[CheckpointConfig]:
+        """Get the checkpoint configuration."""
+        return self._checkpoint_config
+
+    @checkpoint_config.setter
+    def checkpoint_config(
+        self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
+    ) -> None:
+        """Set the checkpoint configuration."""
+        if value is None:
+            self._checkpoint_config = None
+        elif isinstance(value, dict):
+            if "override_backend" in value:
+                if not isinstance(value["override_backend"], str):
+                    raise TypeError(
+                        "Expected 'override_backend' to be a string,"
+                        f" but got {type(value['override_backend'])}."
+                    )
+                value["override_backend"] = CheckpointBackend[value["override_backend"]]
+            self._checkpoint_config = CheckpointConfig(**value)
+        elif isinstance(value, CheckpointConfig):
+            self._checkpoint_config = value
+        else:
+            raise TypeError(
+                "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
+            )
 
 
 # Backwards compatibility alias.
