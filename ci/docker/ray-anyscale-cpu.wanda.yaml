@@ -8,8 +8,8 @@
 name: "ray-anyscale-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
 disable_caching: true
 froms:
-  - "@ray-py$PYTHON_VERSION-cpu-base-extra-testdeps"  # CPU base with test deps
-  - "@ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"        # Ray wheel
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra-testdeps"  # CPU base with test deps
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"        # Ray wheel
 dockerfile: ci/docker/ray-image.Dockerfile
 srcs:
   - python/requirements_compiled.txt
