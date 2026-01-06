@@ -414,6 +414,11 @@ class OneHotEncoder(SerializablePreprocessorBase):
         )
         return self
 
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
+
     def safe_get(self, v: Any, stats: Dict[str, int]):
         if isinstance(v, (list, np.ndarray)):
             v = tuple(v)
@@ -444,6 +449,92 @@ class OneHotEncoder(SerializablePreprocessorBase):
             df[output_column] = one_hot.tolist()
 
         return df
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations for scalar columns.
+
+        List-type columns are preferably handled by _transform_pandas, which is selected
+        via _determine_transform_to_use when a PyArrow schema is available. However,
+        for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
+        until runtime, so we fall back to pandas here if list columns are found.
+        """
+        # Check for list columns (runtime fallback for PandasBlockSchema datasets)
+        for col_name in self.columns:
+            col_type = table.schema.field(col_name).type
+            if pa.types.is_list(col_type) or pa.types.is_large_list(col_type):
+                # Fall back to pandas transform for list columns
+                df = table.to_pandas()
+                result_df = self._transform_pandas(df)
+                return pa.Table.from_pandas(result_df, preserve_index=False)
+
+        # Validate no null values in target columns
+        null_columns = []
+        for col_name in self.columns:
+            column = table.column(col_name)
+            if pc.any(pc.is_null(column)).as_py():
+                null_columns.append(col_name)
+        if null_columns:
+            raise ValueError(
+                f"Unable to transform columns {null_columns} because they contain "
+                f"null values. Consider imputing missing values first."
+            )
+
+        for input_col, output_col in zip(self.columns, self.output_columns):
+            column = table.column(input_col)
+
+            # Get the unique values mapping - may be tuple (Arrow) or dict (pandas) format
+            # Dict format can occur when aggregation returns Python list/set
+            stat_value = self.stats_[f"unique_values({input_col})"]
+
+            if isinstance(stat_value, dict):
+                # Stats are in pandas dict format - convert to Arrow format
+                sorted_keys = sorted(stat_value.keys())
+                keys_array = pa.array(sorted_keys)
+                values_array = pa.array(
+                    [stat_value[k] for k in sorted_keys], type=pa.int64()
+                )
+            else:
+                # Stats are in Arrow tuple format: (keys_array, values_array)
+                keys_array, values_array = stat_value
+
+            num_categories = len(keys_array)
+
+            # Cast keys to match column type if needed
+            if keys_array.type != column.type:
+                keys_array = pc.cast(keys_array, column.type)
+
+            # Use pc.index_in to find position of each value in keys_array
+            # Returns null for values not found
+            indices = pc.index_in(column, keys_array)
+
+            # Fill nulls with -1 before converting to numpy (nulls become NaN otherwise)
+            indices_filled = pc.fill_null(indices, -1)
+
+            # Create one-hot encoded matrix using vectorized NumPy operations
+            num_rows = len(column)
+            indices_np = indices_filled.to_numpy()
+
+            one_hot_matrix = np.zeros((num_rows, num_categories), dtype=np.uint8)
+
+            # Find valid indices (not -1) and set 1s at the appropriate positions
+            valid_mask = indices_np != -1
+            valid_indices = np.nonzero(valid_mask)[0]
+            if len(valid_indices) > 0:
+                one_hot_matrix[valid_indices, indices_np[valid_mask]] = 1
+
+            # Convert to Arrow FixedSizeListArray for efficient storage
+            encoded_column = pa.FixedSizeListArray.from_arrays(
+                one_hot_matrix.ravel(), num_categories
+            )
+
+            # Add or replace the column in the table
+            if output_col in table.column_names:
+                col_idx = table.column_names.index(output_col)
+                table = table.set_column(col_idx, output_col, encoded_column)
+            else:
+                table = table.append_column(output_col, encoded_column)
+
+        return table
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
