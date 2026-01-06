@@ -61,8 +61,6 @@ The `proxy_location` field configures where to run proxies to handle traffic to 
 - HeadOnly: Only run a single proxy on the head node.
 - Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
 
-By default, when `proxy_location` is set to `EveryNode`, Ray Serve always runs a proxy on the head node even if it has no replicas. You can disable this behavior by setting the environment variable `RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE=0`.
-
 You can also configure proxy health checks and lifecycle behavior with the following environment variables:
 
 - `RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S`: How often (in seconds) the Serve controller checks if each proxy is healthy. Default is `10.0`.
