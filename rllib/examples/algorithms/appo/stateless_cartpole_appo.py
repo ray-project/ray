@@ -22,8 +22,6 @@ args = parser.parse_args()
 config = (
     APPOConfig()
     .environment(StatelessCartPole)
-    # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
-    #  training.
     .env_runners(
         env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
