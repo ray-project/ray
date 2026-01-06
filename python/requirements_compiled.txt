@@ -994,8 +994,10 @@ jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
 kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
-keras==2.15.0
-    # via tensorflow
+keras==2.15.0 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   tensorflow
 kiwisolver==1.4.5
     # via matplotlib
 knack==0.11.0
@@ -2222,7 +2224,7 @@ tenacity==8.5.0
     # via
     #   plotly
     #   pyiceberg
-tensorboard==2.15.2
+tensorboard==2.15.2 ; python_version < "3.12"
     # via
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
