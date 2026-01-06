@@ -52,7 +52,7 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: examples/llm-batch-inference-text/content/llm_batch_inference_text
+    link: examples/llm_batch_inference_text/content/README
   - title: Vision-language model batch inference with Ray Data
     skill_level: beginner
     frameworks:
@@ -61,7 +61,7 @@ examples:
       - large language models
       - generative ai
       - computer vision
-    link: examples/llm-batch-inference-vision/content/llm_batch_inference_vision
+    link: examples/llm_batch_inference_vision/content/README
   - title: Unstructured Data Ingestion and Processing
     skill_level: intermediate
     frameworks:

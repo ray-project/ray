@@ -4823,7 +4823,7 @@
   python: "3.11"
   group: ray-examples
   team: ml
-  working_dir: //doc/source/data/examples/llm-batch-inference-text  # use // to access from repo's root
+  working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
 
   cluster:
     byod:
@@ -4849,7 +4849,7 @@
   python: "3.11"
   group: ray-examples
   team: ml
-  working_dir: //doc/source/data/examples/llm-batch-inference-vision  # use // to access from repo's root
+  working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
 
   cluster:
     byod:

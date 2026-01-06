@@ -1,20 +1,19 @@
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
-Modify llm_batch_inference_text.ipynb instead, then regenerate this file with:
+Modify README.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 -->
 
-# LLM batch inference with Ray Data
+# Vision-language model batch inference with Ray Data
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/llm-batch-inference-text"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/llm-batch-inference-text" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/llm_batch_inference_vision"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/llm_batch_inference_vision/content" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-**⏱️ Time to complete**: 15 minutes
+**⏱️ Time to complete**: 20 minutes
 
-This example shows you how to run batch inference for large language models (LLMs) using [Ray Data LLM APIs](https://docs.ray.io/en/latest/data/api/llm.html). In this use case, the batch inference job reformats dates across a large customer dataset.
-
+This example shows you how to run batch inference for vision-language models (VLMs) using [Ray Data LLM APIs](https://docs.ray.io/en/latest/data/api/llm.html). In this use case, the batch inference job generates captions for a large-scale image dataset.
 
 ## When to use LLM batch inference
 
@@ -27,29 +26,39 @@ Choose batch inference when:
 
 On contrary, if you are more interested in optimizing for latency, consider [deploying your LLM with Ray Serve LLM for online inference](https://docs.ray.io/en/latest/serve/llm/index.html).
 
-## Prepare a Ray Data dataset
 
-Ray Data LLM runs batch inference for LLMs on Ray Data datasets. In this tutorial, you perform batch inference with an LLM to reformat dates and the source is a 2-million-row CSV file containing sample customer data.
+## Prepare a Ray Data dataset with images
+
+Ray Data LLM runs batch inference for VLMs on Ray Data datasets containing images. In this tutorial, you perform batch inference with a vision-language model to generate image captions from the `BLIP3o/BLIP3o-Pretrain-Short-Caption` dataset, which contains approximately 5 million images.
 
 First, load the data from a remote URL then repartition the dataset to ensure the workload can be distributed across multiple GPUs.
 
 
 ```python
+%pip install datasets
+```
+
+
+```python
 import ray
+import datasets
+from PIL import Image
+from io import BytesIO
 
-# Define the path to the sample CSV file hosted on S3.
-# This dataset contains 2 million rows of synthetic customer data.
-path = "https://llm-guide.s3.us-west-2.amazonaws.com/data/ray-data-llm/customers-2000000.csv"
+# Load the BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face with ~5M images.
+print("Loading BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face...")
+hf_dataset = datasets.load_dataset("BLIP3o/BLIP3o-Pretrain-Short-Caption", split="train", streaming=True)
+hf_dataset = hf_dataset.select_columns(["jpg"])
 
-# Load the CSV file into a Ray Dataset.
-print("Loading dataset from remote URL...")
-ds = ray.data.read_csv(path)
+ds = ray.data.from_huggingface(hf_dataset)
+print("Dataset loaded successfully.")
 
-# Inspect the dataset schema and a few rows to verify it loaded correctly.
-print("\nDataset schema:")
-print(ds.schema())
-print("\nSample rows:")
-ds.show(limit=2)
+sample = ds.take(2)
+print("Sample data:")
+for i, item in enumerate(sample):
+    print(f"\nSample {i+1}:")
+    image = Image.open(BytesIO(item['jpg']['bytes']))
+    image.show()
 ```
 
 For this initial example, limit the dataset to 10,000 rows so you can process and test faster. Later, you can scale up to the full dataset.
@@ -58,93 +67,111 @@ If you don't repartition, the system might read a large file into only a few blo
 
 
 ```python
-# Limit the dataset to 10,000 rows for this example.
-print("Limiting dataset to 10,000 rows for initial processing.")
+# Limit the dataset to 10,000 images for this example.
+print("Limiting dataset to 10,000 images for initial processing.")
 ds_small = ds.limit(10_000)
-
 
 # Repartition the dataset to enable parallelism across multiple workers (GPUs).
 # By default, streaming datasets might not be optimally partitioned. Repartitioning
 # splits the data into a specified number of blocks, allowing Ray to process them
 # in parallel.
-num_partitions = 128
+num_partitions = 64
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
 ```
 
 ## Configure Ray Data LLM
 
-Ray Data LLM provides a unified interface to run batch inference with different LLM engines. Configure the vLLM engine, define preprocessing and postprocessing functions, and build the processor.
+Ray Data LLM provides a unified interface to run batch inference with different VLM engines. Configure the vLLM engine with a vision-language model, define preprocessing and postprocessing functions, and build the processor.
 
 ### Configure the processor engine
 
-Configure the model and compute resources needed for inference using `vLLMEngineProcessorConfig`.
+Configure the model and compute resources needed for inference using `vLLMEngineProcessorConfig` with vision support enabled.
 
-This example uses the `unsloth/Llama-3.1-8B-Instruct` model. The configuration specifies:
+This example uses the `Qwen/Qwen2.5-VL-3B-Instruct` model, a vision-language model. The configuration specifies:
 - `model_source`: The Hugging Face model identifier.
-- `engine_kwargs`: vLLM engine parameters such as tensor parallelism and memory settings.
-- `batch_size`: Number of requests to batch together (set to 256 for small prompts and outputs).
+- `engine_kwargs`: vLLM engine parameters such as memory settings and batching.
+- `batch_size`: Number of requests to batch together (set to 16 for vision models).
 - `accelerator_type`: GPU type to use (L4 in this case).
 - `concurrency`: Number of parallel workers (4 in this case).
+- `has_image`: Enable image input support.
 
-**Note:** Because the input prompts and expected output token lengths are small, `batch_size=256` is appropriate. However, depending on your workload, a large batch size can lead to increased idle GPU time when decoding long sequences. Adjust this value to find the optimal trade-off between throughput and latency.
+**Note:** Vision models typically require smaller batch sizes than text-only models due to the additional memory needed for image processing. Adjust batch size based on your image resolution and GPU memory.
+
 
 
 ```python
 from ray.data.llm import vLLMEngineProcessorConfig
 
 processor_config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
-        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+        max_model_len=8192
     ),
-    batch_size=256,
+    batch_size=16,
     accelerator_type="L4",
     concurrency=4,
+    has_image=True,  # Enable image input.
 )
+
 ```
 
 For more details on the configuration options you can pass to the vLLM engine, see the [vLLM Engine Arguments documentation](https://docs.vllm.ai/en/stable/configuration/engine_args.html).
 
 ### Define the preprocess and postprocess functions
 
-The task is to format the `Subscription Date` field as `MM-DD-YYYY` using an LLM.
+The task is to generate descriptive captions for images using a vision-language model.
 
-Define a preprocess function to prepare `messages` and `sampling_params` for the vLLM engine, and a postprocess function to extract the `generated_text`.
+Define a preprocess function to prepare `messages` with image content and `sampling_params` for the vLLM engine, and a postprocess function to extract the `generated_text`.
+
 
 
 ```python
 from typing import Any
+from PIL import Image
+from io import BytesIO
 
-# Preprocess function prepares `messages` and `sampling_params` for vLLM engine.
-# All other fields are ignored by the engine.
+# Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
+    # Convert bytes image to PIL 
+    image = row['jpg']['bytes']
+    image = Image.open(BytesIO(image))
+    # Resize for consistency + predictable vision-token budget
+    image = image.resize((225, 225), Image.Resampling.BICUBIC)
+    
     return dict(
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY."
-                            "Be concise and output only the formatted date and nothing else."
-                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '11-29-2020'"
+                "content": "You are a helpful assistant that generates accurate and descriptive captions for images."
             },
             {
                 "role": "user",
-                "content": f"Convert this date:\n{row['Subscription Date']}."
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Describe this image in detail. Focus on the main subjects, actions, and setting."
+                    },
+                    {
+                        "type": "image",
+                        "image": image  # Ray Data accepts PIL Image or image URL.
+                    }
+                ]
             },
         ],
         sampling_params=dict(
             temperature=0.3,
-            max_tokens=32, # low max tokens because we are simply formatting a date
+            max_tokens=256,
             detokenize=False,
         ),
     )
 
-# Postprocess function extracts the generated text from the engine output.
-# The **row syntax returns all original columns in the input dataset.
+# Postprocess function extracts the generated caption.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "formatted_date": row["generated_text"],
-        **row,  # Include all original columns.
+        "generated_caption": row["generated_text"],
+        # Note: Don't include **row here to avoid returning the large image data.
+        # Include only the fields you need in the output.
     }
 ```
 
@@ -169,6 +196,7 @@ processor = build_llm_processor(
 Run the processor on your small dataset to perform batch inference. Ray Data automatically distributes the workload across available GPUs and handles batching, retries, and resource management.
 
 
+
 ```python
 from pprint import pprint
 
@@ -176,12 +204,12 @@ from pprint import pprint
 processed_small = processor(ds_small)
 
 # Materialize the dataset to memory.
-# You can also use writing APIs such as write_parquet() or write_csv() to persist the dataset.
+# You can also use writing APIs such as write_parquet() or write_json() to persist the dataset.
 processed_small = processed_small.materialize()
 
 # Display the first 3 entries to verify the output.
 sampled = processed_small.take(3)
-print("\n==================GENERATED OUTPUT===============\n")
+print("\n==================GENERATED CAPTIONS===============\n")
 pprint(sampled)
 ```
 
@@ -191,12 +219,12 @@ For production workloads, deploy your batch inference processor as an [Anyscale 
 
 ### Configure an Anyscale Job
 
-Save your batch inference code as `batch_inference.py`, then create a job configuration file:
+Save your batch inference code as `batch_vision_inference.py`, then create a job configuration file:
 
 ```yaml
 # job.yaml
-name: my-llm-batch-inference-text
-entrypoint: python batch_inference_text.py
+name: my-llm-batch-inference-vision
+entrypoint: python batch_inference_vision.py
 image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
   head_node:
@@ -205,8 +233,12 @@ compute_config:
     - instance_type: g6.2xlarge
       min_nodes: 0
       max_nodes: 10
+requirements: # Python dependencies - can be list or path to requirements.txt
+  - datasets==4.4.1
 working_dir: .
 max_retries: 2
+
+
 ```
 
 ### Submit
@@ -222,11 +254,11 @@ anyscale job submit --config-file job.yaml
 Track your job's progress in the Anyscale Console or through the CLI:
 
 ```bash
-# Check job status
-anyscale job status --name my-llm-batch-inference-text
+# Check job status.
+anyscale job status --name my-llm-batch-inference-vision
 
-# View logs
-anyscale job logs --name my-llm-batch-inference-text
+# View logs.
+anyscale job logs --name my-llm-batch-inference-vision
 ```
 
 The Ray Dashboard remains available for detailed monitoring. To access it, go over your Anyscale Job in your console.  
@@ -245,35 +277,35 @@ The dashboard shows:
 
 **Tip**: If you encounter CUDA out of memory errors, reduce your batch size, use a smaller model, or switch to a larger GPU. For more troubleshooting tips, see [GPU Memory Management](https://docs.ray.io/en/latest/data/working-with-llms.html#gpu-memory-management-and-cuda-oom-prevention).
 
+
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes 1M rows.
+Your Ray Data processing pipeline can easily scale up to process more images. By default, this section processes 1M images.
 
 
 ```python
 import os
 
-# The dataset has ~2M rows
+# The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset has ~5M images
 # Configure how many images to process (default: 1M for demonstration).
-print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
+print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
 ds_large = ds.limit(1_000_000)
 ```
 
-You can scale the number of concurrent workers based on the compute available in your cluster. In this case, each replica is a copy of your Llama model and fits in a single L4 GPU.
+You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Qwen-VL model and fits in a single L4 GPU.
 
 
 ```python
 processor_config_large = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
-        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+        max_model_len=8192,
     ),
-    batch_size=256,
+    batch_size=16,
     accelerator_type="L4", # Or upgrade to larger GPU
-    concurrency=10, # Deploy 10 workers across 10 GPUs to maximize throughput
+    concurrency=10, # Increase the number of parallel workers
+    has_image=True,  # Enable image input
 )
-
-# Build the LLM processor with the configuration and functions.
 processor_large = build_llm_processor(
     processor_config_large,
     preprocess=preprocess,
@@ -285,66 +317,63 @@ Execute the new pipeline
 
 
 ```python
-# Run the same processor on the larger dataset.
+# Run the compute-scaled processor on the larger dataset.
 processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
-print(f"\nProcessed {processed_large.count()} rows successfully.")
+print(f"\nProcessed {processed_large.count()} images successfully.")
 print("\nSample outputs:")
 pprint(processed_large.take(3))
 ```
 
 ## Performance optimization tips
 
-When scaling to larger datasets, consider these optimizations tips:
+When scaling to larger datasets, consider these optimizations:
 
-**Analyze your pipeline**  
-Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
+**Analyze your pipeline**
+You can use *stats()* to examine the throughput and timing at every step in your pipeline and spot potential bottlenecks.
+The *stats()* output reports how long each operator took and its throughput, so you can compare these values to expected throughput for your hardware. If you see a step with significantly lower throughput or much higher task durations than others, that's likely a bottleneck.
+The following example shows how to print pipeline stats:
 ```python
 processed = processor(ds).materialize()
 print(processed.stats())
 ```
-The outputs contains detailed description of each step in your pipeline.
+The outputs include detailed timing, throughput, and resource utilization for each pipeline operator.
+For example:
 ```text
 Operator 0 ...
 
 ...
 
 Operator 8 MapBatches(vLLMEngineStageUDF): 3908 tasks executed, 3908 blocks produced in 340.21s
-    * Remote wall time: ...
+    * Remote wall time: 340.21s 
+    * Input/output rows: ...
+    * Throughput: 2,900 rows/s
     ...
 
 ...
 
 Dataset throughput:
-	* Ray Data throughput: ...
-	* Estimated single node throughput: ...
+    * Ray Data throughput: 2,500 rows/s
+    * Estimated single node throughput: 5,000 rows/s
 ```
 
+Review the per-operator throughput numbers and durations to spot slowest stages or unexpected bottlenecks. You can then adjust batch size, concurrency, or optimize resource usage for affected steps.
+
 **Adjust concurrency**  
-Increase the `concurrency` parameter to add more parallel workers.
+Increase the `concurrency` parameter to add more parallel workers and GPUs.
 
 **Tune batch size**  
-Larger batch sizes may improve throughput but increase memory usage.
+For vision models, smaller batch sizes (8-32) often work better due to memory constraints from image processing.
+
+**Optimize image loading**  
+Pre-resize images to a consistent size to reduce memory usage and improve throughput.
 
 **Tune preprocessing and inference stage parallelism**  
 Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
 **Use quantization to reduce memory footprint**  
-Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. A common option is FP8 (8-bit floating point), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
-
-```python
-processor_config = vLLMEngineProcessorConfig(
-    model_source="facebook/opt-125m",
-    engine_kwargs={
-        "quantization": "fp8",  # Or "awq", "gptq", etc.
-        "max_model_len": 8192,
-    },
-    batch_size=128,
-    accelerator_type="L4",
-    concurrency=4,
-)
-```
+Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. A common option is FP8 (8-bit floating point), which can reduce memory usage by 2-4x with minimal accuracy loss.
 
 **Scale to larger models with model parallelism**  
 Model parallelism distributes large models across multiple GPUs when they don't fit on a single GPU. Use tensor parallelism to split model layers horizontally across multiple GPUs within a single node and use pipeline parallelism to split model layers vertically across multiple nodes, with each node processing different layers of the model.
@@ -353,7 +382,7 @@ Forward model parallelism parameters to your inference engine using the `engine_
 
 ```python
 processor_config = vLLMEngineProcessorConfig(
-    model_source="deepseek-ai/DeepSeek-R1",
+    model_source="meta-llama/Llama-3.2-90B-Vision-Instruct",
     accelerator_type="H100",
     engine_kwargs={
         "tensor_parallel_size": 8,  # 8 GPUs per node
@@ -376,6 +405,7 @@ For performance tuning, see the [Ray Data performance guide](https://docs.ray.io
 
 ## Summary
 
-In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8 B, and adding simple pre/post-processing to normalize dates. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
+In this notebook, you built an end-to-end vision batch inference pipeline: loading an HuggingFace image dataset into Ray Dataset, configuring a vLLM processor for the Qwen2.5-VL vision-language model, and adding pre/post-processing to generate image captions. You validated the flow on 10,000 images, scaled to 1M images, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
 
 See [Anyscale batch inference optimization](https://docs.anyscale.com/llm/batch-inference) for more information on using Ray Data with Anyscale and for more advanced use cases, see [Working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).
+

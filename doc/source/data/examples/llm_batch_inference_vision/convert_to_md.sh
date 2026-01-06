@@ -2,7 +2,7 @@
 
 set -exo pipefail
 
-nb_rel_path="content/llm_batch_inference_vision.ipynb"
+nb_rel_path="content/README.ipynb"
 content_dir="$(dirname "$nb_rel_path")"
 nb_filename="$(basename "$nb_rel_path")"
 md_rel_path="$content_dir/README.md"
