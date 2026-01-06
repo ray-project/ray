@@ -565,9 +565,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         )
 
         # Compute log(p)s of all possible actions in the dream.
-        if isinstance(
-            self.module[module_id].unwrapped().actor.action_space, gym.spaces.Discrete
-        ):
+        action_space = self.module[module_id].unwrapped().actor.action_space
+        if isinstance(action_space, gym.spaces.Discrete):
             # Note that when we create the Categorical action distributions, we compute
             # unimix probs, then math.log these and provide these log(p) as "logits" to
             # the Categorical. So here, we'll continue to work with log(p)s (not
@@ -584,7 +583,22 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                 logp_actions_dreamed_t0_to_Hm1_B
                 * scaled_value_targets_t0_to_Hm1_B.detach()
             )
-        # Box space.
+        # MultiDiscrete: Use REINFORCE-style loss like Discrete.
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+            # For MultiDiscrete, we have concatenated log-probs for each sub-action.
+            # Sum log-probs element-wise with one-hot actions to get log-prob of taken
+            # actions, then sum over all sub-action dimensions.
+            logp_actions_t0_to_Hm1_B = actions_dreamed_dist_params_t0_to_Hm1_B
+            logp_actions_dreamed_t0_to_Hm1_B = torch.sum(
+                actions_dreamed * logp_actions_t0_to_Hm1_B,
+                dim=-1,
+            )
+            # First term of loss function. [1] eq. 11.
+            logp_loss_H_B = (
+                logp_actions_dreamed_t0_to_Hm1_B
+                * scaled_value_targets_t0_to_Hm1_B.detach()
+            )
+        # Box space (continuous actions): Use reparameterized gradients.
         else:
             logp_actions_dreamed_t0_to_Hm1_B = dist_t0_to_Hm1_B.log_prob(
                 actions_dreamed
