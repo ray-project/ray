@@ -1,7 +1,8 @@
 """Symmetric Run for Ray.
 
-This script launches a Ray cluster across all nodes and executes a specified entrypoint command.
-It is useful in environments where the same command is executed on every node, such as with SLURM.
+This script is intended for environments where the same command is executed on every node
+(e.g. SLURM). It decides whether a given node should be the head or a worker, starts Ray, runs
+the entrypoint on the head, and then shuts the cluster down.
 """
 
 import socket
@@ -20,7 +21,6 @@ import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
-
 class SymmetricRunCommand(click.Command):
     def parse_args(self, ctx, args):
         ctx.meta["raw_args"] = list(args)
@@ -35,14 +35,14 @@ def check_ray_already_started() -> bool:
     return len(running_gcs_addresses) > 0
 
 
-def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
+def check_cluster_ready(address, nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
     """Wait for all nodes to start.
 
     Raises an exception if the nodes don't start in time.
     """
     start_time = time.time()
     current_nodes = 1
-    ray.init(ignore_reinit_error=True)
+    ray.init(address=address, ignore_reinit_error=True)
 
     while time.time() - start_time < timeout:
         time.sleep(5)
@@ -57,12 +57,20 @@ def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
 
 
 def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
+    from ray.exceptions import RpcError
+
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        if gcs_client.check_alive([], timeout=1):
+        try:
+            # check_alive returns a list of dead node IDs from the input list.
+            # If it runs without raising an exception, the GCS is ready.
+            gcs_client.check_alive([], timeout=1)
             click.echo("Ray cluster is ready!")
             return True
+        except RpcError:
+            # GCS not ready yet, keep retrying
+            pass
         time.sleep(5)
     return False
 
@@ -223,7 +231,7 @@ def symmetric_run(ctx, address, min_nodes, ray_args_and_entrypoint):
             subprocess.run(ray_start_cmd, check=True, capture_output=True)
             click.echo("Head node started.")
             click.echo("=======================")
-            if min_nodes > 1 and not check_cluster_ready(min_nodes):
+            if min_nodes > 1 and not check_cluster_ready(address, min_nodes):
                 raise click.ClickException(
                     "Timed out waiting for other nodes to start."
                 )
