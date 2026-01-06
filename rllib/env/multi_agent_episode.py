@@ -821,6 +821,8 @@ class MultiAgentEpisode:
         # Validate `other`.
         other.validate()
 
+        print(f"Episode id={self.id_}, other episode id={other.id_}")
+
         # Concatenate the individual SingleAgentEpisodes from both chunks.
         all_agent_ids = set(self.agent_ids) | set(other.agent_ids)
         for agent_id in all_agent_ids:
@@ -842,23 +844,17 @@ class MultiAgentEpisode:
             # If the agent has data in both chunks, concatenate on the single-agent
             # level, thereby making sure the hanging values (begin and end) match.
             elif agent_id in other.agent_episodes:
-                # If `other` has hanging (end) values -> Add these to `self`'s agent
-                # SingleAgentEpisode (as a new timestep) and only then concatenate.
-                # Otherwise, the concatentaion would fail b/c of missing data.
+                # An MA episode saves any hanging actions from agents between episode cuts
+                #   This quickly checks that the action has been correctly added to the other episode already
                 if agent_id in self._hanging_actions_end:
-                    assert agent_id in self._hanging_extra_model_outputs_end
-                    sa_episode.add_env_step(
-                        observation=other.agent_episodes[agent_id].get_observations(0),
-                        infos=other.agent_episodes[agent_id].get_infos(0),
-                        action=self._hanging_actions_end[agent_id],
-                        reward=(
-                            self._hanging_rewards_end[agent_id]
-                            + other._hanging_rewards_begin[agent_id]
-                        ),
-                        extra_model_outputs=(
-                            self._hanging_extra_model_outputs_end[agent_id]
-                        ),
-                    )
+                    hanging_action = self._hanging_actions_end[agent_id]
+                    other_next_action = other.agent_episodes[agent_id].get_actions(0)
+                    if hanging_action != other_next_action:
+                        raise ValueError(
+                            "Please report this error with details on the environment. "
+                            f"The hanging action is {hanging_action} and the other next action is {other_next_action}."
+                        )
+
                 sa_episode.concat_episode(other.agent_episodes[agent_id])
                 # Override `self`'s hanging (end) values with `other`'s hanging (end).
                 if agent_id in other._hanging_actions_end:
