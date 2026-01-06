@@ -1,6 +1,7 @@
 import logging
+from abc import ABC, abstractmethod
 from contextlib import nullcontext
-from typing import TypeVar
+from typing import Any, Dict, TypeVar
 
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import Singleton
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class BackendConfig:
+class BackendConfig(ABC):
     """Parent class for configurations of training backend."""
 
     @property
@@ -24,8 +25,25 @@ class BackendConfig:
     def train_func_context(self):
         return nullcontext
 
+    @property
+    def framework(self):
+        return None
+
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
+
+    @abstractmethod
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize this backend config to a dict for runtime use."""
+        raise NotImplementedError
+
+
+@DeveloperAPI
+class DefaultBackendConfig(BackendConfig):
+    """Default no-op backend config used when none is provided."""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 @DeveloperAPI

@@ -21,7 +21,7 @@ from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
 from ray.train._internal.syncer import SyncConfig
-from ray.train.backend import BackendConfig
+from ray.train.backend import BackendConfig, DefaultBackendConfig
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import TrainContext, get_context
@@ -69,6 +69,7 @@ __all__ = [
     "get_dataset_shard",
     "report",
     "BackendConfig",
+    "DefaultBackendConfig",
     "Checkpoint",
     "CheckpointConfig",
     "DataConfig",
@@ -87,6 +88,7 @@ get_context.__module__ = "ray.train"
 get_dataset_shard.__module__ = "ray.train"
 report.__module__ = "ray.train"
 BackendConfig.__module__ = "ray.train"
+DefaultBackendConfig.__module__ = "ray.train"
 Checkpoint.__module__ = "ray.train"
 CheckpointConfig.__module__ = "ray.train"
 DataConfig.__module__ = "ray.train"

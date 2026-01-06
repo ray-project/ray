@@ -4,6 +4,7 @@ import logging
 import time
 import traceback
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -91,6 +92,14 @@ def construct_train_func(
                 return train_func()
 
     return train_fn
+
+
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
 
 
 class ObjectRefWrapper(Generic[T]):

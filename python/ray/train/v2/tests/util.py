@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from unittest.mock import MagicMock
 
+import ray
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train.context import TrainContext
@@ -31,8 +32,16 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
+    DatasetsDetails,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfiguration,
     RunStatus,
+    RuntimeConfig,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -183,6 +192,21 @@ def create_mock_train_run(
         start_time_ns=time.time_ns(),
         end_time_ns=end_time_ns,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        run_configuration=RunConfiguration(
+            backend_config=BackendConfigSchema(),
+            scaling_config=ScalingConfigSchema(),
+            datasets_details=DatasetsDetails(
+                datasets=["dataset_1"],
+                data_config=DataConfigSchema(),
+            ),
+            runtime_config=RuntimeConfig(
+                failure_config=FailureConfigSchema(),
+                worker_runtime_env={"type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(),
+                storage_path="s3://bucket/path",
+            ),
+        ),
     )
 
 
@@ -209,7 +233,6 @@ def create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
-        schema_version=0,
         attempt_id=attempt_id,
         run_id=run_id or _RUN_ID,
         status=status,
@@ -230,7 +253,7 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
     Returns:
         TrainRunContext: A standardized TrainRunContext instance for testing.
     """
-    from ray.train import BackendConfig, DataConfig
+    from ray.train import DataConfig, DefaultBackendConfig
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2.api.config import RunConfig, ScalingConfig
 
@@ -238,7 +261,7 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
         run_config=RunConfig(name="test"),
         train_loop_config={},
         scaling_config=ScalingConfig(num_workers=1),
-        backend_config=BackendConfig(),
+        backend_config=DefaultBackendConfig(),
         datasets={},
         dataset_config=DataConfig(),
     )

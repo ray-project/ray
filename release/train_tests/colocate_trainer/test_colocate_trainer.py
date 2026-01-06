@@ -53,6 +53,9 @@ def test_colocate_trainer_and_rank0_worker(
         def backend_cls(self):
             return CustomBackend
 
+        def to_dict(self):
+            return {}
+
     for num_workers in [1, 2, 4]:
         scale_config = ScalingConfig(
             num_workers=num_workers,

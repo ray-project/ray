@@ -32,8 +32,49 @@ from ray.train.v2._internal.logging.logging import (
     get_train_application_controller_log_path,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2._internal.util import TrainingFramework
 
 logger = logging.getLogger(__name__)
+
+
+def _get_framework_version(framework: Optional[TrainingFramework]):
+    versions = {}
+
+    try:
+        import ray
+
+        versions["ray"] = ray.__version__
+    except ImportError:
+        logger.warning("Failed to collect ray version on worker.")
+
+    try:
+        if framework is None:
+            return versions
+
+        if framework == TrainingFramework.TORCH:
+            import torch
+
+            versions[TrainingFramework.TORCH.value] = torch.__version__
+        elif framework == TrainingFramework.JAX:
+            import jax
+
+            versions[TrainingFramework.JAX.value] = jax.__version__
+        elif framework == TrainingFramework.TENSORFLOW:
+            import tensorflow
+
+            versions[TrainingFramework.TENSORFLOW.value] = tensorflow.__version__
+        elif framework == TrainingFramework.XGBOOST:
+            import xgboost
+
+            versions[TrainingFramework.XGBOOST.value] = xgboost.__version__
+        elif framework == TrainingFramework.LIGHTGBM:
+            import lightgbm
+
+            versions[TrainingFramework.LIGHTGBM.value] = lightgbm.__version__
+    except ImportError:
+        logger.warning("Failed to collect framework version on worker.")
+
+    return versions
 
 
 class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
@@ -55,6 +96,12 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             job_id=self._job_id,
             controller_actor_id=self._controller_actor_id,
             controller_log_file_path=controller_log_file_path,
+            run_config=train_run_context.run_config,
+            train_loop_config=train_run_context.train_loop_config,
+            scaling_config=train_run_context.scaling_config,
+            backend_config=train_run_context.backend_config,
+            datasets=train_run_context.datasets,
+            dataset_config=train_run_context.dataset_config,
         )
 
     def after_controller_state_update(
@@ -138,6 +185,16 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             run_id=self._run_id,
             attempt_id=worker_group_context.run_attempt_id,
             workers=worker_group_state.workers,
+        )
+
+        # Update train run framework version
+        framework = self._state_manager.get_train_run_framework(self._run_id)
+        framework_versions = worker_group.execute_single(
+            0, _get_framework_version, framework
+        )
+        self._state_manager.update_train_run_framework_versions(
+            run_id=self._run_id,
+            framework_versions=framework_versions,
         )
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup):

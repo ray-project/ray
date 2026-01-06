@@ -14,7 +14,7 @@ from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.session import get_session, init_session
 from ray.train._internal.utils import construct_train_func
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.backend import BackendConfig
+from ray.train.backend import DefaultBackendConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
@@ -109,7 +109,7 @@ def create_iterator(
 
 
 def test_run_iterator(ray_start_4_cpus):
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     def train_func():
         for i in range(3):
@@ -131,7 +131,7 @@ def test_run_iterator(ray_start_4_cpus):
 
 
 def test_run_iterator_error(ray_start_4_cpus):
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     def fail_train():
         raise NotImplementedError
@@ -160,7 +160,7 @@ def test_worker_failure_1(ray_start_4_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
@@ -183,7 +183,7 @@ def test_worker_failure_2(ray_start_4_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
@@ -203,7 +203,7 @@ def test_worker_failure_local_rank(ray_start_4_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
@@ -227,7 +227,7 @@ def test_worker_start_failure(ray_start_4_cpus):
             self._initialization_hook = init_hook
             super()._restart()
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     iterator = create_iterator(
         lambda x: 1,
@@ -244,7 +244,7 @@ def test_max_failures(ray_start_4_cpus):
 
         sys.exit(1)
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     iterator = create_iterator(train_func, config)
     with pytest.raises(RuntimeError):
@@ -259,7 +259,7 @@ def test_start_max_failures(ray_start_4_cpus):
 
         sys.exit(1)
 
-    config = BackendConfig()
+    config = DefaultBackendConfig()
 
     with pytest.raises(RuntimeError):
         create_iterator(lambda x: 1, config, init_hook=init_hook_fail)
@@ -289,7 +289,7 @@ class KillCallback:
 )
 def test_worker_kill(ray_start_4_cpus, backend):
     if backend == "test":
-        test_config = BackendConfig()
+        test_config = DefaultBackendConfig()
     elif backend == "torch":
         from ray.train.torch import TorchConfig
 

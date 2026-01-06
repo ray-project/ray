@@ -6,7 +6,7 @@ import ray
 from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train import BackendConfig, Checkpoint
+from ray.train import BackendConfig, Checkpoint, DefaultBackendConfig
 from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
@@ -247,7 +247,7 @@ class DataParallelTrainer(BaseTrainer):
         self._data_config = dataset_config
 
         backend_config = (
-            backend_config if backend_config is not None else BackendConfig()
+            backend_config if backend_config is not None else DefaultBackendConfig()
         )
         self._backend_config = backend_config
 
