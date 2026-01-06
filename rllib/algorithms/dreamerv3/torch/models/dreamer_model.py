@@ -446,16 +446,25 @@ class DreamerModel(nn.Module):
                 a = actions[:, timesteps_burn_in + j]
             elif use_random_actions_in_dream:
                 if isinstance(self.action_space, gym.spaces.Discrete):
-                    a = torch.randint(self.action_space.n, (B,), dtype=torch.int64)
-                    a = torch.nn.functional.one_hot(a, num_classes=self.action_space.n)
+                    a = torch.randint(
+                        self.action_space.n, (B,),
+                        dtype=torch.int64, device=actions.device
+                    )
+                    a = torch.nn.functional.one_hot(
+                        a, num_classes=self.action_space.n
+                    ).float()
                 elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
                     # Random one-hot per sub-action, then concatenate
-                    one_hots = []
-                    for n in self.action_space.nvec:
-                        rand_idx = torch.randint(int(n), (B,), dtype=torch.int64)
-                        one_hots.append(
-                            torch.nn.functional.one_hot(rand_idx, num_classes=int(n))
+                    one_hots = [
+                        torch.nn.functional.one_hot(
+                            torch.randint(
+                                int(n), (B,),
+                                dtype=torch.int64, device=actions.device
+                            ),
+                            num_classes=int(n)
                         )
+                        for n in self.action_space.nvec
+                    ]
                     a = torch.cat(one_hots, dim=-1).float()
                 else:
                     a = torch.rand(

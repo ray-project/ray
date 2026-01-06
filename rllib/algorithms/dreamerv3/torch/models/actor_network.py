@@ -62,12 +62,12 @@ class MultiDiscreteOneHotDistribution:
     @property
     def mode(self):
         """Return concatenated one-hot modes (argmax) for all sub-actions."""
-        modes = []
-        for dist in self.distributions:
-            probs = dist.probs
-            one_hot = torch.zeros_like(probs)
-            one_hot.scatter_(-1, probs.argmax(dim=-1, keepdim=True), 1.0)
-            modes.append(one_hot)
+        modes = [
+            torch.nn.functional.one_hot(
+                dist.probs.argmax(dim=-1), num_classes=dist.probs.shape[-1]
+            ).float()
+            for dist in self.distributions
+        ]
         return torch.cat(modes, dim=-1)
 
 

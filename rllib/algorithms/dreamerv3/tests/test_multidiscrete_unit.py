@@ -6,7 +6,6 @@ without requiring a full Ray cluster or environment interaction.
 import unittest
 
 import gymnasium as gym
-import numpy as np
 import torch
 
 from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import (
@@ -184,6 +183,16 @@ class TestMultiDiscreteOneHotDistribution(unittest.TestCase):
         # Test mode
         mode = distr.mode
         self.assertEqual(mode.shape, (batch_size, sum(actions_dim)))
+
+        # Verify mode is one-hot encoded (sums to 1.0 and contains only 0s and 1s)
+        split_modes = torch.split(mode, actions_dim, dim=-1)
+        for sub_mode in split_modes:
+            # Each should sum to 1
+            self.assertTrue(
+                torch.allclose(sub_mode.sum(dim=-1), torch.ones(batch_size))
+            )
+            # Should contain only 0s and 1s
+            self.assertTrue(((sub_mode == 0) | (sub_mode == 1)).all())
 
 
 if __name__ == "__main__":
