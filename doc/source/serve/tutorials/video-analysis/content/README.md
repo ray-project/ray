@@ -453,13 +453,13 @@ The decoder loads precomputed text embeddings from S3 at startup.
 
 **Why separate GPU/CPU deployments?** The encoder needs GPU for neural network inference; the decoder only does numpy dot products. Separating them allows independent scaling—encoders are limited by GPU count, decoders scale cheaply with CPU cores. This avoids tying expensive GPU resources to lightweight CPU work.
 
-**Why EMA for scene detection?** Exponential Moving Average reuses existing SigLIP embeddings without an extra model. The algorithm computes `score = 1 - cosine(frame, EMA)` where EMA updates as `ema = 0.9*ema + 0.1*frame`. EMA state persists across chunks, making it streaming-compatible. A simple threshold (`score > 0.15`) detects abrupt scene changes while smoothing noise.
-
+**Why EMA for scene detection?** Exponential Moving Average reuses existing SigLIP embeddings without an extra model. The algorithm computes `score = 1 - cosine(frame, EMA)` where EMA updates as `ema = 0.9*ema + 0.1*frame`. A simple threshold (`score > 0.15`) detects abrupt scene changes while smoothing noise.
 
 
 ```python
 import io
 import os
+from typing import Optional
 
 import aioboto3
 import numpy as np
@@ -481,15 +481,17 @@ EMA_ALPHA = 0.9
     },
 )
 class MultiDecoder:
-    """Decodes video embeddings into tags, captions, and scene changes."""
+    """Decodes video embeddings into tags, captions, and scene changes.
+    
+    This deployment is stateless - EMA state for scene detection is passed
+    in and returned with each call, allowing the caller to maintain state
+    continuity across multiple replicas.
+    """
 
     async def __init__(self):
         self.bucket = S3_BUCKET
         self.ema_alpha = EMA_ALPHA
         self.scene_threshold = SCENE_CHANGE_THRESHOLD
-
-        # Per-stream EMA state for scene detection
-        self.stream_ema: dict[str, np.ndarray] = {}
 
         await self._load_embeddings()
 
@@ -533,20 +535,30 @@ class MultiDecoder:
     def _detect_scene_changes(
         self,
         frame_embeddings: np.ndarray,
-        stream_id: str,
         chunk_index: int,
         chunk_start_time: float,
         chunk_duration: float,
-    ) -> list[dict]:
-        """Detect scene changes using EMA-based scoring."""
+        ema_state: Optional[np.ndarray] = None,
+    ) -> tuple[list[dict], np.ndarray]:
+        """Detect scene changes using EMA-based scoring.
+        
+        Args:
+            frame_embeddings: Frame embeddings for this chunk.
+            chunk_index: Index of this chunk in the video.
+            chunk_start_time: Start time of this chunk in seconds.
+            chunk_duration: Duration of this chunk in seconds.
+            ema_state: EMA state from previous chunk, or None for first chunk.
+            
+        Returns:
+            Tuple of (scene_changes list, updated ema_state).
+        """
         num_frames = len(frame_embeddings)
         if num_frames == 0:
-            return []
+            # Return empty changes and unchanged state (or first frame if no state)
+            return [], ema_state if ema_state is not None else np.zeros(0)
 
-        if stream_id not in self.stream_ema:
-            self.stream_ema[stream_id] = frame_embeddings[0].copy()
-
-        ema = self.stream_ema[stream_id]
+        # Initialize EMA from first frame if no prior state
+        ema = ema_state.copy() if ema_state is not None else frame_embeddings[0].copy()
         scene_changes = []
 
         for frame_idx, embedding in enumerate(frame_embeddings):
@@ -566,20 +578,32 @@ class MultiDecoder:
             ema = self.ema_alpha * ema + (1 - self.ema_alpha) * embedding
             ema = ema / np.linalg.norm(ema)
 
-        self.stream_ema[stream_id] = ema
-        return scene_changes
+        return scene_changes, ema
 
     def __call__(
         self,
         encoder_output: dict,
-        stream_id: str,
         chunk_index: int,
         chunk_start_time: float,
         chunk_duration: float,
         top_k_tags: int = 5,
-        end_stream: bool = False,
+        ema_state: Optional[np.ndarray] = None,
     ) -> dict:
-        """Decode embeddings into tags, caption, and scene changes."""
+        """Decode embeddings into tags, caption, and scene changes.
+        
+        Args:
+            encoder_output: Output from VideoEncoder containing frame embeddings ref.
+            chunk_index: Index of this chunk in the video.
+            chunk_start_time: Start time of this chunk in seconds.
+            chunk_duration: Duration of this chunk in seconds.
+            top_k_tags: Number of top tags to return.
+            ema_state: EMA state from previous chunk for scene detection continuity.
+                Pass None for the first chunk of a stream.
+                
+        Returns:
+            Dict containing tags, retrieval_caption, scene_changes, and updated ema_state.
+            The caller should pass the returned ema_state to the next chunk's call.
+        """
         frame_embeddings = ray.get(encoder_output["frame_embeddings_ref"])
 
         pooled_embedding = frame_embeddings.mean(axis=0)
@@ -587,14 +611,16 @@ class MultiDecoder:
 
         tags = self._get_top_tags(pooled_embedding, top_k=top_k_tags)
         caption = self._get_retrieval_caption(pooled_embedding)
-        scene_changes = self._detect_scene_changes(
-            frame_embeddings, stream_id, chunk_index, chunk_start_time, chunk_duration
+        scene_changes, new_ema_state = self._detect_scene_changes(
+            frame_embeddings, chunk_index, chunk_start_time, chunk_duration, ema_state
         )
 
-        if end_stream and stream_id in self.stream_ema:
-            del self.stream_ema[stream_id]
-
-        return {"tags": tags, "retrieval_caption": caption, "scene_changes": scene_changes}
+        return {
+            "tags": tags,
+            "retrieval_caption": caption,
+            "scene_changes": scene_changes,
+            "ema_state": new_ema_state,
+        }
 ```
 
 ### Video chunking
@@ -739,7 +765,7 @@ app = VideoAnalyzer.bind(encoder=encoder, decoder=decoder)
 
 **Why cache the S3 client?** Creating a new `aioboto3` client per request adds overhead (connection setup, credential resolution). Caching the client in `__init__` and reusing it across requests amortizes this cost. The client is thread-safe and handles connection pooling internally.
 
-**Why encode in parallel but decode serially?** Encoding is stateless—each chunk's frames go through SigLIP independently, so we fire all chunks concurrently with [`asyncio.gather`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather). Decoding is stateful—the EMA for scene detection must process chunks in order (chunk 0's EMA state feeds into chunk 1). Serial decoding preserves this temporal dependency.
+**Why encode in parallel but decode serially?** Encoding is stateless—each chunk's frames go through SigLIP independently, so we fire all chunks concurrently with [`asyncio.gather`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather). Decoding requires temporal ordering—the EMA for scene detection must process chunks in order (chunk 0's EMA state feeds into chunk 1). The `VideoAnalyzer` calls the decoder serially, passing EMA state from each response to the next request. This explicit state passing ensures correct scene detection even when multiple decoder replicas exist under autoscaling.
 
 
 
@@ -902,19 +928,22 @@ class VideoAnalyzer:
 
             embedding_dim = encode_results[0]["embedding_dim"] if encode_results else 0
 
-            # Decode chunks SERIALLY (EMA state)
+            # Decode chunks SERIALLY, passing EMA state between calls.
+            # EMA state is tracked here (not in decoder) to ensure continuity
+            # even when autoscaling routes requests to different replicas.
             decode_start = time.perf_counter()
             decode_results = []
-            for i, (chunk, enc) in enumerate(zip(chunks, encode_results)):
+            ema_state = None  # Will be initialized from first chunk's first frame
+            for chunk, enc in zip(chunks, encode_results):
                 dec = await self.decoder.remote(
                     encoder_output=enc,
-                    stream_id=request.stream_id,
                     chunk_index=chunk.index,
                     chunk_start_time=chunk.start_time,
                     chunk_duration=chunk.duration,
-                    end_stream=(i == len(chunks) - 1),
+                    ema_state=ema_state,
                 )
                 decode_results.append(dec)
+                ema_state = dec["ema_state"]  # Carry forward for next chunk
             decode_ms = (time.perf_counter() - decode_start) * 1000
 
             # Aggregate and build response
