@@ -9,6 +9,7 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with LLM inference engines (
 
 * :ref:`Quickstart <vllm_quickstart>` - Run your first batch inference job
 * :ref:`Architecture <processor_architecture>` - Understand the processor pipeline
+* :ref:`Scaling <horizontal_scaling>` - Scale your LLM stage to multiple replicas
 
 **Common use cases:**
 
@@ -91,6 +92,20 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
 Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize) use autoscaling actor pools, while the GPU stage uses a fixed pool.
+
+.. _horizontal_scaling:
+
+Scaling to multiple GPUs
+------------------------
+
+Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrency`` parameter:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_example_start__
+    :end-before: __concurrent_config_example_end__
+
+Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
 
 .. _text_generation:
 
@@ -245,16 +260,6 @@ You can customize the placement group strategy to control how Ray places vLLM en
     :start-after: __custom_placement_group_strategy_config_example_start__
     :end-before: __custom_placement_group_strategy_config_example_end__
 
-Horizontal scaling
-~~~~~~~~~~~~~~~~~~
-
-Besides cross-node parallelism, you can horizontally scale the LLM stage to multiple replicas using the ``concurrency`` parameter:
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __concurrent_config_example_start__
-    :end-before: __concurrent_config_example_end__
-
 Per-stage configuration
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -294,10 +299,10 @@ For multi-LoRA batch inference:
 
 See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
 
-Optimized model loading
-~~~~~~~~~~~~~~~~~~~~~~~
+Accelerated model loading with RunAI streamer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use RunAI streamer for faster model loading:
+Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for faster model loading from cloud storage:
 
 .. note::
     Install vLLM with runai dependencies: ``pip install -U "vllm[runai]>=0.10.1"``
