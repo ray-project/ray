@@ -174,8 +174,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         )
 
     def _setup_operator_progress(self, topology: "Topology"):
-        if self._show_op_progress:
-            self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
+        rows = []
         for state in topology.values():
             op = state.op
             if isinstance(op, InputDataBuffer):
@@ -199,8 +198,8 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     rate_str="? rows/s",
                     count_str="0/?",
                 )
-                self._layout_table.add_row(progress)
-                self._layout_table.add_row(stats)
+                rows.append(progress)
+                rows.append(stats)
                 state.progress_manager_uuid = uid
                 self._op_display[uid] = (tid, progress, stats)
 
@@ -224,7 +223,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                         rate_str="? rows/s",
                         count_str="0/?",
                     )
-                    self._layout_table.add_row(progress)
+                    rows.append(progress)
                     pg = RichSubProgressBar(
                         name=name,
                         total=total,
@@ -238,6 +237,10 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     )
                 op.set_sub_progress_bar(name, pg)
                 self._sub_progress_bars.append(pg)
+        if rows:
+            self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
+            for row in rows:
+                self._layout_table.add_row(row)
 
     def _make_progress_bar(self, indent_str: str, spinner_finish: str, bar_width: int):
         return Progress(
