@@ -5,7 +5,6 @@ import copy
 import dataclasses
 import logging
 import math
-import threading
 import time
 import uuid
 from collections import Counter
@@ -172,8 +171,6 @@ class vLLMOutputData(BaseModel):
             num_input_tokens=len(prompt_token_ids),
         )
 
-        import vllm
-
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -239,14 +236,6 @@ class vLLMEngineBaseWrapper:
         self.dynamic_lora_loading_path = dynamic_lora_loading_path
         self.lora_name_to_request = {}
 
-        try:
-            import vllm
-        except ImportError as e:
-            raise ImportError(
-                "vLLM is not installed or failed to import. Please run "
-                "`pip install ray[llm]` to install required dependencies."
-            ) from e
-
         # Construct PoolerConfig if override_pooler_config is specified.
         if (
             self.task_type
@@ -297,8 +286,6 @@ class vLLMEngineBaseWrapper:
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
         # Prepare sampling parameters.
-        import vllm
-
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
@@ -387,8 +374,6 @@ class vLLMEngineBaseWrapper:
         Returns:
             A TextPrompt or TokensPrompt instance.
         """
-        import vllm
-
         multi_modal_data = self._prepare_multimodal_data(request)
 
         if request.prompt_token_ids is not None:
@@ -442,8 +427,6 @@ class vLLMEngineBaseWrapper:
         )
 
     def _load_lora_adapter(self, lora_name: str) -> Any:
-        import vllm
-
         if lora_name not in self.lora_name_to_request:
             lora_path = download_lora_adapter(
                 lora_name,
@@ -488,14 +471,6 @@ class vLLMEngineWrapper(vLLMEngineBaseWrapper):
         **kwargs,
     ):
         super().__init__(idx_in_batch_column, max_pending_requests, dynamic_lora_loading_path, kwargs=kwargs)
-
-        try:
-            import vllm
-        except ImportError as e:
-            raise ImportError(
-                "vLLM is not installed or failed to import. Please run "
-                "`pip install ray[llm]` to install required dependencies."
-            ) from e
 
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
@@ -599,29 +574,21 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
     ):
         super().__init__(idx_in_batch_column, max_pending_requests, dynamic_lora_loading_path, kwargs=kwargs)
 
-        try:
-            import vllm
-        except ImportError as e:
-            raise ImportError(
-                "vLLM is not installed or failed to import. Please run "
-                "`pip install ray[llm]` to install required dependencies."
-            ) from e
-
         kwargs.pop("enable_log_requests", None)
         engine_args = vllm.EngineArgs(**kwargs)
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.LLM(**kwargs)
 
-        self.generate_lock = threading.Lock()
-        self.lora_lock = threading.Lock()
+        # self.generate_lock = threading.Lock()
+        # self.lora_lock = threading.Lock()
 
     def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         request_kwargs = super()._prepare_llm_request_kwargs(row)
-        if "model" in row and row["model"] != self.model:
-            with self.lora_lock:
-                request_kwargs["lora_request"] = self._get_lora_request(row)
-        else:
-            request_kwargs["lora_request"] = None
+        # if "model" in row and row["model"] != self.model:
+        #     with self.lora_lock:
+        #         request_kwargs["lora_request"] = self._get_lora_request(row)
+        # else:
+        #     request_kwargs["lora_request"] = None
         return vLLMEngineRequest(**request_kwargs)
 
     def generate(
@@ -638,24 +605,24 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         # This is necessary because vllm.LLM is not thread-safe and processes all pending requests.
         # Without the lock and when max_concurrent_batches > 1, concurrent Ray Data tasks could
         # add requests while another is still running, mixing results between batches.
-        with self.generate_lock:
-            requests = [self._prepare_llm_request(row) for row in rows]
+        # with self.generate_lock:
+        requests = [self._prepare_llm_request(row) for row in rows]
 
-            prompts = [self._build_llm_prompt(request) for request in requests]
-            params_list = [request.params for request in requests]
+        prompts = [self._build_llm_prompt(request) for request in requests]
+        params_list = [request.params for request in requests]
 
-            if self._is_pooling_task():
-                # TODO: Does vLLM.LLM respect truncate_prompt_tokens in the pooling_params?
-                results = self.engine.encode(
-                    prompts=prompts,
-                    pooling_params=params_list,
-                    # truncate_prompt_tokens=truncate_prompt_tokens,
-                    pooling_task=self._get_pooling_task(),
-                )
-            else:
-                results = self.engine.generate(
-                    prompts=prompts,
-                    sampling_params=params_list,
+        if self._is_pooling_task():
+            # TODO: Does vLLM.LLM respect truncate_prompt_tokens in the pooling_params?
+            results = self.engine.encode(
+                prompts=prompts,
+                pooling_params=params_list,
+                # truncate_prompt_tokens=truncate_prompt_tokens,
+                pooling_task=self._get_pooling_task(),
+            )
+        else:
+            results = self.engine.generate(
+                prompts=prompts,
+                sampling_params=params_list,
                 )
 
         output_list = []
