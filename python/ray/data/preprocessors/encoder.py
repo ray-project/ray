@@ -306,17 +306,12 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
         Best for large batches where the hash table rebuild cost is amortized.
         """
-        # Get Arrow arrays (potentially cached)
         keys_array, values_array = self._get_arrow_arrays(input_col)
 
-        # Cast keys_array to match column type if needed
         if keys_array.type != column.type:
             keys_array = pc.cast(keys_array, column.type)
 
-        # Use vectorized index_in to find positions
         indices = pc.index_in(column, keys_array)
-
-        # Use take to map indices to encoded values
         return pc.take(values_array, indices)
 
     def _encode_column_dict(self, column: pa.ChunkedArray, input_col: str) -> pa.Array:
@@ -324,16 +319,9 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
         Best for small batches where pc.index_in's hash table rebuild is expensive.
         """
-        # Get cached lookup dictionary
         lookup_dict = self._get_cached_lookup_dict(input_col)
-
-        # Convert column to Python list for lookup
         column_values = column.to_pylist()
-
-        # Vectorized lookup using list comprehension (O(1) dict lookups)
         encoded_values = [lookup_dict.get(v) for v in column_values]
-
-        # Convert back to Arrow array
         return pa.array(encoded_values, type=pa.int64())
 
     @classmethod
