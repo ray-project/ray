@@ -22,7 +22,6 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone as tz
-from typing import Optional
 
 import click
 
