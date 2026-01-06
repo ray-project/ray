@@ -105,6 +105,10 @@ def get_progress_manager(
                 dataset_id, topology, show_op_progress, verbose_progress
             )
         except ImportError:
+            from ray.data._internal.progress.base_progress import (
+                NoopExecutionProgressManager,
+            )
+
             print("[dataset]: Run `pip install rich` to enable progress reporting.")
             return NoopExecutionProgressManager(
                 dataset_id, topology, show_op_progress, verbose_progress
