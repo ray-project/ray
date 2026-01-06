@@ -2,12 +2,8 @@ import logging
 from typing import Any, Dict
 
 import ray
+from ray.serve._private.broker import Broker
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-
-try:
-    import flower
-except ImportError:
-    flower = None
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -39,22 +35,16 @@ class QueueMonitorActor:
 
     Uses native broker clients:
         - Redis: Uses redis-py library with LLEN command
-        - RabbitMQ: Uses pika library with passive queue declaration
+        - RabbitMQ: Uses HTTP management API
     """
 
     def __init__(self, config: QueueMonitorConfig):
-        if flower is None:
-            raise ImportError(
-                "QueueMonitor requires the 'flower' package to be installed to query broker "
-                "state. Please install it in the same environment as Serve."
-            )
-
         self._config = config
         self._last_queue_length: int = 0
         self._is_initialized: bool = False
 
-        self._flower_broker = flower.Broker(
-            self._config.broker_url, self._config.rabbitmq_http_url
+        self._broker = Broker(
+            self._config.broker_url, http_api=self._config.rabbitmq_http_url
         )
         self._is_initialized = True
 
@@ -71,7 +61,7 @@ class QueueMonitorActor:
             "rabbitmq_http_url": self._config.rabbitmq_http_url,
         }
 
-    def get_queue_length(self) -> int:
+    async def get_queue_length(self) -> int:
         """
         Get the current queue length from the broker.
 
@@ -85,7 +75,7 @@ class QueueMonitorActor:
             return 0
 
         try:
-            queues = self._flower_broker.queues([self._config.queue_name])
+            queues = await self._broker.queues([self._config.queue_name])
             if queues is not None:
                 for q in queues:
                     if q.get("name") == self._config.queue_name:
@@ -108,7 +98,9 @@ class QueueMonitorActor:
             return self._last_queue_length
 
     def shutdown(self) -> None:
-        self._flower_broker.close()
+        if self._broker is not None:
+            self._broker.close()
+            self._broker = None
         self._is_initialized = False
 
 
