@@ -284,12 +284,15 @@ Your Ray Data processing pipeline can easily scale up to process more images. By
 
 
 ```python
-import os
-
 # The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset has ~5M images
 # Configure how many images to process (default: 1M for demonstration).
 print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
 ds_large = ds.limit(1_000_000)
+
+# As we increase our compute, we can increase the number of partitions for more parallelism
+num_partitions_large = 128
+print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
+ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 ```
 
 You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Qwen-VL model and fits in a single L4 GPU.

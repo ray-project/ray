@@ -257,6 +257,11 @@ import os
 # Configure how many images to process (default: 1M for demonstration).
 print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
 ds_large = ds.limit(1_000_000)
+
+# As we increase our compute, we can increase the number of partitions for more parallelism
+num_partitions_large = 256
+print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
+ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 ```
 
 You can scale the number of concurrent workers based on the compute available in your cluster. In this case, each replica is a copy of your Llama model and fits in a single L4 GPU.

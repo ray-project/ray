@@ -19,7 +19,7 @@ print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
 ds_large = ds.limit(1_000_000)
 
 # Repartition the dataset to increase parallelism across multiple workers.
-num_partitions_large = 128
+num_partitions_large = 256
 print(f"Repartitioning dataset into {num_partitions_large} blocks...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 

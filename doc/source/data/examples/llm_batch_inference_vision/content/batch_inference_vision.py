@@ -19,8 +19,11 @@ print("Dataset loaded successfully.")
 print("Limiting dataset to 10,000 images for initial processing.")
 ds_small = ds.limit(10_000)
 
-# Repartition the dataset to increase parallelism across multiple workers.
-num_partitions = 128
+# Repartition the dataset to enable parallelism across multiple workers (GPUs).
+# By default, streaming datasets might not be optimally partitioned. Repartitioning
+# splits the data into a specified number of blocks, allowing Ray to process them
+# in parallel.
+num_partitions = 64
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
 
@@ -28,7 +31,7 @@ ds_small = ds_small.repartition(num_blocks=num_partitions)
 processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
-        max_model_len=8192,
+        max_model_len=8192
     ),
     batch_size=16,
     accelerator_type="L4",
@@ -39,9 +42,10 @@ processor_config = vLLMEngineProcessorConfig(
 
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
-    # Convert bytes image to PIL
+    # Convert bytes image to PIL 
     image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
+    # Resize for consistency + predictable vision-token budget
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
@@ -71,7 +75,6 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         ),
     )
 
-
 # Postprocess function extracts the generated caption.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -98,6 +101,6 @@ processed_small = processed_small.materialize()
 
 # Display the first 3 entries to verify the output.
 sampled = processed_small.take(3)
-print("\n==================GENERATED OUTPUT===============\n")
+print("\n==================GENERATED CAPTIONS===============\n")
 pprint(sampled)
 

@@ -1,4 +1,3 @@
-import os
 from typing import Any
 from io import BytesIO
 
@@ -16,8 +15,6 @@ hf_dataset = hf_dataset.select_columns(["jpg"])
 ds = ray.data.from_huggingface(hf_dataset)
 print("Dataset loaded successfully.")
 
-
-# The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset contains ~5M of images.
 # Configure how many images to process (default: 1M for demonstration).
 print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
 ds_large = ds.limit(1_000_000)
@@ -42,9 +39,10 @@ processor_config_large = vLLMEngineProcessorConfig(
 
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
-    # Convert bytes image to PIL
+    # Convert bytes image to PIL 
     image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
+    # Resize for consistency + predictable vision-token budget
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
@@ -74,7 +72,6 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         ),
     )
 
-
 # Postprocess function extracts the generated caption.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -91,12 +88,12 @@ processor_large = build_llm_processor(
     postprocess=postprocess,
 )
 
-# Run the same processor on the larger dataset.
+
+# Run the compute-scaled processor on the larger dataset.
 processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
-# Display the first 3 entries to verify the output.
-sampled = processed_large.take(3)
-print("\n==================GENERATED OUTPUT===============\n")
-pprint(sampled)
+print(f"\nProcessed {processed_large.count()} images successfully.")
+print("\nSample outputs:")
+pprint(processed_large.take(3))
 

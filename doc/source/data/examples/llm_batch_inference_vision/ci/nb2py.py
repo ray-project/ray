@@ -19,27 +19,8 @@ def convert_notebook(
                 continue
 
             lines = cell.source.splitlines()
-            # Skip cells that load or autoreload extensions
-            if any(
-                l.strip().startswith("%load_ext autoreload")
-                or l.strip().startswith("%autoreload all")
-                for l in lines
-            ):
-                continue
 
-            # Detect a %%bash cell or % command cell
-            if lines and (lines[0].strip().startswith("%%bash") or lines[0].strip().startswith("%")):
-                if ignore_cmds:
-                    continue
-                bash_script = "\n".join(lines[1:]).rstrip()
-                out.write("import subprocess\n")
-                out.write(
-                    f"subprocess.run(r'''{bash_script}''',\n"
-                    "               shell=True,\n"
-                    "               check=True,\n"
-                    "               executable='/bin/bash')\n\n"
-                )
-            else:
+            if lines:
                 # Detect any IPython '!' shell commands in code lines
                 has_bang = any(line.lstrip().startswith("!") for line in lines)
                 # Start with "serve run" "serve shutdown" "curl" or "anyscale service" commands
