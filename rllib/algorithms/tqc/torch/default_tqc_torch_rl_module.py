@@ -5,11 +5,11 @@ PyTorch implementation of the TQC RLModule.
 from typing import Any, Dict
 
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS, QF_TARGET_NEXT
+from ray.rllib.algorithms.tqc.default_tqc_rl_module import DefaultTQCRLModule
 from ray.rllib.algorithms.tqc.tqc_catalog import TQCCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import ENCODER_OUT
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -17,9 +17,7 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-class DefaultTQCTorchRLModule(
-    TorchRLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI
-):
+class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
     """PyTorch implementation of the TQC RLModule.
 
     TQC uses multiple quantile critics, each outputting n_quantiles values.
@@ -33,29 +31,17 @@ class DefaultTQCTorchRLModule(
             catalog_class = TQCCatalog
         super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
-    @override(TorchRLModule)
+    @override(DefaultTQCRLModule)
     def setup(self):
-        # Call parent setup to initialize TQC-specific parameters
+        # Call parent setup to initialize TQC-specific parameters and build networks
         super().setup()
 
-        # Build the policy encoder
-        self.pi_encoder = self.catalog.build_encoder(framework=self.framework)
-
+        # Convert lists to nn.ModuleList for proper PyTorch parameter tracking
         if not self.inference_only or self.framework != "torch":
-            # Build multiple Q-function encoders and heads
-            self.qf_encoders = nn.ModuleList()
-            self.qf_heads = nn.ModuleList()
+            self.qf_encoders = nn.ModuleList(self.qf_encoders)
+            self.qf_heads = nn.ModuleList(self.qf_heads)
 
-            for i in range(self.n_critics):
-                qf_encoder = self.catalog.build_qf_encoder(framework=self.framework)
-                qf_head = self.catalog.build_qf_head(framework=self.framework)
-                self.qf_encoders.append(qf_encoder)
-                self.qf_heads.append(qf_head)
-
-        # Build the policy head
-        self.pi = self.catalog.build_pi_head(framework=self.framework)
-
-    @override(TargetNetworkAPI)
+    @override(DefaultTQCRLModule)
     def make_target_networks(self):
         """Creates target networks for all quantile critics."""
         self.target_qf_encoders = nn.ModuleList()
@@ -66,29 +52,6 @@ class DefaultTQCTorchRLModule(
             target_head = make_target_network(self.qf_heads[i])
             self.target_qf_encoders.append(target_encoder)
             self.target_qf_heads.append(target_head)
-
-    @override(InferenceOnlyAPI)
-    def get_non_inference_attributes(self):
-        """Returns attributes not needed for inference."""
-        return [
-            "qf_encoders",
-            "qf_heads",
-            "target_qf_encoders",
-            "target_qf_heads",
-        ]
-
-    @override(TargetNetworkAPI)
-    def get_target_network_pairs(self):
-        """Returns pairs of (network, target_network) for updating targets."""
-        pairs = []
-        for i in range(self.n_critics):
-            pairs.append((self.qf_encoders[i], self.target_qf_encoders[i]))
-            pairs.append((self.qf_heads[i], self.target_qf_heads[i]))
-        return pairs
-
-    @override(TorchRLModule)
-    def get_initial_state(self) -> dict:
-        return {}
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
@@ -218,7 +181,7 @@ class DefaultTQCTorchRLModule(
         # Stack: (batch, n_critics, n_quantiles)
         return torch.stack(quantiles_list, dim=1)
 
-    @override(QNetAPI)
+    @override(DefaultTQCRLModule)
     def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         """Computes Q-values (mean of quantiles) for the given batch.
 
@@ -237,7 +200,7 @@ class DefaultTQCTorchRLModule(
         # Return mean across all quantiles and critics
         return quantiles.mean(dim=(1, 2))
 
-    @override(TargetNetworkAPI)
+    @override(DefaultTQCRLModule)
     def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         """Forward pass through target networks.
 
