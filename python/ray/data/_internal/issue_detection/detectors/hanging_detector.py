@@ -2,7 +2,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 import ray
 from ray.data._internal.issue_detection.issue_detector import (
@@ -156,11 +156,18 @@ class HangingExecutionIssueDetector(IssueDetector):
                     ):
                         task_state = None
                         try:
-                            task_state = ray.util.state.get_task(
+                            task_state: Union[
+                                TaskState, List[TaskState]
+                            ] = ray.util.state.get_task(
                                 task_info.task_id.hex(),
                                 timeout=1.0,
                                 _explain=True,
                             )
+                            if isinstance(task_state, list):
+                                # get the latest task
+                                task_state = max(
+                                    task_state, key=lambda ts: ts.attempt_number
+                                )
                         except Exception as e:
                             logger.debug(
                                 f"Failed to grab task state with task_index={task_idx}, task_id={task_info.task_id}: {e}"
