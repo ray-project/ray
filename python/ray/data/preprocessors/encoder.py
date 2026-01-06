@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Threshold for switching between Python dict and PyArrow pc.index_in
 # Below this: Python dict is faster (avoids hash table rebuild overhead)
 # Above this: PyArrow is faster (vectorized C++ amortizes overhead)
-_ARROW_VECTORIZED_THRESHOLD = 10000
+_ARROW_VECTORIZED_THRESHOLD = 50
 
 
 @PublicAPI(stability="alpha")
@@ -214,7 +214,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         - Large batches (>= threshold): Use PyArrow's vectorized pc.index_in
         - Small batches (< threshold): Use cached Python dict lookup
 
-        The threshold is defined by _ARROW_VECTORIZED_THRESHOLD (default 10000).
+        The threshold is defined by _ARROW_VECTORIZED_THRESHOLD (default 50).
         """
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
