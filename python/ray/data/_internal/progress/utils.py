@@ -92,14 +92,18 @@ def get_progress_manager(
                 "enable_rich_progress_bars = True` and `ray.data."
                 "DataContext.get_current().use_ray_tqdm = False`."
             )
-        return TqdmExecutionProgressManager(dataset_id, topology, show_op_progress)
+        return TqdmExecutionProgressManager(
+            dataset_id, topology, show_op_progress, verbose_progress
+        )
     else:
         try:
             from ray.data._internal.progress.rich_progress import (
                 RichExecutionProgressManager,
             )
 
-            return RichExecutionProgressManager(dataset_id, topology, show_op_progress)
+            return RichExecutionProgressManager(
+                dataset_id, topology, show_op_progress, verbose_progress
+            )
         except ImportError:
             print("[dataset]: Run `pip install rich` to enable progress reporting.")
             return NoopExecutionProgressManager(
