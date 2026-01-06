@@ -40,6 +40,7 @@ class Read(
         super().__init__(
             name=f"Read{datasource.get_name()}",
             input_op=None,
+            can_modify_num_rows=True,
             num_outputs=num_outputs,
             ray_remote_args=ray_remote_args,
             compute=compute,
@@ -195,8 +196,3 @@ class Read(
         clone._datasource_or_legacy_reader = predicated_datasource
 
         return clone
-
-    def can_modify_num_rows(self) -> bool:
-        # NOTE: Returns true, since most of the readers expands its input
-        #       and produce many rows for every single row of the input
-        return True
