@@ -441,6 +441,38 @@ def test_ordinal_encoder_arrow_array_caching():
     assert values1.to_pylist() == [0, 1, 2]
 
 
+def test_ordinal_encoder_cache_invalidation_on_refit():
+    """Test that Arrow array cache is invalidated when encoder is re-fitted."""
+    encoder = OrdinalEncoder(["col"])
+
+    # First fit: a=0, b=1
+    encoder.stats_ = {
+        "unique_values(col)": (pa.array(["a", "b"]), pa.array([0, 1], type=pa.int64()))
+    }
+    encoder._fitted = True
+
+    table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
+    result1 = encoder._transform_arrow(table1)
+    assert result1.column("col").to_pylist() == [0, 1]
+    assert hasattr(encoder, "_arrow_arrays_col")
+
+    # Simulate re-fit by calling _clear_arrow_cache (called by _fit)
+    encoder._clear_arrow_cache()
+    assert not hasattr(encoder, "_arrow_arrays_col")
+
+    encoder.stats_ = {
+        "unique_values(col)": (
+            pa.array(["x", "y", "z"]),
+            pa.array([0, 1, 2], type=pa.int64()),
+        )
+    }
+
+    # Transform with new values should use fresh stats, not stale cache
+    table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
+    result2 = encoder._transform_arrow(table2)
+    assert result2.column("col").to_pylist() == [0, 1, 2]
+
+
 def test_ordinal_encoder_encode_column_vectorized():
     """Test _encode_column_vectorized method directly."""
     encoder = OrdinalEncoder(["col"])

@@ -142,6 +142,9 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
+        # Clear cached Arrow arrays from any previous fit
+        self._clear_arrow_cache()
+
         self.stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
@@ -155,6 +158,13 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             columns=self.columns,
         )
         return self
+
+    def _clear_arrow_cache(self):
+        """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
+        for col in self.columns:
+            cache_key = f"_arrow_arrays_{col}"
+            if hasattr(self, cache_key):
+                delattr(self, cache_key)
 
     def _get_ordinal_map(self, column_name: str) -> Dict[Any, int]:
         """Get the ordinal mapping for a column as a dict.
