@@ -4,6 +4,7 @@ import sys
 import pytest
 
 import ray
+from ray.tests.conftest import _ray_start_cluster
 from ray.train import RunConfig, ScalingConfig, UserCallback
 from ray.train.v2._internal.constants import (
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -15,24 +16,24 @@ assert is_v2_enabled()
 
 
 @pytest.fixture
-def ray_tpu_single_host(ray_start_cluster):
+def ray_tpu_single_host():
     """Start a mock single-host TPU Ray cluster with 2x4 v6e (8 chips per host)."""
-    cluster = ray_start_cluster
-    # Simulate one node with 8 TPU chips.
-    cluster.add_node(
-        num_cpus=4,
-        resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
-        env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
-    )
+    with _ray_start_cluster() as cluster:
+        # Simulate one node with 8 TPU chips.
+        cluster.add_node(
+            num_cpus=4,
+            resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
+            env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
+        )
 
-    ray.init(address=cluster.address)
+        ray.init(address=cluster.address)
 
-    yield cluster
-    ray.shutdown()
+        yield cluster
+        ray.shutdown()
 
 
-@pytest.fixture
-def ray_tpu_multi_host(ray_start_cluster):
+@pytest.fixture(scope="module")
+def ray_tpu_multi_host():
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
     """
@@ -40,90 +41,89 @@ def ray_tpu_multi_host(ray_start_cluster):
     pod_type = "v4-16"
     topology = "2x2x2"
 
-    cluster = ray_start_cluster
+    with _ray_start_cluster() as cluster:
+        # First TPU slice - v4-16 with 2 hosts and 4 chips/host.
+        slice_a_head_env = {
+            "TPU_NAME": "slice-A",
+            "TPU_WORKER_ID": "0",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_a_head_labels = {
+            "ray.io/tpu-slice-name": "slice-A",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+        }
+        slice_a_worker_env = {
+            "TPU_NAME": "slice-A",
+            "TPU_WORKER_ID": "1",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_a_worker_labels = {
+            "ray.io/tpu-slice-name": "slice-A",
+            "ray.io/tpu-worker-id": "1",
+            "ray.io/tpu-pod-type": pod_type,
+        }
+        cluster.add_node(
+            num_cpus=8,
+            resources={
+                "TPU": 4,
+                f"TPU-{pod_type}-head": 1,
+                "accelerator_type:TPU-V4": 1,
+            },
+            env_vars=slice_a_head_env,
+            labels=slice_a_head_labels,
+        )
+        cluster.add_node(
+            num_cpus=8,
+            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            env_vars=slice_a_worker_env,
+            labels=slice_a_worker_labels,
+        )
+        # Second TPU slice - v4-16 with 2 hosts and 4 chips/host.
+        slice_b_head_env = {
+            "TPU_NAME": "slice-B",
+            "TPU_WORKER_ID": "0",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_b_head_labels = {
+            "ray.io/tpu-slice-name": "slice-B",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+        }
+        slice_b_worker_env = {
+            "TPU_NAME": "slice-B",
+            "TPU_WORKER_ID": "1",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        slice_b_worker_labels = {
+            "ray.io/tpu-slice-name": "slice-B",
+            "ray.io/tpu-worker-id": "1",
+            "ray.io/tpu-pod-type": pod_type,
+        }
+        cluster.add_node(
+            num_cpus=8,
+            resources={
+                "TPU": 4,
+                f"TPU-{pod_type}-head": 1,
+                "accelerator_type:TPU-V4": 1,
+            },
+            env_vars=slice_b_head_env,
+            labels=slice_b_head_labels,
+        )
+        cluster.add_node(
+            num_cpus=8,
+            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            env_vars=slice_b_worker_env,
+            labels=slice_b_worker_labels,
+        )
 
-    # First TPU slice - v4-16 with 2 hosts and 4 chips/host.
-    slice_a_head_env = {
-        "TPU_NAME": "slice-A",
-        "TPU_WORKER_ID": "0",
-        "TPU_ACCELERATOR_TYPE": pod_type,
-        "TPU_TOPOLOGY": topology,
-    }
-    slice_a_head_labels = {
-        "ray.io/tpu-slice-name": "slice-A",
-        "ray.io/tpu-worker-id": "0",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    slice_a_worker_env = {
-        "TPU_NAME": "slice-A",
-        "TPU_WORKER_ID": "1",
-        "TPU_ACCELERATOR_TYPE": pod_type,
-        "TPU_TOPOLOGY": topology,
-    }
-    slice_a_worker_labels = {
-        "ray.io/tpu-slice-name": "slice-A",
-        "ray.io/tpu-worker-id": "1",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    cluster.add_node(
-        num_cpus=8,
-        resources={
-            "TPU": 4,
-            f"TPU-{pod_type}-head": 1,
-            "accelerator_type:TPU-V4": 1,
-        },
-        env_vars=slice_a_head_env,
-        labels=slice_a_head_labels,
-    )
-    cluster.add_node(
-        num_cpus=8,
-        resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
-        env_vars=slice_a_worker_env,
-        labels=slice_a_worker_labels,
-    )
-    # Second TPU slice - v4-16 with 2 hosts and 4 chips/host.
-    slice_b_head_env = {
-        "TPU_NAME": "slice-B",
-        "TPU_WORKER_ID": "0",
-        "TPU_ACCELERATOR_TYPE": pod_type,
-        "TPU_TOPOLOGY": topology,
-    }
-    slice_b_head_labels = {
-        "ray.io/tpu-slice-name": "slice-B",
-        "ray.io/tpu-worker-id": "0",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    slice_b_worker_env = {
-        "TPU_NAME": "slice-B",
-        "TPU_WORKER_ID": "1",
-        "TPU_ACCELERATOR_TYPE": pod_type,
-        "TPU_TOPOLOGY": topology,
-    }
-    slice_b_worker_labels = {
-        "ray.io/tpu-slice-name": "slice-B",
-        "ray.io/tpu-worker-id": "1",
-        "ray.io/tpu-pod-type": pod_type,
-    }
-    cluster.add_node(
-        num_cpus=8,
-        resources={
-            "TPU": 4,
-            f"TPU-{pod_type}-head": 1,
-            "accelerator_type:TPU-V4": 1,
-        },
-        env_vars=slice_b_head_env,
-        labels=slice_b_head_labels,
-    )
-    cluster.add_node(
-        num_cpus=8,
-        resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
-        env_vars=slice_b_worker_env,
-        labels=slice_b_worker_labels,
-    )
-
-    ray.init(address=cluster.address)
-    yield cluster
-    ray.shutdown()
+        ray.init(address=cluster.address)
+        yield cluster
+        ray.shutdown()
 
 
 @pytest.fixture(autouse=True)
