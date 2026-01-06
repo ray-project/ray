@@ -49,7 +49,11 @@ class JaxTrainer(DataParallelTrainer):
                 train_loop_per_worker=train_loop_per_worker,
                 train_loop_config={"argv": absolute_argv},
                 scaling_config=ScalingConfig(
+                    use_tpu=True,
+                    num_workers=4,
                     accelerator_type="TPU-V6E",
+                    resources_per_worker={"TPU": 4},
+                    placement_strategy="SPREAD",
                     topology="4x4",
                 ),
                 run_config=RunConfig(

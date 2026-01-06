@@ -121,7 +121,7 @@ def get_tpu_num_slices_for_workers(
         if workers_per_slice == 0:
             return 1
 
-        return math.ceil(num_workers / workers_per_slice)
+        return max(1, math.ceil(num_workers / workers_per_slice))
     except Exception:
         # Fallback to 1 if calculation fails.
         return 1

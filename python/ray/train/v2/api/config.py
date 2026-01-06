@@ -71,26 +71,79 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
-    num_workers: Optional[int] = None
     label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
-    accelerator_type: Optional[str] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
-        if self.use_tpu and self.num_workers is None:
+        self._validate_tpu_config()
+
+        if (
+            isinstance(self.label_selector, list)
+            and isinstance(self.num_workers, int)
+            and len(self.label_selector) != self.num_workers
+        ):
             raise ValueError(
-                "`num_workers` must be specified in ScalingConfig when `use_tpu=True`. "
-                "Please explicitly set the number of workers."
+                "If `label_selector` is a list, it must be the same length as `num_workers`."
             )
 
+        if self.num_workers == 0:
+            logger.info(
+                "Running in local mode. The training function will run in the same process. "
+                "If you are using it and running into issues please file a report at "
+                "https://github.com/ray-project/ray/issues."
+            )
+
+        super().__post_init__()
+
+    def _validate_tpu_config(self):
+        """Validates configuration specifically for TPU usage."""
+
+        if self.use_gpu and self.use_tpu:
+            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
+
+        if not self.use_tpu:
+            if self.num_tpus_per_worker > 0:
+                raise ValueError(
+                    "`use_tpu` is False but `TPU` was found in "
+                    "`resources_per_worker`. Either set `use_tpu` to True or "
+                    "remove `TPU` from `resources_per_worker."
+                )
+            # If not using TPU, we are done validating TPU-specific logic.
+            return
+
+        if self.num_tpus_per_worker == 0:
+            raise ValueError(
+                "`use_tpu` is True but `TPU` is set to 0 in "
+                "`resources_per_worker`. Either set `use_tpu` to False or "
+                "request a positive number of `TPU` in "
+                "`resources_per_worker."
+            )
+
+        if self.num_workers > 1:
+            if not self.topology:
+                raise ValueError(
+                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
+                    " and `num_workers` > 1."
+                )
+            if not self.accelerator_type:
+                raise ValueError(
+                    "`accelerator_type` must be specified in ScalingConfig when "
+                    "`use_tpu=True` and `num_workers` > 1."
+                )
+            if self.label_selector:
+                raise ValueError(
+                    "Cannot set `label_selector` when `use_tpu=True` because "
+                    "Ray Train automatically reserves a TPU slice with a predefined label."
+                )
+
         # Validate TPU resources when both topology and accelerator type are specified.
-        if self.use_tpu and self.topology and self.accelerator_type:
+        if self.topology and self.accelerator_type:
             try:
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
@@ -115,63 +168,6 @@ class ScalingConfig(ScalingConfigV1):
 
             if self.resources_per_worker is None:
                 self.resources_per_worker = tpu_resources
-
-        if self.use_gpu and self.use_tpu:
-            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
-
-        if not self.use_tpu and self.num_tpus_per_worker > 0:
-            raise ValueError(
-                "`use_tpu` is False but `TPU` was found in "
-                "`resources_per_worker`. Either set `use_tpu` to True or "
-                "remove `TPU` from `resources_per_worker."
-            )
-
-        if self.use_tpu and self.num_tpus_per_worker == 0:
-            raise ValueError(
-                "`use_tpu` is True but `TPU` is set to 0 in "
-                "`resources_per_worker`. Either set `use_tpu` to False or "
-                "request a positive number of `TPU` in "
-                "`resources_per_worker."
-            )
-
-        # Default num_workers if not set by user.
-        if self.num_workers is None:
-            self.num_workers = 1
-
-        if self.use_tpu and self.num_workers > 1:
-            if not self.topology:
-                raise ValueError(
-                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
-                    " and `num_workers` > 1."
-                )
-            if not self.accelerator_type:
-                raise ValueError(
-                    "`accelerator_type` must be specified in ScalingConfig when "
-                    "`use_tpu=True` and `num_workers` > 1."
-                )
-            if self.label_selector:
-                raise ValueError(
-                    "Cannot set `label_selector` when `use_tpu=True` because "
-                    "Ray Train automatically reserves a TPU slice with a predefined label."
-                )
-
-        if (
-            isinstance(self.label_selector, list)
-            and isinstance(self.num_workers, int)
-            and len(self.label_selector) != self.num_workers
-        ):
-            raise ValueError(
-                "If `label_selector` is a list, it must be the same length as `num_workers`."
-            )
-
-        if self.num_workers == 0:
-            logger.info(
-                "Running in local mode. The training function will run in the same process. "
-                "If you are using it and running into issues please file a report at "
-                "https://github.com/ray-project/ray/issues."
-            )
-
-        super().__post_init__()
 
     @property
     def _resources_per_worker_not_none(self):
