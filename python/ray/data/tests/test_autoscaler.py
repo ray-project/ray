@@ -217,7 +217,7 @@ def test_actor_pool_scaling():
             expected_reason="exceeded resource limits",
         )
 
-    # Should no-op because the op has no budget.
+    # Should no-op because the op has not received any inputs.
     with patch(op.metrics, "num_inputs_received", 0, is_method=False):
         assert_autoscaling_action(
             delta=0,
