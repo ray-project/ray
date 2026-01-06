@@ -21,7 +21,6 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone as tz
 from typing import List, Optional
 
 import click
@@ -85,7 +84,6 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
     branch = os.environ.get("BUILDKITE_BRANCH", "")
     commit = os.environ.get("BUILDKITE_COMMIT", "")[:6]
     rayci_build_id = os.environ.get("RAYCI_BUILD_ID", "")
-    formatted_date = datetime.now(tz.utc).strftime("%y%m%d")
 
     py_tag = _format_python_version_tag(python_version)
     platform_tag = _format_platform_tag(platform)
@@ -119,11 +117,15 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
 def _get_wanda_image_name(
     python_version: str, platform: str, image_type: str
 ) -> str:
-    """Get the wanda-cached image name."""
+    """Get the wanda-cached image name.
+
+    Platform is passed with "cu" prefix (e.g., "cu12.3.2-cudnn9") or "cpu".
+    """
     if platform == "cpu":
         return f"{image_type}-anyscale-py{python_version}-cpu"
     else:
-        return f"{image_type}-anyscale-py{python_version}-cu{platform}"
+        # Platform already includes "cu" prefix from pipeline matrix
+        return f"{image_type}-anyscale-py{python_version}-{platform}"
 
 
 def _run_shell_command(cmd: str, dry_run: bool = False) -> None:
