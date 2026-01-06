@@ -73,9 +73,9 @@ class AnyscaleJobRunner(CommandRunner):
     ):
         super().__init__(
             cluster_manager=cluster_manager,
-            file_manager=file_manager,
             working_dir=working_dir,
         )
+        self.file_manager = file_manager
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 

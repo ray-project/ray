@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._private.ray_constants import env_bool, env_float
+from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -52,14 +53,14 @@ class ResourceManager:
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is enabled.
+    # when `OpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
         "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
     )
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is not enabled.
+    # when `OpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION = 0.25
 
     def __init__(
@@ -88,12 +89,9 @@ class ResourceManager:
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
 
-        self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-
-        if data_context.op_resource_reservation_enabled:
-            self._op_resource_allocator = ReservationOpResourceAllocator(
-                self, data_context.op_resource_reservation_ratio
-            )
+        self._op_resource_allocator: Optional[
+            "OpResourceAllocator"
+        ] = create_resource_allocator(self, data_context)
 
         self._object_store_memory_limit_fraction = (
             data_context.override_object_store_memory_limit_fraction
@@ -326,11 +324,7 @@ class ResourceManager:
         return self._op_resource_allocator
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(
-            op,
-            task_resource_usage=self._op_usages,
-            output_object_store_usage=self._mem_op_outputs,
-        )
+        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the budget for the given operator, or None if the operator
@@ -508,13 +502,7 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def max_task_output_bytes_to_read(
-        self,
-        op: PhysicalOperator,
-        *,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        output_object_store_usage: Dict[PhysicalOperator, int],
-    ) -> Optional[int]:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
         ...
@@ -760,13 +748,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
-    def max_task_output_bytes_to_read(
-        self,
-        op: PhysicalOperator,
-        *,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        output_object_store_usage: Dict[PhysicalOperator, int],
-    ) -> Optional[int]:
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
         res = self._op_budgets[op].object_store_memory
@@ -879,27 +861,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 to_borrow,
             )
 
-            if (
-                max_resource_usage != ExecutionResources.inf()
-                and max_resource_usage.gpu > 0
-            ):
-                # If an operator needs GPU, we just allocate all GPUs to it.
-                # TODO(hchen): allocate resources across multiple GPU operators.
-
-                # The op_usage can be more than the global limit in the following cases:
-                # 1. The op is setting a minimum concurrency that is larger than
-                #    available num of GPUs.
-                # 2. The cluster scales down, and the global limit decreases.
-                target_num_gpu = max(
-                    limits.gpu - self._resource_manager.get_op_usage(op).gpu,
-                    0,
-                )
-            else:
-                target_num_gpu = 0
-
-            self._op_budgets[op] = (
-                self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
-            )
+            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
         # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
@@ -907,9 +869,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             for op in reversed(eligible_ops):
                 _, max_resource_usage = op.min_max_resource_requirements()
                 if max_resource_usage == ExecutionResources.inf():
-                    self._op_budgets[op] = self._op_budgets[op].add(
-                        remaining_shared.copy(gpu=0)
-                    )
+                    self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
                     break
 
         # A materializing operator like `AllToAllOperator` waits for all its input
