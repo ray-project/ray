@@ -151,6 +151,9 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
+            # When reaching SGLangEngineStageUDF, this kwargs has been inserted by the processor
+            # even though it is unset in the processor config.
+            "task": SGLangTaskType.GENERATE,
         },
     )
 

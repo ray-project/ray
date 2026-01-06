@@ -21,16 +21,26 @@ class AbstractOneToOne(LogicalOperator):
         self,
         name: str,
         input_op: Optional[LogicalOperator],
+        can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
     ):
-        """
+        """Initialize an AbstractOneToOne operator.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
+            can_modify_num_rows: Whether the UDF can change the row count. False if
+                # of input rows = # of output rows. True otherwise.
+            num_outputs: If known, the number of blocks produced by this operator.
         """
-        super().__init__(name, [input_op] if input_op else [], num_outputs)
+        super().__init__(
+            name=name,
+            input_dependencies=[input_op] if input_op else [],
+            num_outputs=num_outputs,
+        )
+        self._can_modify_num_rows = can_modify_num_rows
 
     @property
     def input_dependency(self) -> LogicalOperator:
@@ -39,7 +49,7 @@ class AbstractOneToOne(LogicalOperator):
     def can_modify_num_rows(self) -> bool:
         """Whether this operator can modify the number of rows,
         i.e. number of input rows != number of output rows."""
-        ...
+        return self._can_modify_num_rows
 
 
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
@@ -52,12 +62,10 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     ):
         super().__init__(
             f"limit={limit}",
-            input_op,
+            input_op=input_op,
+            can_modify_num_rows=True,
         )
         self._limit = limit
-
-    def can_modify_num_rows(self) -> bool:
-        return True
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -107,7 +115,7 @@ class Download(AbstractOneToOne):
         output_bytes_column_names: List[str],
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("Download", input_op)
+        super().__init__("Download", input_op, can_modify_num_rows=False)
         if len(uri_column_names) != len(output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(uri_column_names)}) must match "
@@ -116,9 +124,6 @@ class Download(AbstractOneToOne):
         self._uri_column_names = uri_column_names
         self._output_bytes_column_names = output_bytes_column_names
         self._ray_remote_args = ray_remote_args or {}
-
-    def can_modify_num_rows(self) -> bool:
-        return False
 
     @property
     def uri_column_names(self) -> List[str]:
