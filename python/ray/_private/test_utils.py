@@ -30,6 +30,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
@@ -39,7 +40,6 @@ from ray._private import (
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
-import ray.dashboard.consts as dashboard_consts
 from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
@@ -430,7 +430,7 @@ def wait_for_dashboard_agent_available(cluster):
         if node_info.get("metrics_agent_port", 0) > 0:
             return node_info
         return None
-    
+
     wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
