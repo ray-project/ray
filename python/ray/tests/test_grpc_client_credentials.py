@@ -20,7 +20,7 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
         def __init__(self, conn_str, credentials, options, compression):
             self.credentials = credentials
 
-        def subscribe(self, f):
+        def subscribe(self, f, try_to_connect=False):
             raise Stop(self.credentials)
 
     def mock_secure_channel(conn_str, credentials, options=None, compression=None):

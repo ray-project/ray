@@ -17,6 +17,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 import ray
 from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
@@ -257,7 +260,10 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     b = f.options(resources={"a": 1})  # noqa
 
     # Make a request to the dashboard to produce some dashboard metrics
-    requests.get(f"http://{ray_context.dashboard_url}/nodes")
+    requests.get(
+        f"http://{ray_context.dashboard_url}/nodes",
+        headers=get_auth_headers_if_auth_enabled({}),
+    )
 
     node_info_list = ray.nodes()
     prom_addresses = []

@@ -5,6 +5,9 @@ import pytest
 import requests
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -35,7 +38,10 @@ def test_get_train_runs(ray_start_8_cpus):
 
     # Call the train run api
     url = ray._private.worker.get_dashboard_url()
-    resp = requests.get("http://" + url + "/api/train/v2/runs")
+    resp = requests.get(
+        "http://" + url + "/api/train/v2/runs",
+        headers=get_auth_headers_if_auth_enabled({}),
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["train_runs"]) == 1
@@ -48,7 +54,10 @@ def test_add_actor_status(ray_start_8_cpus):
 
     def check_actor_status(expected_actor_status):
         url = ray._private.worker.get_dashboard_url()
-        resp = requests.get("http://" + url + "/api/train/v2/runs")
+        resp = requests.get(
+            "http://" + url + "/api/train/v2/runs",
+            headers=get_auth_headers_if_auth_enabled({}),
+        )
         assert resp.status_code == 200
         body = resp.json()
 

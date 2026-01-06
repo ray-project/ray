@@ -7,6 +7,9 @@ import os
 import pytest
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
@@ -62,7 +65,10 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     obj_refs = [t.remote(), a.run.remote()]
 
     # Make a request to the dashboard to produce some dashboard metrics
-    requests.get(f"http://{ray_context.dashboard_url}/nodes")
+    requests.get(
+        f"http://{ray_context.dashboard_url}/nodes",
+        headers=get_auth_headers_if_auth_enabled({}),
+    )
 
     node_info_list = ray.nodes()
     prom_addresses = []
