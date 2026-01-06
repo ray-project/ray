@@ -20,7 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -30,6 +30,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
@@ -39,7 +40,7 @@ from ray._private import (
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
-from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
+from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     gcs_service_pb2,
@@ -397,6 +398,26 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    """Get dashboard agent address from GcsNodeInfo.
+
+    Returns the agent address string in format "{ip}:{grpc_port}" or None if not found.
+    """
+    from ray import NodeID
+
+    node_id_obj = NodeID.from_hex(node_id)
+    node_info_dict = gcs_client.get_all_node_info(
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
+    )
+    if node_id_obj not in node_info_dict:
+        return None
+    node_info = node_info_dict[node_id_obj]
+    if node_info.metrics_agent_port <= 0:
+        return None
+    return f"{node_info.node_manager_address}:{node_info.metrics_agent_port}"
+
+
 def wait_for_dashboard_agent_available(cluster):
     from ray._private.services import get_node
 
@@ -411,6 +432,38 @@ def wait_for_dashboard_agent_available(cluster):
         return None
 
     wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+
+
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):

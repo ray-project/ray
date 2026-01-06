@@ -469,6 +469,27 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     ), f"Job should succeed, got status: {final_status}"
 
 
+def test_logs_api_with_token_auth(setup_cluster_with_token_auth):
+    """Test that log APIs work with token authentication enabled."""
+    from ray.util.state import get_log, list_logs
+
+    # Get node ID for log queries
+    node_id = ray.nodes()[0]["NodeID"]
+
+    # Test list_logs() with valid auth
+    logs = list_logs(node_id=node_id)
+    assert isinstance(logs, dict), f"list_logs should return a dict, got {type(logs)}"
+
+    # Test get_log() with valid auth (fetch raylet.out which will always exist)
+    chunks_received = 0
+    for chunk in get_log(filename="raylet.out", node_id=node_id, tail=10):
+        assert isinstance(chunk, str), f"get_log chunk should be str, got {type(chunk)}"
+        chunks_received += 1
+        break
+
+    assert chunks_received > 0, "Should have received at least one log chunk"
+
+
 @pytest.mark.skipif(
     client_test_enabled(),
     reason="Uses subprocess ray CLI, not compatible with client mode",
