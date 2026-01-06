@@ -710,18 +710,30 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
 
 
 def _get_dashboard_agent_address(cluster_info):
-    """Get the dashboard agent HTTP address from a running cluster."""
+    """Get the dashboard agent HTTP address from a running cluster.
+
+    Returns None on any error, allowing wait_for_condition to retry.
+    """
     import json
 
-    # Get agent address from internal KV
-    node_id = ray.nodes()[0]["NodeID"]
-    key = f"DASHBOARD_AGENT_ADDR_{node_id}"
-    agent_addr = ray.experimental.internal_kv._internal_kv_get(
-        key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
-    )
-    if agent_addr:
-        ip, http_port, grpc_port = json.loads(agent_addr)
-        return f"http://{ip}:{http_port}"
+    import ray.dashboard.consts as dashboard_consts
+
+    try:
+        # Get agent address from internal KV
+        nodes = ray.nodes()
+        if not nodes:
+            return None
+        node_id = nodes[0]["NodeID"]
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
+        agent_addr = ray.experimental.internal_kv._internal_kv_get(
+            key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
+        )
+        if agent_addr:
+            ip, http_port, grpc_port = json.loads(agent_addr)
+            return f"http://{ip}:{http_port}"
+    except Exception:
+        # Return None on any error to allow wait_for_condition to retry
+        pass
     return None
 
 
