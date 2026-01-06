@@ -725,6 +725,16 @@ def _get_dashboard_agent_address(cluster_info):
     return None
 
 
+def _wait_and_get_dashboard_agent_address(cluster_info, timeout=30):
+    """Waits for the dashboard agent address to become available and returns it."""
+
+    def agent_address_is_available():
+        return _get_dashboard_agent_address(cluster_info) is not None
+
+    wait_for_condition(agent_address_is_available, timeout=timeout)
+    return _get_dashboard_agent_address(cluster_info)
+
+
 @pytest.mark.parametrize(
     "token_type,expected_status",
     [
@@ -742,13 +752,7 @@ def test_dashboard_agent_auth(
 
     cluster_info = setup_cluster_with_token_auth
 
-    # Wait for agent address to be available
-    def get_agent_address():
-        addr = _get_dashboard_agent_address(cluster_info)
-        return addr is not None
-
-    wait_for_condition(get_agent_address, timeout=30)
-    agent_address = _get_dashboard_agent_address(cluster_info)
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
 
     # Build headers based on token type
     headers = {}
@@ -787,13 +791,7 @@ def test_dashboard_agent_health_check_public(endpoint, setup_cluster_with_token_
 
     cluster_info = setup_cluster_with_token_auth
 
-    # Wait for agent address to be available
-    def get_agent_address():
-        addr = _get_dashboard_agent_address(cluster_info)
-        return addr is not None
-
-    wait_for_condition(get_agent_address, timeout=30)
-    agent_address = _get_dashboard_agent_address(cluster_info)
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
 
     # Health check endpoints should be accessible without auth
     response = requests.get(f"{agent_address}{endpoint}", timeout=5)
