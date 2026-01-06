@@ -2,11 +2,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.version_support import SerializablePreprocessor
-from ray.util.annotations import PublicAPI
+from ray.data.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -118,6 +121,47 @@ class StandardScaler(SerializablePreprocessorBase):
 
         df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations."""
+        for input_col, output_col in zip(self.columns, self.output_columns):
+            column = table.column(input_col)
+            s_mean = self.stats_[f"mean({input_col})"]
+            s_std = self.stats_[f"std({input_col})"]
+
+            if s_std is None or s_mean is None:
+                # Return column filled with nulls, preserving original column type
+                null_array = pa.nulls(len(column), type=column.type)
+                if output_col in table.column_names:
+                    col_idx = table.column_names.index(output_col)
+                    table = table.set_column(col_idx, output_col, null_array)
+                else:
+                    table = table.append_column(output_col, null_array)
+                continue
+
+            # Handle division by zero
+            if s_std == 0:
+                s_std = 1
+
+            # Apply standard scaling: (x - mean) / std
+            # Use float scalars to ensure float division
+            scaled_column = pc.divide(
+                pc.subtract(column, pa.scalar(float(s_mean))), pa.scalar(float(s_std))
+            )
+
+            # Add or replace the column in the table
+            if output_col in table.column_names:
+                col_idx = table.column_names.index(output_col)
+                table = table.set_column(col_idx, output_col, scaled_column)
+            else:
+                table = table.append_column(output_col, scaled_column)
+
+        return table
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
