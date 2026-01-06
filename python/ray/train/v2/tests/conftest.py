@@ -25,6 +25,13 @@ def ray_start_4_cpus_2_gpus():
 
 
 @pytest.fixture
+def ray_start_cluster():
+    cluster = Cluster()
+    yield cluster
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_start_2x2_gpu_cluster():
     cluster = Cluster()
     for _ in range(2):
