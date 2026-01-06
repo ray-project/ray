@@ -43,8 +43,8 @@ message RayEvent {
 
   // The potential types of events that can be generated.
   // NOTE: When adding a new event type below, if the event should be exposed to external services,
-  // also update the DEFAULT_EXPOSABLE_EVENT_TYPES list in
-  // python/ray/dashboard/modules/aggregator/aggregator_agent.py accordingly.
+  // also update the DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES list in
+  // python/ray/dashboard/modules/aggregator/publisher/configs.py accordingly.
   // This ensures the new event type can be published externally if intended.
   enum EventType {
     EVENT_TYPE_UNSPECIFIED = 0;
@@ -103,4 +103,7 @@ message RayEvent {
   NodeLifecycleEvent node_lifecycle_event = 15;
   ActorDefinitionEvent actor_definition_event = 16;
   ActorLifecycleEvent actor_lifecycle_event = 17;
+
+  // ID of the node where this event is emitted from
+  bytes node_id = 18;
 }
