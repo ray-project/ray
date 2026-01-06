@@ -196,7 +196,7 @@ class RedisSentinel(RedisBase):
                 vhost = int(vhost)
             except ValueError as exc:
                 raise ValueError(
-                    "Database is int between 0 and limit - 1, not {vhost}"
+                    f"Database is int between 0 and limit - 1, not {vhost}"
                 ) from exc
         return vhost
 
