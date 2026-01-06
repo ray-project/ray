@@ -56,6 +56,16 @@ apt-get install -y \
   "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
+# Install awscli v2
+AWSCLI_TMP="$(mktemp -d)"
+(
+    cd "${AWSCLI_TMP}"
+    curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    sudo ./aws/install
+)
+rm -rf "${AWSCLI_TMP}"
+
 # Install uv
 curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
