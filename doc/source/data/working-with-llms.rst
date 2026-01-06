@@ -69,39 +69,13 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
     Input Dataset
          |
          v
-    +------------------+
-    | Preprocess       |  (your custom function)
-    +------------------+
-         |
-         v
-    +------------------+
-    | PrepareImage     |  (optional, for VLMs)
-    +------------------+
-         |
-         v
-    +------------------+
-    | ChatTemplate     |  (applies chat template to messages)
-    +------------------+
-         |
-         v
-    +------------------+
-    | Tokenize         |  (converts text to token IDs)
-    +------------------+
-         |
-         v
-    +------------------+
-    | LLM Engine       |  (vLLM/SGLang inference on GPU)
-    +------------------+
-         |
-         v
-    +------------------+
-    | Detokenize       |  (converts token IDs back to text)
-    +------------------+
-         |
-         v
-    +------------------+
-    | Postprocess      |  (your custom function)
-    +------------------+
+    - Preprocess (Custom Function)
+    - PrepareImage (Optional, for VLMs)
+    - ChatTemplate (Applies chat template to messages)
+    - Tokenize (Converts text to token IDs)
+    - LLM Engine (vLLM/SGLang inference on GPU)
+    - Detokenize (Converts token IDs back to text)
+    - Postprocess (Custom Function)
          |
          v
     Output Dataset
