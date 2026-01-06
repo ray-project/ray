@@ -4551,7 +4551,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: cpu
       post_build_script: byod_serve_video_analysis.sh
     cluster_compute: ci/aws.yaml
 
