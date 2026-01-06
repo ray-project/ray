@@ -96,6 +96,13 @@ class TQCConfig(SACConfig):
         if self.n_critics < 1:
             raise ValueError(f"`n_critics` must be >= 1, got {self.n_critics}")
 
+        # Ensure top_quantiles_to_drop_per_net is non-negative
+        if self.top_quantiles_to_drop_per_net < 0:
+            raise ValueError(
+                f"`top_quantiles_to_drop_per_net` must be >= 0, got "
+                f"{self.top_quantiles_to_drop_per_net}"
+            )
+
         # Ensure we don't drop more quantiles than we have
         total_quantiles = self.n_quantiles * self.n_critics
         quantiles_to_drop = self.top_quantiles_to_drop_per_net * self.n_critics
