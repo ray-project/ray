@@ -1290,12 +1290,11 @@ def get_log(
     if filter_ansi_code is not None:
         options_dict["filter_ansi_code"] = filter_ansi_code
 
-    headers = get_auth_headers_if_auth_enabled({})
     with requests.get(
         f"{api_server_url}/api/v0/logs/{media_type}?"
         f"{urllib.parse.urlencode(options_dict)}",
         stream=True,
-        headers=headers,
+        headers=get_auth_headers_if_auth_enabled({}),
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
@@ -1352,10 +1351,9 @@ def list_logs(
         options_dict["glob"] = glob_filter
     options_dict["timeout"] = timeout
 
-    headers = get_auth_headers_if_auth_enabled({})
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}",
-        headers=headers,
+        headers=get_auth_headers_if_auth_enabled({}),
     )
     # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
