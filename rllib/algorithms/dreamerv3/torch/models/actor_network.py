@@ -8,6 +8,9 @@ from typing import List
 import gymnasium as gym
 import numpy as np
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer,
+)
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.utils.framework import try_import_torch
 
@@ -148,10 +151,13 @@ class ActorNetwork(nn.Module):
             )
             # Separate output heads for each sub-action dimension
             hidden_size = self.mlp.output_size[0]
-            self.mlp_heads = nn.ModuleList([
-                nn.Linear(hidden_size, int(action_dim))
-                for action_dim in self.actions_dim
-            ])
+            self.mlp_heads = nn.ModuleList()
+            for action_dim in self.actions_dim:
+                head = nn.Linear(hidden_size, int(action_dim))
+                # Apply same initialization as all other DreamerV3 layers
+                dreamerv3_normal_initializer(head.weight)
+                nn.init.zeros_(head.bias)
+                self.mlp_heads.append(head)
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
