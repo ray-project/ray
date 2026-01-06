@@ -47,7 +47,7 @@ aiofiles==22.1.0
     #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.16
+aiohttp==3.13.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
