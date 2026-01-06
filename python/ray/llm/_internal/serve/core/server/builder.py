@@ -57,7 +57,7 @@ def build_llm_deployment(
     Returns:
         The Ray Serve Application for the LLMServer deployment.
     """
-    deployment_cls = deployment_cls or LLMServer
+    deployment_cls = deployment_cls or llm_config.server_cls or LLMServer
     name_prefix = name_prefix or f"{deployment_cls.__name__}:"
     bind_kwargs = bind_kwargs or {}
 
