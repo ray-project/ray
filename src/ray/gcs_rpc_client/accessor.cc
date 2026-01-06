@@ -299,9 +299,7 @@ void NodeInfoAccessor::AsyncGetAll(
 }
 
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
-    std::function<void(NodeID,
-                       const rpc::GcsNodeAddressAndLiveness &,
-                       const bool is_initializing)> subscribe,
+    std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
     rpc::StatusCallback done) {
   /**
   1. Subscribe to node info
@@ -324,7 +322,7 @@ void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
                 const Status &status,
                 std::vector<rpc::GcsNodeAddressAndLiveness> &&node_info_list) {
               for (auto &node_info : node_info_list) {
-                HandleNotification(std::move(node_info), true);
+                HandleNotification(std::move(node_info));
               }
               if (done_callback) {
                 done_callback(status);
@@ -359,6 +357,11 @@ absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
 NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
   absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
   return node_cache_address_and_liveness_;
+}
+
+int NodeInfoAccessor::GetAliveNodeCount() const {
+  absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
+  return alive_node_count_;
 }
 
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
@@ -406,11 +409,9 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
 
-void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
-                                          const bool is_initializing) {
+void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
-  bool is_alive_to_dead_transition = false;
   std::optional<rpc::GcsNodeAddressAndLiveness> node_info_copy_for_callback;
   {
     absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
@@ -420,12 +421,15 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
     if (entry == node_cache_address_and_liveness_.end()) {
       // If the entry is not in the cache, then the notification is new.
       is_notif_new = true;
+      // New node being added - increment counter if alive
+      if (is_alive) {
+        alive_node_count_++;
+      }
     } else {
       // If the entry is in the cache, then the notification is new if the node
       // was alive and is now dead.
       bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
       is_notif_new = was_alive && !is_alive;
-      is_alive_to_dead_transition = is_notif_new;
 
       // Handle the same logic as in HandleNotification for preventing re-adding removed
       // nodes
@@ -434,6 +438,11 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
                          "was already removed:"
                       << node_id;
         return;
+      }
+
+      // Node transitioning from alive to dead - decrement counter
+      if (is_notif_new) {
+        alive_node_count_--;
       }
     }
 
@@ -459,14 +468,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
 
   // If the notification is new, call registered callback.
   if (node_info_copy_for_callback) {
-    // If we're seeing a DEAD notification during initialization, but the cache
-    // already had this node as ALIVE (meaning polling saw it first), pass
-    // is_initializing=false.  Intention being to articulate that there's been
-    // an advancement in state, HOWEVER we should remove his logic once it's guaranteed
-    // that initialization callbacks are triggered before streaming callbacks
-    bool effective_is_initializing = is_initializing && !is_alive_to_dead_transition;
-    node_change_callback_address_and_liveness_(
-        node_id, *node_info_copy_for_callback, effective_is_initializing);
+    node_change_callback_address_and_liveness_(node_id, *node_info_copy_for_callback);
   }
 }
 

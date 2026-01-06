@@ -343,7 +343,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         << "max_pending_lease_requests_per_scheduling_category can't be 0";
     lease_request_rate_limiter =
         std::make_shared<ClusterSizeBasedLeaseRequestRateLimiter>(
-            /*min_concurrent_lease_cap_*/ 10);
+            /*min_concurrent_lease_cap_*/ 10, gcs_client.get());
   }
 
   // We can turn on exit_on_connection_failure on for the core worker plasma

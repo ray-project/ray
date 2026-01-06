@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -817,33 +818,13 @@ bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spe
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
-    size_t min_concurrent_lease_limit)
-    : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}
+    size_t min_concurrent_lease_limit, gcs::GcsClient *gcs_client)
+    : min_concurrent_lease_cap_(min_concurrent_lease_limit), gcs_client_(gcs_client) {}
 
 size_t ClusterSizeBasedLeaseRequestRateLimiter::
     GetMaxPendingLeaseRequestsPerSchedulingCategory() {
-  return std::max<size_t>(min_concurrent_lease_cap_, num_alive_nodes_.load());
-}
-
-void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
-    const rpc::GcsNodeAddressAndLiveness &data, const bool is_initializing) {
-  if (data.state() == rpc::GcsNodeInfo::DEAD) {
-    if (is_initializing) {
-      // N.B.: We don't bother decrementing for dead node notifications which were
-      // received at time of initial subscription as we won't have received an equivalent
-      // 'alive' notification prior.
-      return;
-    }
-    if (num_alive_nodes_ != 0) {
-      num_alive_nodes_--;
-    } else {
-      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
-                       << " change state to DEAD but num_alive_node is 0.";
-    }
-  } else {
-    num_alive_nodes_++;
-  }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
+  size_t alive_nodes = gcs_client_ ? gcs_client_->Nodes().GetAliveNodeCount() : 0;
+  return std::max<size_t>(min_concurrent_lease_cap_, alive_nodes);
 }
 
 }  // namespace core

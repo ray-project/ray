@@ -86,8 +86,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
   MOCK_METHOD(
       void,
       AsyncSubscribeToNodeAddressAndLivenessChange,
-      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool)>
-           subscribe,
+      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
        rpc::StatusCallback done),
       (override));
   MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
@@ -107,6 +106,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
   MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
   MOCK_METHOD(bool, IsNodeAlive, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
+  MOCK_METHOD(int, GetAliveNodeCount, (), (const, override));
 };
 
 }  // namespace gcs

@@ -319,8 +319,7 @@ void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
 
 void NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id,
-                               const rpc::GcsNodeAddressAndLiveness &data,
-                               const bool is_initializing) {
+                               const rpc::GcsNodeAddressAndLiveness &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
     } else {

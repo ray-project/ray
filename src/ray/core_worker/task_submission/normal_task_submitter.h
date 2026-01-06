@@ -73,14 +73,13 @@ class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 // It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
 class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit,
+                                          gcs::GcsClient *gcs_client);
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeAddressAndLiveness &data,
-                     const bool is_initializing = false);
 
  private:
   const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
+  gcs::GcsClient *gcs_client_;
 };
 
 // This class is thread-safe.

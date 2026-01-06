@@ -733,12 +733,10 @@ void CoreWorker::SubscribeToNodeChanges() {
     // fiasco between gcs_client, reference_counter_, raylet_client_pool_, and
     // core_worker_client_pool_.
     auto on_node_change = [reference_counter = reference_counter_,
-                           rate_limiter = lease_request_rate_limiter_,
                            raylet_client_pool = raylet_client_pool_,
                            core_worker_client_pool = core_worker_client_pool_](
                               const NodeID &node_id,
-                              const rpc::GcsNodeAddressAndLiveness &data,
-                              const bool is_initializing) {
+                              const rpc::GcsNodeAddressAndLiveness &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
@@ -746,11 +744,6 @@ void CoreWorker::SubscribeToNodeChanges() {
         reference_counter->ResetObjectsOnRemovedNode(node_id);
         raylet_client_pool->Disconnect(node_id);
         core_worker_client_pool->Disconnect(node_id);
-      }
-      auto cluster_size_based_rate_limiter =
-          dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());
-      if (cluster_size_based_rate_limiter != nullptr) {
-        cluster_size_based_rate_limiter->OnNodeChanges(data, is_initializing);
       }
     };
 
