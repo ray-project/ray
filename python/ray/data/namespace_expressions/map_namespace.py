@@ -62,7 +62,11 @@ def _extract_map_component(
                 f"Expression is not a map type. .map.{component.value}() can only be "
                 f"called on MapArray or List<Struct<key, value>> types, but got {arr.type}."
             )
-        child_array = pyarrow.array([], type=pyarrow.null())
+        return pyarrow.ListArray.from_arrays(
+            offsets=[0] * (len(arr) + 1),
+            values=pyarrow.array([], type=pyarrow.null()),
+            mask=pyarrow.array([True] * len(arr)),
+        )
 
     # Reconstruct ListArray & Normalize Offsets
     offsets = arr.offsets
@@ -132,7 +136,10 @@ class _MapNamespace:
             arrow_type = self._expr.data_type.to_arrow_dtype()
 
             is_physical_map = (
-                pyarrow.types.is_list(arrow_type)
+                (
+                    pyarrow.types.is_list(arrow_type)
+                    or pyarrow.types.is_large_list(arrow_type)
+                )
                 and pyarrow.types.is_struct(arrow_type.value_type)
                 and arrow_type.value_type.num_fields >= 2
             )
