@@ -131,7 +131,7 @@ def ray_tpu_multi_host():
 
 @pytest.fixture(autouse=True)
 def reduce_health_check_interval(monkeypatch):
-    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.2")
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.4")
     yield
 
 
