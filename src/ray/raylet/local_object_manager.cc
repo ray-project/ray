@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {

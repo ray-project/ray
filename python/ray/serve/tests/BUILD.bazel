@@ -74,7 +74,6 @@ py_test_module_list(
         "test_advanced.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
-        "test_controller.py",
         "test_deployment_version.py",
         "test_enable_task_events.py",
         "test_expected_versions.py",
@@ -107,6 +106,7 @@ py_test_module_list(
         "test_batching.py",
         "test_callback.py",
         "test_cluster.py",
+        "test_controller.py",
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
@@ -132,7 +132,6 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_task_processor.py",
-        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -171,7 +170,7 @@ py_test_module_list(
 
 # Large tests.
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -180,6 +179,7 @@ py_test_module_list(
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
@@ -442,11 +442,11 @@ py_test_module_list(
     ],
 )
 
-# Medium tests with compact scheduling
+# Medium tests with pack scheduling
 py_test_module_list(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
@@ -455,7 +455,7 @@ py_test_module_list(
         "test_max_replicas_per_node.py",
         "test_replica_placement_group.py",
     ],
-    name_suffix = "_with_compact_scheduling",
+    name_suffix = "_with_pack_scheduling",
     tags = [
         "exclusive",
         "no_windows",
@@ -468,15 +468,15 @@ py_test_module_list(
     ],
 )
 
-# Large tests with compact scheduling
+# Large tests with pack scheduling
 py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    size = "enormous",
+    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_standalone.py",
         "test_standalone_3.py",
     ],
-    name_suffix = "_with_comp_sche",
+    name_suffix = "_with_pack_sche",
     tags = [
         "exclusive",
         "team:serve",
@@ -488,15 +488,15 @@ py_test_module_list(
     ],
 )
 
-# Large tests with compact scheduling, no windows
+# Large tests with pack scheduling, no windows
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_standalone_2.py",
     ],
-    name_suffix = "_with_compact_scheduling",
+    name_suffix = "_with_pack_scheduling",
     tags = [
         "exclusive",
         "no_windows",

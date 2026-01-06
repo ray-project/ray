@@ -293,5 +293,40 @@ class TestFieldValidators:
         assert "Invalid lora_config" in str(exc_info.value)
 
 
+class TestUseCpuLogic:
+    """Test the use_cpu logic and its interaction with accelerator_type."""
+
+    def test_use_cpu_field_basic(self):
+        """Test that use_cpu field works with basic values."""
+        # Test use_cpu=True
+        llm_config_cpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+        )
+        assert llm_config_cpu.use_cpu is True
+        engine_config = llm_config_cpu.get_engine_config()
+        assert engine_config.use_gpu is False
+
+        # Test use_cpu=False
+        llm_config_gpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=False,
+        )
+        assert llm_config_gpu.use_cpu is False
+        engine_config_gpu = llm_config_gpu.get_engine_config()
+        assert engine_config_gpu.use_gpu is True
+
+    def test_use_cpu_precedence_over_accelerator_type(self):
+        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
+        # use_cpu=True should override GPU accelerator_type
+        llm_config_cpu_override = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
+        )
+        engine_config = llm_config_cpu_override.get_engine_config()
+        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

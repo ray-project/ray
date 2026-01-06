@@ -431,6 +431,30 @@ class TestAlgorithmConfig(unittest.TestCase):
             lambda: config.rl_module_spec,
         )
 
+    def test_rollout_fragment_length_with_small_batch_and_multiple_learners(self):
+        """Test that get_rollout_fragment_length doesn't return 0 when train_batch_size=1 and num_learners > 1."""
+        for num_env_runners in [1, 2, 3, 4]:
+            config = (
+                AlgorithmConfig()
+                .env_runners(
+                    rollout_fragment_length="auto",
+                    num_env_runners=num_env_runners,
+                )
+                .learners(
+                    num_learners=2
+                )  # Multiple learners with train_batch_size=1 causes the issue
+                .training(
+                    train_batch_size=1
+                )  # Small batch size with multiple learners causes integer division to 0
+            )
+
+            # This should not return 0
+            rollout_fragment_length = config.get_rollout_fragment_length(0)
+            self.assertEqual(
+                rollout_fragment_length,
+                1,
+            )
+
 
 if __name__ == "__main__":
     import sys

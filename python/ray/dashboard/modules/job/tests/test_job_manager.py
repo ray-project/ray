@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import signal
 import sys
@@ -419,7 +420,22 @@ async def test_pending_job_timeout_during_new_head_creation(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=3:33:33:33,CoreWorkerService.grpc_client.PushTask=3:33:33:33"
+                "RAY_testing_rpc_failure": json.dumps(
+                    {
+                        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                        "CoreWorkerService.grpc_client.PushTask": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                    }
+                )
             },
         },
     ],

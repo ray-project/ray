@@ -19,7 +19,6 @@
 
 #include <string>
 
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/tag_defs.h"
 
 namespace plasma {

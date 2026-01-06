@@ -500,6 +500,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
@@ -521,6 +526,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
@@ -726,3 +736,19 @@
       env: aws
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: does_not_over_provision
+  group: data-autoscaling
+  frequency: manual
+
+  cluster:
+    byod: {}
+    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python autoscaling/does_not_over_provision.py
