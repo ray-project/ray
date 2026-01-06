@@ -37,7 +37,6 @@ steps:
 
   - name: ray-wheel-build
     label: "wanda: wheel py{{matrix}} (x86_64)"
-    key: linux_wheels
     wanda: ci/docker/ray-wheel.wanda.yaml
     matrix:
       - "3.10"
@@ -72,7 +71,6 @@ steps:
       - docker cp ${container_id}:/ /tmp/wheels/
       - docker rm ${container_id}
       - mv /tmp/wheels/*.whl .whl/
-      # Upload using existing script
       - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
@@ -80,7 +78,7 @@ steps:
       - "3.12"
       - "3.13"
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
     tags:
       - release_wheels
       - skip-on-premerge
@@ -100,7 +98,6 @@ steps:
 
   - name: ray-image-cpu-build
     label: "wanda: ray py{{matrix}} cpu (x86_64)"
-    key: ray_images_cpu
     wanda: ci/docker/ray-image-cpu.wanda.yaml
     matrix:
       - "3.10"
@@ -114,7 +111,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - raycpubase
 
   # Push ray CPU images to Docker Hub
@@ -134,7 +131,7 @@ steps:
       - "3.11"
       - "3.12"
     depends_on:
-      - ray_images_cpu
+      - ray-image-cpu-build
     tags:
       - python_dependencies
       - docker
@@ -142,7 +139,6 @@ steps:
 
   - name: ray-image-cuda-build
     label: "wanda: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
-    key: ray_images_cuda
     wanda: ci/docker/ray-image-cuda.wanda.yaml
     matrix:
       setup:
@@ -169,7 +165,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - raycudabase
 
   # Push ray CUDA images to Docker Hub
@@ -201,7 +197,7 @@ steps:
           - "12.8.1-cudnn"
           - "12.9.1-cudnn"
     depends_on:
-      - ray_images_cuda
+      - ray-image-cuda-build
     tags:
       - python_dependencies
       - docker

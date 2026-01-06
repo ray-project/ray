@@ -70,7 +70,6 @@ steps:
   # Build ray anyscale images using wanda (CPU)
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{matrix}} cpu"
-    key: anyscale_cpu
     wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
     matrix:
       # This list should be kept in sync with the list of supported Python in
@@ -84,13 +83,12 @@ steps:
     tags:
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - raycpubaseextra-testdeps
 
   # Build ray anyscale images using wanda (CUDA)
   - name: ray-anyscale-cuda-build
     label: "wanda: ray-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
-    key: anyscale_cuda
     wanda: ci/docker/ray-anyscale-cuda.wanda.yaml
     matrix:
       setup:
@@ -107,11 +105,10 @@ steps:
     tags:
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - raycudabaseextra-testdeps
 
   # Push anyscale images to ECR/GCP/Azure registries
-  # Combines CPU and CUDA results for backward compatibility with anyscalebuild key
   - label: ":docker: push: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
     key: anyscalebuild
     instance_type: release-medium
@@ -125,8 +122,8 @@ steps:
         --image-type ray
         --upload
     depends_on:
-      - anyscale_cpu
-      - anyscale_cuda
+      - ray-anyscale-cpu-build
+      - ray-anyscale-cuda-build
     matrix:
       setup:
         python:
@@ -140,7 +137,6 @@ steps:
   # Build ray-llm anyscale image using wanda
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
-    key: anyscale_llm_cuda
     wanda: ci/docker/ray-llm-anyscale-cuda.wanda.yaml
     matrix:
       setup:
@@ -155,7 +151,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - ray-llmbaseextra-testdeps
 
   # Push ray-llm anyscale images to ECR/GCP/Azure registries
@@ -172,14 +168,13 @@ steps:
         --image-type ray-llm
         --upload
     depends_on:
-      - anyscale_llm_cuda
+      - ray-llm-anyscale-cuda-build
     matrix:
       - "3.11"
 
   # Build ray-ml anyscale image using wanda
   - name: ray-ml-anyscale-cuda-build
     label: "wanda: ray-ml-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
-    key: anyscale_ml_cuda
     wanda: ci/docker/ray-ml-anyscale-cuda.wanda.yaml
     matrix:
       setup:
@@ -196,7 +191,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - linux_wheels
+      - ray-wheel-build
       - ray-mlcudabaseextra-testdeps
 
   # Push ray-ml anyscale images to ECR/GCP/Azure registries
@@ -213,7 +208,7 @@ steps:
         --image-type ray-ml
         --upload
     depends_on:
-      - anyscale_ml_cuda
+      - ray-ml-anyscale-cuda-build
     matrix:
       # This list should be kept in sync with the list of supported Python in
       # release test suite
