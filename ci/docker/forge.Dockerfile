@@ -16,6 +16,16 @@ RUN \
 
 set -euo pipefail
 
+
+if [[ "$HOSTTYPE" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "$HOSTTYPE" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture $MACHTYPE" >/dev/stderr
+    exit 1
+fi
+
 apt-get update
 apt-get upgrade -y
 apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-transport-https lsb-release
