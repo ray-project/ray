@@ -237,7 +237,6 @@ class vLLMEngineBaseWrapper:
 
         # LoRA related.
         self.dynamic_lora_loading_path = dynamic_lora_loading_path
-        self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
         try:
@@ -442,6 +441,34 @@ class vLLMEngineBaseWrapper:
             vLLMTaskType.SCORE,
         )
 
+    def _load_lora_adapter(self, lora_name: str) -> Any:
+        import vllm
+
+        if lora_name not in self.lora_name_to_request:
+            lora_path = download_lora_adapter(
+                lora_name,
+                remote_path=self.dynamic_lora_loading_path,
+            )
+            logger.info("Downloaded LoRA adapter for %s to %s", lora_name, lora_path)
+            self.lora_name_to_request[lora_name] = vllm.lora.request.LoRARequest(
+                lora_name=lora_name,
+                lora_int_id=len(self.lora_name_to_request) + 1,
+                lora_path=lora_path,
+            )
+        return self.lora_name_to_request[lora_name]
+
+    def _get_lora_request(self, row: Dict[str, Any]) -> Optional[Any]:
+        if "model" not in row or row["model"] == self.model:
+            return None
+        
+        lora_name = row["model"]
+        if is_remote_path(lora_name):
+            raise ValueError(
+                "LoRA name cannot be a remote path (s3:// or gs://). "
+                "Please specify dynamic_lora_loading_path in the processor config."
+            )
+        return self._load_lora_adapter(lora_name)
+
 
 class vLLMEngineWrapper(vLLMEngineBaseWrapper):
     """Wrapper around the vLLM engine to handle async requests.
@@ -486,59 +513,16 @@ class vLLMEngineWrapper(vLLMEngineBaseWrapper):
         else:
             self.semaphore = asyncio.NullContext()
 
-    async def _maybe_get_lora_request(
-        self,
-        row: Dict[str, Any],
-    ) -> Optional[Any]:
-        """Get the LoRA request for the given row.
-        Specifically, if the model name is given and is different from the model
-        set in the config, then this request has LoRA.
-
-        Args:
-            row: The row.
-
-        Returns:
-            The LoRA request (vllm.lora.request.LoRARequest),
-            or None if there is no LoRA. We use Any in type hint to
-            pass doc build in the environment without vLLM.
-        """
-        import vllm
-
-        lora_request = None
-        if "model" in row and row["model"] != self.model:
-
-            lora_name = row["model"]
-            if lora_name not in self.lora_name_to_request:
-                if is_remote_path(lora_name):
-                    raise ValueError(
-                        "LoRA name cannot be a remote path (s3:// or gs://). "
-                        "Please specify dynamic_lora_loading_path in the processor config."
-                    )
-
-                async with self.lora_lock:
-                    if lora_name not in self.lora_name_to_request:
-                        # Load a new LoRA adapter if it is not loaded yet.
-                        lora_path = download_lora_adapter(
-                            lora_name,
-                            remote_path=self.dynamic_lora_loading_path,
-                        )
-                        logger.info(
-                            "Downloaded LoRA adapter for %s to %s", lora_name, lora_path
-                        )
-                        lora_request = vllm.lora.request.LoRARequest(
-                            lora_name=lora_name,
-                            # LoRA ID starts from 1.
-                            lora_int_id=len(self.lora_name_to_request) + 1,
-                            lora_path=lora_path,
-                        )
-                        self.lora_name_to_request[lora_name] = lora_request
-            lora_request = self.lora_name_to_request[lora_name]
-        return lora_request
+        self.lora_lock = asyncio.Lock()
 
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         request_kwargs = super()._prepare_llm_request_kwargs(row)
-        request_kwargs["lora_request"] = await self._maybe_get_lora_request(row)
 
+        if "model" in row and row["model"] != self.model:
+            async with self.lora_lock:
+                request_kwargs["lora_request"] = self._get_lora_request(row)
+        else:
+            request_kwargs["lora_request"] = None
         return vLLMEngineRequest(**request_kwargs)
 
     async def generate_async(
@@ -628,11 +612,16 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.LLM(**kwargs)
 
-        # Lock to prevent concurrent access to the vLLM engine.
-        self._generate_lock = threading.Lock()
+        self.generate_lock = threading.Lock()
+        self.lora_lock = threading.Lock()
 
     def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         request_kwargs = super()._prepare_llm_request_kwargs(row)
+        if "model" in row and row["model"] != self.model:
+            with self.lora_lock:
+                request_kwargs["lora_request"] = self._get_lora_request(row)
+        else:
+            request_kwargs["lora_request"] = None
         return vLLMEngineRequest(**request_kwargs)
 
     def generate(
@@ -649,7 +638,7 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         # This is necessary because vllm.LLM is not thread-safe and processes all pending requests.
         # Without the lock and when max_concurrent_batches > 1, concurrent Ray Data tasks could
         # add requests while another is still running, mixing results between batches.
-        with self._generate_lock:
+        with self.generate_lock:
             requests = [self._prepare_llm_request(row) for row in rows]
 
             prompts = [self._build_llm_prompt(request) for request in requests]
@@ -688,11 +677,29 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
+        engine_wrapper_cls: Type[vLLMEngineBaseWrapper],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
     ):
+        """
+        Initialize vLLMEngineStageUDF or vLLMEngineStageSyncUDF.
+
+        Args:
+            data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
+            model: The model to use for the vLLM engine.
+            engine_kwargs: The kwargs to pass to the vLLM engine.
+            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
+            max_pending_requests: The maximum number of pending requests. If None,
+                it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
+            dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
+                to hold subfolders each for a different lora checkpoint.
+            should_continue_on_error: If True, continue processing when inference fails for
+                a row instead of raising. Failed rows will have '__inference_error__'
+                set to the error message.
+        """
         super().__init__(data_column, expected_input_keys)
         self.model = model
         self.should_continue_on_error = should_continue_on_error
@@ -730,7 +737,26 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
         # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
         self.model_source = model_source if not exclude_safetensors else self.model
 
-        self.llm = None
+        self.llm = engine_wrapper_cls(
+            model=self.model,
+            model_source=self.model_source,
+            idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
+            enable_log_requests=False,
+            max_pending_requests=self.max_pending_requests,
+            dynamic_lora_loading_path=dynamic_lora_loading_path,
+            **self.engine_kwargs,
+        )
+
+        # TODO: Is this only applicable for the asynchronous engine?
+        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
+        if batch_size * max_concurrent_batches < max_num_seqs:
+            logger.warning(
+                f"The product of batch_size ({batch_size}) and "
+                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
+                "to saturate vLLM engine. This may lead to suboptimal "
+                "throughput. Please increase max_concurrent_batches to at least "
+                f"{math.ceil(max_num_seqs / batch_size)}."
+            )
 
     def normalize_engine_kwargs(
         self,
@@ -770,68 +796,13 @@ class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
 
 
 class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
-    def __init__(
-        self,
-        data_column: str,
-        expected_input_keys: List[str],
-        batch_size: int,
-        max_concurrent_batches: int,
-        model: str,
-        engine_kwargs: Dict[str, Any],
-        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
-        max_pending_requests: Optional[int] = None,
-        dynamic_lora_loading_path: Optional[str] = None,
-        should_continue_on_error: bool = False,
-    ):
+    def __init__(self, *args, **kwargs):
         """
         Initialize the vLLMEngineStageUDF.
-
-        Args:
-            data_column: The data column name.
-            expected_input_keys: The expected input keys of the stage.
-            model: The model to use for the vLLM engine.
-            engine_kwargs: The kwargs to pass to the vLLM engine.
-            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
-            max_pending_requests: The maximum number of pending requests. If None,
-                it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
-            dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
-                to hold subfolders each for a different lora checkpoint.
-            should_continue_on_error: If True, continue processing when inference fails for
-                a row instead of raising. Failed rows will have '__inference_error__'
-                set to the error message.
         """
         vLLMEngineStageBaseUDF.__init__(
-            self,
-            data_column,
-            expected_input_keys,
-            batch_size,
-            max_concurrent_batches,
-            model,
-            engine_kwargs,
-            task_type,
-            max_pending_requests,
-            dynamic_lora_loading_path,
-            should_continue_on_error,
+            self, *args, **{**kwargs, "engine_wrapper_cls": vLLMEngineWrapper}
         )
-        self.llm = vLLMEngineWrapper(
-            model=self.model,
-            model_source=self.model_source,
-            idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            enable_log_requests=False,
-            max_pending_requests=self.max_pending_requests,
-            dynamic_lora_loading_path=dynamic_lora_loading_path,
-            **self.engine_kwargs,
-        )
-
-        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
-        if batch_size * max_concurrent_batches < max_num_seqs:
-            logger.warning(
-                f"The product of batch_size ({batch_size}) and "
-                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
-                "to saturate vLLM engine. This may lead to suboptimal "
-                "throughput. Please increase max_concurrent_batches to at least "
-                f"{math.ceil(max_num_seqs / batch_size)}."
-            )
 
     async def _generate_with_error_handling(
         self,
@@ -922,62 +893,43 @@ class vLLMEngineStageUDF(StatefulStageUDF, vLLMEngineStageBaseUDF):
 
 
 class vLLMEngineStageSyncUDF(vLLMEngineStageBaseUDF, StatefulStageSyncUDF):
-    def __init__(
-        self,
-        data_column: str,
-        expected_input_keys: List[str],
-        batch_size: int,
-        max_concurrent_batches: int,
-        model: str,
-        engine_kwargs: Dict[str, Any],
-        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
-        max_pending_requests: Optional[int] = None,
-        dynamic_lora_loading_path: Optional[str] = None,
-        should_continue_on_error: bool = False,
-    ):
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the vLLMEngineStageSyncUDF.
+        """
         vLLMEngineStageBaseUDF.__init__(
-            self,
-            data_column,
-            expected_input_keys,
-            batch_size,
-            max_concurrent_batches,
-            model,
-            engine_kwargs,
-            task_type,
-            max_pending_requests,
-            dynamic_lora_loading_path,
-            should_continue_on_error,
-        )
-        self.llm = vLLMEngineSyncWrapper(
-            model=self.model,
-            model_source=self.model_source,
-            idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            enable_log_requests=False,
-            max_pending_requests=self.max_pending_requests,
-            dynamic_lora_loading_path=dynamic_lora_loading_path,
-            **self.engine_kwargs,
+            self, *args, **{**kwargs, "engine_wrapper_cls": vLLMEngineSyncWrapper}
         )
 
-    def udf(self, rows: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
-        """Run the vLLM engine synchronously on a batch of rows.
+    def udf(self, batch: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+        """Run the vLLM engine synchronously.
 
         Args:
-            rows: A list of rows to run the vLLM engine on.
+            batch: A list of rows to run the vLLM engine on.
 
         Yields:
-            One output dict per row.
+            The response of the vLLM engine.
         """
-        if not rows:
-            return
+        # TODO: Deduplicate further & add inference_error handling.
+        batch_uuid = uuid.uuid4()
+        batch_start_time = time.perf_counter()
 
-        # Process batch using the wrapper's generate_batch method
-        results = self.llm.generate(rows)
+        results = self.llm.generate(batch)
 
-        # Yield one output dict per row
         for idx_in_batch, output_dict in results:
-            # Include __idx_in_batch to match async version
-            output_dict[self.IDX_IN_BATCH_COLUMN] = idx_in_batch
-            yield output_dict
+            yield {
+                **output_dict,
+                self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+            }
+
+        batch_time_taken = time.perf_counter() - batch_start_time
+        logger.info(
+            "[vLLM] Elapsed time for batch %s with size %d: %s",
+            batch_uuid.hex,
+            len(batch),
+            batch_time_taken,
+        )
 
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
