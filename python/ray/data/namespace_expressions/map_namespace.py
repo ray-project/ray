@@ -44,7 +44,7 @@ def _extract_map_component(
             child_array = arr.items
 
     # Case 2: ListArray<Struct<Key, Value>>
-    elif isinstance(arr, pyarrow.ListArray):
+    elif isinstance(arr, (pyarrow.ListArray, pyarrow.LargeListArray)):
         flat_values = arr.values
         if (
             isinstance(flat_values, pyarrow.StructArray)
@@ -52,6 +52,17 @@ def _extract_map_component(
         ):
             idx = 0 if component == MapComponent.KEYS else 1
             child_array = flat_values.field(idx)
+
+    if child_array is None:
+        # This can happen if the input array is not a supported map type.
+        # We allow this to proceed only if the array is empty or all-nulls,
+        # in which case we'll produce an empty or all-nulls output.
+        if len(arr) > 0 and arr.null_count < len(arr):
+            raise TypeError(
+                f"Expression is not a map type. .map.{component.value}() can only be "
+                f"called on MapArray or List<Struct<key, value>> types, but got {arr.type}."
+            )
+        child_array = pyarrow.array([], type=pyarrow.null())
 
     # Reconstruct ListArray & Normalize Offsets
     offsets = arr.offsets
