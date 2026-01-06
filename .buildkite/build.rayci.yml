@@ -65,8 +65,8 @@ steps:
     if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
     instance_type: small
     commands:
-      # Extract wheel from wanda image
-      - wanda_image="rayproject/ray-wheel-py{{matrix}}"
+      # Extract wheel from wanda image (Wanda cache in ECR)
+      - wanda_image="$RAYCI_WORK_REPO:$RAYCI_BUILD_ID-ray-wheel-py{{matrix}}"
       - container_id=$(docker create $wanda_image)
       - mkdir -p /tmp/wheels
       - docker cp ${container_id}:/ /tmp/wheels/
