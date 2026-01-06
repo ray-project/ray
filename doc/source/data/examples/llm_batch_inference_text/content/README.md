@@ -25,7 +25,7 @@ Choose batch inference when:
 - Throughput matters more than immediate results
 - You want to take advantage of fault tolerance and checkpointing for long-running jobs
 
-On contrary, if you are more interested in optimizing for latency, consider [deploying your LLM with Ray Serve LLM for online inference](https://docs.ray.io/en/latest/serve/llm/index.html).
+On the contrary, if you are more interested in optimizing for latency, consider [deploying your LLM with Ray Serve LLM for online inference](https://docs.ray.io/en/latest/serve/llm/index.html).
 
 ## Prepare a Ray Data dataset
 
