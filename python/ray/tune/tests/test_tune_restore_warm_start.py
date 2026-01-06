@@ -1,5 +1,10 @@
 # coding: utf-8
 import os
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# Must be set before any TensorFlow imports (including transitive imports from Ax/BoTorch)
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import shutil
 import sys
 import tempfile
@@ -289,11 +294,11 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         # Handle different Ax versions with different import paths
         try:
-            from ax.modelbridge.generation_strategy import (
-                GenerationStep,
-                GenerationStrategy,
+            from ax.adapter.registry import Models
+            from ax.generation_strategy.generation_node import (
+                GenerationStep,  # if present
             )
-            from ax.modelbridge.registry import Models
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
         except ModuleNotFoundError:
             # Newer versions of Ax reorganized the imports
             from ax.modelbridge.generation_node import GenerationStep

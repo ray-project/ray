@@ -1018,10 +1018,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
-        # Todo: Hyperopt actually suffers from the same problem as we did before
+        # Hyperopt actually suffers from the same problem as we did before
         # https://github.com/ray-project/ray/pull/28187
+        # Hyperopt's hp.quniform doesn't properly quantize values
         ignore = [
             "func",
+            "quniform",
             "qrandint_q3",
         ]
 
