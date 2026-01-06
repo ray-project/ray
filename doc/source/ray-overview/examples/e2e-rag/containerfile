@@ -2,7 +2,7 @@ FROM anyscale/ray-llm:2.45.0-py311-cu124
 
 # Install system dependencies
 RUN sudo apt-get update && \
-    sudo apt-get install -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice && \
+    sudo apt-get install -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice gfortran build-essential && \
     sudo rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /home/ray/default
