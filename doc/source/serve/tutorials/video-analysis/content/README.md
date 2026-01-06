@@ -37,7 +37,7 @@ The pipeline splits work across three [Ray Serve deployments](https://docs.ray.i
 **Request lifecycle:**
 1. `VideoAnalyzer` receives HTTP request with S3 video URI
 2. Downloads video from S3, splits into fixed-duration chunks using FFmpeg
-3. Sends all chunks to `VideoEncoder` concurrently (`asyncio.gather`)
+3. Sends all chunks to `VideoEncoder` concurrently
 4. Encoder returns embedding references (stored in Ray object store)
 5. `VideoAnalyzer` sends embeddings to `MultiDecoder` serially (for EMA state continuity)
 6. Aggregates results and returns tags, captions, and scene changes
@@ -74,17 +74,9 @@ export AWS_SECRET_ACCESS_KEY="..."
 
 ```python
 import os
-import boto3
 
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")  # Or set directly: "your-api-key"
 S3_BUCKET = os.environ.get("S3_BUCKET")  # Or set directly: "your-bucket"
-
-# Get the region of the S3 bucket
-s3 = boto3.client("s3")
-response = s3.get_bucket_location(Bucket=S3_BUCKET)
-# AWS returns None for us-east-1, otherwise returns the region name
-S3_REGION = response["LocationConstraint"] or "us-east-1"
-print(f"Bucket '{S3_BUCKET}' is in region: {S3_REGION}")
 ```
 
 ### Download sample video
@@ -96,117 +88,44 @@ Before running the pipeline, we need a sample video in S3. This section download
 - **30 fps**: Standardizes frame timing for consistent chunk boundaries
 - **[H.264](https://en.wikipedia.org/wiki/Advanced_Video_Coding) codec (libx264)**: Fast seeking—FFmpeg can jump directly to any timestamp without decoding preceding frames. Some source codecs (VP9, HEVC) require sequential decoding, adding latency for chunk extraction
 
-> **Note:**  
-> The code below is a trimmed-down version of `scripts/download_stock_videos.py`.  
-> For bulk downloads or custom video sets, run:  
-> ```bash
-> python scripts/download_stock_videos.py --api-key YOUR_PEXELS_API_KEY --bucket YOUR_S3_BUCKET
-> ```
-
-
-
-
 
 ```python
-S3_PREFIX = "anyscale-example/stock-videos/"
+import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 ```
 
 
 ```python
-import subprocess
-import tempfile
-from pathlib import Path
+from scripts.download_stock_videos import download_sample_videos
 
-import httpx
+# Download sample videos (checks for existing manifest first, skips Pexels API if found)
+S3_PREFIX = "anyscale-example/stock-videos/"
+video_paths = await download_sample_videos(
+    api_key=PEXELS_API_KEY,
+    bucket=S3_BUCKET,
+    total=1,  # Just need one sample video
+    s3_prefix=S3_PREFIX,
+    overwrite=False
+)
 
+if not video_paths:
+    raise RuntimeError("No videos downloaded")
 
-def download_sample_video() -> str:
-    """Download one sample video from Pexels, normalize it, and upload to S3.
-    
-    If a video already exists in S3, return that instead of downloading.
-    """
-    # Check if any videos already exist in S3
-    response = s3.list_objects_v2(
-        Bucket=S3_BUCKET,
-        Prefix=S3_PREFIX,
-        MaxKeys=1,
-    )
-    existing_files = response.get("Contents", [])
-    
-    if existing_files:
-        # Use the first existing video
-        existing_key = existing_files[0]["Key"]
-        s3_uri = f"s3://{S3_BUCKET}/{existing_key}"
-        print(f"Found existing video in S3: {s3_uri}")
-        return s3_uri
-
-    # No existing video found, download from Pexels
-    print("No existing video in S3, downloading from Pexels...")
-    
-    # Search for a video
-    with httpx.Client() as client:
-        response = client.get(
-            "https://api.pexels.com/videos/search",
-            headers={"Authorization": PEXELS_API_KEY},
-            params={"query": "kitchen cooking", "per_page": 1, "orientation": "landscape"},
-        )
-        response.raise_for_status()
-        videos = response.json().get("videos", [])
-
-    if not videos:
-        raise RuntimeError("No videos found")
-
-    video = videos[0]
-    video_files = video.get("video_files", [])
-    # Pick HD quality
-    video_file = next((vf for vf in video_files if vf.get("quality") == "hd"), video_files[0])
-    download_url = video_file["link"]
-    video_id = video["id"]
-
-    print(f"Downloading video {video_id}...")
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        raw_path = Path(temp_dir) / "raw.mp4"
-        normalized_path = Path(temp_dir) / f"sample_{video_id}.mp4"
-
-        # Download
-        with httpx.Client() as client:
-            with client.stream("GET", download_url, timeout=120.0) as resp:
-                resp.raise_for_status()
-                with open(raw_path, "wb") as f:
-                    for chunk in resp.iter_bytes(8192):
-                        f.write(chunk)
-
-        print("Normalizing to 384x384@30fps...")
-
-        # Normalize with ffmpeg (384x384 matches SigLIP input size)
-        subprocess.run([
-            "ffmpeg", "-y", "-i", str(raw_path),
-            "-vf", "scale=384:384:force_original_aspect_ratio=decrease,pad=384:384:(ow-iw)/2:(oh-ih)/2,fps=30",
-            "-c:v", "libx264", "-preset", "fast", "-an",
-            str(normalized_path),
-        ], capture_output=True, check=True)
-
-        # Upload to S3
-        s3_key = f"{S3_PREFIX}sample_{video_id}.mp4"
-        s3.upload_file(str(normalized_path), S3_BUCKET, s3_key)
-
-        s3_uri = f"s3://{S3_BUCKET}/{s3_key}"
-        print(f"Uploaded to {s3_uri}")
-        return s3_uri
-
-
-# Run the download
-SAMPLE_VIDEO_URI = download_sample_video()
+SAMPLE_VIDEO_URI = video_paths[0]
 print(f"\nSample video ready: {SAMPLE_VIDEO_URI}")
 
 ```
 
-    Downloading video 35510474...
-    Normalizing to 384x384@30fps...
-    Uploaded to s3://abrar-test-bucket-123/anyscale-example/stock-videos/sample_35510474.mp4
+    ✅ S3 bucket 'anyscale-example-video-analysis-test-bucket' accessible
+    ✅ Found existing manifest with 1 videos in S3
+       Skipping Pexels API download
     
-    Sample video ready: s3://abrar-test-bucket-123/anyscale-example/stock-videos/sample_35510474.mp4
+    Sample video ready: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/stock-videos/kitchen_cooking_35395675_00.mp4
 
 
 ### Generate embeddings for text bank
@@ -215,141 +134,71 @@ The decoder matches video embeddings against precomputed **text embeddings** for
 
 
 ```python
-# Text banks for zero-shot classification and retrieval
+from textbanks import TAGS, DESCRIPTIONS
 
-TAGS = [
-    "kitchen", "living room", "office", "meeting room", "classroom",
-    "restaurant", "cafe", "grocery store", "gym", "warehouse",
-    "parking lot", "city street", "park", "shopping mall", "beach",
-    "sports field", "hallway", "lobby", "bathroom", "bedroom",
-]
-
-DESCRIPTIONS = [
-    "A person cooking in a kitchen",
-    "Someone preparing food on a counter",
-    "A chef working in a professional kitchen",
-    "People eating at a dining table",
-    "A person working at a desk",
-    "Someone typing on a laptop",
-    "A business meeting in progress",
-    "A presentation being given",
-    "A teacher lecturing in a classroom",
-    "Students sitting at desks",
-    "A customer shopping in a store",
-    "People browsing products on shelves",
-    "A person exercising at a gym",
-    "Someone lifting weights",
-    "People walking on a city sidewalk",
-    "Traffic moving through an intersection",
-    "Cars driving on a road",
-    "People walking through a park",
-    "A group having a conversation",
-    "A person on a phone call",
-]
-
-print(f"Tags: {len(TAGS)}")
-print(f"Descriptions: {len(DESCRIPTIONS)}")
+print(f"Tags: {TAGS}")
+print(f"Descriptions: {DESCRIPTIONS}")
 ```
 
-    Tags: 20
-    Descriptions: 20
+    Tags: ['kitchen', 'living room', 'office', 'meeting room', 'classroom', 'restaurant', 'cafe', 'grocery store', 'gym', 'warehouse', 'parking lot', 'city street', 'park', 'shopping mall', 'beach', 'sports field', 'hallway', 'lobby', 'bathroom', 'bedroom']
+    Descriptions: ['A person cooking in a kitchen', 'Someone preparing food on a counter', 'A chef working in a professional kitchen', 'People eating at a dining table', 'A group having a meal together', 'A person working at a desk', 'Someone typing on a laptop', 'A business meeting in progress', 'A presentation being given', 'People collaborating in an office', 'A teacher lecturing in a classroom', 'Students sitting at desks', 'A person giving a speech', 'Someone writing on a whiteboard', 'A customer shopping in a store', 'People browsing products on shelves', 'A cashier at a checkout counter', 'A person exercising at a gym', 'Someone lifting weights', 'A person running on a treadmill', 'People walking on a city sidewalk', 'Pedestrians crossing a street', 'Traffic moving through an intersection', 'Cars driving on a road', 'A vehicle parked in a lot', 'People walking through a park', 'Someone jogging outdoors', 'A group having a conversation', 'Two people talking face to face', 'A person on a phone call', 'Someone reading a book', 'A person watching television', 'People waiting in line', 'A crowded public space', 'An empty hallway or corridor', 'A person entering a building', 'Someone opening a door', 'A delivery being made', 'A person carrying boxes', 'Workers in a warehouse']
 
 
 
 ```python
-MODEL_NAME = "google/siglip-so400m-patch14-384"
-S3_EMBEDDINGS_PREFIX = "anyscale-example/embeddings/"
-```
-
-
-```python
-import asyncio
-import io
-
-import aioboto3
-import numpy as np
 import ray
-import torch
-from transformers import AutoModel, AutoProcessor
 
+from jobs.generate_text_embeddings import generate_embeddings_task
 
-@ray.remote(num_gpus=1)
-def generate_text_embeddings(tags: list[str], descriptions: list[str], bucket: str) -> dict:
-    """Ray task: compute text embeddings on GPU and upload to S3."""
+S3_EMBEDDINGS_PREFIX = "anyscale-example/embeddings/"
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Loading SigLIP on {device}...")
-
-    processor = AutoProcessor.from_pretrained(MODEL_NAME)
-    model = AutoModel.from_pretrained(MODEL_NAME).to(device)
-    model.eval()
-
-    def embed_texts(texts: list[str]) -> np.ndarray:
-        inputs = processor(text=texts, padding="max_length", truncation=True, return_tensors="pt")
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-        with torch.no_grad():
-            outputs = model.get_text_features(**inputs)
-        embeddings = outputs.cpu().numpy()
-        return (embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)).astype(np.float32)
-
-    print("Computing tag embeddings...")
-    tag_embeddings = embed_texts(tags)
-
-    print("Computing description embeddings...")
-    desc_embeddings = embed_texts(descriptions)
-
-    async def upload():
-        session = aioboto3.Session(region_name=S3_REGION)
-
-        async def save_npz(embeddings, texts, key):
-            buffer = io.BytesIO()
-            np.savez_compressed(buffer, embeddings=embeddings, texts=np.array(texts, dtype=object))
-            buffer.seek(0)
-            async with session.client("s3") as s3:
-                await s3.put_object(Bucket=bucket, Key=key, Body=buffer.getvalue())
-            return f"s3://{bucket}/{key}"
-
-        return await asyncio.gather(
-            save_npz(tag_embeddings, tags, f"{S3_EMBEDDINGS_PREFIX}tag_embeddings.npz"),
-            save_npz(desc_embeddings, descriptions, f"{S3_EMBEDDINGS_PREFIX}description_embeddings.npz"),
-        )
-
-    tag_uri, desc_uri = asyncio.run(upload())
-    print(f"Uploaded: {tag_uri}, {desc_uri}")
-
-    return {"tags": tag_uri, "descriptions": desc_uri}
-
-
-# Run the Ray task
+# Run the Ray task (uses TAGS and DESCRIPTIONS from textbanks module)
 ray.init(ignore_reinit_error=True)
-result = ray.get(generate_text_embeddings.remote(TAGS, DESCRIPTIONS, S3_BUCKET))
-print(f"\nText embeddings ready:")
-print(f"  Tags: {result['tags']}")
-print(f"  Descriptions: {result['descriptions']}")
+result = ray.get(generate_embeddings_task.remote(S3_BUCKET, S3_EMBEDDINGS_PREFIX))
 
+print(f"\nText embeddings ready:")
+print(f"  Tags: {result['tag_embeddings']['s3_uri']}")
+print(f"  Descriptions: {result['description_embeddings']['s3_uri']}")
 ```
 
-    2026-01-04 04:04:42,994	INFO worker.py:1821 -- Connecting to existing Ray cluster at address: 10.0.62.211:6379...
-    2026-01-04 04:04:43,007	INFO worker.py:1998 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://session-lqu9h8iu3cpgv59j74p498djis.i.anyscaleuserdata-staging.com [39m[22m
-    2026-01-04 04:04:43,048	INFO packaging.py:463 -- Pushing file package 'gcs://_ray_pkg_062afcc0148d0f0e3896130fe2baff02fcfc420c.zip' (8.63MiB) to Ray cluster...
-    2026-01-04 04:04:43,080	INFO packaging.py:476 -- Successfully pushed file package 'gcs://_ray_pkg_062afcc0148d0f0e3896130fe2baff02fcfc420c.zip'.
+    2026-01-06 08:27:08,101	INFO worker.py:1821 -- Connecting to existing Ray cluster at address: 10.0.45.10:6379...
+    2026-01-06 08:27:08,114	INFO worker.py:1998 -- Connected to Ray cluster. View the dashboard at [1m[32mhttps://session-lqu9h8iu3cpgv59j74p498djis.i.anyscaleuserdata-staging.com [39m[22m
+    2026-01-06 08:27:08,160	INFO packaging.py:463 -- Pushing file package 'gcs://_ray_pkg_56a868c6743600cdc03ad7fedef93ccaf9011e05.zip' (10.59MiB) to Ray cluster...
+    2026-01-06 08:27:08,200	INFO packaging.py:476 -- Successfully pushed file package 'gcs://_ray_pkg_56a868c6743600cdc03ad7fedef93ccaf9011e05.zip'.
     /home/ray/anaconda3/lib/python3.12/site-packages/ray/_private/worker.py:2046: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
       warnings.warn(
 
 
-    [36m(autoscaler +6s)[0m Tip: use `ray status` to view detailed cluster status. To disable these messages, set RAY_SCHEDULER_EVENTS=0.
-    [36m(generate_text_embeddings pid=2379, ip=10.0.25.139)[0m Loading SigLIP on cuda...
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m ============================================================
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m Starting text embedding generation
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m ============================================================
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 📚 Loading text banks...
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Tags: 20
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Descriptions: 40
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 🤖 Loading SigLIP model: google/siglip-so400m-patch14-384
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Device: cuda
 
 
-    [36m(generate_text_embeddings pid=2379, ip=10.0.25.139)[0m Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
 
 
-    [36m(generate_text_embeddings pid=2379, ip=10.0.25.139)[0m Computing tag embeddings...
-    [36m(generate_text_embeddings pid=2379, ip=10.0.25.139)[0m Computing description embeddings...
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Model loaded in 2.6s
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 🏷️  Generating tag embeddings...
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Shape: (20, 1152)
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Time: 0.21s
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 📝 Generating description embeddings...
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Shape: (40, 1152)
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Time: 0.25s
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m ☁️  Uploading to S3 bucket: anyscale-example-video-analysis-test-bucket
     
     Text embeddings ready:
-      Tags: s3://abrar-test-bucket-123/anyscale-example/embeddings/tag_embeddings.npz
-      Descriptions: s3://abrar-test-bucket-123/anyscale-example/embeddings/description_embeddings.npz
+      Tags: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/embeddings/tag_embeddings.npz
+      Descriptions: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/embeddings/description_embeddings.npz
 
 
 ---
@@ -372,73 +221,162 @@ The `VideoEncoder` deployment runs on GPU and converts video frames to embedding
 
 **Why [`asyncio.to_thread`](https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread)?** Ray Serve deployments run in an async event loop. The `encode_frames` method is CPU/GPU-bound (PyTorch inference), which would block the event loop and prevent concurrent request handling. Wrapping it in `asyncio.to_thread` offloads the blocking work to a thread pool, keeping the event loop free to accept new requests.
 
-**Why [`ray.put`](https://docs.ray.io/en/latest/ray-core/objects.html)?** Embeddings are large numpy arrays (~75KB per chunk). Without `ray.put`, the encoder would return raw arrays to `VideoAnalyzer`, which deserializes them—only to pass them to the decoder, requiring another serialize/deserialize cycle. With `ray.put`, the encoder stores arrays in the [object store](https://docs.ray.io/en/latest/ray-core/objects.html#objects-in-ray) and returns lightweight references. `VideoAnalyzer` just forwards the references (no deserialization), and the decoder calls `ray.get` once to retrieve the data—zero-copy if on the same node.
+**Why pass [`DeploymentResponse`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.handle.DeploymentResponse.html) to decoder?** Instead of awaiting the encoder result in `VideoAnalyzer` and passing raw data to the decoder, we pass the unawaited `DeploymentResponse` directly. Ray Serve automatically resolves this reference when the decoder needs it, storing the embeddings in the [object store](https://docs.ray.io/en/latest/ray-core/objects.html#objects-in-ray). This avoids an unnecessary serialize/deserialize round-trip through `VideoAnalyzer`—the decoder retrieves data directly from the object store, enabling zero-copy transfer if encoder and decoder are on the same node.
 
 
 
 ```python
-import asyncio
-import numpy as np
-import ray
-import torch
-from ray import serve
-from transformers import AutoModel, AutoProcessor
-from PIL import Image
+from constants import MODEL_NAME
 
-
-@serve.deployment(
-    num_replicas="auto",
-    ray_actor_options={"num_gpus": 1, "num_cpus": 2},
-    max_ongoing_requests=2,
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 10,
-        "target_num_ongoing_requests": 2,
-    },
-)
-class VideoEncoder:
-    """Encodes video frames into embeddings using SigLIP."""
-
-    def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        # Load SigLIP model and processor
-        self.processor = AutoProcessor.from_pretrained(MODEL_NAME)
-        self.model = AutoModel.from_pretrained(MODEL_NAME).to(self.device)
-        self.model.eval()
-
-        self.embedding_dim = self.model.config.vision_config.hidden_size
-
-    def encode_frames(self, frames: np.ndarray) -> np.ndarray:
-        """Encode frames and return L2-normalized embeddings."""
-        # Convert numpy frames to PIL images
-        pil_images = [Image.fromarray(frame) for frame in frames]
-
-        # Process images
-        inputs = self.processor(images=pil_images, return_tensors="pt").to(self.device)
-
-        with torch.no_grad():
-            with torch.amp.autocast(device_type=self.device, enabled=self.device == "cuda"):
-                outputs = self.model.get_image_features(**inputs)
-                # L2 normalize
-                frame_embeddings = torch.nn.functional.normalize(outputs, p=2, dim=1)
-
-        return frame_embeddings.cpu().numpy().astype(np.float32)
-
-    async def __call__(self, frames: np.ndarray) -> dict:
-        """Process frames and return embeddings reference."""
-        frame_embeddings = await asyncio.to_thread(self.encode_frames, frames)
-
-        # Store embeddings in object store to avoid serialization
-        frame_embeddings_ref = ray.put(frame_embeddings)
-
-        return {
-            "frame_embeddings_ref": frame_embeddings_ref,
-            "embedding_dim": self.embedding_dim,
-        }
+print(f"MODEL_NAME: {MODEL_NAME}")
 ```
 
-    [36m(generate_text_embeddings pid=2379, ip=10.0.25.139)[0m Uploaded: s3://abrar-test-bucket-123/anyscale-example/embeddings/tag_embeddings.npz, s3://abrar-test-bucket-123/anyscale-example/embeddings/description_embeddings.npz
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Tags: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/embeddings/tag_embeddings.npz
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m    Descriptions: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/embeddings/description_embeddings.npz
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m 
+    [36m(generate_embeddings_task pid=6626, ip=10.0.222.50)[0m ✅ Done!
+
+
+    MODEL_NAME: google/siglip-so400m-patch14-384
+
+
+
+```python
+from deployments.encoder import VideoEncoder
+import inspect
+
+print(inspect.getsource(VideoEncoder.func_or_class))
+```
+
+    @serve.deployment(
+        num_replicas="auto",
+        ray_actor_options={"num_gpus": 1, "num_cpus": 2},
+        # GPU utilization is at 100% when this is set to 2. with L4
+        # aka number on ongoing chunks that can be processed at once.
+        max_ongoing_requests=2,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "target_num_ongoing_requests": 2,
+        },
+    )
+    class VideoEncoder:
+        """
+        Encodes video frames into embeddings using SigLIP.
+        
+        Returns both per-frame embeddings and pooled embedding.
+        """
+        
+        def __init__(self):
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"VideoEncoder initializing on {self.device}")
+            
+            # Load SigLIP model and processor
+            self.processor = AutoProcessor.from_pretrained(MODEL_NAME)
+            self.model = AutoModel.from_pretrained(MODEL_NAME).to(self.device)
+            self.model.eval()
+            
+            # Get embedding dimension
+            self.embedding_dim = self.model.config.vision_config.hidden_size
+            
+            print(f"VideoEncoder ready (embedding_dim={self.embedding_dim})")
+        
+        def encode_frames(self, frames: np.ndarray) -> np.ndarray:
+            """
+            Encode frames and return per-frame embeddings.
+            
+            Args:
+                frames: np.ndarray of shape (T, H, W, 3) uint8 RGB
+            
+            Returns:
+                np.ndarray of shape (T, D) float32, L2-normalized per-frame embeddings
+            """
+            
+            # Convert to PIL images
+            pil_images = frames_to_pil_list(frames)
+            
+            # Process images
+            inputs = self.processor(images=pil_images, return_tensors="pt").to(self.device)
+            # inputs = {k: v.to(self.device) for k, v in inputs.items()}
+    
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+    
+            # Get embeddings
+            with torch.no_grad():
+                with torch.amp.autocast(device_type=self.device, enabled=self.device == "cuda"):
+                    outputs = self.model.get_image_features(**inputs)
+    
+                    # L2 normalize on GPU (faster than CPU numpy)
+                    frame_embeddings = torch.nn.functional.normalize(outputs, p=2, dim=1)
+            
+            # Move to CPU and convert to numpy
+            result = frame_embeddings.cpu().numpy().astype(np.float32)
+            return result
+        
+        async def encode_unbatched(self, frames: np.ndarray) -> dict:
+            """
+            Unbatched entry point - processes single request directly.
+            
+            Args:
+                frames: np.ndarray of shape (T, H, W, 3)
+            
+            Returns:
+                dict with 'frame_embeddings' and 'embedding_dim'
+            """
+            print(f"Unbatched: {frames.shape[0]} frames")
+            
+            frame_embeddings = await asyncio.to_thread(self.encode_frames, frames)
+            
+            return {
+                "frame_embeddings": frame_embeddings,
+                "embedding_dim": self.embedding_dim,
+            }
+        
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.1)
+        async def encode_batched(self, frames_batch: List[np.ndarray]) -> List[dict]:
+            """
+            Batched entry point - collects multiple requests into single GPU call.
+            
+            Args:
+                frames_batch: List of frame arrays, each of shape (T, H, W, 3)
+            
+            Returns:
+                List of dicts, each with 'frame_embeddings' and 'embedding_dim'
+            """
+            frame_counts = [f.shape[0] for f in frames_batch]
+            total_frames = sum(frame_counts)
+            
+            print(f"Batched: {len(frames_batch)} requests ({total_frames} total frames)")
+            
+            # Concatenate all frames into single batch
+            all_frames = np.concatenate(frames_batch, axis=0)
+            
+            # Single forward pass for all frames
+            all_embeddings = await asyncio.to_thread(self.encode_frames, all_frames)
+            
+            # Split results back per request
+            results = []
+            offset = 0
+            for n_frames in frame_counts:
+                chunk_embeddings = all_embeddings[offset:offset + n_frames]
+                results.append({
+                    "frame_embeddings": chunk_embeddings,
+                    "embedding_dim": self.embedding_dim,
+                })
+                offset += n_frames
+            
+            return results
+        
+        async def __call__(self, frames: np.ndarray, use_batching: bool = False) -> dict:
+            """
+            Main entry point. Set use_batching=False for direct comparison.
+            """
+            if use_batching:
+                return await self.encode_batched(frames)
+            else:
+                return await self.encode_unbatched(frames)
+    
 
 
 ### CPU decoder
@@ -457,171 +395,197 @@ The decoder loads precomputed text embeddings from S3 at startup.
 
 
 ```python
-import io
-import os
-from typing import Optional
+from deployments.decoder import MultiDecoder
 
-import aioboto3
-import numpy as np
-import ray
-from ray import serve
-
-SCENE_CHANGE_THRESHOLD = 0.15
-EMA_ALPHA = 0.9
-
-
-@serve.deployment(
-    num_replicas="auto",
-    ray_actor_options={"num_cpus": 1},
-    max_ongoing_requests=4,
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 10,
-        "target_num_ongoing_requests": 2,
-    },
-)
-class MultiDecoder:
-    """Decodes video embeddings into tags, captions, and scene changes.
-    
-    This deployment is stateless - EMA state for scene detection is passed
-    in and returned with each call, allowing the caller to maintain state
-    continuity across multiple replicas.
-    """
-
-    async def __init__(self):
-        self.bucket = S3_BUCKET
-        self.ema_alpha = EMA_ALPHA
-        self.scene_threshold = SCENE_CHANGE_THRESHOLD
-
-        await self._load_embeddings()
-
-    async def _load_embeddings(self):
-        """Load precomputed text embeddings from S3."""
-        session = aioboto3.Session(region_name=S3_REGION)
-
-        async with session.client("s3") as s3:
-            # Load tag embeddings
-            tag_key = f"{S3_EMBEDDINGS_PREFIX}tag_embeddings.npz"
-            response = await s3.get_object(Bucket=self.bucket, Key=tag_key)
-            tag_data = await response["Body"].read()
-            tag_npz = np.load(io.BytesIO(tag_data), allow_pickle=True)
-            self.tag_embeddings = tag_npz["embeddings"]
-            self.tag_texts = tag_npz["texts"].tolist()
-
-            # Load description embeddings
-            desc_key = f"{S3_EMBEDDINGS_PREFIX}description_embeddings.npz"
-            response = await s3.get_object(Bucket=self.bucket, Key=desc_key)
-            desc_data = await response["Body"].read()
-            desc_npz = np.load(io.BytesIO(desc_data), allow_pickle=True)
-            self.desc_embeddings = desc_npz["embeddings"]
-            self.desc_texts = desc_npz["texts"].tolist()
-
-    def _cosine_similarity(self, embedding: np.ndarray, bank: np.ndarray) -> np.ndarray:
-        """Compute cosine similarity between embedding and all vectors in bank."""
-        return bank @ embedding
-
-    def _get_top_tags(self, embedding: np.ndarray, top_k: int = 5) -> list[dict]:
-        """Get top-k matching tags with scores."""
-        scores = self._cosine_similarity(embedding, self.tag_embeddings)
-        top_indices = np.argsort(scores)[::-1][:top_k]
-        return [{"text": self.tag_texts[i], "score": float(scores[i])} for i in top_indices]
-
-    def _get_retrieval_caption(self, embedding: np.ndarray) -> dict:
-        """Get best matching description."""
-        scores = self._cosine_similarity(embedding, self.desc_embeddings)
-        best_idx = np.argmax(scores)
-        return {"text": self.desc_texts[best_idx], "score": float(scores[best_idx])}
-
-    def _detect_scene_changes(
-        self,
-        frame_embeddings: np.ndarray,
-        chunk_index: int,
-        chunk_start_time: float,
-        chunk_duration: float,
-        ema_state: Optional[np.ndarray] = None,
-    ) -> tuple[list[dict], np.ndarray]:
-        """Detect scene changes using EMA-based scoring.
-        
-        Args:
-            frame_embeddings: Frame embeddings for this chunk.
-            chunk_index: Index of this chunk in the video.
-            chunk_start_time: Start time of this chunk in seconds.
-            chunk_duration: Duration of this chunk in seconds.
-            ema_state: EMA state from previous chunk, or None for first chunk.
-            
-        Returns:
-            Tuple of (scene_changes list, updated ema_state).
-        """
-        num_frames = len(frame_embeddings)
-        if num_frames == 0:
-            # Return empty changes and unchanged state (or first frame if no state)
-            return [], ema_state if ema_state is not None else np.zeros(0)
-
-        # Initialize EMA from first frame if no prior state
-        ema = ema_state.copy() if ema_state is not None else frame_embeddings[0].copy()
-        scene_changes = []
-
-        for frame_idx, embedding in enumerate(frame_embeddings):
-            similarity = float(np.dot(embedding, ema))
-            score = max(0.0, 1.0 - similarity)
-
-            if score >= self.scene_threshold:
-                frame_offset = (frame_idx / max(1, num_frames - 1)) * chunk_duration
-                timestamp = chunk_start_time + frame_offset
-                scene_changes.append({
-                    "timestamp": round(timestamp, 3),
-                    "score": round(score, 4),
-                    "chunk_index": chunk_index,
-                    "frame_index": frame_idx,
-                })
-
-            ema = self.ema_alpha * ema + (1 - self.ema_alpha) * embedding
-            ema = ema / np.linalg.norm(ema)
-
-        return scene_changes, ema
-
-    def __call__(
-        self,
-        encoder_output: dict,
-        chunk_index: int,
-        chunk_start_time: float,
-        chunk_duration: float,
-        top_k_tags: int = 5,
-        ema_state: Optional[np.ndarray] = None,
-    ) -> dict:
-        """Decode embeddings into tags, caption, and scene changes.
-        
-        Args:
-            encoder_output: Output from VideoEncoder containing frame embeddings ref.
-            chunk_index: Index of this chunk in the video.
-            chunk_start_time: Start time of this chunk in seconds.
-            chunk_duration: Duration of this chunk in seconds.
-            top_k_tags: Number of top tags to return.
-            ema_state: EMA state from previous chunk for scene detection continuity.
-                Pass None for the first chunk of a stream.
-                
-        Returns:
-            Dict containing tags, retrieval_caption, scene_changes, and updated ema_state.
-            The caller should pass the returned ema_state to the next chunk's call.
-        """
-        frame_embeddings = ray.get(encoder_output["frame_embeddings_ref"])
-
-        pooled_embedding = frame_embeddings.mean(axis=0)
-        pooled_embedding = pooled_embedding / np.linalg.norm(pooled_embedding)
-
-        tags = self._get_top_tags(pooled_embedding, top_k=top_k_tags)
-        caption = self._get_retrieval_caption(pooled_embedding)
-        scene_changes, new_ema_state = self._detect_scene_changes(
-            frame_embeddings, chunk_index, chunk_start_time, chunk_duration, ema_state
-        )
-
-        return {
-            "tags": tags,
-            "retrieval_caption": caption,
-            "scene_changes": scene_changes,
-            "ema_state": new_ema_state,
-        }
+print(inspect.getsource(MultiDecoder.func_or_class))
 ```
+
+    @serve.deployment(
+        num_replicas="auto",
+        ray_actor_options={"num_cpus": 1},
+        max_ongoing_requests=4, # can be set higher than 4, but since the encoder is limited to 4, we need to keep it at 4.
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "target_num_ongoing_requests": 2,
+        },
+    )
+    class MultiDecoder:
+        """
+        Decodes video embeddings into tags, captions, and scene changes.
+        
+        Uses precomputed text embeddings loaded from S3.
+        This deployment is stateless - EMA state for scene detection is passed
+        in and returned with each call, allowing the caller to maintain state
+        continuity across multiple replicas.
+        """
+        
+        async def __init__(self, bucket: str, s3_prefix: str = S3_EMBEDDINGS_PREFIX):
+            """Initialize decoder with text embeddings from S3."""
+            self.bucket = bucket
+            self.ema_alpha = EMA_ALPHA
+            self.scene_threshold = SCENE_CHANGE_THRESHOLD
+            self.s3_prefix = s3_prefix
+            logger.info(f"MultiDecoder initializing (bucket={self.bucket}, ema_alpha={self.ema_alpha}, threshold={self.scene_threshold})")
+            
+            await self._load_embeddings()
+            
+            logger.info(f"MultiDecoder ready (tags={len(self.tag_texts)}, descriptions={len(self.desc_texts)})")
+        
+        async def _load_embeddings(self):
+            """Load precomputed text embeddings from S3."""
+            session = aioboto3.Session(region_name=get_s3_region(self.bucket))
+            
+            async with session.client("s3") as s3:
+                # Load tag embeddings
+                tag_key = f"{self.s3_prefix}tag_embeddings.npz"
+                response = await s3.get_object(Bucket=self.bucket, Key=tag_key)
+                tag_data = await response["Body"].read()
+                tag_npz = np.load(io.BytesIO(tag_data), allow_pickle=True)
+                self.tag_embeddings = tag_npz["embeddings"]
+                self.tag_texts = tag_npz["texts"].tolist()
+                
+                # Load description embeddings
+                desc_key = f"{self.s3_prefix}description_embeddings.npz"
+                response = await s3.get_object(Bucket=self.bucket, Key=desc_key)
+                desc_data = await response["Body"].read()
+                desc_npz = np.load(io.BytesIO(desc_data), allow_pickle=True)
+                self.desc_embeddings = desc_npz["embeddings"]
+                self.desc_texts = desc_npz["texts"].tolist()
+        
+        def _cosine_similarity(self, embedding: np.ndarray, bank: np.ndarray) -> np.ndarray:
+            """Compute cosine similarity between embedding and all vectors in bank."""
+            return bank @ embedding
+        
+        def _get_top_tags(self, embedding: np.ndarray, top_k: int = 5) -> list[dict]:
+            """Get top-k matching tags with scores."""
+            scores = self._cosine_similarity(embedding, self.tag_embeddings)
+            top_indices = np.argsort(scores)[::-1][:top_k]
+            return [
+                {"text": self.tag_texts[i], "score": float(scores[i])}
+                for i in top_indices
+            ]
+        
+        def _get_retrieval_caption(self, embedding: np.ndarray) -> dict:
+            """Get best matching description."""
+            scores = self._cosine_similarity(embedding, self.desc_embeddings)
+            best_idx = np.argmax(scores)
+            return {
+                "text": self.desc_texts[best_idx],
+                "score": float(scores[best_idx]),
+            }
+        
+        def _detect_scene_changes(
+            self,
+            frame_embeddings: np.ndarray,
+            chunk_index: int,
+            chunk_start_time: float,
+            chunk_duration: float,
+            ema_state: np.ndarray | None = None,
+        ) -> tuple[list[dict], np.ndarray]:
+            """
+            Detect scene changes using EMA-based scoring.
+            
+            score_t = 1 - cosine(E_t, ema_t)
+            ema_t = α * ema_{t-1} + (1-α) * E_t
+            
+            Args:
+                frame_embeddings: (T, D) normalized embeddings
+                chunk_index: Index of this chunk in the video
+                chunk_start_time: Start time of chunk in video (seconds)
+                chunk_duration: Duration of chunk (seconds)
+                ema_state: EMA state from previous chunk, or None for first chunk
+            
+            Returns:
+                Tuple of (scene_changes list, updated ema_state)
+            """
+            num_frames = len(frame_embeddings)
+            if num_frames == 0:
+                # Return empty changes and unchanged state (or zeros if no state)
+                return [], ema_state if ema_state is not None else np.zeros(0)
+            
+            # Initialize EMA from first frame if no prior state
+            ema = ema_state.copy() if ema_state is not None else frame_embeddings[0].copy()
+            scene_changes = []
+            
+            for frame_idx, embedding in enumerate(frame_embeddings):
+                # Compute score: how different is current frame from recent history
+                similarity = float(np.dot(embedding, ema))
+                score = max(0.0, 1.0 - similarity)
+                
+                # Detect scene change if score exceeds threshold
+                if score >= self.scene_threshold:
+                    # Calculate timestamp within video
+                    frame_offset = (frame_idx / max(1, num_frames - 1)) * chunk_duration
+                    timestamp = chunk_start_time + frame_offset
+                    
+                    scene_changes.append({
+                        "timestamp": round(timestamp, 3),
+                        "score": round(score, 4),
+                        "chunk_index": chunk_index,
+                        "frame_index": frame_idx,
+                    })
+                
+                # Update EMA
+                ema = self.ema_alpha * ema + (1 - self.ema_alpha) * embedding
+                # Re-normalize
+                ema = ema / np.linalg.norm(ema)
+            
+            return scene_changes, ema
+        
+        def __call__(
+            self,
+            encoder_output: dict,
+            chunk_index: int,
+            chunk_start_time: float,
+            chunk_duration: float,
+            top_k_tags: int = 5,
+            ema_state: np.ndarray | None = None,
+        ) -> dict:
+            """
+            Decode embeddings into tags, caption, and scene changes.
+            
+            Args:
+                encoder_output: Dict with 'frame_embeddings' and 'embedding_dim'
+                chunk_index: Index of this chunk in the video
+                chunk_start_time: Start time of chunk (seconds)
+                chunk_duration: Duration of chunk (seconds)
+                top_k_tags: Number of top tags to return
+                ema_state: EMA state from previous chunk for scene detection continuity.
+                    Pass None for the first chunk of a stream.
+            
+            Returns:
+                Dict containing tags, retrieval_caption, scene_changes, and updated ema_state.
+                The caller should pass the returned ema_state to the next chunk's call.
+            """
+            # Get frame embeddings from encoder output
+            frame_embeddings = encoder_output["frame_embeddings"]
+            
+            # Calculate pooled embedding (mean across frames, normalized)
+            pooled_embedding = frame_embeddings.mean(axis=0)
+            pooled_embedding = pooled_embedding / np.linalg.norm(pooled_embedding)
+    
+            # Classification and retrieval on pooled embedding
+            tags = self._get_top_tags(pooled_embedding, top_k=top_k_tags)
+            caption = self._get_retrieval_caption(pooled_embedding)
+            
+            # Scene change detection on frame embeddings
+            scene_changes, new_ema_state = self._detect_scene_changes(
+                frame_embeddings=frame_embeddings,
+                chunk_index=chunk_index,
+                chunk_start_time=chunk_start_time,
+                chunk_duration=chunk_duration,
+                ema_state=ema_state,
+            )
+            
+            return {
+                "tags": tags,
+                "retrieval_caption": caption,
+                "scene_changes": scene_changes,
+                "ema_state": new_ema_state,
+            }
+    
+
 
 ### Video chunking
 
@@ -644,118 +608,18 @@ Each chunk extracts 16 frames uniformly sampled across its duration, resized to 
 - **Single FFmpeg**: One process reads the entire video, using `select` filter to pick frames at specific timestamps
 - **Parallel FFmpeg**: Multiple concurrent processes, each extracting one chunk
 
-Parallel wins for local files (better CPU utilization).
+Chose the Single FFmpeg approach since it outperforms parallel FFmpeg on longer videos and yields similar performance for typical 10s chunks. This method is both efficient and scalable as chunk counts grow.
 
 ![Single vs Multi FFmpeg](assets/single_vs_multi_ffmpeg.png)
-
-**Sequential vs parallel chunk processing**: Even with parallel FFmpeg, we limit concurrency with `asyncio.Semaphore(NUM_WORKERS)`. Too many concurrent FFmpeg processes thrash CPU and memory. Benchmarks show 3-4 workers is optimal.
-
-![Sync vs Async Comparison](assets/sync_vs_async_comparison.png)
 
 **Chunk duration**: We use 10-second chunks. Shorter chunks increase overhead (more FFmpeg calls, more encoder/decoder round-trips). Longer chunks increases processing efficiency but **degrade inference quality**—SigLIP processes exactly 16 frames per chunk, so a 60-second chunk samples one frame every 3.75 seconds, missing fast scene changes. The 10-second sweet spot balances throughput with temporal resolution (~1.6 fps sampling).
 
 ![Chunk Video Analysis](assets/chunk_video_analysis.png)
 
 
-
-```python
-import asyncio
-import json
-import subprocess
-from dataclasses import dataclass
-from typing import Optional
-
-import numpy as np
-
-NUM_WORKERS = 3  # Max concurrent ffmpeg processes
-FFMPEG_THREADS = 2  # Threads per ffmpeg process
-
-
-@dataclass
-class VideoChunk:
-    index: int
-    start_time: float
-    duration: float
-    frames: Optional[np.ndarray] = None
-
-
-def get_video_metadata(video_path: str) -> dict:
-    """Get video duration using ffprobe."""
-    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", video_path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return {"duration": float(json.loads(result.stdout)["format"]["duration"])}
-
-
-def extract_frames_ffmpeg(
-    video_path: str, start: float, duration: float, num_frames: int, size: int = 384, threads: int = 0
-) -> np.ndarray:
-    """Extract frames from a video segment using ffmpeg."""
-    fps = num_frames / duration if duration > 0 else num_frames
-    cmd = [
-        "ffmpeg", "-threads", str(threads),
-        "-ss", str(start), "-t", str(duration), "-i", video_path,
-        "-vf", f"fps={fps},scale={size}:{size}", "-pix_fmt", "rgb24", "-f", "rawvideo", "-",
-    ]
-    result = subprocess.run(cmd, capture_output=True, check=True)
-    frame_size = size * size * 3
-    frames = np.frombuffer(result.stdout, dtype=np.uint8).reshape(-1, size, size, 3)
-    # Pad if fewer frames than requested
-    if len(frames) < num_frames:
-        padding = np.tile(frames[-1:], (num_frames - len(frames), 1, 1, 1))
-        frames = np.concatenate([frames, padding])
-    return frames[:num_frames]
-
-
-async def chunk_video_async(
-    video_path: str, chunk_duration: float, num_frames: int, target_size: int = 384
-) -> list[VideoChunk]:
-    """Split video into chunks with PARALLEL frame extraction."""
-    metadata = await asyncio.to_thread(get_video_metadata, video_path)
-
-    # Build chunk definitions
-    chunk_defs = []
-    start = 0.0
-    idx = 0
-    while start < metadata["duration"]:
-        dur = min(chunk_duration, metadata["duration"] - start)
-        if dur < 0.5:
-            break
-        chunk_defs.append((idx, start, dur))
-        start += chunk_duration
-        idx += 1
-
-    if not chunk_defs:
-        return []
-
-    # Extract frames in PARALLEL, limited by semaphore
-    semaphore = asyncio.Semaphore(NUM_WORKERS)
-
-    async def extract_with_limit(idx, start, duration):
-        async with semaphore:
-            return await asyncio.to_thread(
-                extract_frames_ffmpeg, video_path, start, duration, num_frames, target_size, FFMPEG_THREADS
-            )
-
-    frame_results = await asyncio.gather(*[extract_with_limit(*c) for c in chunk_defs])
-
-    return [
-        VideoChunk(index=idx, start_time=start, duration=dur, frames=frames)
-        for (idx, start, dur), frames in zip(chunk_defs, frame_results)
-    ]
-
-```
-
 ### Deployment composition
 
 The `VideoAnalyzer` ingress deployment orchestrates the encoder and decoder. It uses [FastAPI](https://fastapi.tiangolo.com/) integration with [`@serve.ingress`](https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments) for HTTP endpoints.
-
-Deployments receive handles to other deployments through constructor injection using `.bind()`:
-
-```python
-encoder = VideoEncoder.bind()
-decoder = MultiDecoder.bind()
-app = VideoAnalyzer.bind(encoder=encoder, decoder=decoder)
-```
 
 #### Design choices
 
@@ -770,269 +634,289 @@ app = VideoAnalyzer.bind(encoder=encoder, decoder=decoder)
 
 
 ```python
-from pydantic import BaseModel
+from app import VideoAnalyzer
 
-
-class AnalyzeRequest(BaseModel):
-    stream_id: str
-    video_path: str  # S3 URI: s3://bucket/key
-    num_frames: int = 16
-    chunk_duration: float = 10.0
-
-
-# Response models
-class TagScore(BaseModel):
-    text: str
-    score: float
-
-
-class Caption(BaseModel):
-    text: str
-    score: float
-
-
-class SceneChange(BaseModel):
-    timestamp: float
-    score: float
-    chunk_index: int
-    frame_index: int
-
-
-class TimingMs(BaseModel):
-    s3_download_ms: float
-    decode_video_ms: float
-    encode_ms: float
-    decode_ms: float
-    total_ms: float
-
-
-class ChunkResult(BaseModel):
-    chunk_index: int
-    start_time: float
-    duration: float
-    tags: list[TagScore]
-    retrieval_caption: Caption
-    scene_changes: list[SceneChange]
-
-
-class AnalyzeResponse(BaseModel):
-    stream_id: str
-    embedding_dim: int
-    tags: list[TagScore]
-    retrieval_caption: Caption
-    scene_changes: list[SceneChange]
-    num_scene_changes: int
-    chunks: list[ChunkResult]
-    num_chunks: int
-    video_duration: float
-    timing_ms: TimingMs
+print(inspect.getsource(VideoAnalyzer.func_or_class))
 ```
 
-
-```python
-import asyncio
-import tempfile
-import time
-from collections import defaultdict
-from pathlib import Path
-from urllib.parse import urlparse
-
-import aioboto3
-import numpy as np
-from fastapi import FastAPI, HTTPException
-from ray import serve
-
-fastapi_app = FastAPI(title="Video Embedding API")
-
-
-# --- VideoAnalyzer deployment ---
-
-@serve.deployment(
-    num_replicas="auto",
-    ray_actor_options={"num_cpus": 6},
-    max_ongoing_requests=4,
-    autoscaling_config={
-        "min_replicas": 2,
-        "max_replicas": 20,
-        "target_num_ongoing_requests": 2,
-    },
-)
-@serve.ingress(fastapi_app)
-class VideoAnalyzer:
-    """Ingress deployment that orchestrates VideoEncoder and MultiDecoder."""
-
-    def __init__(self, encoder, decoder):
-        self.encoder = encoder
-        self.decoder = decoder
-        self._s3_session = aioboto3.Session(region_name=S3_REGION)
-        self._s3_client = None  # Cached client for reuse across requests
-
-    async def _get_s3_client(self):
-        """Get or create a reusable S3 client."""
-        if self._s3_client is None:
-            self._s3_client = await self._s3_session.client("s3").__aenter__()
-        return self._s3_client
-
-    async def _download_video(self, s3_uri: str) -> Path:
-        """Download video from S3 to temp file."""
-        parsed = urlparse(s3_uri)
-        bucket, key = parsed.netloc, parsed.path.lstrip("/")
-        suffix = Path(key).suffix or ".mp4"
-        temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        temp_path = Path(temp_file.name)
-        temp_file.close()
-
-        s3 = await self._get_s3_client()
-        await s3.download_file(bucket, key, str(temp_path))
-        return temp_path
-
-    def _aggregate_results(self, chunk_results: list[dict], top_k: int = 5) -> dict:
-        """Aggregate tags and caption across chunks."""
-        tag_scores = defaultdict(list)
-        for r in chunk_results:
-            for tag in r["tags"]:
-                tag_scores[tag["text"]].append(tag["score"])
-        agg_tags = sorted(
-            [{"text": t, "score": np.mean(s)} for t, s in tag_scores.items()],
-            key=lambda x: x["score"], reverse=True
-        )[:top_k]
-        best_caption = max((r["retrieval_caption"] for r in chunk_results), key=lambda x: x["score"])
-        return {"tags": agg_tags, "retrieval_caption": best_caption}
-
-    @fastapi_app.post("/analyze", response_model=AnalyzeResponse)
-    async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
-        """Analyze a video from S3."""
-        total_start = time.perf_counter()
-        temp_path = None
-
-        try:
-            # Download video
-            download_start = time.perf_counter()
-            temp_path = await self._download_video(request.video_path)
-            s3_download_ms = (time.perf_counter() - download_start) * 1000
-
-            # Chunk video (parallel frame extraction)
-            decode_start = time.perf_counter()
-            chunks = await chunk_video_async(str(temp_path), request.chunk_duration, request.num_frames)
-            decode_video_ms = (time.perf_counter() - decode_start) * 1000
-
-            if not chunks:
-                raise HTTPException(status_code=400, detail="No chunks extracted")
-
-            video_duration = chunks[-1].start_time + chunks[-1].duration
-
-            # Encode all chunks CONCURRENTLY
-            encode_start = time.perf_counter()
-            encode_results = await asyncio.gather(*[self.encoder.remote(c.frames) for c in chunks])
-            encode_ms = (time.perf_counter() - encode_start) * 1000
-
-            embedding_dim = encode_results[0]["embedding_dim"] if encode_results else 0
-
-            # Decode chunks SERIALLY, passing EMA state between calls.
-            # EMA state is tracked here (not in decoder) to ensure continuity
-            # even when autoscaling routes requests to different replicas.
-            decode_start = time.perf_counter()
-            decode_results = []
-            ema_state = None  # Will be initialized from first chunk's first frame
-            for chunk, enc in zip(chunks, encode_results):
-                dec = await self.decoder.remote(
-                    encoder_output=enc,
-                    chunk_index=chunk.index,
-                    chunk_start_time=chunk.start_time,
-                    chunk_duration=chunk.duration,
-                    ema_state=ema_state,
-                )
-                decode_results.append(dec)
-                ema_state = dec["ema_state"]  # Carry forward for next chunk
-            decode_ms = (time.perf_counter() - decode_start) * 1000
-
-            # Aggregate and build response
-            aggregated = self._aggregate_results(decode_results)
-            all_scene_changes = [
-                SceneChange(**sc) for r in decode_results for sc in r["scene_changes"]
+    @serve.deployment(
+        # setting this to twice that of the encoder. So that requests can complete the
+        # upfront CPU work and be queued for GPU processing.
+        num_replicas="auto",
+        ray_actor_options={"num_cpus": FFMPEG_THREADS},
+        max_ongoing_requests=4,
+        autoscaling_config={
+            "min_replicas": 2,
+            "max_replicas": 20,
+            "target_num_ongoing_requests": 2,
+        },
+    )
+    @serve.ingress(fastapi_app)
+    class VideoAnalyzer:
+        """
+        Main ingress deployment that orchestrates VideoEncoder and MultiDecoder.
+        
+        Encoder refs are passed directly to decoder; Ray Serve resolves dependencies.
+        Downloads video from S3 to temp file for fast local processing.
+        """
+        
+        def __init__(self, encoder: VideoEncoder, decoder: MultiDecoder):
+            self.encoder = encoder
+            self.decoder = decoder
+            self._s3_session = aioboto3.Session()
+            self._s3_client = None  # Cached client for reuse across requests
+            logger.info("VideoAnalyzer ready")
+        
+        async def _get_s3_client(self):
+            """Get or create a reusable S3 client."""
+            if self._s3_client is None:
+                self._s3_client = await self._s3_session.client("s3").__aenter__()
+            return self._s3_client
+        
+        async def _download_video(self, s3_uri: str) -> Path:
+            """Download video from S3 to temp file. Returns local path."""
+            bucket, key = parse_s3_uri(s3_uri)
+            
+            # Create temp file with video extension
+            suffix = Path(key).suffix or ".mp4"
+            temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+            temp_path = Path(temp_file.name)
+            temp_file.close()
+            
+            s3 = await self._get_s3_client()
+            await s3.download_file(bucket, key, str(temp_path))
+            
+            return temp_path
+    
+        def _aggregate_results(
+            self,
+            chunk_results: list[dict],
+            top_k_tags: int = 5,
+        ) -> dict:
+            """
+            Aggregate results from multiple chunks.
+            
+            Strategy:
+            - Tags: Average scores across chunks, return top-k
+            - Caption: Return the one with highest score across all chunks
+            """
+            # Aggregate tag scores
+            tag_scores = defaultdict(list)
+            for result in chunk_results:
+                for tag in result["tags"]:
+                    tag_scores[tag["text"]].append(tag["score"])
+            
+            # Average tag scores and sort
+            aggregated_tags = [
+                {"text": text, "score": np.mean(scores)}
+                for text, scores in tag_scores.items()
             ]
-
-            per_chunk = [
-                ChunkResult(
-                    chunk_index=c.index,
-                    start_time=c.start_time,
-                    duration=c.duration,
-                    tags=[TagScore(**t) for t in r["tags"]],
-                    retrieval_caption=Caption(**r["retrieval_caption"]),
-                    scene_changes=[SceneChange(**sc) for sc in r["scene_changes"]],
-                )
-                for c, r in zip(chunks, decode_results)
-            ]
-
-            total_ms = (time.perf_counter() - total_start) * 1000
-
-            return AnalyzeResponse(
-                stream_id=request.stream_id,
-                embedding_dim=embedding_dim,
-                tags=[TagScore(**t) for t in aggregated["tags"]],
-                retrieval_caption=Caption(**aggregated["retrieval_caption"]),
-                scene_changes=all_scene_changes,
-                num_scene_changes=len(all_scene_changes),
-                chunks=per_chunk,
-                num_chunks=len(chunks),
-                video_duration=video_duration,
-                timing_ms=TimingMs(
-                    s3_download_ms=round(s3_download_ms, 2),
-                    decode_video_ms=round(decode_video_ms, 2),
-                    encode_ms=round(encode_ms, 2),
-                    decode_ms=round(decode_ms, 2),
-                    total_ms=round(total_ms, 2),
-                ),
+            aggregated_tags.sort(key=lambda x: x["score"], reverse=True)
+            top_tags = aggregated_tags[:top_k_tags]
+            
+            # Best caption across all chunks
+            best_caption = max(
+                (r["retrieval_caption"] for r in chunk_results),
+                key=lambda x: x["score"],
             )
-        finally:
-            if temp_path and temp_path.exists():
-                temp_path.unlink(missing_ok=True)
+            
+            return {
+                "tags": top_tags,
+                "retrieval_caption": best_caption,
+            }
+        
+        def _encode_chunk(self, frames: np.ndarray, use_batching: bool = False) -> DeploymentResponse:
+            """Encode a single chunk's frames to embeddings. Returns DeploymentResponse ref."""
+            return self.encoder.remote(frames, use_batching=use_batching)
+    
+        async def _decode_chunk(
+            self,
+            encoder_output: dict,
+            chunk_index: int,
+            chunk_start_time: float,
+            chunk_duration: float,
+            ema_state=None,
+        ) -> dict:
+            """Decode embeddings to tags, caption, scene changes."""
+            return await self.decoder.remote(
+                encoder_output=encoder_output,
+                chunk_index=chunk_index,
+                chunk_start_time=chunk_start_time,
+                chunk_duration=chunk_duration,
+                ema_state=ema_state,
+            )
+        
+        @fastapi_app.post("/analyze", response_model=AnalyzeResponse)
+        async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
+            """
+            Analyze a video from S3 and return tags, caption, and scene changes.
+            
+            Downloads video to temp file for fast local processing.
+            Chunks the entire video and aggregates results.
+            Encoder refs are passed directly to decoder for dependency resolution.
+            """
+            total_start = time.perf_counter()
+            temp_path = None
+    
+            try:
+                # Download video from S3 to temp file
+                download_start = time.perf_counter()
+                try:
+                    temp_path = await self._download_video(request.video_path)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Cannot download S3 video: {e}")
+                s3_download_ms = (time.perf_counter() - download_start) * 1000
+    
+                # Chunk video with PARALLEL frame extraction from local file
+                decode_start = time.perf_counter()
+                try:
+                    chunks = await chunk_video_async(
+                        str(temp_path),
+                        chunk_duration=request.chunk_duration,
+                        num_frames_per_chunk=request.num_frames,
+                        ffmpeg_threads=FFMPEG_THREADS,
+                        use_single_ffmpeg=True,
+                    )
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Cannot process video: {e}")
+    
+                decode_video_ms = (time.perf_counter() - decode_start) * 1000
+                
+                if not chunks:
+                    raise HTTPException(status_code=400, detail="No chunks extracted from video")
+                
+                # Calculate video duration from chunks
+                video_duration = chunks[-1].start_time + chunks[-1].duration
+                
+                # Fire off all encoder calls (returns refs, not awaited)
+                encode_start = time.perf_counter()
+                encode_refs = [
+                    self._encode_chunk(chunk.frames, use_batching=request.use_batching) 
+                    for chunk in chunks
+                ]
+                encode_ms = (time.perf_counter() - encode_start) * 1000
+                
+                # Decode chunks SERIALLY, passing encoder refs directly.
+                # Ray Serve resolves the encoder result when decoder needs it.
+                # EMA state is tracked here (not in decoder) to ensure continuity
+                # even when autoscaling routes requests to different replicas.
+                decode_start = time.perf_counter()
+                decode_results = []
+                ema_state = None  # Will be initialized from first chunk's first frame
+                for chunk, enc_ref in zip(chunks, encode_refs):
+                    dec_result = await self._decode_chunk(
+                        encoder_output=enc_ref,
+                        chunk_index=chunk.index,
+                        chunk_start_time=chunk.start_time,
+                        chunk_duration=chunk.duration,
+                        ema_state=ema_state,
+                    )
+                    decode_results.append(dec_result)
+                    ema_state = dec_result["ema_state"]  # Carry forward for next chunk
+                decode_ms = (time.perf_counter() - decode_start) * 1000
+                
+                # Collect results
+                chunk_results = []
+                per_chunk_results = []
+                all_scene_changes = []
+                
+                for chunk, decoder_result in zip(chunks, decode_results):
+                    chunk_results.append(decoder_result)
+                    
+                    # Scene changes come directly from decoder
+                    chunk_scene_changes = [
+                        SceneChange(**sc) for sc in decoder_result["scene_changes"]
+                    ]
+                    all_scene_changes.extend(chunk_scene_changes)
+                    
+                    per_chunk_results.append(ChunkResult(
+                        chunk_index=chunk.index,
+                        start_time=chunk.start_time,
+                        duration=chunk.duration,
+                        tags=[TagResult(**t) for t in decoder_result["tags"]],
+                        retrieval_caption=CaptionResult(**decoder_result["retrieval_caption"]),
+                        scene_changes=chunk_scene_changes,
+                    ))
+                
+                # Aggregate results
+                aggregated = self._aggregate_results(chunk_results)
+                
+                total_ms = (time.perf_counter() - total_start) * 1000
+                
+                return AnalyzeResponse(
+                    stream_id=request.stream_id,
+                    tags=[TagResult(**t) for t in aggregated["tags"]],
+                    retrieval_caption=CaptionResult(**aggregated["retrieval_caption"]),
+                    scene_changes=all_scene_changes,
+                    num_scene_changes=len(all_scene_changes),
+                    chunks=per_chunk_results,
+                    num_chunks=len(chunks),
+                    video_duration=video_duration,
+                    timing_ms=TimingResult(
+                        s3_download_ms=round(s3_download_ms, 2),
+                        decode_video_ms=round(decode_video_ms, 2),
+                        encode_ms=round(encode_ms, 2),
+                        decode_ms=round(decode_ms, 2),
+                        total_ms=round(total_ms, 2),
+                    ),
+                )
+            finally:
+                # Clean up temp file
+                if temp_path and temp_path.exists():
+                    temp_path.unlink(missing_ok=True)
+        
+        @fastapi_app.get("/health")
+        async def health(self):
+            """Health check endpoint."""
+            return {"status": "healthy"}
+    
 
-    @fastapi_app.get("/health")
-    async def health(self):
-        return {"status": "healthy"}
-
-```
 
 
 ```python
 encoder = VideoEncoder.bind()
-decoder = MultiDecoder.bind()
+decoder = MultiDecoder.bind(bucket=S3_BUCKET, s3_prefix=S3_EMBEDDINGS_PREFIX)
 app = VideoAnalyzer.bind(encoder=encoder, decoder=decoder)
 ```
 
 
 ```python
+from ray import serve
+
 serve.run(app, name="video-analyzer", route_prefix="/", blocking=False)
 ```
 
-    INFO 2026-01-04 04:05:04,480 serve 135398 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,591 controller 134537 -- Registering autoscaling state for deployment Deployment(name='VideoEncoder', app='video-analyzer')
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,592 controller 134537 -- Deploying new version of Deployment(name='VideoEncoder', app='video-analyzer') (initial target replicas: 1).
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,593 controller 134537 -- Registering autoscaling state for deployment Deployment(name='MultiDecoder', app='video-analyzer')
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,594 controller 134537 -- Deploying new version of Deployment(name='MultiDecoder', app='video-analyzer') (initial target replicas: 1).
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,594 controller 134537 -- Registering autoscaling state for deployment Deployment(name='VideoAnalyzer', app='video-analyzer')
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,595 controller 134537 -- Deploying new version of Deployment(name='VideoAnalyzer', app='video-analyzer') (initial target replicas: 2).
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,700 controller 134537 -- Adding 1 replica to Deployment(name='VideoEncoder', app='video-analyzer').
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,702 controller 134537 -- Adding 1 replica to Deployment(name='MultiDecoder', app='video-analyzer').
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,706 controller 134537 -- Stopping 1 replicas of Deployment(name='VideoAnalyzer', app='video-analyzer') with outdated versions.
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:04,706 controller 134537 -- Adding 1 replica to Deployment(name='VideoAnalyzer', app='video-analyzer').
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:06,770 controller 134537 -- Replica(id='ndldcpkc', deployment='VideoAnalyzer', app='video-analyzer') is stopped.
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:08,135 controller 134537 -- Stopping 1 replicas of Deployment(name='VideoAnalyzer', app='video-analyzer') with outdated versions.
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:08,135 controller 134537 -- Adding 1 replica to Deployment(name='VideoAnalyzer', app='video-analyzer').
-    [36m(ServeController pid=134537)[0m INFO 2026-01-04 04:05:10,142 controller 134537 -- Replica(id='ie8o7dry', deployment='VideoAnalyzer', app='video-analyzer') is stopped.
-    [36m(ServeReplica:video-analyzer:VideoEncoder pid=2548, ip=10.0.25.139)[0m Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+    [36m(ProxyActor pid=251250)[0m INFO 2026-01-06 08:27:23,294 proxy 10.0.45.10 -- Proxy starting on node 7beb9ebc3808dac027f36a0400592d7a27cc9e90f0aab0a2578c328b (HTTP port: 8000).
+    INFO 2026-01-06 08:27:23,369 serve 250708 -- Started Serve in namespace "serve".
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,394 controller 251181 -- Registering autoscaling state for deployment Deployment(name='VideoEncoder', app='video-analyzer')
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,395 controller 251181 -- Deploying new version of Deployment(name='VideoEncoder', app='video-analyzer') (initial target replicas: 1).
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,397 controller 251181 -- Registering autoscaling state for deployment Deployment(name='MultiDecoder', app='video-analyzer')
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,397 controller 251181 -- Deploying new version of Deployment(name='MultiDecoder', app='video-analyzer') (initial target replicas: 1).
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,398 controller 251181 -- Registering autoscaling state for deployment Deployment(name='VideoAnalyzer', app='video-analyzer')
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,398 controller 251181 -- Deploying new version of Deployment(name='VideoAnalyzer', app='video-analyzer') (initial target replicas: 2).
+    [36m(ProxyActor pid=251250)[0m INFO 2026-01-06 08:27:23,365 proxy 10.0.45.10 -- Got updated endpoints: {}.
+    [36m(ProxyActor pid=251250)[0m INFO 2026-01-06 08:27:23,403 proxy 10.0.45.10 -- Got updated endpoints: {Deployment(name='VideoAnalyzer', app='video-analyzer'): EndpointInfo(route='/', app_is_cross_language=False, route_patterns=None)}.
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,508 controller 251181 -- Adding 1 replica to Deployment(name='VideoEncoder', app='video-analyzer').
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,510 controller 251181 -- Adding 1 replica to Deployment(name='MultiDecoder', app='video-analyzer').
+    [36m(ServeController pid=251181)[0m INFO 2026-01-06 08:27:23,512 controller 251181 -- Adding 2 replicas to Deployment(name='VideoAnalyzer', app='video-analyzer').
+    [36m(ProxyActor pid=251250)[0m INFO 2026-01-06 08:27:23,416 proxy 10.0.45.10 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x72d0e5f4f710>.
+    [36m(ProxyActor pid=251250)[0m INFO 2026-01-06 08:27:27,576 proxy 10.0.45.10 -- Got updated endpoints: {Deployment(name='VideoAnalyzer', app='video-analyzer'): EndpointInfo(route='/', app_is_cross_language=False, route_patterns=[RoutePattern(methods=['POST'], path='/analyze'), RoutePattern(methods=['GET', 'HEAD'], path='/docs'), RoutePattern(methods=['GET', 'HEAD'], path='/docs/oauth2-redirect'), RoutePattern(methods=['GET'], path='/health'), RoutePattern(methods=['GET', 'HEAD'], path='/openapi.json'), RoutePattern(methods=['GET', 'HEAD'], path='/redoc')])}.
+    [36m(ProxyActor pid=67913, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:28,373 proxy 10.0.239.104 -- Proxy starting on node 6954457300d89edbf779f01ef0bfcfc5d109d927fca0e3b4f80974ba (HTTP port: 8000).[32m [repeated 2x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)[0m
+    [36m(ProxyActor pid=6627, ip=10.0.222.50)[0m INFO 2026-01-06 08:27:26,287 proxy 10.0.222.50 -- Got updated endpoints: {Deployment(name='VideoAnalyzer', app='video-analyzer'): EndpointInfo(route='/', app_is_cross_language=False, route_patterns=None)}.
 
 
-    [36m(autoscaler +32s)[0m [autoscaler] [16CPU-64GB] Attempting to add 1 node to the cluster (increasing from 1 to 2).
-    [36m(autoscaler +32s)[0m [autoscaler] [16CPU-64GB|m8i.4xlarge] [us-west-2a] [on-demand] Launched 1 instance.
+    [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m VideoEncoder initializing on cuda
 
 
-    [36m(ProxyActor pid=2607, ip=10.0.25.139)[0m INFO 2026-01-04 04:05:11,437 proxy 10.0.25.139 -- Proxy starting on node d4cb8459fbe780df3989d0b4736d9e58b3f58e690fc0f0fead60c58d (HTTP port: 8000).
-    [36m(ProxyActor pid=2607, ip=10.0.25.139)[0m INFO 2026-01-04 04:05:11,551 proxy 10.0.25.139 -- Got updated endpoints: {Deployment(name='VideoAnalyzer', app='video-analyzer'): EndpointInfo(route='/', app_is_cross_language=False, route_patterns=[RoutePattern(methods=['POST'], path='/analyze'), RoutePattern(methods=['GET', 'HEAD'], path='/docs'), RoutePattern(methods=['GET', 'HEAD'], path='/docs/oauth2-redirect'), RoutePattern(methods=['GET'], path='/health'), RoutePattern(methods=['GET', 'HEAD'], path='/openapi.json'), RoutePattern(methods=['GET', 'HEAD'], path='/redoc')])}.
-    [36m(ProxyActor pid=2607, ip=10.0.25.139)[0m INFO 2026-01-04 04:05:11,565 proxy 10.0.25.139 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7afd189d4080>.
-    INFO 2026-01-04 04:05:13,515 serve 135398 -- Application 'video-analyzer' is ready at http://0.0.0.0:8000/.
-    INFO 2026-01-04 04:05:13,528 serve 135398 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x73478063f6b0>.
+    [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+    [36m(ProxyActor pid=67913, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:28,444 proxy 10.0.239.104 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7dd178a4d190>.[32m [repeated 2x across cluster][0m
+
+
+    [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m VideoEncoder ready (embedding_dim=1152)
+
+
+    INFO 2026-01-06 08:27:31,518 serve 250708 -- Application 'video-analyzer' is ready at http://0.0.0.0:8000/.
+    INFO 2026-01-06 08:27:31,534 serve 250708 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x78edac0dbef0>.
 
 
 
@@ -1125,43 +1009,49 @@ print("=" * 60)
 
 ```
 
-    Analyzing video: s3://abrar-test-bucket-123/anyscale-example/stock-videos/sample_35510474.mp4
-    Stream ID: 43b5fd0e
+    [36m(ServeReplica:video-analyzer:VideoAnalyzer pid=67729, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:31,893 video-analyzer_VideoAnalyzer npdr89ay b9cd7535-7acc-4fa4-a54b-a0e789ca9ce7 -- GET /health 200 1.5ms
+
+
+    Analyzing video: s3://anyscale-example-video-analysis-test-bucket/anyscale-example/stock-videos/kitchen_cooking_35395675_00.mp4
+    Stream ID: 766cc773
     
+
+
+    [36m(ServeReplica:video-analyzer:VideoAnalyzer pid=67728, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:32,683 video-analyzer_VideoAnalyzer ntukkwkd 9326cc34-5b87-491c-8025-a7db9a2806f4 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x788bd83d2120>.
+
+
+    [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m Unbatched: 16 frames
     ============================================================
-    Video duration: 12.0s
-    Chunks processed: 2
+    Video duration: 8.3s
+    Chunks processed: 1
     
     Top Tags:
-      0.055  kitchen
-      0.033  cafe
-      0.015  bathroom
-      0.008  living room
-      0.007  bedroom
+      0.082  kitchen
+      0.070  cafe
+      0.058  living room
+      0.057  bedroom
+      0.053  office
     
     Best Caption:
-      0.100  A person cooking in a kitchen
+      0.101  Someone preparing food on a counter
     
     Scene Changes: 0
     
     Timing:
-      S3 download:    200.6 ms
-      Video decode:   136.6 ms
-      Encode (GPU):   869.5 ms
-      Decode (CPU):    12.7 ms
-      Total server:  1219.5 ms
-      Round-trip:    1237.7 ms
+      S3 download:    238.8 ms
+      Video decode:   100.6 ms
+      Encode (GPU):    18.3 ms
+      Decode (CPU):   855.0 ms
+      Total server:  1212.9 ms
+      Round-trip:    1235.5 ms
     ============================================================
 
 
-    [36m(ServeReplica:video-analyzer:VideoEncoder pid=2548, ip=10.0.25.139)[0m INFO 2026-01-04 04:05:36,175 video-analyzer_VideoEncoder g2pni5ln 726f6fd6-771d-4626-9495-8f30bcd8143a -- CALL __call__ OK 752.4ms
-    [36m(ServeReplica:video-analyzer:VideoEncoder pid=2548, ip=10.0.25.139)[0m INFO 2026-01-04 04:05:36,270 video-analyzer_VideoEncoder g2pni5ln 726f6fd6-771d-4626-9495-8f30bcd8143a -- CALL __call__ OK 836.0ms
-    [36m(ServeReplica:video-analyzer:MultiDecoder pid=20831, ip=10.0.26.32)[0m INFO 2026-01-04 04:05:36,278 video-analyzer_MultiDecoder vsd0e8e9 726f6fd6-771d-4626-9495-8f30bcd8143a -- CALL __call__ OK 4.0ms
-    [36m(ServeReplica:video-analyzer:MultiDecoder pid=20831, ip=10.0.26.32)[0m INFO 2026-01-04 04:05:36,283 video-analyzer_MultiDecoder vsd0e8e9 726f6fd6-771d-4626-9495-8f30bcd8143a -- CALL __call__ OK 3.1ms
-    [36m(ServeReplica:video-analyzer:VideoAnalyzer pid=20921, ip=10.0.26.32)[0m INFO 2026-01-04 04:05:36,284 video-analyzer_VideoAnalyzer z5pw9lpz 726f6fd6-771d-4626-9495-8f30bcd8143a -- POST /analyze 200 1223.1ms
-
-
-    [36m(autoscaler +1m7s)[0m [autoscaler] Cluster upscaled to {40 CPU, 2 GPU}.
+    [36m(ServeReplica:video-analyzer:MultiDecoder pid=6737, ip=10.0.222.50)[0m /home/ray/anaconda3/lib/python3.12/site-packages/ray/serve/_private/replica.py:1640: UserWarning: Calling sync method '__call__' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default. Ensure your sync methods are thread safe or keep the existing behavior by making them `async def`. Opt into the new behavior by setting RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1.
+    [36m(ServeReplica:video-analyzer:MultiDecoder pid=6737, ip=10.0.222.50)[0m   warnings.warn(
+    [36m(ServeReplica:video-analyzer:MultiDecoder pid=6737, ip=10.0.222.50)[0m INFO 2026-01-06 08:27:33,539 video-analyzer_MultiDecoder 1carxuil 9326cc34-5b87-491c-8025-a7db9a2806f4 -- CALL __call__ OK 2.1ms
+    [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m INFO 2026-01-06 08:27:33,533 video-analyzer_VideoEncoder pxjowb4x 9326cc34-5b87-491c-8025-a7db9a2806f4 -- CALL __call__ OK 804.7ms
+    [36m(ServeReplica:video-analyzer:VideoAnalyzer pid=67728, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:33,541 video-analyzer_VideoAnalyzer ntukkwkd 9326cc34-5b87-491c-8025-a7db9a2806f4 -- POST /analyze 200 1217.9ms
 
 
 ---
@@ -1185,11 +1075,11 @@ python -m client.load_test --video s3://bucket/video.mp4 --concurrency <N>
 - Frames per chunk: 16
 - Autoscaling: Enabled (replicas scale based on `target_num_ongoing_requests`)
 
-The charts below show autoscaling in action during the concurrency=32 and 64 load test:
+The charts below show autoscaling in action during the concurrency=2 to 64 load test:
 
-![Ongoing Requests](assets/ongoing_requests.png)
+![Ongoing Requests](assets/ongoing.png)
 
-![Replica Count](assets/replica_count.png)
+![Replica Count](assets/num_replicas.png)
 
 ![Queue Length](assets/queue_len.png)
 
@@ -1202,18 +1092,18 @@ To ensure fair comparison, we discarded the first half of each test run to exclu
 
 | Concurrency | Requests | P50 (ms) | P95 (ms) | P99 (ms) | Throughput (req/s) |
 |-------------|----------|----------|----------|----------|-------------------|
-| 2           | 122      | 1,027    | 1,069    | 1,162    | 1.92              |
-| 4           | 236      | 1,008    | 1,346    | 1,480    | 3.75              |
-| 8           | 932      | 1,076    | 1,423    | 1,495    | 6.91              |
-| 16          | 2,612    | 1,121    | 1,424    | 1,501    | 13.69             |
-| 32          | 4,421    | 1,114    | 1,406    | 1,479    | 27.64             |
-| 64          | 16,971   | 1,129    | 1,426    | 1,493    | 54.69             |
+| 2           | 152      | 838      | 843      | 844      | 2.37              |
+| 4           | 590      | 858      | 984      | 1,025    | 4.68              |
+| 8           | 1,103    | 885      | 1,065    | 1,120    | 8.97              |
+| 16          | 2,240    | 900      | 1,074    | 1,128    | 17.78             |
+| 32          | 4,141    | 928      | 1,095    | 1,151    | 34.75             |
+| 64          | 17,283   | 967      | 1,128    | 1,188    | 67.55             |
 
 **Key findings:**
 
-- **100% success rate** across all 25,294 requests analyzed
-- **Near-linear throughput scaling**: Throughput increased from 1.92 req/s at concurrency 2 to **54.69 req/s at concurrency 64** (~28x improvement)
-- **Stable latencies under load**: P95 latency remained between 1,069ms and 1,426ms across all concurrency levels, demonstrating effective autoscaling
+- **100% success rate** across all 25,509 requests analyzed
+- **Near-linear throughput scaling**: Throughput increased from 2.37 req/s at concurrency 2 to **67.55 req/s at concurrency 64** (~28x improvement)
+- **Stable latencies under load**: P95 latency remained between 843ms and 1,128ms across all concurrency levels, demonstrating effective autoscaling
 
 
 ### Processing Time Breakdown
@@ -1223,12 +1113,12 @@ The chart below shows how processing time is distributed across pipeline stages 
 ![Processing Time Breakdown](assets/processing_time_breakdown.png)
 
 **At concurrency 64 (best throughput):**
-- **S3 Download**: 359ms (31%)
-- **Video Decode (FFmpeg)**: 136ms (12%)
-- **Encode (GPU)**: 651ms (56%)
-- **Decode (CPU)**: 6ms (1%)
+- **S3 Download**: 77ms (8%)
+- **Video Decode (FFmpeg)**: 98ms (10%)
+- **Encode (GPU)**: <1ms (<1%) — Note: This number is artificially low due to how timing is measured. Because the output of VideoEncoder is passed directly into MultiDecoder as an argument, the instrumentation mistakenly attributes most of the computational time to the downstream stage. In reality, VideoEncoder performs the bulk of the work, so its true processing time is significantly higher than reported here.
+- **Decode (CPU)**: 757ms (81%)
 
-The GPU encoding stage dominates processing time, as expected for neural network inference. S3 download latency is the second largest component.
+The CPU decoding stage (tag/caption generation) dominates processing time. S3 download and video decoding are relatively fast due to local caching and optimized FFmpeg settings.
 
 
 ### Throughput Analysis
@@ -1241,7 +1131,7 @@ The charts below show throughput scaling and the latency-throughput tradeoff:
 
 1. **Linear scaling**: Throughput scales almost linearly with concurrency, indicating that autoscaling successfully provisions enough replicas to handle increased load.
 
-2. **Latency-throughput tradeoff**: The right chart shows that P95 latency increases slightly as throughput grows (from ~1,069ms to ~1,426ms), but remains within acceptable bounds. This ~33% latency increase enables a ~28x throughput improvement.
+2. **Latency-throughput tradeoff**: The right chart shows that P95 latency increases slightly as throughput grows (from ~843ms to ~1,128ms), but remains within acceptable bounds. This ~34% latency increase enables a ~28x throughput improvement.
 
 3. **No saturation point**: Even at concurrency 64, throughput continues to scale. The system could likely handle higher concurrency with additional GPU resources.
 
