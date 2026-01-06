@@ -1,10 +1,11 @@
 import socket
 from contextlib import closing
-from functools import lru_cache
 from typing import Optional, Tuple, Union
 
 from ray._raylet import (
     build_address as _build_address,
+    get_all_interfaces_ip as _get_all_interfaces_ip,
+    get_localhost_ip as _get_localhost_ip,
     is_ipv6 as _is_ipv6,
     node_ip_address_from_perspective as _node_ip_address_from_perspective,
     parse_address as _parse_address,
@@ -63,25 +64,25 @@ def is_ipv6(host: str) -> bool:
     return _is_ipv6(host)
 
 
-@lru_cache(maxsize=1)
 def get_localhost_ip() -> str:
     """Get localhost loopback ip with IPv4/IPv6 support.
 
     Returns:
         The localhost loopback IP.
     """
-    # Try IPv4 first, then IPv6 localhost resolution
-    for family in [socket.AF_INET, socket.AF_INET6]:
-        try:
-            dns_result = socket.getaddrinfo(
-                "localhost", None, family, socket.SOCK_STREAM
-            )
-            return dns_result[0][4][0]
-        except Exception:
-            continue
+    return _get_localhost_ip()
 
-    # Final fallback to IPv4 loopback
-    return "127.0.0.1"
+
+def get_all_interfaces_ip() -> str:
+    """Get the IP address to bind to all network interfaces.
+
+    Returns "0.0.0.0" for IPv4 or "::" for IPv6, depending on the system's
+    localhost resolution (same logic as get_localhost_ip).
+
+    Returns:
+        The all-interfaces bind address.
+    """
+    return _get_all_interfaces_ip()
 
 
 def is_localhost(host: str) -> bool:

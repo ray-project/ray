@@ -15,6 +15,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -861,7 +862,7 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": "0.0.0.0",
+            "host": get_all_interfaces_ip(),
             "port": 8000,
         },
         "grpc_options": {

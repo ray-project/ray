@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+from ray._common.network_utils import get_localhost_ip
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -27,7 +28,7 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_HOST = get_localhost_ip()
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000

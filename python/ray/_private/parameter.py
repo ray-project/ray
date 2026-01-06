@@ -75,10 +75,10 @@ class RayParams:
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        dashboard_host: The host to bind the web UI server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
-            external machines.
+        dashboard_host: The host to bind the web UI server to. Any valid
+            IP address or hostname can be used. Use localhost (127.0.0.1 for
+            IPv4, ::1 for IPv6) for local access only, or the node IP address
+            for remote access. By default, this is localhost.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on

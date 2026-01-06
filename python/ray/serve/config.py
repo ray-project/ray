@@ -637,8 +637,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      "127.0.0.1". To expose Serve publicly, you probably want to set
-      this to "0.0.0.0".
+      localhost. To expose Serve publicly, you probably want to set
+      this to the node IP address.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed

@@ -3,12 +3,13 @@ from ray.includes.network_util cimport (
     ParseAddress,
     GetNodeIpAddressFromPerspective,
     IsIPv6,
+    GetLocalhostIP,
+    GetAllInterfacesIP,
     array_string_2,
     optional,
 )
 from libcpp.string cimport string
 from typing import Optional, Tuple, Union
-import socket
 
 def parse_address(address: str) -> Optional[Tuple[str, str]]:
     cdef optional[array_string_2] res = ParseAddress(address.encode('utf-8'))
@@ -49,3 +50,18 @@ def node_ip_address_from_perspective(address=None) -> str:
 def is_ipv6(host: str) -> bool:
     cdef string host_c = host.encode('utf-8')
     return IsIPv6(host_c)
+
+
+def get_localhost_ip() -> str:
+    cdef string result = GetLocalhostIP()
+    return result.decode('utf-8')
+
+
+def get_all_interfaces_ip() -> str:
+    """Get the IP address to bind to all network interfaces.
+
+    Returns "0.0.0.0" for IPv4 or "::" for IPv6, depending on the system's
+    localhost resolution.
+    """
+    cdef string result = GetAllInterfacesIP()
+    return result.decode('utf-8')

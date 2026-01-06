@@ -493,9 +493,10 @@ Windows powershell users need additional escaping:
     "--dashboard-host",
     required=False,
     default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    help="the host to bind the dashboard server to. Any valid IP address or "
+    "hostname can be used. Use localhost (127.0.0.1 for IPv4, ::1 for IPv6) "
+    "for local access only, or the node IP for remote access. "
+    "By default, this is localhost.",
 )
 @click.option(
     "--dashboard-port",

@@ -52,6 +52,7 @@
 #include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -1067,7 +1068,7 @@ int main(int argc, char *argv[]) {
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
     if (actual_metrics_agent_port > 0) {
       metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+          ray::GetLocalhostIP(), actual_metrics_agent_port, main_service, *client_call_manager);
       metrics_agent_client->WaitForServerReady(
           [actual_metrics_agent_port](const ray::Status &server_status) {
             if (server_status.ok()) {

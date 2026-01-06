@@ -9,7 +9,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
@@ -96,7 +96,7 @@ class DashboardHead:
             self.serve_frontend = False
         # Public attributes are accessible for all head modules.
         # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
-        self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
+        self.http_host = get_localhost_ip() if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
@@ -313,7 +313,7 @@ class DashboardHead:
                         DASHBOARD_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+                kwargs = {"addr": get_localhost_ip()} if is_localhost(self.ip) else {}
                 prometheus_client.start_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,
