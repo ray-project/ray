@@ -117,39 +117,35 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import aioboto3
 import httpx
 
 
-async def download_sample_video() -> str:
+def download_sample_video() -> str:
     """Download one sample video from Pexels, normalize it, and upload to S3.
     
     If a video already exists in S3, return that instead of downloading.
     """
-    session = aioboto3.Session(region_name=S3_REGION)
-    
     # Check if any videos already exist in S3
-    async with session.client("s3") as s3:
-        response = await s3.list_objects_v2(
-            Bucket=S3_BUCKET,
-            Prefix=S3_PREFIX,
-            MaxKeys=1,
-        )
-        existing_files = response.get("Contents", [])
-        
-        if existing_files:
-            # Use the first existing video
-            existing_key = existing_files[0]["Key"]
-            s3_uri = f"s3://{S3_BUCKET}/{existing_key}"
-            print(f"Found existing video in S3: {s3_uri}")
-            return s3_uri
+    response = s3.list_objects_v2(
+        Bucket=S3_BUCKET,
+        Prefix=S3_PREFIX,
+        MaxKeys=1,
+    )
+    existing_files = response.get("Contents", [])
+    
+    if existing_files:
+        # Use the first existing video
+        existing_key = existing_files[0]["Key"]
+        s3_uri = f"s3://{S3_BUCKET}/{existing_key}"
+        print(f"Found existing video in S3: {s3_uri}")
+        return s3_uri
 
     # No existing video found, download from Pexels
     print("No existing video in S3, downloading from Pexels...")
     
     # Search for a video
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
+    with httpx.Client() as client:
+        response = client.get(
             "https://api.pexels.com/videos/search",
             headers={"Authorization": PEXELS_API_KEY},
             params={"query": "kitchen cooking", "per_page": 1, "orientation": "landscape"},
@@ -174,14 +170,14 @@ async def download_sample_video() -> str:
         normalized_path = Path(temp_dir) / f"sample_{video_id}.mp4"
 
         # Download
-        async with httpx.AsyncClient() as client:
-            async with client.stream("GET", download_url, timeout=120.0) as resp:
+        with httpx.Client() as client:
+            with client.stream("GET", download_url, timeout=120.0) as resp:
                 resp.raise_for_status()
                 with open(raw_path, "wb") as f:
-                    async for chunk in resp.aiter_bytes(8192):
+                    for chunk in resp.iter_bytes(8192):
                         f.write(chunk)
 
-        print(f"Normalizing to 384x384@30fps...")
+        print("Normalizing to 384x384@30fps...")
 
         # Normalize with ffmpeg (384x384 matches SigLIP input size)
         subprocess.run([
@@ -193,8 +189,7 @@ async def download_sample_video() -> str:
 
         # Upload to S3
         s3_key = f"{S3_PREFIX}sample_{video_id}.mp4"
-        async with session.client("s3") as s3:
-            await s3.upload_file(str(normalized_path), S3_BUCKET, s3_key)
+        s3.upload_file(str(normalized_path), S3_BUCKET, s3_key)
 
         s3_uri = f"s3://{S3_BUCKET}/{s3_key}"
         print(f"Uploaded to {s3_uri}")
@@ -202,7 +197,7 @@ async def download_sample_video() -> str:
 
 
 # Run the download
-SAMPLE_VIDEO_URI = await download_sample_video()
+SAMPLE_VIDEO_URI = download_sample_video()
 print(f"\nSample video ready: {SAMPLE_VIDEO_URI}")
 
 ```
