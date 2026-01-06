@@ -51,7 +51,10 @@ class CudaIpcTransport(TensorTransportManager):
         return False
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
-        return torch.cuda.is_available()
+        # TODO: Ideally we would check if torch.cuda.is_available() on the actor
+        # and if so, return True. But we want to avoid blocking in ray.get() in
+        # this method since it gets called before submitting an actor task.
+        return True
 
     @staticmethod
     def extract_tensor_transport_metadata(
@@ -60,6 +63,7 @@ class CudaIpcTransport(TensorTransportManager):
     ) -> CudaIpcTransportMetadata:
 
         tensor_meta = []
+        device = None
         cuda_ipc_handles = []
         event_ipc_handle = None
         ray_gpu_idx = None
@@ -167,7 +171,7 @@ class CudaIpcTransport(TensorTransportManager):
             cur_gpu_idx = ray.get_gpu_ids()[device.index]
             if cur_gpu_idx != tensor_transport_metadata.ray_gpu_idx:
                 raise ValueError(
-                    f"CUDA IPC transport only supports tensors on the same GPU, but the sender (GPU: {tensor_transport_metadata.ray_gpu_idx}) and receiver (GPU: {cur_gpu_idx}) are on different GPUs."
+                    f"CUDA IPC transport only supports tensors on the same GPU, but the sender (GPU: {tensor_transport_metadata.ray_gpu_idx}) and receiver (GPU: {cur_gpu_idx}) are on different GPUs. To use the CUDA IPC RDT transport, ensure that CUDA_VISIBLE_DEVICES is set to `ray.get_gpu_ids()`, the GPUs assigned by Ray (this is the default behavior)."
                 )
 
             event_ipc_handle = tensor_transport_metadata.cuda_ipc_event_ipc_handle

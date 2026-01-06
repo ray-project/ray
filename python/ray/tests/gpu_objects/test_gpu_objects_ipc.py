@@ -18,7 +18,6 @@ class GPUTestActor:
 
     def double(self, data):
         data.mul_(2)
-        torch.cuda.synchronize()
         return data
 
     def wait_tensor_freed(self):
@@ -102,6 +101,7 @@ def test_different_nodes(ray_start_cluster):
         ray.get(dst_actor.double.remote(gpu_ref))
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ref_freed(ray_start_regular):
     world_size = 2
     actors = [
@@ -129,6 +129,7 @@ def test_ref_freed(ray_start_regular):
     )
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_source_actor_fails_after_transfer(ray_start_regular):
     world_size = 2
     actors = [
@@ -161,6 +162,7 @@ def test_source_actor_fails_after_transfer(ray_start_regular):
     )
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_source_actor_fails_before_transfer(ray_start_regular):
     world_size = 2
     actors = [
