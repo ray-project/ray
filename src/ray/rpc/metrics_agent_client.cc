@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <functional>
+#include <utility>
 
 #include "ray/util/logging.h"
 
@@ -24,8 +25,10 @@ namespace rpc {
 
 void MetricsAgentClientImpl::WaitForServerReady(
     std::function<void(const Status &)> init_exporter_fn) {
-  WaitForServerReadyWithRetry(
-      init_exporter_fn, 0, kMetricAgentInitMaxRetries, kMetricAgentInitRetryDelayMs);
+  WaitForServerReadyWithRetry(std::move(init_exporter_fn),
+                              0,
+                              kMetricAgentInitMaxRetries,
+                              kMetricAgentInitRetryDelayMs);
 }
 
 void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
@@ -41,32 +44,40 @@ void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
     // Only log the first time we start the retry loop.
     RAY_LOG(INFO) << "Initializing exporter ...";
   }
-  HealthCheck(
-      rpc::HealthCheckRequest(),
-      [this, init_exporter_fn, retry_count, max_retry, retry_interval_ms](auto &status,
-                                                                          auto &&reply) {
-        if (status.ok()) {
-          if (exporter_initialized_) {
-            return;
-          }
-          init_exporter_fn(status);
-          exporter_initialized_ = true;
-          RAY_LOG(INFO) << "Exporter initialized.";
-          return;
-        }
-        if (retry_count >= max_retry) {
-          init_exporter_fn(Status::RpcError(
-              "Running out of retries to initialize the metrics agent.", 14));
-          return;
-        }
-        io_service_.post(
-            [this, init_exporter_fn, retry_count, max_retry, retry_interval_ms]() {
-              WaitForServerReadyWithRetry(
-                  init_exporter_fn, retry_count + 1, max_retry, retry_interval_ms);
-            },
-            "MetricsAgentClient.WaitForServerReadyWithRetry",
-            retry_interval_ms * 1000);
-      });
+  HealthCheck(rpc::HealthCheckRequest(),
+              [this,
+               init_exporter_fn = std::move(init_exporter_fn),
+               retry_count,
+               max_retry,
+               retry_interval_ms](auto &status, auto &&reply) {
+                if (status.ok()) {
+                  bool expected = false;
+                  if (!exporter_initialized_.compare_exchange_strong(expected, true)) {
+                    return;
+                  }
+                  init_exporter_fn(status);
+                  RAY_LOG(INFO) << "Exporter initialized.";
+                  return;
+                }
+                if (retry_count >= max_retry) {
+                  init_exporter_fn(Status::RpcError(
+                      "Running out of retries to initialize the metrics agent.", 14));
+                  return;
+                }
+                io_service_.post(
+                    [this,
+                     init_exporter_fn = std::move(init_exporter_fn),
+                     retry_count,
+                     max_retry,
+                     retry_interval_ms]() {
+                      WaitForServerReadyWithRetry(std::move(init_exporter_fn),
+                                                  retry_count + 1,
+                                                  max_retry,
+                                                  retry_interval_ms);
+                    },
+                    "MetricsAgentClient.WaitForServerReadyWithRetry",
+                    retry_interval_ms * 1000);
+              });
 }
 
 }  // namespace rpc

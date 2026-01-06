@@ -9,7 +9,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
@@ -312,6 +312,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     inc_obj_store_mem = (
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
+        * MAX_SAFE_BLOCK_SIZE_FACTOR
     )
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(
@@ -426,6 +427,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     inc_obj_store_mem = (
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
+        * MAX_SAFE_BLOCK_SIZE_FACTOR
     )
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(

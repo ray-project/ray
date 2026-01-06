@@ -14,8 +14,6 @@ build_arg_sets:
     - cu128
 
 depsets:
-
-# get rid of this python/deplocks/llm/rayllm_test_py311_cu128.lock
   - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
     operation: subset
     source_depset: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
@@ -23,7 +21,6 @@ depsets:
     requirements:
       - python/requirements.txt
     output: python/deplocks/llm/rayllm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
-
 
   - name: llm_batch_single_node_benchmark_${PYTHON_VERSION}_${CUDA_CODE}
     operation: expand

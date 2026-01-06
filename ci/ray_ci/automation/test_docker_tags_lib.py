@@ -1,18 +1,11 @@
-import platform
-import random
-import shutil
-import subprocess
 import sys
-import tempfile
-import threading
-import time
 from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
 import requests
-import runfiles
 
+from ci.ray_ci.automation.crane_lib import call_crane_copy
 from ci.ray_ci.automation.docker_tags_lib import (
     AuthTokenException,
     DockerHubRateLimitException,
@@ -23,7 +16,6 @@ from ci.ray_ci.automation.docker_tags_lib import (
     _is_release_tag,
     _list_recent_commit_short_shas,
     backup_release_tags,
-    call_crane_copy,
     check_image_ray_commit,
     copy_tag_to_aws_ecr,
     delete_tag,
@@ -33,6 +25,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
 )
+from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401, F811
 
 
 @mock.patch("requests.get")
@@ -643,96 +636,42 @@ def test_check_image_ray_commit_failure(
         )
 
 
-def _registry_binary():
-    r = runfiles.Create()
-    system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise ValueError(f"Unsupported platform: {system}")
-    return r.Rlocation("registry_x86_64/registry")
+def test_generate_index(local_registry):  # noqa: F811
+    port = local_registry
+    test_image1 = f"localhost:{port}/test-image:test-tag-amd64"
+    test_image2 = f"localhost:{port}/test-image:test-tag-arm64"
 
-
-def _start_local_registry():
-    """Start local registry for testing."""
-    port = random.randint(2000, 20000)
-    temp_dir = tempfile.mkdtemp()
-    config_content = "\n".join(
-        [
-            "version: 0.1",
-            "storage:",
-            "    filesystem:",
-            f"        rootdirectory: {temp_dir}",
-            "http:",
-            f"    addr: :{port}",
-        ]
+    alpine3_16_amd64_digest = (
+        "sha256:0db9d004361b106932f8c7632ae54d56e92c18281e2dd203127d77405020abf6"
+    )
+    alpine3_16_arm64_digest = (
+        "sha256:4bdb4ac63839546daabfe0a267a363b3effa17ce02ac5f42d222174484c5686c"
+    )
+    call_crane_copy(
+        source=f"alpine:3.16@{alpine3_16_amd64_digest}", destination=test_image1
+    )
+    call_crane_copy(
+        source=f"alpine:3.16@{alpine3_16_arm64_digest}", destination=test_image2
     )
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml") as config_file:
-        config_file.write(config_content)
-        config_file.flush()
+    # Generate index
+    index_repo = "test-index"
+    index_name = f"localhost:{port}/{index_repo}:test-multiarch-tag"
+    generate_index(index_name=index_name, tags=[test_image1, test_image2])
 
-        registry_proc = subprocess.Popen(
-            [_registry_binary(), "serve", config_file.name],
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-        registry_thread = threading.Thread(
-            target=lambda: registry_proc.wait(), daemon=True
-        )
-        registry_thread.start()
-
-        for _ in range(10):  # Wait for 10 seconds for registry to start
-            try:
-                response = requests.get(f"http://localhost:{port}/v2/")
-                if response.status_code == 200:
-                    return registry_proc, registry_thread, temp_dir, port
-            except requests.exceptions.ConnectionError:
-                pass
-            time.sleep(1)
-
-        raise TimeoutError("Registry failed to start within 10 seconds")
-
-
-def test_generate_index():
-    registry_proc, registry_thread, temp_dir, port = _start_local_registry()
-    try:
-        test_image1 = f"localhost:{port}/test-image:test-tag-amd64"
-        test_image2 = f"localhost:{port}/test-image:test-tag-arm64"
-
-        alpine3_16_amd64_digest = (
-            "sha256:0db9d004361b106932f8c7632ae54d56e92c18281e2dd203127d77405020abf6"
-        )
-        alpine3_16_arm64_digest = (
-            "sha256:4bdb4ac63839546daabfe0a267a363b3effa17ce02ac5f42d222174484c5686c"
-        )
-        call_crane_copy(
-            source=f"alpine:3.16@{alpine3_16_amd64_digest}", destination=test_image1
-        )
-        call_crane_copy(
-            source=f"alpine:3.16@{alpine3_16_arm64_digest}", destination=test_image2
-        )
-
-        # Generate index
-        index_repo = "test-index"
-        index_name = f"localhost:{port}/{index_repo}:test-multiarch-tag"
-        generate_index(index_name=index_name, tags=[test_image1, test_image2])
-
-        # Verify index was created with 2 image manifests
-        response = requests.get(
-            f"http://localhost:{port}/v2/{index_repo}/manifests/test-multiarch-tag"
-        )
-        assert response.status_code == 200
-        assert "manifests" in response.json()
-        assert len(response.json()["manifests"]) == 2
-        for manifest in response.json()["manifests"]:
-            architecture = manifest["platform"]["architecture"]
-            if architecture == "amd64":
-                assert manifest["digest"] == alpine3_16_amd64_digest
-            elif architecture == "arm64":
-                assert manifest["digest"] == alpine3_16_arm64_digest
-    finally:
-        registry_proc.kill()
-        registry_thread.join()
-        shutil.rmtree(temp_dir)
+    # Verify index was created with 2 image manifests
+    response = requests.get(
+        f"http://localhost:{port}/v2/{index_repo}/manifests/test-multiarch-tag"
+    )
+    assert response.status_code == 200
+    assert "manifests" in response.json()
+    assert len(response.json()["manifests"]) == 2
+    for manifest in response.json()["manifests"]:
+        architecture = manifest["platform"]["architecture"]
+        if architecture == "amd64":
+            assert manifest["digest"] == alpine3_16_amd64_digest
+        elif architecture == "arm64":
+            assert manifest["digest"] == alpine3_16_arm64_digest
 
 
 if __name__ == "__main__":

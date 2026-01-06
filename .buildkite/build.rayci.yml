@@ -4,7 +4,6 @@ steps:
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -12,14 +11,17 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
-    depends_on: manylinux
 
   - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    env:
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
-    depends_on: manylinux
 
   - name: ray-java-build
     label: "wanda: java build (x86_64)"
@@ -30,7 +32,8 @@ steps:
       - oss
     env:
       ARCH_SUFFIX: ""
-    depends_on: manylinux
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
@@ -42,13 +45,12 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
 
   - label: ":tapioca: build: jar"
@@ -61,8 +63,8 @@ steps:
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
       - ./ci/build/copy_build_artifacts.sh jar
-    depends_on: manylinux
-    job_env: manylinux
+    depends_on: manylinux-x86_64
+    job_env: manylinux-x86_64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     key: ray_images
@@ -77,10 +79,11 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycudabase
       - raycpubase
@@ -102,10 +105,11 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray-extra --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubaseextra
       - raycudabaseextra
@@ -124,7 +128,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-llmbase
     matrix:
@@ -140,7 +144,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm-extra --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-llmbaseextra
     matrix:

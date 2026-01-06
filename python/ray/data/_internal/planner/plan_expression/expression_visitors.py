@@ -8,13 +8,34 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    Operation,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    _CallableClassUDF,
     _ExprVisitor,
 )
 
 T = TypeVar("T")
+
+# Mapping of operations to their string symbols for inline representation
+_INLINE_OP_SYMBOLS = {
+    Operation.ADD: "+",
+    Operation.SUB: "-",
+    Operation.MUL: "*",
+    Operation.DIV: "/",
+    Operation.FLOORDIV: "//",
+    Operation.GT: ">",
+    Operation.LT: "<",
+    Operation.GE: ">=",
+    Operation.LE: "<=",
+    Operation.EQ: "==",
+    Operation.NE: "!=",
+    Operation.AND: "&",
+    Operation.OR: "|",
+    Operation.IN: "in",
+    Operation.NOT_IN: "not in",
+}
 
 
 class _ExprVisitorBase(_ExprVisitor[None]):
@@ -96,6 +117,46 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
+class _CallableClassUDFCollector(_ExprVisitorBase):
+    """Visitor that collects all callable class UDFs from expression trees.
+
+    This visitor traverses expression trees and collects _CallableClassUDF instances
+    that wrap callable classes (as opposed to regular functions).
+    """
+
+    def __init__(self):
+        """Initialize with an empty list of _CallableClassUDF instances."""
+        self._expr_udfs: List[_CallableClassUDF] = []
+
+    def get_callable_class_udfs(self) -> List[_CallableClassUDF]:
+        """Get the list of collected _CallableClassUDF instances.
+
+        Returns:
+            List of _CallableClassUDF instances that wrap callable classes.
+        """
+        return self._expr_udfs
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        """Visit a column expression (no UDFs to collect)."""
+        pass
+
+    def visit_udf(self, expr: UDFExpr) -> None:
+        """Visit a UDF expression and collect it if it's a callable class.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            None (only collects UDFs as a side effect).
+        """
+        # Check if fn is an _CallableClassUDF (indicates callable class)
+        if isinstance(expr.fn, _CallableClassUDF):
+            self._expr_udfs.append(expr.fn)
+
+        # Continue visiting child expressions
+        super().visit_udf(expr)
+
+
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
@@ -173,7 +234,10 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
         return UDFExpr(
-            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
+            fn=expr.fn,
+            data_type=expr.data_type,
+            args=new_args,
+            kwargs=new_kwargs,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:
@@ -347,6 +411,95 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
+
+
+class _InlineExprReprVisitor(_ExprVisitor[str]):
+    """Visitor that generates concise inline string representations of expressions.
+
+    This visitor creates single-line string representations suitable for displaying
+    in operator names, log messages, etc. It aims to be human-readable while keeping
+    the representation compact.
+    """
+
+    def __init__(self, max_literal_length: int = 20):
+        """Initialize the inline representation visitor.
+
+        Args:
+            max_literal_length: Maximum length for literal value representations
+        """
+        self._max_literal_length = max_literal_length
+
+    def visit_column(self, expr: "ColumnExpr") -> str:
+        """Visit a column expression and return its inline representation."""
+        return f"col({expr.name!r})"
+
+    def visit_literal(self, expr: "LiteralExpr") -> str:
+        """Visit a literal expression and return its inline representation."""
+        value_repr = repr(expr.value)
+        if len(value_repr) > self._max_literal_length:
+            value_repr = value_repr[: self._max_literal_length - 3] + "..."
+        return value_repr
+
+    def visit_binary(self, expr: "BinaryExpr") -> str:
+        """Visit a binary expression and return its inline representation."""
+        left_str = self.visit(expr.left)
+        right_str = self.visit(expr.right)
+
+        # Add parentheses around child binary expressions to avoid ambiguity
+        if isinstance(expr.left, BinaryExpr):
+            left_str = f"({left_str})"
+        if isinstance(expr.right, BinaryExpr):
+            right_str = f"({right_str})"
+
+        op_str = _INLINE_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
+        return f"{left_str} {op_str} {right_str}"
+
+    def visit_unary(self, expr: "UnaryExpr") -> str:
+        """Visit a unary expression and return its inline representation."""
+        operand_str = self.visit(expr.operand)
+
+        # Add parentheses around binary expression operands to avoid ambiguity
+        if isinstance(expr.operand, BinaryExpr):
+            operand_str = f"({operand_str})"
+
+        # Map operations to symbols/functions
+        if expr.op == Operation.NOT:
+            return f"~{operand_str}"
+        elif expr.op == Operation.IS_NULL:
+            return f"{operand_str}.is_null()"
+        elif expr.op == Operation.IS_NOT_NULL:
+            return f"{operand_str}.is_not_null()"
+        else:
+            return f"{expr.op.name.lower()}({operand_str})"
+
+    def visit_alias(self, expr: "AliasExpr") -> str:
+        """Visit an alias expression and return its inline representation."""
+        inner_str = self.visit(expr.expr)
+        return f"{inner_str}.alias({expr.name!r})"
+
+    def visit_udf(self, expr: "UDFExpr") -> str:
+        """Visit a UDF expression and return its inline representation."""
+        # Get function name for better readability
+        # For callable objects (instances with __call__), use the class name
+        fn_name = getattr(expr.fn, "__name__", expr.fn.__class__.__name__)
+
+        # Build argument list
+        args_str = []
+        for arg in expr.args:
+            args_str.append(self.visit(arg))
+        for key, value in expr.kwargs.items():
+            args_str.append(f"{key}={self.visit(value)}")
+
+        args_repr = ", ".join(args_str) if args_str else ""
+        return f"{fn_name}({args_repr})"
+
+    def visit_download(self, expr: "DownloadExpr") -> str:
+        """Visit a download expression and return its inline representation."""
+        return f"download({expr.uri_column_name!r})"
+
+    def visit_star(self, expr: "StarExpr") -> str:
+        """Visit a star expression and return its inline representation."""
+        return "col(*)"
 
 
 def get_column_references(expr: Expr) -> List[str]:

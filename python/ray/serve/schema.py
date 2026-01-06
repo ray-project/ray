@@ -473,6 +473,12 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             field for field, value in self.dict().items() if value is not DEFAULT.VALUE
         }
 
+    def is_autoscaling_configured(self) -> bool:
+        return self.num_replicas == "auto" or self.autoscaling_config not in [
+            None,
+            DEFAULT.VALUE,
+        ]
+
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
     """Converts a DeploymentInfo object to DeploymentSchema."""
@@ -579,6 +585,13 @@ class ServeApplicationSchema(BaseModel):
         default=None,
         description="Logging config for configuring serve application logs.",
     )
+    external_scaler_enabled: bool = Field(
+        default=False,
+        description=(
+            "If True, indicates that an external autoscaler will manage replica scaling for this application. "
+            "When enabled, Serve's built-in autoscaling cannot be used for any deployments in this application."
+        ),
+    )
 
     @property
     def deployment_names(self) -> List[str]:
@@ -639,6 +652,30 @@ class ServeApplicationSchema(BaseModel):
                 )
 
         return v
+
+    @root_validator
+    def validate_external_scaler_and_autoscaling(cls, values):
+        external_scaler_enabled = values.get("external_scaler_enabled", False)
+        deployments = values.get("deployments", [])
+
+        if external_scaler_enabled:
+            deployments_with_autoscaling = []
+            for deployment in deployments:
+                if deployment.is_autoscaling_configured():
+                    deployments_with_autoscaling.append(deployment.name)
+
+            if deployments_with_autoscaling:
+                deployment_names = ", ".join(
+                    f'"{name}"' for name in deployments_with_autoscaling
+                )
+                raise ValueError(
+                    f"external_scaler_enabled is set to True, but the following "
+                    f"deployment(s) have autoscaling configured: {deployment_names}. "
+                    "When using an external autoscaler, Serve's built-in autoscaling must "
+                    "be disabled for all deployments in the application."
+                )
+
+        return values
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -868,6 +905,21 @@ class ProxyStatus(str, Enum):
     # so this status won't show up on the dashboard.
     DRAINED = "DRAINED"
 
+    def to_numeric(self) -> int:
+        """Convert status to a numeric value for metrics.
+
+        Returns:
+            1 for STARTING, 2 for HEALTHY, 3 for UNHEALTHY,
+            4 for DRAINING, 5 for DRAINED. (0 is reserved for UNKNOWN)
+        """
+        return {
+            ProxyStatus.STARTING: 1,
+            ProxyStatus.HEALTHY: 2,
+            ProxyStatus.UNHEALTHY: 3,
+            ProxyStatus.DRAINING: 4,
+            ProxyStatus.DRAINED: 5,
+        }[self]
+
 
 @PublicAPI(stability="alpha")
 @dataclass
@@ -898,6 +950,24 @@ class ApplicationStatus(str, Enum):
     RUNNING = "RUNNING"
     UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
+
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED,
+        4=DELETING, 5=DEPLOYING, 6=RUNNING
+        """
+        mapping = {
+            ApplicationStatus.DEPLOY_FAILED: 1,
+            ApplicationStatus.UNHEALTHY: 2,
+            ApplicationStatus.NOT_STARTED: 3,
+            ApplicationStatus.DELETING: 4,
+            ApplicationStatus.DEPLOYING: 5,
+            ApplicationStatus.RUNNING: 6,
+        }
+        return mapping.get(self, 0)
 
 
 @PublicAPI(stability="alpha")
@@ -1207,6 +1277,9 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
     )
+    external_scaler_enabled: bool = Field(
+        description="Whether external scaling is enabled for this application.",
+    )
 
     application_details_route_prefix_format = validator(
         "route_prefix", allow_reuse=True
@@ -1506,13 +1579,6 @@ class TaskProcessorAdapter(ABC):
 
         Args:
             timeout: Maximum time in seconds to wait for the consumer to stop.
-        """
-        pass
-
-    @abstractmethod
-    def shutdown(self):
-        """
-        Shutdown the task processor and clean up resources.
         """
         pass
 

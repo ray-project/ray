@@ -262,11 +262,6 @@ RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
-/// The duration that the raylet will wait before reinitiating a
-/// fetch request for a missing task dependency. This time may adapt based on
-/// the number of missing task dependencies.
-RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
-
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
@@ -356,19 +351,19 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
-/// Number of threads used by rpc server in gcs server.
+
+/// Number of polling threads used by rpc server in gcs server. These threads poll for
+/// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
            std::max(1U, std::thread::hardware_concurrency() / 4U))
-/// Number of threads used by rpc server in gcs server.
+
+/// Number of polling threads for raylet + worker clients on the GCS. These threads poll
+/// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
            std::max(1U, std::thread::hardware_concurrency() / 4U))
-/// Allow up to 5 seconds for connecting to gcs service.
-/// Note: this only takes effect when gcs service is enabled.
-RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
-/// Waiting time for each gcs service connection.
-RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
+
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
 /// Set to zero to disable health checking.
@@ -385,10 +380,6 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The interval at which the gcs server will pull a new resource.
-RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
-// The number of concurrent polls to polls to GCS.
-RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
 
@@ -428,9 +419,6 @@ RAY_CONFIG(uint32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// The timeout for GCS connection in seconds
 RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
-
-/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
@@ -898,10 +886,17 @@ RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 /// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
-/// The pool size for grpc server call.
+/// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
            std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+
+/// Thread pool size for sending replies in grpc server (CoreWorkers).
+/// https://github.com/ray-project/ray/issues/58351 shows the
+/// reply path is light enough that 2 threads is sufficient.
+RAY_CONFIG(int64_t,
+           core_worker_num_server_call_thread,
+           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -950,8 +945,19 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
-// The number of object manager thread. By default, it's
-//     std::min(std::max(2, num_cpus / 4), 8)
+// The actual number of threads for object transfers through the object manager is this
+// number * 3. There num_threads started for each of these 3 things:
+//   1. RPC server polling threads - poll for new requests and copy the requests from
+//      the socket buffer to the proto request objects.
+//   2. RPC client polling threads - poll for replies and copy the replies from the
+//      socket buffer to proto reply objects.
+//   3. RPC server handling io_context threads - These are the threads that execute the
+//      HandleX functions and mainly do both the server-side copying from the PushRequest
+//      to plasma and the client-side copying from plasma to PushRequest to socket buffer.
+// This means that this number of threads * 3 is the # of threads that will be
+// started for transfers.
+// By default, it's
+//     std::min(std::max(2, num_cpus / 4), 8) - At least 2, at most 8
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 

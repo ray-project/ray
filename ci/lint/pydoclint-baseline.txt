@@ -185,8 +185,6 @@ python/ray/_private/services.py
     DOC106: Function `start_reaper`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `start_reaper`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_reaper`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: ].
-    DOC102: Function `start_log_monitor`: Docstring contains more arguments than in function signature.
-    DOC103: Function `start_log_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [redirect_logging: ].
     DOC101: Function `start_api_server`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_api_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
     DOC101: Function `start_gcs_server`: Docstring contains fewer arguments than in function signature.
@@ -406,11 +404,6 @@ python/ray/air/integrations/wandb.py
 --------------------
 python/ray/air/result.py
     DOC201: Method `Result._read_file_as_str` does not have a return section in docstring
---------------------
-python/ray/air/util/tensor_extensions/arrow.py
-    DOC101: Function `pyarrow_table_from_pydict`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `pyarrow_table_from_pydict`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [pydict: Dict[str, Union[List[Any], pa.Array]]].
-    DOC201: Function `pyarrow_table_from_pydict` does not have a return section in docstring
 --------------------
 python/ray/air/util/tensor_extensions/pandas.py
     DOC101: Method `TensorDtype.__init__`: Docstring contains fewer arguments than in function signature.
@@ -874,8 +867,6 @@ python/ray/dashboard/modules/event/event_utils.py
     DOC201: Function `monitor_events` does not have a return section in docstring
 --------------------
 python/ray/dashboard/modules/job/cli.py
-    DOC101: Function `submit`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `submit`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], entrypoint: Tuple[str], entrypoint_memory: Optional[int], entrypoint_num_cpus: Optional[Union[int, float]], entrypoint_num_gpus: Optional[Union[int, float]], entrypoint_resources: Optional[str], headers: Optional[str], job_id: Optional[str], metadata_json: Optional[str], no_wait: bool, runtime_env: Optional[str], runtime_env_json: Optional[str], submission_id: Optional[str], verify: Union[bool, str], working_dir: Optional[str]].
     DOC101: Function `status`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `status`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], headers: Optional[str], job_id: str, verify: Union[bool, str]].
     DOC101: Function `stop`: Docstring contains fewer arguments than in function signature.
@@ -903,8 +894,6 @@ python/ray/dashboard/modules/job/job_supervisor.py
     DOC103: Method `JobSupervisor._exec_entrypoint`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [env: dict].
 --------------------
 python/ray/dashboard/modules/job/sdk.py
-    DOC104: Method `JobSubmissionClient.submit_job`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `JobSubmissionClient.submit_job`: Argument names match, but type hints in these args do not match: entrypoint, job_id, runtime_env, metadata, submission_id, entrypoint_num_cpus, entrypoint_num_gpus, entrypoint_memory, entrypoint_resources
     DOC402: Method `JobSubmissionClient.tail_job_logs` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Method `JobSubmissionClient.tail_job_logs` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
@@ -1157,10 +1146,6 @@ python/ray/data/_internal/logical/operators/join_operator.py
     DOC103: Method `Join.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [aggregator_ray_remote_args: Optional[Dict[str, Any]], join_type: str, left_columns_suffix: Optional[str], left_input_op: LogicalOperator, left_key_columns: Tuple[str], num_partitions: int, partition_size_hint: Optional[int], right_columns_suffix: Optional[str], right_input_op: LogicalOperator, right_key_columns: Tuple[str]].
 --------------------
 python/ray/data/_internal/logical/operators/map_operator.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `AbstractUDFMap.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AbstractUDFMap.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [compute: Optional[ComputeStrategy], fn: UserDefinedFunction, fn_args: Optional[Iterable[Any]], fn_constructor_args: Optional[Iterable[Any]], fn_constructor_kwargs: Optional[Dict[str, Any]], fn_kwargs: Optional[Dict[str, Any]], input_op: LogicalOperator, min_rows_per_bundled_input: Optional[int], name: str, ray_remote_args: Optional[Dict[str, Any]], ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]]].
     DOC101: Method `StreamingRepartition.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `StreamingRepartition.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_op: LogicalOperator].
 --------------------
@@ -1169,12 +1154,6 @@ python/ray/data/_internal/logical/operators/n_ary_operator.py
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `NAry.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `NAry.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*input_ops: LogicalOperator, num_outputs: Optional[int]].
---------------------
-python/ray/data/_internal/logical/operators/one_to_one_operator.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `AbstractOneToOne.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AbstractOneToOne.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_op: Optional[LogicalOperator], name: str, num_outputs: Optional[int]].
 --------------------
 python/ray/data/_internal/metadata_exporter.py
     DOC101: Method `Topology.create_topology_metadata`: Docstring contains fewer arguments than in function signature.
@@ -1317,7 +1296,6 @@ python/ray/data/read_api.py
     DOC101: Function `read_bigquery`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `read_bigquery`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [query: Optional[str]].
     DOC103: Function `read_parquet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**arrow_parquet_args: ]. Arguments in the docstring but not in the function signature: [arrow_parquet_args: ].
-    DOC103: Function `read_parquet_bulk`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**arrow_parquet_args: ]. Arguments in the docstring but not in the function signature: [arrow_parquet_args: ].
     DOC103: Function `read_json`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**arrow_json_args: ]. Arguments in the docstring but not in the function signature: [arrow_json_args: ].
     DOC103: Function `read_csv`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**arrow_csv_args: ]. Arguments in the docstring but not in the function signature: [arrow_csv_args: ].
     DOC101: Function `read_text`: Docstring contains fewer arguments than in function signature.
@@ -1946,9 +1924,6 @@ python/ray/train/v2/_internal/execution/worker_group/worker_group.py
     DOC103: Method `WorkerGroup._assign_worker_ranks`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [workers: List[Worker]].
     DOC101: Method `WorkerGroup._decorate_worker_log_file_paths`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `WorkerGroup._decorate_worker_log_file_paths`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [workers: List[Worker]].
-    DOC101: Method `WorkerGroup._sort_workers_by_node_id_and_gpu_id`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `WorkerGroup._sort_workers_by_node_id_and_gpu_id`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [workers: List[Worker]].
-    DOC201: Method `WorkerGroup._sort_workers_by_node_id_and_gpu_id` does not have a return section in docstring
 --------------------
 python/ray/train/v2/_internal/metrics/base.py
     DOC201: Method `EnumMetric.record` does not have a return section in docstring

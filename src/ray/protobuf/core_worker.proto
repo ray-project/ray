@@ -123,14 +123,17 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+
   // Dynamically created objects. These are objects whose refs were allocated
   // by the task at run time instead of by the task caller at f.remote() time.
   // We need to notify the task caller that they own these objects. The
   // language-level ObjectRefs should be returned inside one of the statically
   // allocated return objects.
   repeated ReturnObject dynamic_return_objects = 2;
+
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
+
   // The references that the worker borrowed during the task execution. A
   // borrower is a process that is currently using the object ID, in one of 3
   // ways:
@@ -146,20 +149,26 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
+
   // Whether the result contains a retryable application-level error.
   bool is_retryable_error = 5;
+
   // Whether the result contains an application-level error.
   bool is_application_error = 6;
+
   // Whether the task was cancelled before it started running (i.e. while queued).
   bool was_cancelled_before_running = 7;
+
   // If the task was an actor creation task, and the actor class has a customized
   // repr defined for the anonymous actor (not a named actor), the repr name of the
   // actor will be piggybacked to GCS to be included as part of ActorTableData.
   optional string actor_repr_name = 8;
+
   // The pushed task executing error detail message. Either from the application or
   // from the core worker. This is only set when the task execution failed.
   // Default to empty string (not set) when no error happens.
   string task_execution_error = 9;
+
   // A list of streaming generator return IDs and whether
   // they are stored in a plasma store.
   repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
@@ -293,7 +302,7 @@ message CancelTaskReply {
   bool attempt_succeeded = 2;
 }
 
-message CancelRemoteTaskRequest {
+message RequestOwnerToCancelTaskRequest {
   // Object ID of the remote task that should be killed.
   bytes remote_object_id = 1;
   // Whether to kill the worker.
@@ -302,7 +311,7 @@ message CancelRemoteTaskRequest {
   bool recursive = 3;
 }
 
-message CancelRemoteTaskReply {}
+message RequestOwnerToCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -423,9 +432,8 @@ message NumPendingTasksReply {
 }
 
 message ReportGeneratorItemReturnsRequest {
-  // The intermediate return object that's dynamically
-  // generated from the executor side.
-  repeated ReturnObject dynamic_return_objects = 1;
+  // Object returned from the executor (can be inlined or in plasma).
+  ReturnObject returned_object = 1;
   // The address of the executor.
   Address worker_addr = 2;
   // The index of the task return. It is used to
@@ -526,13 +534,15 @@ service CoreWorkerService {
   // KillLocalActor from the raylet which does implement retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
-  // Request from owner worker to executor worker to cancel a task.
-  // Failure: Will retry, TODO: Needs tests for failure behavior.
+  // Request from local raylet to executor worker to cancel a task.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // CancelLocalTask from the raylet which does implement retries
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.
   // Failure: Retries, it's idempotent.
-  rpc CancelRemoteTask(CancelRemoteTaskRequest) returns (CancelRemoteTaskReply);
+  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest)
+      returns (RequestOwnerToCancelTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.

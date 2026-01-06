@@ -23,6 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
+agentic
 Alibaba
 Alpaca
 Anyscale
@@ -54,6 +55,7 @@ dev to prod
 [d|D]isable
 DLinear
 Dockerfile
+docstrings
 DPO
 EKS
 ETDataset
@@ -63,6 +65,7 @@ g[Rr][Pp][Cc]
 [Gg]rayscale
 GGUF
 GKE
+GPT
 GPTQ
 GPU(s)?
 hostfile
@@ -95,7 +98,7 @@ NVLink
 NVMe
 OOM
 open-source
-PACK
+[Pp][Aa][Cc][Kk]
 pipelining
 PIL
 Podman
@@ -118,6 +121,7 @@ SFT
 ShareGPT
 SLA
 SLAs
+SSE
 streamable
 Softmax
 streamable
@@ -125,6 +129,7 @@ subprocess
 teardown
 tiktoken
 TPU(s)?
+tokenization
 uncaptured
 URI(s)?
 UUID

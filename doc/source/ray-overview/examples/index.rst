@@ -16,3 +16,4 @@ Examples
    ./e2e-rag/README.ipynb
    ./mcp-ray-serve/README.ipynb
    ./ray_train_workloads/content/README.ipynb
+   ./langchain_agent_ray_serve/content/README.ipynb

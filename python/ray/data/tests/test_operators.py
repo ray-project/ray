@@ -44,11 +44,11 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.progress_manager import SubProgressBar
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.progress.rich_progress import RichSubProgressBar
 from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import (
@@ -138,9 +138,9 @@ def test_input_data_buffer(ray_start_regular_shared):
     op = InputDataBuffer(DataContext.get_current(), inputs)
 
     # Check we return all bundles in order.
-    assert not op.completed()
+    assert not op.has_completed()
     assert _take_outputs(op) == [[1, 2], [3], [4, 5]]
-    assert op.completed()
+    assert op.has_completed()
 
 
 def test_all_to_all_operator():
@@ -164,7 +164,7 @@ def test_all_to_all_operator():
 
     # Initialize progress bar.
     for name in op.get_sub_progress_bar_names():
-        pg = SubProgressBar(
+        pg = RichSubProgressBar(
             name=name,
             total=op.num_output_rows_total(),
             enabled=False,
@@ -180,13 +180,13 @@ def test_all_to_all_operator():
     op.all_inputs_done()
 
     # Check we return transformed bundles.
-    assert not op.completed()
+    assert not op.has_completed()
     outputs = _take_outputs(op)
     expected = [[1, 2], [3, 4]]
     assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
-    assert op.completed()
+    assert op.has_completed()
 
 
 def test_num_outputs_total():
@@ -271,7 +271,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     else:
         assert "locality_hits" not in metrics, metrics
         assert "locality_misses" not in metrics, metrics
-    assert not op.completed()
+    assert not op.has_completed()
 
 
 @pytest.mark.parametrize("equal", [False, True])
@@ -574,7 +574,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
     assert metrics["locality_misses"] == 0, metrics
-    assert not op.completed()
+    assert not op.has_completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -610,7 +610,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     run_op_tasks_sync(op)
 
     _take_outputs(op)
-    assert op.completed()
+    assert op.has_completed()
 
 
 def _run_map_operator_test(
@@ -661,7 +661,7 @@ def _run_map_operator_test(
     while op.has_next():
         outputs.append(op.get_next())
     assert len(outputs) == expected_blocks
-    assert op.completed()
+    assert op.has_completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -808,7 +808,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     outputs = _take_outputs(op)
     expected = [[i * 2] for i in range(10)]
     assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
-    assert op.completed()
+    assert op.has_completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -1006,7 +1006,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     while op.has_next():
         op.get_next()
     assert actor_pool.num_pending_actors() == num_actors
-    assert op.completed()
+    assert op.has_completed()
 
 
 @pytest.mark.parametrize(
@@ -1048,14 +1048,14 @@ def test_limit_operator(ray_start_regular_shared):
         )
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
-            assert limit_op.completed()
+            assert limit_op.has_completed()
             assert limit_op._limit_reached()
         cur_rows = 0
         loop_count = 0
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
-            assert not limit_op.completed(), limit
-            assert not limit_op._execution_finished, limit
+            assert not limit_op.has_completed(), limit
+            assert not limit_op.has_execution_finished(), limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -1064,19 +1064,19 @@ def test_limit_operator(ray_start_regular_shared):
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
                 assert limit_op.mark_execution_finished.call_count == 1, limit
-                assert limit_op.completed(), limit
+                assert limit_op.has_completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert limit_op._execution_finished, limit
+                assert limit_op.has_execution_finished(), limit
             else:
                 assert limit_op.mark_execution_finished.call_count == 0, limit
-                assert not limit_op.completed(), limit
+                assert not limit_op.has_completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert not limit_op._execution_finished, limit
+                assert not limit_op.has_execution_finished(), limit
         limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit
-        assert limit_op.completed(), limit
+        assert limit_op.has_completed(), limit
 
 
 def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
@@ -1524,7 +1524,7 @@ def test_map_kwargs(ray_start_regular_shared, use_actors):
     run_op_tasks_sync(op)
 
     _take_outputs(op)
-    assert op.completed()
+    assert op.has_completed()
 
 
 def test_limit_estimated_num_output_bundles():

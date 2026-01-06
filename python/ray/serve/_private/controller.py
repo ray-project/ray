@@ -22,6 +22,7 @@ from ray.serve._private.application_state import ApplicationStateManager, Status
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentID,
+    DeploymentSnapshot,
     HandleMetricReport,
     NodeId,
     ReplicaMetricReport,
@@ -40,17 +41,18 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    configure_autoscaling_snapshot_logger,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -68,6 +70,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    ApplicationArgs,
     DeploymentArgs,
     DeploymentRoute,
     EndpointInfo as EndpointInfoProto,
@@ -80,6 +83,7 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ReplicaRank,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -143,6 +147,9 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
+
+        # Autoscaling snapshot logger
+        self._autoscaling_logger: Optional[logging.Logger] = None
 
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
@@ -235,6 +242,13 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
+        # Caches for autoscaling observability
+        self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
+        self._autoscaling_enabled_deployments_cache: List[
+            Tuple[str, str, DeploymentDetails, Any]
+        ] = []
+        self._refresh_autoscaling_deployments_cache()
+
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
             self.global_logging_config
@@ -251,6 +265,11 @@ class ServeController:
         )
         configure_component_logger(
             component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=global_logging_config,
+        )
+
+        self._autoscaling_logger = configure_autoscaling_snapshot_logger(
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
         )
@@ -276,6 +295,15 @@ class ServeController:
     ):
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.replica_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": replica_metric_report.replica_id.deployment_id.name,
+                "application": replica_metric_report.replica_id.deployment_id.app_name,
+                "replica": replica_metric_report.replica_id.unique_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
@@ -292,6 +320,15 @@ class ServeController:
     ):
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.handle_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": handle_metric_report.deployment_id.name,
+                "application": handle_metric_report.deployment_id.app_name,
+                "handle": handle_metric_report.handle_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
@@ -392,6 +429,56 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
+    def _refresh_autoscaling_deployments_cache(self) -> None:
+        result = []
+        active_dep_ids = set()
+        for app_name in self.application_state_manager.list_app_names():
+            deployment_details = self.application_state_manager.list_deployment_details(
+                app_name
+            )
+            for dep_name, details in deployment_details.items():
+                active_dep_ids.add(DeploymentID(name=dep_name, app_name=app_name))
+                autoscaling_config = details.deployment_config.autoscaling_config
+                if autoscaling_config:
+                    result.append((app_name, dep_name, details, autoscaling_config))
+        self._autoscaling_enabled_deployments_cache = result
+        self._last_autoscaling_snapshots = {
+            k: v
+            for k, v in self._last_autoscaling_snapshots.items()
+            if k in active_dep_ids
+        }
+
+    def _emit_deployment_autoscaling_snapshots(self) -> None:
+        """Emit structured autoscaling snapshot logs in a single batch per loop."""
+        if self._autoscaling_logger is None:
+            return
+
+        snapshots_to_log: List[Dict[str, Any]] = []
+
+        for (
+            app_name,
+            dep_name,
+            details,
+            autoscaling_config,
+        ) in self._autoscaling_enabled_deployments_cache:
+            dep_id = DeploymentID(name=dep_name, app_name=app_name)
+            deployment_snapshot = (
+                self.autoscaling_state_manager.get_deployment_snapshot(dep_id)
+            )
+            if deployment_snapshot is None:
+                continue
+
+            last = self._last_autoscaling_snapshots.get(dep_id)
+            if last is not None and last.is_scaling_equivalent(deployment_snapshot):
+                continue
+
+            snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
+            self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
+
+        if snapshots_to_log:
+            # Single write per control-loop iteration
+            self._autoscaling_logger.info({"snapshots": snapshots_to_log})
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -474,12 +561,18 @@ class ServeController:
 
         try:
             asm_update_start_time = time.time()
-            self.application_state_manager.update()
-
+            any_target_state_changed = self.application_state_manager.update()
+            if any_recovering or any_target_state_changed:
+                self._refresh_autoscaling_deployments_cache()
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
             logger.exception("Exception updating application state.")
 
+        try:
+            # Emit one autoscaling snapshot per deployment per loop using existing state.
+            self._emit_deployment_autoscaling_snapshots()
+        except Exception:
+            logger.exception("Exception emitting deployment autoscaling snapshots.")
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
         node_update_start_time = time.time()
@@ -542,6 +635,24 @@ class ServeController:
         )
         self.num_control_loops_gauge.set_default_tags(
             {"actor_id": ray.get_runtime_context().get_actor_id()}
+        )
+
+        # Autoscaling metrics delay gauges
+        self.replica_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_replica_metrics_delay_ms",
+            description=(
+                "Time taken for the replica metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.handle_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_handle_metrics_delay_ms",
+            description=(
+                "Time taken for the handle metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "handle"),
         )
 
     def _recover_state_from_checkpoint(self):
@@ -666,16 +777,13 @@ class ServeController:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                # HTTP is disabled
-                if http_config.host is None:
-                    return ""
-                return (
-                    f"http://{build_address(http_config.host, http_config.port)}"
-                    f"{http_config.root_path}"
-                )
+            # HTTP is disabled
+            if http_config.host is None:
+                return ""
+            return (
+                f"http://{build_address(http_config.host, http_config.port)}"
+                f"{http_config.root_path}"
+            )
         return http_config.root_url
 
     def config_checkpoint_deleted(self) -> bool:
@@ -758,7 +866,9 @@ class ServeController:
                 )
 
     def deploy_applications(
-        self, name_to_deployment_args_list: Dict[str, List[bytes]]
+        self,
+        name_to_deployment_args_list: Dict[str, List[bytes]],
+        name_to_application_args: Dict[str, bytes],
     ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
@@ -770,6 +880,10 @@ class ServeController:
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
+            name_to_application_args: Dictionary mapping application names to serialized
+                application arguments, where each item is bytes representing the serialized
+                protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
+                for the application.
         """
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
@@ -790,11 +904,24 @@ class ServeController:
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
 
-        self.application_state_manager.deploy_apps(name_to_deployment_args)
+        name_to_application_args_deserialized = {}
+        for name, application_args_bytes in name_to_application_args.items():
+            name_to_application_args_deserialized[name] = ApplicationArgs.FromString(
+                application_args_bytes
+            )
+
+        self.application_state_manager.deploy_apps(
+            name_to_deployment_args, name_to_application_args_deserialized
+        )
 
         self.application_state_manager.save_checkpoint()
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_application(
+        self,
+        name: str,
+        deployment_args_list: List[bytes],
+        application_args: bytes,
+    ) -> None:
         """
         Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
@@ -803,7 +930,10 @@ class ServeController:
         and could be removed if the Java code was refactored
         to use the new bulk deploy_applications API.
         """
-        self.deploy_applications({name: deployment_args_list})
+        self.deploy_applications(
+            {name: deployment_args_list},
+            {name: application_args},
+        )
 
     def apply_config(
         self,
@@ -937,7 +1067,26 @@ class ServeController:
         Args:
             deployment_id: The deployment to update.
             target_num_replicas: The new target number of replicas.
+
+        Raises:
+            ExternalScalerDisabledError: If external_scaler_enabled is set to False for the application.
         """
+
+        # Check if external scaler is enabled for this application
+        app_name = deployment_id.app_name
+        if not self.application_state_manager.does_app_exist(app_name):
+            raise ValueError(f"Application '{app_name}' not found")
+
+        if not self.application_state_manager.get_external_scaler_enabled(app_name):
+            raise ExternalScalerDisabledError(
+                f"Cannot update replicas for deployment '{deployment_id.name}' in "
+                f"application '{app_name}'. The external scaling API can only be used "
+                f"when 'external_scaler_enabled' is set to true in the application "
+                f"configuration. Current value: external_scaler_enabled=false. "
+                f"To use this API, redeploy your application with "
+                f"'external_scaler_enabled: true' in the config."
+            )
+
         self.deployment_state_manager.set_target_num_replicas(
             deployment_id, target_num_replicas
         )
@@ -986,6 +1135,9 @@ class ServeController:
                 deployed_app_config=app_configs.get(app_name),
                 source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
+                    app_name
+                ),
+                external_scaler_enabled=self.application_state_manager.get_external_scaler_enabled(
                     app_name
                 ),
                 deployment_topology=self.application_state_manager.get_deployment_topology(
@@ -1089,6 +1241,20 @@ class ServeController:
             for app, config in config_checkpoints_dict.items()
         }
 
+    def get_external_scaler_enabled(self, app_name: str) -> bool:
+        """Get the external_scaler_enabled flag value for an application.
+
+        This is a helper method specifically for Java tests to verify the flag
+        is correctly set, since Java cannot deserialize Python Pydantic objects.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            True if external_scaler_enabled is set for the application, False otherwise.
+        """
+        return self.application_state_manager.get_external_scaler_enabled(app_name)
+
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
         statuses = self.deployment_state_manager.get_deployment_statuses()
@@ -1145,12 +1311,14 @@ class ServeController:
         """
         self.deployment_state_manager.record_request_routing_info(info)
 
-    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+    def _get_replica_ranks_mapping(
+        self, deployment_id: DeploymentID
+    ) -> Dict[str, ReplicaRank]:
         """Get the current rank mapping for all replicas in a deployment.
         Args:
             deployment_id: The deployment ID to get ranks for.
         Returns:
-            Dictionary mapping replica_id to rank.
+            Dictionary mapping replica_id to ReplicaRank object (with rank, node_rank, local_rank).
         """
         return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
