@@ -222,14 +222,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   // Create EventAggregatorClient. Use deferred connection if port is invalid
   // (minimal install writes -1 to indicate metrics agent not available).
-  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client;
-  if (options.metrics_agent_port > 0) {
-    event_aggregator_client = std::make_unique<rpc::EventAggregatorClientImpl>(
-        options.metrics_agent_port, *client_call_manager_);
-  } else {
-    event_aggregator_client =
-        std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
-  }
+  auto event_aggregator_client =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::move(event_aggregator_client),
