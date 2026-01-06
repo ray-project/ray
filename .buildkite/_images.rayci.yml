@@ -6,6 +6,7 @@ steps:
     tags:
       - python_dependencies
       - docker
+
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
       - "3.10"
