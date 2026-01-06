@@ -35,23 +35,55 @@ steps:
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "260103.868e54c"
 
-  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+  - name: ray-wheel-build
+    label: "wanda: wheel py{{matrix}} (x86_64)"
     key: linux_wheels
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
       - oss
-    instance_type: large
+    depends_on:
+      - ray-core-build
+      - ray-java-build
+      - ray-dashboard-build
+
+  # Upload wheels to S3
+  # Gating: only on releases/* OR (master AND nightly)
+  - label: ":s3: upload: wheel py{{matrix}} (x86_64)"
+    key: linux_wheels_upload
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
+    instance_type: small
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      # Extract wheel from wanda image
+      - wanda_image="rayproject/ray-wheel-py{{matrix}}"
+      - container_id=$(docker create $wanda_image)
+      - mkdir -p /tmp/wheels
+      - docker cp ${container_id}:/ /tmp/wheels/
+      - docker rm ${container_id}
+      - mv /tmp/wheels/*.whl .whl/
+      # Upload using existing script
+      - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-x86_64
-      - forge
+      - linux_wheels
+    tags:
+      - release_wheels
+      - skip-on-premerge
 
   - label: ":tapioca: build: jar"
     key: java_wheels
@@ -66,31 +98,114 @@ steps:
     depends_on: manylinux-x86_64
     job_env: manylinux-x86_64
 
-  - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
-    key: ray_images
-    tags:
-      - python_dependencies
-      - docker
-      - oss
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
-        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
-        --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
-        --platform cu12.9.1-cudnn
-        --platform cpu
-        --image-type ray --upload
-    depends_on:
-      - manylinux-x86_64
-      - forge
-      - raycudabase
-      - raycpubase
+  - name: ray-image-cpu-build
+    label: "wanda: ray py{{matrix}} cpu (x86_64)"
+    key: ray_images_cpu
+    wanda: ci/docker/ray-image-cpu.wanda.yaml
     matrix:
       - "3.10"
       - "3.11"
       - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - linux_wheels
+      - raycpubase
+
+  # Push ray CPU images to Docker Hub
+  # Gating: only on releases/* OR (master AND nightly)
+  - label: ":docker: push: ray py{{matrix}} cpu (x86_64)"
+    key: ray_images_cpu_push
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
+    instance_type: small
+    commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
+      - bazel run //ci/ray_ci/automation:push_ray_image --
+        --python-version {{matrix}}
+        --platform cpu
+        --upload
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    depends_on:
+      - ray_images_cpu
+    tags:
+      - python_dependencies
+      - docker
+      - skip-on-premerge
+
+  - name: ray-image-cuda-build
+    label: "wanda: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    key: ray_images_cuda
+    wanda: ci/docker/ray-image-cuda.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
+          - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
+          - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - linux_wheels
+      - raycudabase
+
+  # Push ray CUDA images to Docker Hub
+  # Gating: only on releases/* OR (master AND nightly)
+  - label: ":docker: push: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    key: ray_images_cuda_push
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
+    instance_type: small
+    commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
+      - bazel run //ci/ray_ci/automation:push_ray_image --
+        --python-version {{matrix.python}}
+        --platform cu{{matrix.cuda}}
+        --upload
+    matrix:
+      setup:
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
+          - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
+          - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+    depends_on:
+      - ray_images_cuda
+    tags:
+      - python_dependencies
+      - docker
+      - skip-on-premerge
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
     key: ray_extra_images
@@ -165,7 +280,10 @@ steps:
     depends_on:
       - forge
 
+  # Generate nightly indexes after images are pushed
+  # Gating: only on releases/* OR (master AND nightly)
   - label: ":tapioca: generate nightly indexes"
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
     instance_type: small
     tags:
       - docker
@@ -175,6 +293,7 @@ steps:
       - bazel run .buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
-      - ray_images
+      - ray_images_cpu_push
+      - ray_images_cuda_push
       - ray_images_aarch64
       - forge

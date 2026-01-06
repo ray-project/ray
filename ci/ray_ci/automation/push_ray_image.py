@@ -1,0 +1,215 @@
+"""
+Push Wanda-cached ray images to Docker Hub.
+
+This script copies ray images from the Wanda cache to Docker Hub with tags
+matching the original format from docker_container.py.
+
+Example:
+    bazel run //ci/ray_ci/automation:push_ray_image -- \\
+        --python-version 3.10 \\
+        --platform cpu \\
+        --upload
+
+Tag format:
+    - Nightly: nightly.YYMMDD.{sha[:6]}-py310-cpu
+    - Release: {release_name}.{sha[:6]}-py310-cpu
+    - Other: {sha[:6]}-py310-cpu
+
+Run with --help to see all options.
+"""
+
+import logging
+import os
+import sys
+from datetime import datetime, timezone as tz
+from typing import Optional
+
+import click
+
+from ci.ray_ci.automation.crane_lib import (
+    call_crane_copy,
+    call_crane_manifest,
+)
+from ci.ray_ci.utils import ecr_docker_login
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
+
+
+class PushRayImageError(Exception):
+    """Error raised when pushing ray images fails."""
+
+
+def _format_python_version_tag(python_version: str) -> str:
+    """Format python version as -py310 (no dots, with hyphen prefix)."""
+    return f"-py{python_version.replace('.', '')}"
+
+
+def _format_platform_tag(platform: str) -> str:
+    """
+    Format platform as -cpu or shortened CUDA version.
+
+    Examples:
+        cpu -> -cpu
+        cu11.7.1-cudnn8 -> -cu117
+        cu12.1.1-cudnn8 -> -cu121
+    """
+    if platform == "cpu":
+        return "-cpu"
+    # cu11.7.1-cudnn8 -> ['cu11', '7', '1-cudnn8'] -> -cu117
+    versions = platform.split(".")
+    return f"-{versions[0]}{versions[1]}"
+
+
+def _generate_image_tag(
+    commit: str,
+    python_version: str,
+    platform: str,
+) -> str:
+    """
+    Generate a destination tag matching the original ray docker image format.
+
+    For nightly builds (master + nightly schedule):
+        nightly.YYMMDD.{sha[:6]}-py310-cpu
+
+    For release branches:
+        {release_name}.{sha[:6]}-py310-cpu
+
+    For other branches (PRs, non-nightly master):
+        {sha[:6]}-py310-cpu
+    """
+    branch = os.environ.get("BUILDKITE_BRANCH", "")
+    sha_tag = commit[:6]
+    formatted_date = datetime.now(tz.utc).strftime("%y%m%d")
+    schedule = os.environ.get("RAYCI_SCHEDULE", "")
+
+    # Determine version prefix (matches docker_container.py _get_image_version_tags)
+    if branch == "master" and schedule == "nightly":
+        version_prefix = f"nightly.{formatted_date}.{sha_tag}"
+    elif branch.startswith("releases/"):
+        release_name = branch[len("releases/") :]
+        version_prefix = f"{release_name}.{sha_tag}"
+    else:
+        version_prefix = sha_tag
+
+    py_tag = _format_python_version_tag(python_version)
+    platform_tag = _format_platform_tag(platform)
+
+    return f"{version_prefix}{py_tag}{platform_tag}"
+
+
+def _get_wanda_image_name(python_version: str, platform: str) -> str:
+    """Get the wanda-cached ray image name."""
+    if platform == "cpu":
+        return f"ray-py{python_version}-cpu"
+    else:
+        return f"ray-py{python_version}-{platform}"
+
+
+def _image_exists(tag: str) -> bool:
+    """Check if a container image manifest exists using crane."""
+    return_code, _ = call_crane_manifest(tag)
+    return return_code == 0
+
+
+def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
+    """Copy a container image from source to destination using crane."""
+    if dry_run:
+        logger.info(f"DRY RUN: Would copy {source} -> {destination}")
+        return
+
+    logger.info(f"Copying {source} -> {destination}")
+    return_code, output = call_crane_copy(source, destination)
+    if return_code != 0:
+        raise PushRayImageError(f"Crane copy failed: {output}")
+    logger.info(f"Successfully copied to {destination}")
+
+
+@click.command()
+@click.option(
+    "--python-version",
+    type=str,
+    required=True,
+    help="Python version (e.g., '3.10')",
+)
+@click.option(
+    "--platform",
+    type=str,
+    required=True,
+    help="Platform (e.g., 'cpu', 'cu11.7.1-cudnn8')",
+)
+@click.option(
+    "--upload",
+    is_flag=True,
+    default=False,
+    help="Actually push to Docker Hub. Without this flag, runs in dry-run mode.",
+)
+def main(
+    python_version: str,
+    platform: str,
+    upload: bool,
+) -> None:
+    """
+    Push a Wanda-cached ray image to Docker Hub.
+
+    Handles authentication for ECR (source/Wanda cache) and Docker Hub
+    (destination via copy_files.py).
+
+    Tags are generated matching the original docker_container.py format:
+    - Nightly: nightly.YYMMDD.{sha[:6]}-py310-cpu
+    - Release: {release_name}.{sha[:6]}-py310-cpu
+    """
+    dry_run = not upload
+    if dry_run:
+        logger.info("DRY RUN MODE - no images will be pushed")
+
+    # Get required environment variables
+    rayci_work_repo = os.environ.get("RAYCI_WORK_REPO")
+    rayci_build_id = os.environ.get("RAYCI_BUILD_ID")
+    commit = os.environ.get("BUILDKITE_COMMIT")
+
+    required = {
+        "RAYCI_WORK_REPO": rayci_work_repo,
+        "RAYCI_BUILD_ID": rayci_build_id,
+        "BUILDKITE_COMMIT": commit,
+    }
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        raise PushRayImageError(f"Missing required env vars: {', '.join(missing)}")
+
+    # Construct source image from Wanda cache
+    wanda_image_name = _get_wanda_image_name(python_version, platform)
+    source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
+
+    # Generate destination tag
+    destination_tag = _generate_image_tag(commit, python_version, platform)
+    full_destination = f"rayproject/ray:{destination_tag}"
+
+    logger.info(f"Source image (Wanda): {source_tag}")
+    logger.info(f"Destination: {full_destination}")
+
+    # Authenticate with ECR (source registry)
+    # Docker Hub auth is handled by copy_files.py --destination docker_login
+    ecr_registry = rayci_work_repo.split("/")[0]
+    ecr_docker_login(ecr_registry)
+
+    # Verify source image exists
+    logger.info("Verifying source image in Wanda cache...")
+    if not _image_exists(source_tag):
+        raise PushRayImageError(
+            f"Source image not found in Wanda cache: {source_tag}"
+        )
+
+    # Copy image to Docker Hub
+    _copy_image(source_tag, full_destination, dry_run)
+
+    logger.info(f"Successfully pushed ray image: {full_destination}")
+
+
+if __name__ == "__main__":
+    main()
