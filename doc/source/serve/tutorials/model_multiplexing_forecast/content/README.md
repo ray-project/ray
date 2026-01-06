@@ -135,14 +135,12 @@ Test your multiplexed deployment on your local machine before moving to producti
 
 ### Launch
 
-In a terminal, run:
+Deploy your application:
 
 
-```bash
-!serve run serve_forecast_multiplex:app --non-blocking
+```python
+serve.run(app)
 ```
-
-**Note:** When running in a notebook, the `--non-blocking` flag returns control immediately so you can continue executing cells. Without it, `serve run` blocks the notebook. In a terminal, you can omit this flag to stream logs to the console.
 
 Ray Serve logs the endpoint of your application once the service is deployed:
 ```console
@@ -243,8 +241,8 @@ Under concurrent load with 6 customers and a cache size of 4, the LRU policy evi
 Shutdown your service:
 
 
-```bash
-!serve shutdown -y
+```python
+serve.shutdown()
 ```
 
 ## Deploy to production with Anyscale Services

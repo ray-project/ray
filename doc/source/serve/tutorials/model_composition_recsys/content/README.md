@@ -185,14 +185,12 @@ Test your composed pipeline on your local machine before moving to production.
 
 ### Launch
 
-In a terminal, run:
+Deploy your application:
 
 
-```bash
-!serve run serve_recommendation_pipeline:app --non-blocking
+```python
+serve.run(app)
 ```
-
-**Note:** When running in a notebook, the `--non-blocking` flag returns control immediately so you can continue executing cells. Without it, `serve run` blocks the notebook. In a terminal, you can omit this flag to stream logs to the console.
 
 Ray Serve logs the endpoint of your application once the service is deployed:
 ```console
@@ -277,8 +275,8 @@ Under concurrent load, Ray Serve automatically scales the `ItemRankingModel` rep
 Shutdown your service:
 
 
-```bash
-!serve shutdown -y
+```python
+serve.shutdown()
 ```
 
 ## Deploy to production with Anyscale Services

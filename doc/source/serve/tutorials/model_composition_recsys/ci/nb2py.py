@@ -19,24 +19,8 @@ def convert_notebook(input_path: str, output_path: str) -> None:
             if not lines:
                 continue
 
-            # Check for serve run command
-            if lines[0].lstrip().startswith("!serve run"):
-                out.write("import time\n")
-                out.write("from ray import serve\n")
-                parts = lines[0].lstrip().split()
-                # Extract app path (e.g., "serve_recommendation_pipeline:app")
-                module_name, app_name = parts[2].split(":")
-                out.write(f"from {module_name} import {app_name}\n")
-                out.write(f"serve.run({app_name}, blocking=False)\n")
-                out.write("time.sleep(300)  # Wait 5 minutes for service to be ready\n")
-                out.write("\n")
-            # Check for serve shutdown command
-            elif lines[0].lstrip().startswith("!serve shutdown"):
-                out.write("from ray import serve\n")
-                out.write("serve.shutdown()\n")
-                out.write("\n")
-            # Check for the client_anyscale_service script
-            elif lines[0].lstrip().startswith("# client_anyscale_service.py"):
+            # Check for anyscale commands (expensive/redundant to test in CI)
+            if lines[0].lstrip().startswith("# client_anyscale_service.py"):
                 continue
             else:
                 # Regular Python cell: dump as-is
