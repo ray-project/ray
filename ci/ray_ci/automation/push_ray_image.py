@@ -200,9 +200,7 @@ def main(
     # Verify source image exists
     logger.info("Verifying source image in Wanda cache...")
     if not _image_exists(source_tag):
-        raise PushRayImageError(
-            f"Source image not found in Wanda cache: {source_tag}"
-        )
+        raise PushRayImageError(f"Source image not found in Wanda cache: {source_tag}")
 
     # Copy image to Docker Hub
     _copy_image(source_tag, full_destination, dry_run)

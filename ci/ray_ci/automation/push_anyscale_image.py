@@ -97,7 +97,7 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
             tags.append(f"{rayci_build_id}{py_tag}{platform_tag}")
     elif branch.startswith("releases/"):
         # On release branches, use release name
-        release_name = branch[len("releases/"):]
+        release_name = branch[len("releases/") :]
         tags.append(f"{release_name}.{commit}{py_tag}{platform_tag}")
         if rayci_build_id:
             tags.append(f"{rayci_build_id}{py_tag}{platform_tag}")
@@ -114,9 +114,7 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
     return tags
 
 
-def _get_wanda_image_name(
-    python_version: str, platform: str, image_type: str
-) -> str:
+def _get_wanda_image_name(python_version: str, platform: str, image_type: str) -> str:
     """Get the wanda-cached image name.
 
     Platform is passed with "cu" prefix (e.g., "cu12.3.2-cudnn9") or "cpu".
