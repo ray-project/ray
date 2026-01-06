@@ -228,7 +228,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
             # Convert checkpoint chunk to numpy for fast search.
             try:
                 ckpt_ids = ckpt_chunk.to_numpy(zero_copy_only=True)
-            except Exception:
+            except pyarrow.lib.ArrowInvalid:
                 # fallback to disable zero_copy
                 ckpt_ids = ckpt_chunk.to_numpy(zero_copy_only=False)
             # Start with a mask of all True (keep all rows).
