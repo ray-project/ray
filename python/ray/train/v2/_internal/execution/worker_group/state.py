@@ -111,7 +111,7 @@ def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
 
     logger.debug(f"Shutting down {len(workers)} workers.")
 
-    ray.wait(done_refs, num_returns=len(done_refs), timeout=patience_s)
+    ray.wait(done_refs, num_returns=len(done_refs), timeout=max(0, patience_s))
 
     for worker in workers:
         ray.kill(worker.actor)
