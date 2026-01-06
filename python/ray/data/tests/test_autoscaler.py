@@ -246,7 +246,7 @@ def autoscaler_max_upscaling_delta_setup():
         spec=InternalQueueOperatorMixin,
         has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
-        metrics=MagicMock(average_num_inputs_per_task=1),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
     )
     op_state = MagicMock(
         spec=OpState,
