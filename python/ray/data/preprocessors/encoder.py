@@ -142,6 +142,9 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
+        # Clear cached Arrow arrays from any previous fit
+        self._clear_arrow_cache()
+
         self.stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
@@ -155,6 +158,38 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             columns=self.columns,
         )
         return self
+
+    def _clear_arrow_cache(self):
+        """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
+        for col in self.columns:
+            cache_key = f"_arrow_arrays_{col}"
+            if hasattr(self, cache_key):
+                delattr(self, cache_key)
+
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values, with caching.
+
+        Args:
+            input_col: The name of the column to get arrays for.
+
+        Returns:
+            Tuple of (keys_array, values_array) for the column's ordinal mapping.
+        """
+        cache_key = f"_arrow_arrays_{input_col}"
+        if not hasattr(self, cache_key):
+            stat_value = self.stats_[f"unique_values({input_col})"]
+            if isinstance(stat_value, dict):
+                # Stats are in pandas dict format - convert to Arrow format
+                sorted_keys = sorted(stat_value.keys())
+                keys_array = pa.array(sorted_keys)
+                values_array = pa.array(
+                    [stat_value[k] for k in sorted_keys], type=pa.int64()
+                )
+            else:
+                # Stats are in Arrow tuple format: (keys_array, values_array)
+                keys_array, values_array = stat_value
+            setattr(self, cache_key, (keys_array, values_array))
+        return getattr(self, cache_key)
 
     def _get_ordinal_map(self, column_name: str) -> Dict[Any, int]:
         """Get the ordinal mapping for a column as a dict.
@@ -227,31 +262,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
-
-            # Get the ordinal mapping - may be tuple (Arrow) or dict (pandas) format
-            # Dict format can occur when aggregation returns Python list/set
-            stat_value = self.stats_[f"unique_values({input_col})"]
-
-            if isinstance(stat_value, dict):
-                # Stats are in pandas dict format - convert to Arrow format
-                sorted_keys = sorted(stat_value.keys())
-                keys_array = pa.array(sorted_keys)
-                values_array = pa.array(
-                    [stat_value[k] for k in sorted_keys], type=pa.int64()
-                )
-            else:
-                # Stats are in Arrow tuple format: (keys_array, values_array)
-                keys_array, values_array = stat_value
-
-            # Cast keys to match column type if needed
-            if keys_array.type != column.type:
-                keys_array = pc.cast(keys_array, column.type)
-
-            # Use pc.index_in to find position of each value in keys_array
-            indices = pc.index_in(column, keys_array)
-
-            # Map indices to ordinal values using pc.take
-            encoded_column = pc.take(values_array, indices)
+            encoded_column = self._encode_column_vectorized(column, input_col)
 
             # Add or replace the column in the table
             if output_col in table.column_names:
@@ -261,6 +272,22 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 table = table.append_column(output_col, encoded_column)
 
         return table
+
+    def _encode_column_vectorized(
+        self, column: pa.ChunkedArray, input_col: str
+    ) -> pa.Array:
+        """Encode a column using PyArrow's vectorized pc.index_in."""
+        keys_array, values_array = self._get_arrow_arrays(input_col)
+
+        # Cast keys to match column type if needed
+        if keys_array.type != column.type:
+            keys_array = pc.cast(keys_array, column.type)
+
+        # Use pc.index_in to find position of each value in keys_array
+        indices = pc.index_in(column, keys_array)
+
+        # Map indices to ordinal values using pc.take
+        return pc.take(values_array, indices)
 
     @classmethod
     @DeveloperAPI
@@ -399,6 +426,9 @@ class OneHotEncoder(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
+        # Clear cached Arrow arrays from any previous fit
+        self._clear_arrow_cache()
+
         self.stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
@@ -413,6 +443,38 @@ class OneHotEncoder(SerializablePreprocessorBase):
             columns=self.columns,
         )
         return self
+
+    def _clear_arrow_cache(self):
+        """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
+        for col in self.columns:
+            cache_key = f"_arrow_arrays_{col}"
+            if hasattr(self, cache_key):
+                delattr(self, cache_key)
+
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values, with caching.
+
+        Args:
+            input_col: The name of the column to get arrays for.
+
+        Returns:
+            Tuple of (keys_array, values_array) for the column's ordinal mapping.
+        """
+        cache_key = f"_arrow_arrays_{input_col}"
+        if not hasattr(self, cache_key):
+            stat_value = self.stats_[f"unique_values({input_col})"]
+            if isinstance(stat_value, dict):
+                # Stats are in pandas dict format - convert to Arrow format
+                sorted_keys = sorted(stat_value.keys())
+                keys_array = pa.array(sorted_keys)
+                values_array = pa.array(
+                    [stat_value[k] for k in sorted_keys], type=pa.int64()
+                )
+            else:
+                # Stats are in Arrow tuple format: (keys_array, values_array)
+                keys_array, values_array = stat_value
+            setattr(self, cache_key, (keys_array, values_array))
+        return getattr(self, cache_key)
 
     @classmethod
     @DeveloperAPI
@@ -481,51 +543,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
 
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
-
-            # Get the unique values mapping - may be tuple (Arrow) or dict (pandas) format
-            # Dict format can occur when aggregation returns Python list/set
-            stat_value = self.stats_[f"unique_values({input_col})"]
-
-            if isinstance(stat_value, dict):
-                # Stats are in pandas dict format - convert to Arrow format
-                sorted_keys = sorted(stat_value.keys())
-                keys_array = pa.array(sorted_keys)
-                values_array = pa.array(
-                    [stat_value[k] for k in sorted_keys], type=pa.int64()
-                )
-            else:
-                # Stats are in Arrow tuple format: (keys_array, values_array)
-                keys_array, values_array = stat_value
-
-            num_categories = len(keys_array)
-
-            # Cast keys to match column type if needed
-            if keys_array.type != column.type:
-                keys_array = pc.cast(keys_array, column.type)
-
-            # Use pc.index_in to find position of each value in keys_array
-            # Returns null for values not found
-            indices = pc.index_in(column, keys_array)
-
-            # Fill nulls with -1 before converting to numpy (nulls become NaN otherwise)
-            indices_filled = pc.fill_null(indices, -1)
-
-            # Create one-hot encoded matrix using vectorized NumPy operations
-            num_rows = len(column)
-            indices_np = indices_filled.to_numpy()
-
-            one_hot_matrix = np.zeros((num_rows, num_categories), dtype=np.uint8)
-
-            # Find valid indices (not -1) and set 1s at the appropriate positions
-            valid_mask = indices_np != -1
-            valid_indices = np.nonzero(valid_mask)[0]
-            if len(valid_indices) > 0:
-                one_hot_matrix[valid_indices, indices_np[valid_mask]] = 1
-
-            # Convert to Arrow FixedSizeListArray for efficient storage
-            encoded_column = pa.FixedSizeListArray.from_arrays(
-                one_hot_matrix.ravel(), num_categories
-            )
+            encoded_column = self._encode_column_one_hot(column, input_col)
 
             # Add or replace the column in the table
             if output_col in table.column_names:
@@ -535,6 +553,39 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 table = table.append_column(output_col, encoded_column)
 
         return table
+
+    def _encode_column_one_hot(
+        self, column: pa.ChunkedArray, input_col: str
+    ) -> pa.FixedSizeListArray:
+        """Encode a column to one-hot vectors using cached Arrow arrays."""
+        keys_array, _ = self._get_arrow_arrays(input_col)
+        num_categories = len(keys_array)
+
+        # Cast keys to match column type if needed
+        if keys_array.type != column.type:
+            keys_array = pc.cast(keys_array, column.type)
+
+        # Use pc.index_in to find position of each value in keys_array
+        # Returns null for values not found
+        indices = pc.index_in(column, keys_array)
+
+        # Fill nulls with -1 before converting to numpy (nulls become NaN otherwise)
+        indices_filled = pc.fill_null(indices, -1)
+
+        # Create one-hot encoded matrix using vectorized NumPy operations
+        num_rows = len(column)
+        indices_np = indices_filled.to_numpy()
+
+        one_hot_matrix = np.zeros((num_rows, num_categories), dtype=np.uint8)
+
+        # Find valid indices (not -1) and set 1s at the appropriate positions
+        valid_mask = indices_np != -1
+        valid_indices = np.nonzero(valid_mask)[0]
+        if len(valid_indices) > 0:
+            one_hot_matrix[valid_indices, indices_np[valid_mask]] = 1
+
+        # Convert to Arrow FixedSizeListArray for efficient storage
+        return pa.FixedSizeListArray.from_arrays(one_hot_matrix.ravel(), num_categories)
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
