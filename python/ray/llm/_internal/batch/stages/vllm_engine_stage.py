@@ -1,6 +1,5 @@
 """The stage that runs vLLM engine."""
 
-from abc import ABC
 import asyncio
 import copy
 import dataclasses
@@ -32,6 +31,8 @@ if TYPE_CHECKING:
 else:
     MultiModalDataDict = Any
 
+import vllm
+
 import ray
 from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
@@ -49,8 +50,6 @@ from ray.llm._internal.common.utils.download_utils import (
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-import vllm
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +257,7 @@ class vLLMEngineBaseWrapper:
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
-        
+
         self.engine = None
         self._vllm_config = None
 
@@ -390,9 +389,9 @@ class vLLMEngineBaseWrapper:
             A TextPrompt or TokensPrompt instance.
         """
         import vllm
-        
+
         multi_modal_data = self._prepare_multimodal_data(request)
-        
+
         if request.prompt_token_ids is not None:
             llm_prompt = vllm.inputs.data.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
@@ -641,7 +640,7 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
         request_kwargs = super()._prepare_llm_request_kwargs(row)
         return vLLMEngineRequest(**request_kwargs)
 
-    def generate_batch(
+    def generate(
         self, rows: List[Dict[str, Any]]
     ) -> List[Tuple[int, Dict[str, Any]]]:
         """Process a batch of rows synchronously.
@@ -673,7 +672,7 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
             # Build prompts from requests using shared helper method
             prompts: List[vllm.inputs.data.TextPrompt | vllm.inputs.data.TokensPrompt] = []
             params_list: List[vllm.SamplingParams | vllm.PoolingParams] = []
-            
+
             for request in requests:
                 llm_prompt = self._build_llm_prompt(request)
                 prompts.append(llm_prompt)
@@ -684,7 +683,7 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
                 # For pooling tasks, use encode() with appropriate pooling_task
                 # All params in params_list are PoolingParams for these task types
                 pooling_params_list = params_list
-                
+
                 # Extract truncate_prompt_tokens from pooling params if needed
                 # vLLM 0.12.0 ignores truncate_prompt_tokens in the pooling_params.
                 # TODO (jeffreywang): Remove the following once
@@ -692,9 +691,9 @@ class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
                 truncate_prompt_tokens = None
                 if pooling_params_list:
                     truncate_prompt_tokens = pooling_params_list[0].truncate_prompt_tokens
-                
+
                 pooling_task = self._get_pooling_task()
-                
+
                 results = self.engine.encode(
                     prompts=prompts,
                     pooling_params=pooling_params_list,
@@ -1016,7 +1015,7 @@ class vLLMEngineStageSyncUDF(vLLMEngineStageBaseUDF, StatefulStageSyncUDF):
             return
 
         # Process batch using the wrapper's generate_batch method
-        results = self.llm.generate_batch(rows)
+        results = self.llm.generate(rows)
 
         # Yield one output dict per row
         for idx_in_batch, output_dict in results:
@@ -1078,7 +1077,7 @@ class vLLMEngineStage(StatefulStage):
     """
 
     fn: Type[StatefulStageBaseUDF]
-    sync: bool
+    synchronous_engine: bool
 
     @root_validator(pre=True)
     def post_init(cls, values):
@@ -1091,8 +1090,8 @@ class vLLMEngineStage(StatefulStage):
         Returns:
             The updated values.
         """
-        sync = values["sync"]
-        values["fn"] = vLLMEngineStageSyncUDF if sync else vLLMEngineStageUDF
+        synchronous_engine = values["synchronous_engine"]
+        values["fn"] = vLLMEngineStageSyncUDF if synchronous_engine else vLLMEngineStageUDF
 
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
