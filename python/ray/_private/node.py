@@ -44,6 +44,7 @@ from ray._raylet import (
     get_session_key_from_storage,
     wait_for_persisted_port,
 )
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
@@ -518,7 +519,7 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self, node_to_connect_info):
+    def _init_temp(self, node_to_connect_info: Optional[GcsNodeInfo]):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
