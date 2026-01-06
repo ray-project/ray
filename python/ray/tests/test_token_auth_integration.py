@@ -709,5 +709,99 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
     wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
 
 
+def _get_dashboard_agent_address(cluster_info):
+    """Get the dashboard agent HTTP address from a running cluster."""
+    import json
+
+    # Get agent address from internal KV
+    node_id = ray.nodes()[0]["NodeID"]
+    key = f"DASHBOARD_AGENT_ADDR_{node_id}"
+    agent_addr = ray.experimental.internal_kv._internal_kv_get(
+        key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
+    )
+    if agent_addr:
+        ip, http_port, grpc_port = json.loads(agent_addr)
+        return f"http://{ip}:{http_port}"
+    return None
+
+
+@pytest.mark.parametrize(
+    "token_type,expected_status",
+    [
+        ("none", 401),  # No token -> Unauthorized
+        ("valid", "not_auth_error"),  # Valid token -> passes auth (may get 404)
+        ("invalid", 403),  # Invalid token -> Forbidden
+    ],
+    ids=["no_token", "valid_token", "invalid_token"],
+)
+def test_dashboard_agent_auth(
+    token_type, expected_status, setup_cluster_with_token_auth
+):
+    """Test dashboard agent authentication with various token scenarios."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+
+    # Wait for agent address to be available
+    def get_agent_address():
+        addr = _get_dashboard_agent_address(cluster_info)
+        return addr is not None
+
+    wait_for_condition(get_agent_address, timeout=30)
+    agent_address = _get_dashboard_agent_address(cluster_info)
+
+    # Build headers based on token type
+    headers = {}
+    if token_type == "valid":
+        headers["Authorization"] = f"Bearer {cluster_info['token']}"
+    elif token_type == "invalid":
+        headers["Authorization"] = "Bearer invalid_token_12345678901234567890"
+    # token_type == "none" -> no Authorization header
+
+    response = requests.get(
+        f"{agent_address}/api/job_agent/jobs/nonexistent/logs",
+        headers=headers,
+        timeout=5,
+    )
+
+    if expected_status == "not_auth_error":
+        # Valid token should pass auth (may get 404 for nonexistent job)
+        assert response.status_code not in (401, 403), (
+            f"Valid token should be accepted, got {response.status_code}: "
+            f"{response.text}"
+        )
+    else:
+        assert (
+            response.status_code == expected_status
+        ), f"Expected {expected_status}, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["/api/healthz", "/api/local_raylet_healthz"],
+    ids=["healthz", "local_raylet_healthz"],
+)
+def test_dashboard_agent_health_check_public(endpoint, setup_cluster_with_token_auth):
+    """Test that agent health check endpoints remain public without auth."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+
+    # Wait for agent address to be available
+    def get_agent_address():
+        addr = _get_dashboard_agent_address(cluster_info)
+        return addr is not None
+
+    wait_for_condition(get_agent_address, timeout=30)
+    agent_address = _get_dashboard_agent_address(cluster_info)
+
+    # Health check endpoints should be accessible without auth
+    response = requests.get(f"{agent_address}{endpoint}", timeout=5)
+    assert response.status_code == 200, (
+        f"Health check {endpoint} should return 200 without auth, "
+        f"got {response.status_code}: {response.text}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
