@@ -450,8 +450,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metrics.on_input_queued(refs)
 
         if self._block_ref_bundler.has_next():
-            bundled_input = self._block_ref_bundler.get_next()
-            self._metrics.on_input_dequeued(bundled_input)
+            (
+                bundled_input,
+                original_inputs,
+            ) = self._block_ref_bundler.get_next_with_original()
+            for og_input in original_inputs:
+                self._metrics.on_input_dequeued(og_input)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -585,8 +589,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler.finalize()
         while self._block_ref_bundler.has_next():
             # Handle any leftover bundles in the bundler.
-            bundled_input = self._block_ref_bundler.get_next()
-            self._metrics.on_input_dequeued(bundled_input)
+            bundled_input, original_inputs = self._block_ref_bundler.get_next()
+            for og_inputs in original_inputs:
+                self._metrics.on_input_dequeued(og_inputs)
             self._add_bundled_input(bundled_input)
 
         super().all_inputs_done()

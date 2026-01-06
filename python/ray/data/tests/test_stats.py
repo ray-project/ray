@@ -86,6 +86,9 @@ def gen_expected_metrics(
             "'average_total_task_completion_time_s': N",
             "'average_task_completion_excl_backpressure_time_s': N",
             "'average_bytes_per_output': N",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
@@ -140,9 +143,6 @@ def gen_expected_metrics(
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'obj_store_mem_used': A",
-            "'obj_store_mem_pending_task_inputs': Z",
-            "'obj_store_mem_internal_inqueue': Z",
-            "'obj_store_mem_internal_outqueue': Z",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -154,6 +154,9 @@ def gen_expected_metrics(
             "'average_total_task_completion_time_s': None",
             "'average_task_completion_excl_backpressure_time_s': None",
             "'average_bytes_per_output': None",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': None",
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
@@ -211,9 +214,6 @@ def gen_expected_metrics(
             "'obj_store_mem_freed': Z",
             "'obj_store_mem_spilled': Z",
             "'obj_store_mem_used': A",
-            "'obj_store_mem_pending_task_inputs': Z",
-            "'obj_store_mem_internal_inqueue': Z",
-            "'obj_store_mem_internal_outqueue': Z",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -625,6 +625,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_total_task_completion_time_s: N,\n"
         "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -673,9 +676,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
-        "      obj_store_mem_pending_task_inputs: Z,\n"
-        "      obj_store_mem_internal_inqueue: Z,\n"
-        "      obj_store_mem_internal_outqueue: Z,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -769,6 +769,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_total_task_completion_time_s: N,\n"
         "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -817,9 +820,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
-        "      obj_store_mem_pending_task_inputs: Z,\n"
-        "      obj_store_mem_internal_inqueue: Z,\n"
-        "      obj_store_mem_internal_outqueue: Z,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -866,6 +866,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_total_task_completion_time_s: N,\n"
         "            average_task_completion_excl_backpressure_time_s: N,\n"
         "            average_bytes_per_output: N,\n"
+        "            obj_store_mem_internal_inqueue: Z,\n"
+        "            obj_store_mem_internal_outqueue: Z,\n"
+        "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
@@ -914,9 +917,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_freed: N,\n"
         "            obj_store_mem_spilled: Z,\n"
         "            obj_store_mem_used: A,\n"
-        "            obj_store_mem_pending_task_inputs: Z,\n"
-        "            obj_store_mem_internal_inqueue: Z,\n"
-        "            obj_store_mem_internal_outqueue: Z,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
         "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501

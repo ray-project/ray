@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections import deque
-from typing import TYPE_CHECKING, Any, Deque, List, Optional
+from typing import TYPE_CHECKING, Any, Deque, List, Optional, Tuple
 
 from typing_extensions import override
 
@@ -133,11 +133,13 @@ class RebundleQueue(BaseBundleQueue):
         self._strategy = strategy
         self._pending_bundles: Deque[RefBundle] = deque()
         self._ready_bundles: Deque[RefBundle] = deque()
+        self._consumed_bundles: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
 
     def _merge_bundles(self, pending_to_ready_bundles: List[RefBundle]):
         from ray.data._internal.execution.interfaces import RefBundle
 
+        self._consumed_bundles.append(pending_to_ready_bundles)
         merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue(merged_bundle)
@@ -224,6 +226,14 @@ class RebundleQueue(BaseBundleQueue):
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
         return ready_bundle
+
+    def get_next_with_original(self) -> Tuple[RefBundle, List[RefBundle]]:
+        if not self.has_next():
+            raise ValueError("You can't pop from empty queue")
+        ready_bundle = self._ready_bundles.popleft()
+        self._on_dequeue(ready_bundle)
+        consumed_bundle = self._consumed_bundles.popleft()
+        return ready_bundle, consumed_bundle
 
     @override
     def peek_next(self) -> Optional[RefBundle]:
