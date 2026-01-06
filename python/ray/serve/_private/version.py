@@ -191,8 +191,10 @@ class DeploymentVersion:
                 if proto.placement_group_fallback_strategy
                 else None
             ),
-            placement_group_version=(
-                proto.placement_group_version if proto.placement_group_version else None
+            placement_group_strategy=(
+                proto.placement_group_strategy
+                if proto.placement_group_strategy
+                else None
             ),
             max_replicas_per_node=(
                 proto.max_replicas_per_node if proto.max_replicas_per_node else None
