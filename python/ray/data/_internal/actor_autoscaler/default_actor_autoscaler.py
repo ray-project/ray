@@ -122,6 +122,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool exceeding max size",
             )
 
+        # To prevent unexpected downscaling from the initial size, short-circuit if
+        # the operator hasn't received any inputs.
+        if op.metrics.num_inputs_received == 0:
+            return ActorPoolScalingRequest.no_op(reason="no inputs received")
+
         # Determine whether to scale up based on the actor pool utilization.
         util = self._compute_utilization(actor_pool)
 
