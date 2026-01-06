@@ -38,6 +38,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Threshold for switching between Python dict and PyArrow pc.index_in
+# Below this: Python dict is faster (avoids hash table rebuild overhead)
+# Above this: PyArrow is faster (vectorized C++ amortizes overhead)
+_ARROW_VECTORIZED_THRESHOLD = 10000
+
+
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
 class OrdinalEncoder(SerializablePreprocessorBase):
@@ -203,6 +209,12 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         via _determine_transform_to_use when a PyArrow schema is available. However,
         for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
         until runtime, so we fall back to pandas here if list columns are found.
+
+        This method uses an adaptive strategy based on batch size:
+        - Large batches (>= threshold): Use PyArrow's vectorized pc.index_in
+        - Small batches (< threshold): Use cached Python dict lookup
+
+        The threshold is defined by _ARROW_VECTORIZED_THRESHOLD (default 10000).
         """
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
@@ -225,13 +237,40 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 f"null values. Consider imputing missing values first."
             )
 
+        num_rows = table.num_rows
+        use_vectorized = num_rows >= _ARROW_VECTORIZED_THRESHOLD
+
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
 
-            # Get the ordinal mapping - may be tuple (Arrow) or dict (pandas) format
-            # Dict format can occur when aggregation returns Python list/set
-            stat_value = self.stats_[f"unique_values({input_col})"]
+            if use_vectorized:
+                # Large batch: use PyArrow's vectorized pc.index_in
+                encoded_column = self._encode_column_vectorized(column, input_col)
+            else:
+                # Small batch: use cached Python dict lookup
+                encoded_column = self._encode_column_dict(column, input_col)
 
+            # Add or replace the column in the table
+            if output_col in table.column_names:
+                col_idx = table.column_names.index(output_col)
+                table = table.set_column(col_idx, output_col, encoded_column)
+            else:
+                table = table.append_column(output_col, encoded_column)
+
+        return table
+
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values, with caching.
+
+        Args:
+            input_col: The name of the column to get arrays for.
+
+        Returns:
+            Tuple of (keys_array, values_array) for the column's ordinal mapping.
+        """
+        cache_key = f"_arrow_arrays_{input_col}"
+        if not hasattr(self, cache_key):
+            stat_value = self.stats_[f"unique_values({input_col})"]
             if isinstance(stat_value, dict):
                 # Stats are in pandas dict format - convert to Arrow format
                 sorted_keys = sorted(stat_value.keys())
@@ -242,25 +281,60 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             else:
                 # Stats are in Arrow tuple format: (keys_array, values_array)
                 keys_array, values_array = stat_value
+            setattr(self, cache_key, (keys_array, values_array))
+        return getattr(self, cache_key)
 
-            # Cast keys to match column type if needed
-            if keys_array.type != column.type:
-                keys_array = pc.cast(keys_array, column.type)
+    def _get_cached_lookup_dict(self, input_col: str) -> Dict[Any, int]:
+        """Get cached Python dict for O(1) lookups.
 
-            # Use pc.index_in to find position of each value in keys_array
-            indices = pc.index_in(column, keys_array)
+        Args:
+            input_col: The name of the column to get the lookup dict for.
 
-            # Map indices to ordinal values using pc.take
-            encoded_column = pc.take(values_array, indices)
+        Returns:
+            Dict mapping values to their ordinal encodings.
+        """
+        cache_key = f"_lookup_dict_{input_col}"
+        if not hasattr(self, cache_key):
+            # Reuse existing _get_ordinal_map which handles both dict and Arrow formats
+            setattr(self, cache_key, self._get_ordinal_map(input_col))
+        return getattr(self, cache_key)
 
-            # Add or replace the column in the table
-            if output_col in table.column_names:
-                col_idx = table.column_names.index(output_col)
-                table = table.set_column(col_idx, output_col, encoded_column)
-            else:
-                table = table.append_column(output_col, encoded_column)
+    def _encode_column_vectorized(
+        self, column: pa.ChunkedArray, input_col: str
+    ) -> pa.Array:
+        """Encode column using PyArrow's vectorized pc.index_in.
 
-        return table
+        Best for large batches where the hash table rebuild cost is amortized.
+        """
+        # Get Arrow arrays (potentially cached)
+        keys_array, values_array = self._get_arrow_arrays(input_col)
+
+        # Cast keys_array to match column type if needed
+        if keys_array.type != column.type:
+            keys_array = pc.cast(keys_array, column.type)
+
+        # Use vectorized index_in to find positions
+        indices = pc.index_in(column, keys_array)
+
+        # Use take to map indices to encoded values
+        return pc.take(values_array, indices)
+
+    def _encode_column_dict(self, column: pa.ChunkedArray, input_col: str) -> pa.Array:
+        """Encode column using cached Python dict lookup.
+
+        Best for small batches where pc.index_in's hash table rebuild is expensive.
+        """
+        # Get cached lookup dictionary
+        lookup_dict = self._get_cached_lookup_dict(input_col)
+
+        # Convert column to Python list for lookup
+        column_values = column.to_pylist()
+
+        # Vectorized lookup using list comprehension (O(1) dict lookups)
+        encoded_values = [lookup_dict.get(v) for v in column_values]
+
+        # Convert back to Arrow array
+        return pa.array(encoded_values, type=pa.int64())
 
     @classmethod
     @DeveloperAPI
@@ -584,15 +658,6 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             columns=self.columns,
         )
         return self
-
-    def _encode_list_element(self, element: list, *, column_name: str):
-        ordinal_map = self.stats_[f"unique_values({column_name})"]
-        # If encoding lists, entire column is flattened, hence we map individual
-        # elements inside the list element (of the column)
-        if self.encode_lists:
-            return [ordinal_map.get(x) for x in element]
-
-        return ordinal_map.get(tuple(element))
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
