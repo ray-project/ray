@@ -278,6 +278,8 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                 for pg in self._sub_progress_bars:
                     if isinstance(pg, RichSubProgressBar):
                         pg.complete()
+                if self._start_time is None:
+                    self._start_time = time.time()
                 for tid, progress, _ in self._op_display.values():
                     completed = progress.tasks[tid].completed or 0
                     metrics = _get_progress_metrics(
