@@ -243,6 +243,80 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
+@pytest.mark.parametrize("backend", ["mp"])
+def test_generation_model_sync(gpu_type, model_opt_125m, backend):
+    # OPT models don't have chat template, so we use ChatML template
+    # here to demonstrate the usage of custom chat template.
+    chat_template = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
+
+    processor_config = vLLMEngineProcessorConfig(
+        sync=True,
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            distributed_executor_backend=backend,
+        ),
+        max_concurrent_batches=1, # CRTICAL -- NEED THIS IF LOCK IS NOT USED
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(
+            enabled=True, chat_template=chat_template
+        ),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=10,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
 
 def test_embedding_model(gpu_type, model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(

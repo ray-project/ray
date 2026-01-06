@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import logging
 import math
+import threading
 import time
 import uuid
 from collections import Counter
@@ -48,6 +49,8 @@ from ray.llm._internal.common.utils.download_utils import (
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+import vllm
 
 logger = logging.getLogger(__name__)
 
@@ -564,25 +567,130 @@ class vLLMEngineWrapper(vLLMEngineBaseWrapper):
         )
 
 
-
-
-class vLLMEngineStageSyncWrapper(vLLMEngineBaseWrapper):
+class vLLMEngineSyncWrapper(vLLMEngineBaseWrapper):
     def __init__(
         self,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         dynamic_lora_loading_path: Optional[str] = None,
-        model: Optional[str] = None,
-        model_source: Optional[str] = None,
-        enable_log_requests: bool = False,
         **kwargs,
     ):
-        pass
+        super().__init__(idx_in_batch_column, max_pending_requests, dynamic_lora_loading_path, kwargs=kwargs)
 
-    def generate(
-        self, row: Dict[str, Any]
-    ) -> Tuple[vLLMEngineRequest, Dict[str, Any], float]:
-        pass
+        try:
+            import vllm
+        except ImportError as e:
+            raise ImportError(
+                "vLLM is not installed or failed to import. Please run "
+                "`pip install ray[llm]` to install required dependencies."
+            ) from e
+
+        kwargs.pop("enable_log_requests", None)
+        engine_args = vllm.EngineArgs(**kwargs)
+        self._vllm_config = engine_args.create_engine_config()
+        self.engine = vllm.LLM(**kwargs)
+
+        # Lock to prevent concurrent access to the vLLM engine.
+        # This is necessary because when using the multiprocessing backend,
+        # the engine's internal queue.get() releases the GIL, which can allow
+        # another Ray Data task to start executing on the same actor and
+        # add more requests before the first task's _run_engine() completes.
+        # This causes results from multiple batches to be mixed together.
+        # self._generate_lock = threading.Lock()
+
+    def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
+        """Prepare the inputs for LLM inference.
+
+        Args:
+            row: The row.
+
+        Returns:
+            A single vLLMEngineRequest.
+        """
+        prompt = row.pop("prompt")
+        tokenized_prompt = None  # Not used for TextPrompt
+
+        # Prepare sampling parameters for generate task.
+        sampling_params = row.pop("sampling_params")
+        if "guided_decoding" in sampling_params:
+            structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                **maybe_convert_ndarray_to_list(
+                    sampling_params.pop("guided_decoding")
+                )
+            )
+        else:
+            structured_outputs = None
+        params = vllm.SamplingParams(
+            **maybe_convert_ndarray_to_list(sampling_params),
+            structured_outputs=structured_outputs,
+        )
+
+        request = vLLMEngineRequest(
+            request_id=self.request_id,
+            idx_in_batch=row[self.idx_in_batch_column],
+            prompt=prompt,
+            prompt_token_ids=tokenized_prompt,
+            images=[],
+            multimodal_data=None,
+            mm_processor_kwargs=None,
+            multimodal_uuids=None,
+            params=params,
+            lora_request=None,
+        )
+        self.request_id += 1
+        return request
+
+
+    def generate_batch(
+        self, rows: List[Dict[str, Any]]
+    ) -> List[Tuple[int, Dict[str, Any]]]:
+        """Process a batch of rows synchronously.
+
+        Args:
+            rows: List of rows to process.
+
+        Returns:
+            List of tuples (idx_in_batch, output_dict) for each row.
+        """
+        if not rows:
+            return []
+
+        # Acquire lock to prevent concurrent access to the vLLM engine.
+        # This is critical because vLLM's internal _run_engine() processes
+        # ALL pending requests, not just the ones from the current generate() call.
+        # Without the lock, concurrent Ray Data tasks could add requests while
+        # another task's _run_engine() is still running, causing results to be
+        # mixed between batches.
+        # with self._generate_lock:
+        # Prepare requests using _prepare_llm_request
+        requests: List[vLLMEngineRequest] = []
+        for row in rows:
+            request = self._prepare_llm_request(row)
+            requests.append(request)
+
+        # Build prompts and sampling params from requests
+        prompts: List[vllm.inputs.data.TextPrompt] = []
+        sampling_params_list: List[vllm.SamplingParams] = []
+        for request in requests:
+            prompts.append(vllm.inputs.data.TextPrompt(prompt=request.prompt))
+            sampling_params_list.append(request.params)
+
+        # Generate for all rows at once
+        results = self.engine.generate(
+            prompts=prompts,
+            sampling_params=sampling_params_list,
+        )
+
+        # Process results and return with idx_in_batch
+        output_list = []
+        for result, request in zip(results, requests):
+            # Set the original prompt on the result (vLLM may not populate it correctly)
+            result.prompt = request.prompt
+            output_data = vLLMOutputData.from_vllm_engine_output(result)
+            output_dict = output_data.model_dump()
+            output_list.append((request.idx_in_batch, output_dict))
+
+        return output_list
 
 
 class vLLMEngineStageBaseUDF(StatefulStageBaseUDF):
@@ -841,21 +949,49 @@ class vLLMEngineStageSyncUDF(vLLMEngineStageBaseUDF, StatefulStageSyncUDF):
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
     ):
-        pass
-
-    def _generate_with_error_handling(
-        self,
-        row: Dict[str, Any],
-        batch_uuid: uuid.UUID,
-    ) -> Dict[str, Any]:
-        pass
+        vLLMEngineStageBaseUDF.__init__(
+            self,
+            data_column,
+            expected_input_keys,
+            batch_size,
+            max_concurrent_batches,
+            model,
+            engine_kwargs,
+            task_type,
+            max_pending_requests,
+            dynamic_lora_loading_path,
+            should_continue_on_error,
+        )
+        self.llm = vLLMEngineSyncWrapper(
+            model=self.model,
+            model_source=self.model_source,
+            idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
+            enable_log_requests=False,
+            max_pending_requests=self.max_pending_requests,
+            dynamic_lora_loading_path=dynamic_lora_loading_path,
+            **self.engine_kwargs,
+        )
 
     def udf(self, rows: List[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
-        if False:
-            yield {}
+        """Run the vLLM engine synchronously on a batch of rows.
 
-    def __del__(self):
-        pass
+        Args:
+            rows: A list of rows to run the vLLM engine on.
+
+        Yields:
+            One output dict per row.
+        """
+        if not rows:
+            return
+
+        # Process batch using the wrapper's generate_batch method
+        results = self.llm.generate_batch(rows)
+
+        # Yield one output dict per row
+        for idx_in_batch, output_dict in results:
+            # Include __idx_in_batch to match async version
+            output_dict[self.IDX_IN_BATCH_COLUMN] = idx_in_batch
+            yield output_dict
 
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
