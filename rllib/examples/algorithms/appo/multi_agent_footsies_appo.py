@@ -14,7 +14,7 @@ Training:
     - Training is governed by adding new, more complex opponents to the mix as the main policy reaches a certain win rate threshold against the current opponent.
     - Current opponent is always the newest opponent added to the mix.
     - Training starts with a very simple opponent: "noop" (does nothing), then progresses to "back" (only moves backwards). These are the fixed (very simple) policies that are used to kick off the training.
-    - After "random", new opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", etc.
+    - New opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", etc.
     - In this way - after kick-starting the training with fixed simple opponents - the main policy will play against a version of itself from an earlier training stage.
     - The main policy has to achieve the win rate threshold against the current opponent to add a new opponent to the mix.
     - Training concludes when the target mix size is reached.
