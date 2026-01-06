@@ -110,10 +110,11 @@ class RichSubProgressBar(BaseProgressBar):
             self._update(self._completed, self._completed)
 
     def __getstate__(self):
-        return {}
+        return {"max_name_length": self._max_name_length}
 
     def __setstate__(self, state):
         self._enabled = False  # Progress bar is disabled on remote nodes.
+        self._max_name_length = state.get("max_name_length", 100)
 
 
 class RichExecutionProgressManager(BaseExecutionProgressManager):
