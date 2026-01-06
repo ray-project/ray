@@ -885,6 +885,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             for key, req_val in required_labels.items():
                 node_val = labels.get(key)
 
+                # We only support string labels.
+                if not isinstance(req_val, str):
+                    is_match = False
+                    break
+
                 # !in operator
                 if req_val.startswith("!in(") and req_val.endswith(")"):
                     content = req_val[4:-1]
