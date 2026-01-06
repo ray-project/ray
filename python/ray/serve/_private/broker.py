@@ -1,3 +1,6 @@
+# Portions of this code are adapted from Flower's broker.py file.
+# https://github.com/mher/flower/blob/master/flower/utils/broker.py
+
 import json
 import logging
 import numbers
