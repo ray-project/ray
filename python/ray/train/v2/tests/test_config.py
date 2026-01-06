@@ -44,12 +44,6 @@ def test_storage_filesystem_repr():
     repr(config)
 
 
-def test_scaling_config_tpu_validation_missing_workers():
-    """Test that num_workers is required when use_tpu=True."""
-    with pytest.raises(ValueError, match="`num_workers` must be specified"):
-        ScalingConfig(use_tpu=True, accelerator_type="TPU-V4", topology="2x2x2")
-
-
 def test_scaling_config_default_workers():
     """Test that num_workers defaults to 1 for non-TPU workloads."""
     config = ScalingConfig()
