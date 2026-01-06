@@ -406,6 +406,14 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message GetAgentPIDsRequest {}
+
+message GetAgentPIDsReply {
+  // All agent pids
+  optional int32 dashboard_agent_pid = 1;
+  optional int32 runtime_env_agent_pid = 2;
+}
+
 message KillLocalActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
@@ -558,6 +566,10 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Get the PIDs of dashboard and runtime env agent currently alive that are managed by
+  // the local Raylet. Failure: Will retry with the default timeout 1000ms. If fails,
+  // reply return an empty list.
+  rpc GetAgentPIDs(GetAgentPIDsRequest) returns (GetAgentPIDsReply);
   // Request from the GCS actor manager or actor scheduler that the worker shut down
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.
