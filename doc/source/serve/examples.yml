@@ -155,7 +155,7 @@ examples:
       - generative ai
     link: tutorials/asynchronous-inference/content/README
     related_technology: integrations
-  - title: Video Analysis Pipeline
+  - title: Video Analysis Inference Pipeline
     skill_level: advanced
     use_cases:
       - computer vision
