@@ -7,6 +7,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
+    BaseProgressBar,
     NoopSubProgressBar,
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
@@ -61,7 +62,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     ):
         self._dataset_id = dataset_id
 
-        self._sub_progress_bars: List[TqdmSubProgressBar] = []
+        self._sub_progress_bars: List[BaseProgressBar] = []
         self._op_display: Dict[uuid.UUID, TqdmSubProgressBar] = {}
 
         num_progress_bars = 0
@@ -98,14 +99,9 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
                     max_name_length=self.MAX_NAME_LENGTH,
                 )
                 num_progress_bars += 1
-            else:
-                pg = NoopSubProgressBar(
-                    name=f"- {op.name}",
-                    max_name_length=self.MAX_NAME_LENGTH,
-                )
-            state.progress_manager_uuid = uid
-            self._op_display[uid] = pg
-            self._sub_progress_bars.append(pg)
+                state.progress_manager_uuid = uid
+                self._op_display[uid] = pg
+                self._sub_progress_bars.append(pg)
 
             if not contains_sub_progress_bars:
                 continue
@@ -161,9 +157,9 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        pg = self._op_display[opstate.progress_manager_uuid]
-
-        # progress
-        pg.update_absolute(opstate.output_row_count, opstate.op.num_output_rows_total())
-        # stats
-        pg.set_description(opstate.summary_str(resource_manager))
+        pg = self._op_display.get(opstate.progress_manager_uuid)
+        if pg is not None:
+            pg.update_absolute(
+                opstate.output_row_count, opstate.op.num_output_rows_total()
+            )
+            pg.set_description(opstate.summary_str(resource_manager))
