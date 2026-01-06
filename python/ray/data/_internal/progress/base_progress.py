@@ -229,7 +229,6 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
             op = state.op
             if not isinstance(op, SubProgressBarMixin):
                 continue
-            op.initialize_sub_progress_related()
             sub_pg_names = op.get_sub_progress_bar_names()
             if sub_pg_names is not None:
                 for name in sub_pg_names:
