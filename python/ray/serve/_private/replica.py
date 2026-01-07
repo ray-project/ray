@@ -123,10 +123,7 @@ from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
 )
-from ray.serve.generated.serve_pb2_grpc import (
-    ASGIServiceServicer,
-    add_ASGIServiceServicer_to_server,
-)
+from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 
@@ -1242,9 +1239,7 @@ class ReplicaBase(ABC):
             raise e from None
 
 
-class Replica(ReplicaBase, ASGIServiceServicer):
-    """Replica implementation that also serves inter-deployment gRPC requests."""
-
+class Replica(ReplicaBase):
     async def _on_initialized(self):
         # Get current rank from replica context during initialization
         current_rank = ray.serve.context._get_internal_replica_context().rank
