@@ -197,14 +197,14 @@ class RebundleQueue(BaseBundleQueue):
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
                 self._on_enqueue(remaining_bundle)
-            
+
             return True
 
         # If we're flushing and have leftover bundles, convert them to a ready bundle
         if flush_remaining and self._pending_bundles:
             self._merge_bundles(self._pending_bundles)
             return True
-        
+
         return False
 
     @override
@@ -248,7 +248,6 @@ class RebundleQueue(BaseBundleQueue):
             assert self._try_build_ready_bundle(flush_remaining=True)
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles.clear()
-
 
     @override
     def clear(self):
