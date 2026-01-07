@@ -86,6 +86,15 @@ class VLLMEngineConfig(BaseModelExtended):
             "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
         ),
     )
+    bundle_per_worker: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Resource bundle specification for each worker. "
+            "This bundle will be automatically replicated based on "
+            "tensor_parallel_size * pipeline_parallel_size."
+        ),
+    )
+
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -213,6 +222,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config
+        bundle_per_worker = llm_config.bundle_per_worker
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
@@ -222,6 +232,7 @@ class VLLMEngineConfig(BaseModelExtended):
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
+            bundle_per_worker=bundle_per_worker,
             placement_group_config=placement_group_config,
         )
 
@@ -263,6 +274,16 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles.append(bundle)
             return bundles
 
+        # If bundle_per_worker is specified, expand it to num_devices bundles
+        if self.bundle_per_worker:
+            bundles = []
+            for _ in range(self.num_devices):
+                bundle = self.bundle_per_worker.copy()
+                if self.accelerator_type and self.use_gpu:
+                    bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                bundles.append(bundle)
+            return bundles
+
         # Default bundles: Generate based on GPU/CPU mode
         if self.use_gpu:
             # GPU mode: replica actor contributes CPU to first bundle via merge
@@ -290,6 +311,10 @@ class VLLMEngineConfig(BaseModelExtended):
             if bundles:
                 # If any bundle has GPU > 0, we use GPU
                 return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+
+        # Check bundle_per_worker for explicit GPU specification
+        if self.bundle_per_worker:
+            return self.bundle_per_worker.get("GPU", 0) > 0
 
         # Default behavior based on accelerator_type
         if not self.accelerator_type:

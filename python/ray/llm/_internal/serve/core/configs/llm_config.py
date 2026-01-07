@@ -179,13 +179,25 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
+    bundle_per_worker: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Resource bundle specification for each worker. "
+            "This bundle will be automatically replicated based on "
+            "tensor_parallel_size * pipeline_parallel_size. "
+            "Example: {'GPU': 1, 'CPU': 2} with tp=2, pp=2 creates 4 bundles. "
+            "Cannot be used together with placement_group_config."
+        ),
+    )
+
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
             "Ray placement group configuration for scheduling vLLM engine workers. "
             "Defines resource bundles and placement strategy for multi-node deployments. "
             "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
-            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}. "
+            "For simpler configuration, consider using bundle_per_worker instead."
         ),
     )
 
@@ -452,6 +464,21 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(
                 "disable_log_stats cannot be set to True when log_engine_metrics is enabled. "
                 "Engine metrics require log stats to be enabled."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def _check_bundle_per_worker_placement_group_conflict(self):
+        """Validate that bundle_per_worker and placement_group_config are not both set."""
+        if (
+            self.bundle_per_worker is not None
+            and self.placement_group_config is not None
+        ):
+            raise ValueError(
+                "Cannot specify both 'bundle_per_worker' and 'placement_group_config'. "
+                "Use 'bundle_per_worker' for simple per-worker resource specification "
+                "(auto-replicated by tp*pp), or 'placement_group_config' for full control."
             )
 
         return self
