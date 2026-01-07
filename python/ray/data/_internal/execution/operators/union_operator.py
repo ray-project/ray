@@ -119,7 +119,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         if not self._preserve_order:
             return
-
+        self._try_advance_and_flush()
         assert all(not ref for ref in self._input_buffers)
 
     def has_next(self) -> bool:
