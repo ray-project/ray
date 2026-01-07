@@ -2807,8 +2807,11 @@ Status CoreWorker::ExecuteTask(
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
 
-  // Extract function name and retry status for metrics reporting.
-  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  // Extract task name and retry status for metrics reporting.
+  // Use GetName() which returns the custom task name if set via .options(name="..."),
+  // otherwise falls back to the function descriptor's call string. This ensures
+  // consistency with task events reported to the State API / Dashboard.
+  std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
   ++num_get_pin_args_in_flight_;
@@ -3434,10 +3437,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
 
   // Increment the task_queue_length and per function counter.
+  // Use task name which includes custom name from .options(name="...") if set,
+  // ensuring consistency with task events reported to the State API / Dashboard.
   task_queue_length_ += 1;
-  std::string func_name =
-      FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
-          ->CallString();
+  std::string func_name = request.task_spec().name();
   task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
