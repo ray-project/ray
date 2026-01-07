@@ -553,6 +553,18 @@ RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
     "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
 )
 
+# For now, this is used only for testing. In the suite of tests that
+# use gRPC to send requests, we flip this flag on.
+RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0")
+
+# If set to 1, the proxy will use gRPC transport for inter-deployment
+# communication instead of Ray actor calls. If not explicitly set,
+# falls back to RAY_SERVE_USE_GRPC_BY_DEFAULT.
+RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
+    not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
+    and RAY_SERVE_USE_GRPC_BY_DEFAULT
+)
+
 # The default buffer size for request path logs. Setting to 1 will ensure
 # logs are flushed to file handler immediately, otherwise it will be buffered
 # and flushed to file handler when the buffer is full or when there is a log

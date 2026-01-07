@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_PROXY_USE_GRPC,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
@@ -219,7 +220,10 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
             _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
         )
 
-    return handle.options(stream=not info.app_is_cross_language)
+    return handle.options(
+        stream=not info.app_is_cross_language,
+        _by_reference=not RAY_SERVE_PROXY_USE_GRPC,
+    )
 
 
 def get_controller_impl():

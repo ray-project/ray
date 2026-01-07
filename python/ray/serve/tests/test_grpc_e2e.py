@@ -1,10 +1,14 @@
 import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus, LoggingConfig
 from ray.serve.tests.conftest import *  # noqa
@@ -70,6 +74,54 @@ def check_running():
         == ApplicationStatus.RUNNING
     )
     return True
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [{"RAY_SERVE_PROXY_USE_GRPC": "1"}],
+    indirect=True,
+)
+def test_no_spammy_errors_in_grpc_proxy(ray_instance, tmp_dir):
+    """Direct all stdout/stderr to logs, and check that the false errors
+    from gRPC are not there in proxy logs."""
+
+    serve.start(
+        http_options={"host": "0.0.0.0"},
+        grpc_options={
+            "port": 9000,
+            "grpc_servicer_functions": [
+                "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",  # noqa
+            ],
+        },
+    )
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            "ray.serve.tests.test_grpc_e2e.downstream_node",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    # Since we start Serve in a subprocess which is non-blocking, we won't know
+    # when `serve run` completes (i.e. done waiting on proxies to be serving), so
+    # we query the application until we get a valid response.
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000").status_code == 200,
+    )
+    for _ in range(10):
+        assert requests.post("http://localhost:8000").text == "hi"
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    process_output, _ = p.communicate()
+    logs = process_output.decode("utf-8").strip()
+    assert "Exception in callback" not in logs
+    assert "PollerCompletionQueue._handle_events" not in logs
+    assert "BlockingIOError" not in logs
+    assert "Resource temporarily unavailable" not in logs
 
 
 def test_same_loop_handle(serve_instance):
