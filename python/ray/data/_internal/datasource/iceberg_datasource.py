@@ -77,6 +77,8 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -411,7 +413,7 @@ class IcebergDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent

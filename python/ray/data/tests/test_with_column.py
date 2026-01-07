@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -6,6 +8,7 @@ from pkg_resources import parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -605,6 +608,181 @@ def test_with_column_floor_division_and_logical_operations(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "expr_factory, expected_values",
+    [
+        pytest.param(lambda: col("value").ceil(), [-1, 0, 0, 1, 2], id="ceil"),
+        pytest.param(lambda: col("value").floor(), [-2, -1, 0, 0, 1], id="floor"),
+        pytest.param(lambda: col("value").round(), [-2, 0, 0, 0, 2], id="round"),
+        pytest.param(lambda: col("value").trunc(), [-1, 0, 0, 0, 1], id="trunc"),
+    ],
+)
+def test_with_column_rounding_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_values,
+):
+    """Test ceil, floor, round, and trunc expressions."""
+    values = [-1.75, -0.25, 0.0, 0.25, 1.75]
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").ln(), math.log, id="ln"),
+        pytest.param(lambda: col("value").log10(), math.log10, id="log10"),
+        pytest.param(lambda: col("value").log2(), math.log2, id="log2"),
+        pytest.param(lambda: col("value").exp(), math.exp, id="exp"),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param([1.0, math.e, 10.0, 4.0], id="float_inputs"),
+        pytest.param([1, 10, 4, 2], id="int_inputs"),
+    ],
+)
+def test_with_column_logarithmic_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+    input_values,
+):
+    """Test logarithmic and exponential expressions."""
+    values = input_values
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    expected_values = [expected_fn(v) for v in values]
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").sin(), math.sin, id="sin"),
+        pytest.param(lambda: col("value").cos(), math.cos, id="cos"),
+        pytest.param(lambda: col("value").tan(), math.tan, id="tan"),
+        pytest.param(lambda: col("value").asin(), math.asin, id="asin"),
+        pytest.param(lambda: col("value").acos(), math.acos, id="acos"),
+        pytest.param(lambda: col("value").atan(), math.atan, id="atan"),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param(
+            [0.0, math.pi / 6, math.pi / 4, math.pi / 3, math.pi / 2],
+            id="trigonometric_angles",
+        ),
+        pytest.param([0, 1, 2, 3], id="integer_angles"),
+    ],
+)
+def test_with_column_trigonometric_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+    input_values,
+):
+    """Test trigonometric expressions (sin, cos, tan, asin, acos, atan)."""
+    values = input_values
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+
+    # For inverse trigonometric functions, we need to handle domain restrictions
+    # asin and acos require input in [-1, 1]
+    if expected_fn in (math.asin, math.acos):
+        # Use values in the valid domain for inverse trig functions
+        values = [-1.0, -0.5, 0.0, 0.5, 1.0]
+        ds = ray.data.from_items([{"value": v} for v in values])
+
+    expected_values = [expected_fn(v) for v in values]
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "test_data, expr_factory, expected_results, test_id",
+    [
+        # Test negate
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").negate(),
+            [-5, 3, 0],
+            "negate",
+        ),
+        # Test sign
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").sign(),
+            [1, -1, 0],
+            "sign",
+        ),
+        # Test abs
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").abs(),
+            [5, 3, 0],
+            "abs",
+        ),
+        # Test power with integer exponent
+        pytest.param(
+            [{"x": 2}, {"x": 3}, {"x": 4}],
+            lambda: col("x").power(2),
+            [4, 9, 16],
+            "power_int",
+        ),
+        # Test power with float exponent
+        pytest.param(
+            [{"x": 4}, {"x": 9}, {"x": 16}],
+            lambda: col("x").power(0.5),
+            [2.0, 3.0, 4.0],
+            "power_sqrt",
+        ),
+    ],
+)
+def test_with_column_arithmetic_operations(
+    ray_start_regular_shared,
+    test_data,
+    expr_factory,
+    expected_results,
+    test_id,
+):
+    """Test arithmetic helper expressions: negate, sign, power, abs."""
+    ds = ray.data.from_items(test_data)
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+
+    # Create expected dataframe
+    expected_df = pd.DataFrame(test_data)
+    expected_df["result"] = expected_results
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "test_data, expression, expected_results, test_description",
     [
         # Test with null values
@@ -1089,6 +1267,394 @@ def test_with_column_alias_expressions(
     non_aliased_df = ds_non_aliased.to_pandas()
 
     pd.testing.assert_frame_equal(result_df, non_aliased_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_actor_semantics(ray_start_regular_shared):
+    """Test that callable class UDFs maintain state across batches using actor semantics."""
+    import pyarrow.compute as pc
+
+    # Create a callable class UDF that tracks the number of times it's called
+    @udf(return_dtype=DataType.int32())
+    class InvocationCounter:
+        def __init__(self, offset=0):
+            self.offset = offset
+            self.call_count = 0
+
+        def __call__(self, x):
+            # Increment call count each time the UDF is invoked
+            self.call_count += 1
+            # Add the offset plus the call count to show state is maintained
+            return pc.add(pc.add(x, self.offset), self.call_count)
+
+    # Create a dataset with multiple blocks to ensure multiple invocations
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    # Use the callable class UDF
+    counter = InvocationCounter(offset=100)
+    result_ds = ds.with_column("result", counter(col("id")))
+
+    # Convert to list to trigger execution
+    results = result_ds.take_all()
+
+    # The results should show that the call_count incremented across batches
+    # Since we have 4 blocks, the UDF should be called 4 times on the same actor
+    # The exact values will depend on which batch each row came from
+    # But we can verify that the offset (100) was applied
+    for result in results:
+        # Each result should have the base id + offset (100) + at least 1 (first call)
+        assert result["result"] >= result["id"] + 100 + 1
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_with_constructor_args(
+    ray_start_regular_shared,
+):
+    """Test that callable class UDFs correctly use constructor arguments."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, x):
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10)
+
+    # Test with different offsets
+    add_five = AddOffset(5)
+    add_ten = AddOffset(10)
+
+    result_5 = ds.with_column("plus_five", add_five(col("id"))).to_pandas()
+    result_10 = ds.with_column("plus_ten", add_ten(col("id"))).to_pandas()
+
+    # Verify the offsets were applied correctly
+    expected_5 = pd.DataFrame({"id": list(range(10)), "plus_five": list(range(5, 15))})
+    expected_10 = pd.DataFrame({"id": list(range(10)), "plus_ten": list(range(10, 20))})
+
+    assert rows_same(result_5, expected_5)
+    assert rows_same(result_10, expected_10)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
+    """Test that multiple callable class UDFs can be used in the same projection."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class Multiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return pc.multiply(x, self.factor)
+
+    @udf(return_dtype=DataType.int32())
+    class Adder:
+        def __init__(self, addend):
+            self.addend = addend
+
+        def __call__(self, x):
+            return pc.add(x, self.addend)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use multiple callable class UDFs
+    times_two = Multiplier(2)
+    plus_ten = Adder(10)
+
+    result = ds.with_column("doubled", times_two(col("id"))).with_column(
+        "plus_ten", plus_ten(col("id"))
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "doubled": [0, 2, 4, 6, 8],
+            "plus_ten": [10, 11, 12, 13, 14],
+        }
+    )
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_same_callable_class_different_constructor_args(
+    ray_start_regular_shared,
+):
+    """Test that the same callable class with different constructor args works correctly.
+
+    This test ensures that when the same callable class is instantiated with different
+    constructor arguments, each instance maintains its own state. This is important for
+    future-proofing in case Actor->Actor fusion becomes enabled.
+    """
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class Multiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return pc.multiply(x, self.factor)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use the SAME class with DIFFERENT constructor arguments
+    times_two = Multiplier(2)
+    times_three = Multiplier(3)
+
+    result = ds.with_column("times_two", times_two(col("id"))).with_column(
+        "times_three", times_three(col("id"))
+    )
+
+    print(result.explain())
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "times_two": [0, 2, 4, 6, 8],  # id * 2
+            "times_three": [0, 3, 6, 9, 12],  # id * 3
+        }
+    )
+
+    from ray.data._internal.util import rows_same
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_with_compute_strategy(
+    ray_start_regular_shared,
+):
+    """Test that compute strategy can be specified for callable class UDFs."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, x):
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10)
+
+    # Use a specific compute strategy
+    add_five = AddOffset(5)
+    result = ds.with_column(
+        "result",
+        add_five(col("id")),
+        compute=ray.data.ActorPoolStrategy(size=2),
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_callable_class_udf(ray_start_regular_shared):
+    """Test that async callable class UDFs work correctly with actor semantics."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncAddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+            self.call_count = 0
+
+        async def __call__(self, x):
+            # Simulate async work
+            await asyncio.sleep(0.001)
+            self.call_count += 1
+            # Add offset to show the UDF was called
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10, override_num_blocks=2)
+
+    # Use async callable class UDF
+    add_five = AsyncAddOffset(5)
+    result = ds.with_column("result", add_five(col("id")))
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_callable_class_udf_with_state(ray_start_regular_shared):
+    """Test that async callable class UDFs maintain state across batches."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncCounter:
+        def __init__(self):
+            self.total_processed = 0
+
+        async def __call__(self, x):
+            # Simulate async work
+            await asyncio.sleep(0.001)
+            # Track how many items we've processed
+            batch_size = len(x)
+            self.total_processed += batch_size
+            # Return the running count
+            return pc.add(x, self.total_processed - batch_size)
+
+    # Create dataset with multiple blocks
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    # Use async callable class UDF with state
+    counter = AsyncCounter()
+    result = ds.with_column("running_total", counter(col("id")))
+
+    # Just verify we got results without errors
+    # The exact values will depend on execution order
+    results = result.take_all()
+    assert len(results) == 20
+    # All values should be at least the original id
+    for i, result in enumerate(results):
+        assert result["running_total"] >= result["id"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared):
+    """Test that multiple async callable class UDFs can work together."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncMultiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        async def __call__(self, x):
+            await asyncio.sleep(0.001)
+            return pc.multiply(x, self.factor)
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncAdder:
+        def __init__(self, addend):
+            self.addend = addend
+
+        async def __call__(self, x):
+            await asyncio.sleep(0.001)
+            return pc.add(x, self.addend)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use multiple async callable class UDFs
+    times_two = AsyncMultiplier(2)
+    plus_ten = AsyncAdder(10)
+
+    result = ds.with_column("doubled", times_two(col("id"))).with_column(
+        "plus_ten", plus_ten(col("id"))
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "doubled": [0, 2, 4, 6, 8],
+            "plus_ten": [10, 11, 12, 13, 14],
+        }
+    )
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_shared):
+    """Test that async generator UDFs correctly handle multiple yields.
+
+    When an async generator UDF yields multiple values, the last (most recent)
+    value is returned. This matches map_batches behavior of collecting all yields,
+    while adapting to expression context where a single value per row is required.
+    """
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncGeneratorMultiYield:
+        """UDF that yields multiple values - last yield is returned."""
+
+        def __init__(self, offset):
+            self.offset = offset
+
+        async def __call__(self, x):
+            # Yield multiple values for the same input
+            # Fix: Last yield is returned (most recent/final result)
+            yield pc.add(x, self.offset)  # First yield: x + offset
+            yield pc.multiply(x, self.offset + 10)  # Second yield: x * (offset + 10)
+            yield pc.add(x, self.offset * 2)  # Third yield: x + (offset * 2) - RETURNED
+
+    # Create dataset
+    ds = ray.data.range(5, override_num_blocks=1)
+
+    # Use async generator UDF
+    udf_instance = AsyncGeneratorMultiYield(5)
+    result = ds.with_column("result", udf_instance(col("id")))
+
+    result_df = result.to_pandas()
+
+    # Fixed behavior: last yield is returned
+    # Input: [0, 1, 2, 3, 4]
+    # First yield: [0+5, 1+5, 2+5, 3+5, 4+5] = [5, 6, 7, 8, 9]
+    # Second yield: [0*15, 1*15, 2*15, 3*15, 4*15] = [0, 15, 30, 45, 60]
+    # Third yield (RETURNED): [0+10, 1+10, 2+10, 3+10, 4+10] = [10, 11, 12, 13, 14]
+
+    expected_after_fix = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "result": [10, 11, 12, 13, 14],  # Last yield returned: id + (5*2) = id + 10
+        }
+    )
+
+    assert rows_same(result_df, expected_after_fix)
 
 
 if __name__ == "__main__":

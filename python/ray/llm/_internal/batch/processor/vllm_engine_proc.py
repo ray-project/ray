@@ -1,5 +1,6 @@
 """The vLLM engine processor."""
 
+import logging
 from typing import Any, Dict, List, Literal, Optional
 
 import transformers
@@ -7,6 +8,7 @@ from pydantic import ConfigDict, Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -26,6 +28,7 @@ from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
     PrepareImageStage,
+    PrepareMultimodalStage,
     TokenizeStage,
     vLLMEngineStage,
 )
@@ -33,10 +36,10 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
     PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
     TokenizerStageConfig,
     resolve_stage_config,
 )
-from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
@@ -44,6 +47,9 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
 )
+
+logger = logging.getLogger(__name__)
+
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -73,7 +79,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "https://docs.vllm.ai/en/latest/serving/engine_args.html "
         "for more details.",
     )
-    task_type: vLLMTaskType = Field(
+    task_type: TypeVLLMTaskType = Field(
         default=vLLMTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
@@ -98,8 +104,23 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
-        task_type_str = values.get("task_type", "generate")
-        values["task_type"] = vLLMTaskType(task_type_str)
+        task_type = values.get("task_type", vLLMTaskType.GENERATE)
+        if task_type not in vLLMTaskType.values():
+            raise ValueError(f"Invalid task type: {task_type}")
+
+        engine_kwargs = values.get("engine_kwargs", {})
+        engine_kwargs_task_type = engine_kwargs.get("task_type", "")
+        if engine_kwargs_task_type != task_type:
+            if engine_kwargs_task_type:
+                logger.warning(
+                    "The task_type set in engine kwargs (%s) is different from the "
+                    "config (%s). Overriding the task_type in engine kwargs to %s.",
+                    engine_kwargs_task_type,
+                    task_type,
+                    task_type,
+                )
+            engine_kwargs["task_type"] = task_type
+        values["engine_kwargs"] = engine_kwargs
         return values
 
     @root_validator(pre=True)
@@ -158,10 +179,47 @@ def build_vllm_engine_processor(
         PrepareImageStageConfig,
         processor_defaults,
     )
+
+    # Resolve and build PrepareMultimodalStage if enabled
+    prepare_multimodal_stage_cfg = resolve_stage_config(
+        config.prepare_multimodal_stage,
+        PrepareMultimodalStageConfig,
+        processor_defaults,
+    )
+
+    if image_stage_cfg.enabled and prepare_multimodal_stage_cfg.enabled:
+        raise ValueError(
+            "Cannot enable both 'prepare_image_stage' and 'prepare_multimodal_stage' "
+            "simultaneously. The 'prepare_multimodal_stage' handles image processing "
+            "along with other multimodal inputs. Please disable one of them."
+        )
+
     if image_stage_cfg.enabled:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
+            )
+        )
+
+    if prepare_multimodal_stage_cfg.enabled:
+        base_model_config_kwargs = (
+            prepare_multimodal_stage_cfg.model_config_kwargs or {}
+        )
+        # Respect the model source from the processor
+        model_config_kwargs = {
+            **base_model_config_kwargs,
+            "model": processor_defaults.get("model_source"),
+        }
+        stages.append(
+            PrepareMultimodalStage(
+                fn_constructor_kwargs=dict(
+                    model_config_kwargs=model_config_kwargs,
+                    chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
+                    apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
+                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(
+                    prepare_multimodal_stage_cfg
+                ),
             )
         )
 
@@ -217,6 +275,7 @@ def build_vllm_engine_processor(
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
+                should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -285,7 +344,7 @@ def build_vllm_engine_processor(
             batch_size=config.batch_size,
             accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
             concurrency=config.concurrency,
-            task_type=vLLMTaskType(config.task_type),
+            task_type=config.task_type,
             pipeline_parallel_size=config.engine_kwargs.get(
                 "pipeline_parallel_size", 1
             ),
