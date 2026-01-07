@@ -282,6 +282,10 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:

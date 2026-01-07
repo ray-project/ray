@@ -52,7 +52,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "engine_kwargs": {
             "max_model_len": 8192,
             "distributed_executor_backend": "mp",
-            "task": vLLMTaskType.GENERATE,
+            "task_type": vLLMTaskType.GENERATE,
         },
         "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 111,
@@ -79,7 +79,7 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
     config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
-            task=vLLMTaskType.EMBED,
+            task_type=vLLMTaskType.EMBED,
         ),
         task_type=vLLMTaskType.GENERATE,
         concurrency=4,
@@ -93,7 +93,10 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
     stage = processor.get_stage_by_name("vLLMEngineStage")
 
     assert stage.fn_constructor_kwargs["task_type"] == vLLMTaskType.GENERATE
-    assert stage.fn_constructor_kwargs["engine_kwargs"]["task"] == vLLMTaskType.GENERATE
+    assert (
+        stage.fn_constructor_kwargs["engine_kwargs"]["task_type"]
+        == vLLMTaskType.GENERATE
+    )
 
 
 def test_vllm_engine_processor_invalid_task(model_opt_125m):
@@ -103,7 +106,7 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
         vLLMEngineProcessorConfig(
             model_source=model_opt_125m,
             engine_kwargs=dict(
-                task=vLLMTaskType.EMBED,
+                task_type=vLLMTaskType.EMBED,
             ),
             task_type="invalid_task",
             concurrency=4,
