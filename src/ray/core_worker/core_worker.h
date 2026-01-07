@@ -1850,7 +1850,7 @@ class CoreWorker {
   absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
-  std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
