@@ -215,7 +215,7 @@ class RebundleQueue(BaseBundleQueue):
         self._curr_consumed_bundles.append(bundle)
         if self._try_build_ready_bundle():
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
-            self._curr_consumed_bundles.clear()
+            self._curr_consumed_bundles = []
 
     @override
     def has_next(self) -> bool:
@@ -247,7 +247,7 @@ class RebundleQueue(BaseBundleQueue):
         if len(self._pending_bundles) > 0:
             assert self._try_build_ready_bundle(flush_remaining=True)
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
-            self._curr_consumed_bundles.clear()
+            self._curr_consumed_bundles = []
 
     @override
     def clear(self):
