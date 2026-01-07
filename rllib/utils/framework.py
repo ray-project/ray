@@ -3,6 +3,12 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any, Optional
 
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# RLlib's old API stack is not yet compatible with Keras 3.
+# This must be set before TensorFlow is imported (including transitive imports).
+# TODO(rllib-team): Remove this once RLlib fully supports Keras 3.
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import numpy as np
 import tree  # pip install dm_tree
 

@@ -13,6 +13,10 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
+
+# Import framework module early to set TF_USE_LEGACY_KERAS before any TensorFlow imports.
+# This ensures Keras 2 compatibility for the old API stack.
+from ray.rllib.utils import framework as _framework  # noqa: F401
 from ray.tune.registry import register_trainable
 
 

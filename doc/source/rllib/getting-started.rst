@@ -233,7 +233,8 @@ one for each of the configured learning rates:
         run_config=tune.RunConfig(
             stop={
                 "env_runners/episode_return_mean": -1100.0,
-                "training_iteration": 30,
+                # Limit iterations to speed up doctest.
+                "training_iteration": 3,
             },
         ),
     )
@@ -311,7 +312,8 @@ method to compute actions:
     )
 
     # Create the RL environment to test against (same as was used for training earlier).
-    env = gym.make("Pendulum-v1", render_mode="human")
+    # Note: Use render_mode="human" if you want to visualize the episode.
+    env = gym.make("Pendulum-v1")
 
     episode_return = 0.0
     done = False

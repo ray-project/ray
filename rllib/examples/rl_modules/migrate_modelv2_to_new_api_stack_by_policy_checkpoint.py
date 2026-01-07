@@ -32,7 +32,9 @@ if __name__ == "__main__":
     algo_old_stack = config.build()
 
     min_return_old_stack = 100.0
-    while True:
+    # Limit the number of training iterations to avoid timeouts in CI.
+    max_old_stack_iters = 50
+    for i in range(max_old_stack_iters):
         results = algo_old_stack.train()
         print(results)
         if results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= min_return_old_stack:
@@ -41,6 +43,12 @@ if __name__ == "__main__":
                 "old API stack training."
             )
             break
+    else:
+        raise ValueError(
+            f"Old API stack training did not reach {min_return_old_stack} return "
+            f"within {max_old_stack_iters} iterations! Last return: "
+            f"{results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
+        )
 
     checkpoint = algo_old_stack.save()
     policy_path = (
@@ -52,8 +60,8 @@ if __name__ == "__main__":
     print("done")
 
     # Move the old API stack (trained) ModelV2 into the new API stack's RLModule.
-    # Run a simple CartPole inference experiment.
-    env = gym.make("CartPole-v1", render_mode="human")
+    # Run a simple CartPole inference experiment (without rendering in CI).
+    env = gym.make("CartPole-v1")
     rl_module = ModelV2ToRLModule(
         observation_space=env.observation_space,
         action_space=env.action_space,
@@ -61,7 +69,6 @@ if __name__ == "__main__":
     )
 
     obs, _ = env.reset()
-    env.render()
     done = False
     episode_return = 0.0
     while not done:
@@ -71,7 +78,6 @@ if __name__ == "__main__":
         obs, reward, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
         episode_return += reward
-        env.render()
 
     print(f"Ran episode with trained ModelV2: return={episode_return}")
 

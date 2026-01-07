@@ -294,7 +294,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         # Handle different Ax versions with different import paths
         try:
-            from ax.adapter.registry import Models
+            from ax.adapter.registry import Generators as Models
             from ax.generation_strategy.generation_node import (
                 GenerationStep,  # if present
             )
