@@ -171,8 +171,8 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      # PATH must include gcloud SDK for crane to use docker credential helper
-      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+      # PATH and CLOUDSDK_PYTHON must be set for crane to use gcloud credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH CLOUDSDK_PYTHON=python3 &&
         bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix.python}}
         --platform {{matrix.platform}}
@@ -224,8 +224,8 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      # PATH must include gcloud SDK for crane to use docker credential helper
-      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+      # PATH and CLOUDSDK_PYTHON must be set for crane to use gcloud credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH CLOUDSDK_PYTHON=python3 &&
         bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.8.1-cudnn
@@ -271,8 +271,8 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      # PATH must include gcloud SDK for crane to use docker credential helper
-      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+      # PATH and CLOUDSDK_PYTHON must be set for crane to use gcloud credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH CLOUDSDK_PYTHON=python3 &&
         bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.1.1-cudnn8
