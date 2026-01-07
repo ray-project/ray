@@ -2,6 +2,8 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data.aggregate import AsList
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -77,6 +79,26 @@ def test_unique_with_nulls(
     assert set(ds3.unique("col1")) == {1, 2, 3, None}
     assert set(ds3.unique("col2")) == {2, 3, None}
     assert set(ds3.unique("col3")) == {"1.0", "2.0", None}
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_e2e(
+    ray_start_regular_shared_2_cpus, batch_format, disable_fallback_to_object_extension
+):
+    ds = ray.data.range(10)
+    ds = ds.with_column("group_key", col("id") % 3)
+
+    # Listing all elements per group:
+    result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+
+    for i in range(len(result)):
+        result[i]["list(id)"] = sorted(result[i]["list(id)"])
+
+    assert sorted(result, key=lambda x: x["group_key"]) == [
+        {"group_key": 0, "list(id)": [0, 3, 6, 9]},
+        {"group_key": 1, "list(id)": [1, 4, 7]},
+        {"group_key": 2, "list(id)": [2, 5, 8]},
+    ]
 
 
 if __name__ == "__main__":
