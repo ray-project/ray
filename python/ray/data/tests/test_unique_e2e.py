@@ -101,6 +101,50 @@ def test_as_list_e2e(
     ]
 
 
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_with_nulls(
+    ray_start_regular_shared_2_cpus, batch_format, disable_fallback_to_object_extension
+):
+    # Test with nulls included (default behavior: ignore_nulls=False)
+    ds = ray.data.from_items(
+        [
+            {"group": "A", "value": 1},
+            {"group": "A", "value": None},
+            {"group": "A", "value": 3},
+            {"group": "B", "value": None},
+            {"group": "B", "value": 5},
+        ]
+    )
+
+    # Default: nulls are included in the list
+    result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    # Sort the lists for comparison (None values will be at the end in sorted order)
+    for r in result_sorted:
+        # Separate None and non-None values for sorting
+        non_nulls = sorted([v for v in r["list(value)"] if v is not None])
+        nulls = [v for v in r["list(value)"] if v is None]
+        r["list(value)"] = non_nulls + nulls
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3, None]},
+        {"group": "B", "list(value)": [5, None]},
+    ]
+
+    # With ignore_nulls=True: nulls are excluded from the list
+    result = ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    for r in result_sorted:
+        r["list(value)"] = sorted(r["list(value)"])
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3]},
+        {"group": "B", "list(value)": [5]},
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
