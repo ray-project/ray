@@ -2044,6 +2044,21 @@ def init(
             FutureWarning,
         )
 
+    # Check for Pydantic v1 and emit deprecation warning
+    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
+
+    if (
+        PYDANTIC_MAJOR_VERSION
+        and PYDANTIC_MAJOR_VERSION == 1
+        and log_once("pydantic_v1_deprecation")
+    ):
+        warnings.warn(
+            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
+            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
+            "See https://github.com/ray-project/ray/issues/58876 for more details.",
+            FutureWarning,
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2069,6 +2084,23 @@ def shutdown(_exiting_interpreter: bool = False):
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    .. note::
+
+        The behavior of ``ray.shutdown()`` differs depending on how the cluster
+        was initialized:
+
+        * If a new local Ray cluster was started by ``ray.init()`` (i.e., no
+          ``address`` argument was provided and no existing cluster was found,
+          or ``address="local"`` was explicitly used), ``ray.shutdown()`` will
+          terminate all the local Ray processes (raylet, object store, etc.)
+          that were spawned by ``ray.init()``.
+
+        * If you connected to an existing cluster (e.g., via
+          ``ray.init(address="auto")`` or ``ray.init(address="ray://<ip>:<port>")``),
+          ``ray.shutdown()`` will only disconnect the client from the cluster.
+          It will **not** shut down the remote cluster. The cluster will
+          continue running and can be connected to again.
 
     Args:
         _exiting_interpreter: True if this is called by the atexit hook

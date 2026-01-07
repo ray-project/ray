@@ -25,6 +25,7 @@ compute aggregations.
     AbsMax
     Quantile
     Unique
+    CountDistinct
     ValueCounter
     MissingValuePercentage
     ZeroPercentage

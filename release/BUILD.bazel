@@ -585,6 +585,21 @@ py_test(
 )
 
 py_test(
+    name = "test_byod_build_context",
+    size = "small",
+    srcs = ["ray_release/tests/test_byod_build_context.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_custom_byod_build",
     size = "small",
     srcs = ["ray_release/tests/test_custom_byod_build.py"],
