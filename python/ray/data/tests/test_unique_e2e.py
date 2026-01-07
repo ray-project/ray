@@ -2,8 +2,6 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.aggregate import AsList
-from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

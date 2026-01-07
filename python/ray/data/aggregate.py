@@ -444,7 +444,9 @@ class AsList(AggregateFnV2[List, List]):
         )
 
     def aggregate_block(self, block: Block) -> AccumulatorType:
-        column_accessor = BlockColumnAccessor.for_column(block[self.get_target_column()])
+        column_accessor = BlockColumnAccessor.for_column(
+            block[self.get_target_column()]
+        )
 
         if self._ignore_nulls:
             column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())

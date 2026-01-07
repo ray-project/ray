@@ -20,6 +20,7 @@ from ray.data._internal.util import is_nan
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
+    AsList,
     Count,
     CountDistinct,
     Max,
@@ -32,6 +33,7 @@ from ray.data.aggregate import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -522,7 +524,9 @@ def test_as_list_with_nulls(
     ]
 
     # With ignore_nulls=True: nulls are excluded from the list
-    result = ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    result = (
+        ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    )
     result_sorted = sorted(result, key=lambda x: x["group"])
 
     for r in result_sorted:
