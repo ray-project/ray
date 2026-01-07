@@ -22,6 +22,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone as tz
+from typing import List
 
 import click
 
@@ -30,6 +31,10 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_manifest,
 )
 from ci.ray_ci.utils import ecr_docker_login
+
+# GPU_PLATFORM is the default GPU platform that gets aliased as "gpu"
+# This must match the definition in ci/ray_ci/docker_container.py
+GPU_PLATFORM = "cu12.1.1-cudnn8"
 
 # Configure logging
 logging.basicConfig(
@@ -72,14 +77,14 @@ def _format_architecture_tag(architecture: str) -> str:
     return f"-{architecture}"
 
 
-def _generate_image_tag(
+def _generate_image_tags(
     commit: str,
     python_version: str,
     platform: str,
     architecture: str = "x86_64",
-) -> str:
+) -> List[str]:
     """
-    Generate a destination tag matching the original ray docker image format.
+    Generate destination tags matching the original ray docker image format.
 
     For nightly builds (master + nightly schedule):
         nightly.YYMMDD.{sha[:6]}-py310-cpu
@@ -89,6 +94,8 @@ def _generate_image_tag(
 
     For other branches (PRs, non-nightly master):
         {sha[:6]}-py310-cpu
+
+    For GPU_PLATFORM, also generates -gpu alias tags to match the original behavior.
     """
     branch = os.environ.get("BUILDKITE_BRANCH", "")
     sha_tag = commit[:6]
@@ -108,7 +115,16 @@ def _generate_image_tag(
     platform_tag = _format_platform_tag(platform)
     arch_tag = _format_architecture_tag(architecture)
 
-    return f"{version_prefix}{py_tag}{platform_tag}{arch_tag}"
+    # For GPU_PLATFORM, also create -gpu alias (matches docker_container.py)
+    platform_tags = [platform_tag]
+    if platform == GPU_PLATFORM:
+        platform_tags.append("-gpu")
+
+    tags = []
+    for ptag in platform_tags:
+        tags.append(f"{version_prefix}{py_tag}{ptag}{arch_tag}")
+
+    return tags
 
 
 def _get_wanda_image_name(
@@ -181,6 +197,8 @@ def main(
     Tags are generated matching the original docker_container.py format:
     - Nightly: nightly.YYMMDD.{sha[:6]}-py310-cpu
     - Release: {release_name}.{sha[:6]}-py310-cpu
+
+    For GPU_PLATFORM (cu12.1.1-cudnn8), also pushes with -gpu alias tag.
     """
     dry_run = not upload
     if dry_run:
@@ -204,12 +222,13 @@ def main(
     wanda_image_name = _get_wanda_image_name(python_version, platform, architecture)
     source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
 
-    # Generate destination tag
-    destination_tag = _generate_image_tag(commit, python_version, platform, architecture)
-    full_destination = f"rayproject/ray:{destination_tag}"
+    # Generate destination tags (may include aliases like -gpu for GPU_PLATFORM)
+    destination_tags = _generate_image_tags(
+        commit, python_version, platform, architecture
+    )
 
     logger.info(f"Source image (Wanda): {source_tag}")
-    logger.info(f"Destination: {full_destination}")
+    logger.info(f"Destination tags: {destination_tags}")
 
     # Authenticate with ECR (source registry)
     # Docker Hub auth is handled by copy_files.py --destination docker_login
@@ -221,10 +240,12 @@ def main(
     if not _image_exists(source_tag):
         raise PushRayImageError(f"Source image not found in Wanda cache: {source_tag}")
 
-    # Copy image to Docker Hub
-    _copy_image(source_tag, full_destination, dry_run)
+    # Copy image to Docker Hub with all tags
+    for tag in destination_tags:
+        full_destination = f"rayproject/ray:{tag}"
+        _copy_image(source_tag, full_destination, dry_run)
 
-    logger.info(f"Successfully pushed ray image: {full_destination}")
+    logger.info(f"Successfully pushed ray image with tags: {destination_tags}")
 
 
 if __name__ == "__main__":

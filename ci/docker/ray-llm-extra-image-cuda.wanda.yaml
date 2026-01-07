@@ -1,0 +1,20 @@
+# Ray LLM Extra CUDA Image
+# Installs ray wheel into the ray-llm base-extra image
+#
+# This produces the final rayproject/ray-llm image with -extra tag.
+# The ray-llm base-extra image includes additional Python dependencies beyond base.
+#
+name: "ray-llm-extra-py$PYTHON_VERSION-cu$CUDA_VERSION$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra$ARCH_SUFFIX"  # LLM base-extra image
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                           # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - CUDA_VERSION
+  - ARCH_SUFFIX
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra$ARCH_SUFFIX
+  - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX

@@ -56,6 +56,10 @@ _DOCKER_AZURE_REGISTRY = os.environ.get(
 )
 _AZURE_REGISTRY_NAME = "rayreleasetest"
 
+# GPU_PLATFORM is the default GPU platform that gets aliased as "gpu"
+# This must match the definition in ci/ray_ci/docker_container.py
+GPU_PLATFORM = "cu12.1.1-cudnn8"
+
 
 class PushAnyscaleImageError(Exception):
     """Error raised when pushing anyscale images fails."""
@@ -80,6 +84,7 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
     Generate image tags matching the original docker_container.py format.
 
     Returns multiple tags for the image (canonical + aliases).
+    For GPU_PLATFORM, also generates -gpu alias tags to match release test expectations.
     """
     branch = os.environ.get("BUILDKITE_BRANCH", "")
     commit = os.environ.get("BUILDKITE_COMMIT", "")[:6]
@@ -88,28 +93,40 @@ def _get_image_tags(python_version: str, platform: str) -> List[str]:
     py_tag = _format_python_version_tag(python_version)
     platform_tag = _format_platform_tag(platform)
 
+    # For GPU_PLATFORM, also create -gpu alias (release tests use type: gpu)
+    platform_tags = [platform_tag]
+    if platform == GPU_PLATFORM:
+        platform_tags.append("-gpu")
+
     tags = []
 
     if branch == "master":
         # On master, use sha and build_id as tags
-        tags.append(f"{commit}{py_tag}{platform_tag}")
+        for ptag in platform_tags:
+            tags.append(f"{commit}{py_tag}{ptag}")
         if rayci_build_id:
-            tags.append(f"{rayci_build_id}{py_tag}{platform_tag}")
+            for ptag in platform_tags:
+                tags.append(f"{rayci_build_id}{py_tag}{ptag}")
     elif branch.startswith("releases/"):
         # On release branches, use release name
         release_name = branch[len("releases/") :]
-        tags.append(f"{release_name}.{commit}{py_tag}{platform_tag}")
+        for ptag in platform_tags:
+            tags.append(f"{release_name}.{commit}{py_tag}{ptag}")
         if rayci_build_id:
-            tags.append(f"{rayci_build_id}{py_tag}{platform_tag}")
+            for ptag in platform_tags:
+                tags.append(f"{rayci_build_id}{py_tag}{ptag}")
     else:
         # For other branches (PRs, etc.)
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
         if pr != "false":
-            tags.append(f"pr-{pr}.{commit}{py_tag}{platform_tag}")
+            for ptag in platform_tags:
+                tags.append(f"pr-{pr}.{commit}{py_tag}{ptag}")
         else:
-            tags.append(f"{commit}{py_tag}{platform_tag}")
+            for ptag in platform_tags:
+                tags.append(f"{commit}{py_tag}{ptag}")
         if rayci_build_id:
-            tags.append(f"{rayci_build_id}{py_tag}{platform_tag}")
+            for ptag in platform_tags:
+                tags.append(f"{rayci_build_id}{py_tag}{ptag}")
 
     return tags
 
@@ -247,10 +264,12 @@ def main(
         _run_shell_command("./release/azure_docker_login.sh", dry_run)
         _run_shell_command(f"az acr login --name {_AZURE_REGISTRY_NAME}", dry_run)
 
-        registries.extend([
-            (_DOCKER_GCP_REGISTRY, "GCP"),
-            (_DOCKER_AZURE_REGISTRY, "Azure"),
-        ])
+        registries.extend(
+            [
+                (_DOCKER_GCP_REGISTRY, "GCP"),
+                (_DOCKER_AZURE_REGISTRY, "Azure"),
+            ]
+        )
     else:
         logger.info("Release config not available - pushing to ECR only")
 

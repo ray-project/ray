@@ -159,15 +159,13 @@ steps:
       - raycudabaseextra-testdeps
 
   # Push anyscale images to ECR/GCP/Azure registries
-  # Gating: only on releases/* OR (master AND nightly)
+  # No if-gating: release tests need images on any branch
   - label: ":docker: push: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
     key: anyscalebuild
-    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
-      - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix.python}}
@@ -208,15 +206,13 @@ steps:
       - ray-llmbaseextra-testdeps
 
   # Push ray-llm anyscale images to ECR/GCP/Azure registries
-  # Gating: only on releases/* OR (master AND nightly)
+  # No if-gating: release tests need images on any branch
   - label: ":docker: push: ray-llm-anyscale py{{matrix}} cu12.8.1-cudnn"
     key: anyscalellmbuild
-    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
-      - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
@@ -251,15 +247,13 @@ steps:
       - ray-mlcudabaseextra-testdeps
 
   # Push ray-ml anyscale images to ECR/GCP/Azure registries
-  # Gating: only on releases/* OR (master AND nightly)
+  # No if-gating: release tests need images on any branch
   - label: ":docker: push: ray-ml-anyscale py{{matrix}} cu12.1.1-cudnn8"
     key: anyscalemlbuild
-    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
-      - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}

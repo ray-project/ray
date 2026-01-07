@@ -1,0 +1,19 @@
+# Ray Extra CPU Image
+# Installs ray wheel into the CPU base-extra image
+#
+# This produces the final rayproject/ray image with -extra tag for CPU-only deployments.
+# The base-extra image includes additional Python dependencies beyond base.
+#
+name: "ray-extra-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra$ARCH_SUFFIX"  # CPU base-extra image
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"          # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra$ARCH_SUFFIX
+  - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX
