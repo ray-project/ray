@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
-from ray.tests.conftest import _ray_start_cluster
 from ray.util.tpu import SlicePlacementGroup
 
 
@@ -170,77 +169,77 @@ def ray_start_cpu():
 
 
 @pytest.fixture
-def ray_tpu_cluster():
+def ray_tpu_cluster(ray_start_cluster):
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
     """
     pod_type = "v4-16"
     topology = "2x2x2"
 
-    with _ray_start_cluster() as cluster:
-        slice_0_env_common = {
-            "TPU_NAME": "test-slice-0",
-            "TPU_ACCELERATOR_TYPE": pod_type,
-            "TPU_TOPOLOGY": topology,
-        }
-        slice_0_head_labels = {
-            "ray.io/tpu-slice-name": "test-slice-0",
-            "ray.io/tpu-worker-id": "0",
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-        }
-        slice_0_worker_labels = {
-            "ray.io/tpu-slice-name": "test-slice-0",
-            "ray.io/tpu-worker-id": "1",
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-        }
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
-            env_vars={**slice_0_env_common, "TPU_WORKER_ID": "0"},
-            labels=slice_0_head_labels,
-        )
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4},
-            env_vars={**slice_0_env_common, "TPU_WORKER_ID": "1"},
-            labels=slice_0_worker_labels,
-        )
+    cluster = ray_start_cluster
+    slice_0_env_common = {
+        "TPU_NAME": "test-slice-0",
+        "TPU_ACCELERATOR_TYPE": pod_type,
+        "TPU_TOPOLOGY": topology,
+    }
+    slice_0_head_labels = {
+        "ray.io/tpu-slice-name": "test-slice-0",
+        "ray.io/tpu-worker-id": "0",
+        "ray.io/tpu-pod-type": pod_type,
+        "ray.io/tpu-topology": topology,
+    }
+    slice_0_worker_labels = {
+        "ray.io/tpu-slice-name": "test-slice-0",
+        "ray.io/tpu-worker-id": "1",
+        "ray.io/tpu-pod-type": pod_type,
+        "ray.io/tpu-topology": topology,
+    }
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+        env_vars={**slice_0_env_common, "TPU_WORKER_ID": "0"},
+        labels=slice_0_head_labels,
+    )
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={**slice_0_env_common, "TPU_WORKER_ID": "1"},
+        labels=slice_0_worker_labels,
+    )
 
-        slice_1_env_common = {
-            "TPU_NAME": "test-slice-1",
-            "TPU_ACCELERATOR_TYPE": pod_type,
-            "TPU_TOPOLOGY": topology,
-        }
-        slice_1_head_labels = {
-            "ray.io/tpu-slice-name": "test-slice-1",
-            "ray.io/tpu-worker-id": "0",
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-        }
-        slice_1_worker_labels = {
-            "ray.io/tpu-slice-name": "test-slice-1",
-            "ray.io/tpu-worker-id": "1",
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-        }
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
-            env_vars={**slice_1_env_common, "TPU_WORKER_ID": "0"},
-            labels=slice_1_head_labels,
-        )
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4},
-            env_vars={**slice_1_env_common, "TPU_WORKER_ID": "1"},
-            labels=slice_1_worker_labels,
-        )
+    slice_1_env_common = {
+        "TPU_NAME": "test-slice-1",
+        "TPU_ACCELERATOR_TYPE": pod_type,
+        "TPU_TOPOLOGY": topology,
+    }
+    slice_1_head_labels = {
+        "ray.io/tpu-slice-name": "test-slice-1",
+        "ray.io/tpu-worker-id": "0",
+        "ray.io/tpu-pod-type": pod_type,
+        "ray.io/tpu-topology": topology,
+    }
+    slice_1_worker_labels = {
+        "ray.io/tpu-slice-name": "test-slice-1",
+        "ray.io/tpu-worker-id": "1",
+        "ray.io/tpu-pod-type": pod_type,
+        "ray.io/tpu-topology": topology,
+    }
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+        env_vars={**slice_1_env_common, "TPU_WORKER_ID": "0"},
+        labels=slice_1_head_labels,
+    )
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={**slice_1_env_common, "TPU_WORKER_ID": "1"},
+        labels=slice_1_worker_labels,
+    )
 
-        ray.init(address=cluster.address)
-        yield cluster
-        ray.shutdown()
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
 
 
 def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
@@ -365,6 +364,38 @@ def test_get_tpu_version_valid(accelerator_type, expected_version):
 def test_get_tpu_version_invalid(invalid_type):
     with pytest.raises(ValueError, match="Invalid accelerator_type"):
         ray.util.tpu.get_tpu_version_from_type(invalid_type)
+
+
+@pytest.mark.parametrize(
+    "topology, accelerator_type, num_workers, resources_per_worker, expected_slices",
+    [
+        # "2x2x1" has 4 chips, for 4 workers with TPU: 1 each we expect num_slices=1.
+        ("2x2x1", "TPU-V4", 4, {"TPU": 1}, 1),
+        # "2x2x1" has 4 chips, for 8 workers with TPU: 1 each we expect num_slices=2.
+        ("2x2x1", "v4", 8, {"TPU": 1}, 2),
+        # "2x2x2" has 8 chips and 2 hosts, defaulting to 1 TPU worker per host
+        # and requesting 4 workers, we expect num_slices=2.
+        ("2x2x2", "TPU-V4", 4, None, 2),
+        # "2x2x4" has 16 chips and 4 hosts, defaulting to 1 TPU worker per host
+        # and requesting 4 workers, we expect num_slices=1.
+        ("2x2x4", "TPU-V4", 4, None, 1),
+        # 0 workers requested -> fallback to 1 slice.
+        ("2x2x1", "v4", 0, None, 1),
+        # Invalid topology -> fallback to 1 slice.
+        ("", "v4", 4, {"TPU": 1}, 1),
+        ("2x2x1", "", 4, {"TPU": 1}, 1),
+    ],
+)
+def test_get_tpu_num_slices_for_workers(
+    topology, accelerator_type, num_workers, resources_per_worker, expected_slices
+):
+    num_slices = ray.util.tpu.get_tpu_num_slices_for_workers(
+        topology=topology,
+        accelerator_type=accelerator_type,
+        num_workers=num_workers,
+        resources_per_worker=resources_per_worker,
+    )
+    assert num_slices == expected_slices
 
 
 if __name__ == "__main__":
