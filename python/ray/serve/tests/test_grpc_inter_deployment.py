@@ -174,12 +174,12 @@ class TestGRPCInterDeployment:
         handle = serve.get_deployment_handle("TestDeployment", "default")
         custom_handle = handle.options(
             _by_reference=False,
-            _request_serialization="pickle",
-            _response_serialization="pickle",
+            request_serialization="pickle",
+            response_serialization="pickle",
         )
         assert custom_handle._options._by_reference is False
-        assert custom_handle._options._request_serialization == "pickle"
-        assert custom_handle._options._response_serialization == "pickle"
+        assert custom_handle._options.request_serialization == "pickle"
+        assert custom_handle._options.response_serialization == "pickle"
 
 
 class TestRequestMetadataGRPCFields:
@@ -191,13 +191,13 @@ class TestRequestMetadataGRPCFields:
             request_id="test-id",
             internal_request_id="internal-id",
             _by_reference=False,
-            _request_serialization="pickle",
-            _response_serialization="msgpack",
+            request_serialization="pickle",
+            response_serialization="msgpack",
         )
 
         assert metadata._by_reference is False
-        assert metadata._request_serialization == "pickle"
-        assert metadata._response_serialization == "msgpack"
+        assert metadata.request_serialization == "pickle"
+        assert metadata.response_serialization == "msgpack"
 
     def test_request_metadata_defaults(self):
         """Test RequestMetadata default values for new fields."""
@@ -208,8 +208,8 @@ class TestRequestMetadataGRPCFields:
 
         # Default should be by-reference (Ray actor calls)
         assert metadata._by_reference is True
-        assert metadata._request_serialization == "cloudpickle"
-        assert metadata._response_serialization == "cloudpickle"
+        assert metadata.request_serialization == "cloudpickle"
+        assert metadata.response_serialization == "cloudpickle"
 
 
 class TestRPCSerializerErrorHandling:

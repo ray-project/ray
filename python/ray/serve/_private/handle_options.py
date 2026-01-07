@@ -62,15 +62,9 @@ class DynamicHandleOptionsBase(ABC):
 
 @dataclass(frozen=True)
 class DynamicHandleOptions(DynamicHandleOptionsBase):
-    # When True, use Ray actor calls (by reference with ObjectRefs).
-    # When False, use gRPC for inter-deployment communication.
     _by_reference: bool = True
-    # Serialization method for request arguments when using gRPC transport (_by_reference=False).
-    # Options: "cloudpickle" (default), "pickle", "msgpack", "orjson", "noop"
-    _request_serialization: str = "cloudpickle"
-    # Serialization method for response data when using gRPC transport (_by_reference=False).
-    # Options: "cloudpickle" (default), "pickle", "msgpack", "orjson", "noop"
-    _response_serialization: str = "cloudpickle"
+    request_serialization: str = "cloudpickle"
+    response_serialization: str = "cloudpickle"
 
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptions":
         new_kwargs = {}

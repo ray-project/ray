@@ -120,12 +120,12 @@ from ray.serve.exceptions import (
     RayServeException,
 )
 from ray.serve.generated.serve_pb2 import (
-    InterDeploymentRequest,
-    InterDeploymentResponse,
+    ASGIRequest,
+    ASGIResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import (
-    InterDeploymentServiceServicer,
-    add_InterDeploymentServiceServicer_to_server,
+    ASGIServiceServicer,
+    add_ASGIServiceServicer_to_server,
 )
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
@@ -133,31 +133,32 @@ from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _wrap_inter_deployment_grpc_call(f):
-    """Decorator that wraps inter-deployment gRPC method handlers.
+def _wrap_grpc_call(f):
+    """Decorator that processes grpc methods."""
 
-    This decorator handles:
-    - Deserializing the request using RPCSerializer
-    - Calling the underlying method
-    - Serializing the response using RPCSerializer
-    - Error handling and returning errors as gRPC responses
-    """
-
-    def serialize(result, metadata, serializer):
-        return serializer.dumps_response(result)
+    def serialize(result, metadata):
+        if metadata.is_streaming and metadata.is_http_request:
+            return result
+        else:
+            # Use cached serializer to avoid per-request instantiation overhead
+            serializer = RPCSerializer.get_cached_serializer(
+                metadata.request_serialization,
+                metadata.response_serialization,
+            )
+            return serializer.dumps_response(result)
 
     @wraps(f)
     async def wrapper(
         self,
-        request: InterDeploymentRequest,
+        request: ASGIRequest,
         context: grpc.aio.ServicerContext,
     ):
         request_metadata = pickle.loads(request.pickled_request_metadata)
 
         # Get cached serializer with options from metadata
         serializer = RPCSerializer.get_cached_serializer(
-            request_metadata._request_serialization,
-            request_metadata._response_serialization,
+            request_metadata.request_serialization,
+            request_metadata.response_serialization,
         )
 
         request_args = serializer.loads_request(request.request_args)
@@ -170,11 +171,9 @@ def _wrap_inter_deployment_grpc_call(f):
             result = await f(
                 self, context, request_metadata, *request_args, **request_kwargs
             )
-            return InterDeploymentResponse(
-                serialized_message=serialize(result, request_metadata, serializer)
-            )
+            return ASGIResponse(serialized_message=serialize(result, request_metadata))
         except (Exception, asyncio.CancelledError) as e:
-            return InterDeploymentResponse(
+            return ASGIResponse(
                 serialized_message=serializer.dumps_response(e),
                 is_error=True,
             )
@@ -182,15 +181,15 @@ def _wrap_inter_deployment_grpc_call(f):
     @wraps(f)
     async def gen_wrapper(
         self,
-        request: InterDeploymentRequest,
+        request: ASGIRequest,
         context: grpc.aio.ServicerContext,
     ):
         request_metadata = pickle.loads(request.pickled_request_metadata)
 
         # Get cached serializer with options from metadata
         serializer = RPCSerializer.get_cached_serializer(
-            request_metadata._request_serialization,
-            request_metadata._response_serialization,
+            request_metadata.request_serialization,
+            request_metadata.response_serialization,
         )
 
         request_args = serializer.loads_request(request.request_args)
@@ -203,11 +202,11 @@ def _wrap_inter_deployment_grpc_call(f):
             async for result in f(
                 self, context, request_metadata, *request_args, **request_kwargs
             ):
-                yield InterDeploymentResponse(
-                    serialized_message=serialize(result, request_metadata, serializer)
+                yield ASGIResponse(
+                    serialized_message=serialize(result, request_metadata)
                 )
         except (Exception, asyncio.CancelledError) as e:
-            yield InterDeploymentResponse(
+            yield ASGIResponse(
                 serialized_message=serializer.dumps_response(e),
                 is_error=True,
             )
@@ -1247,7 +1246,7 @@ class ReplicaBase(ABC):
             raise e from None
 
 
-class Replica(ReplicaBase, InterDeploymentServiceServicer):
+class Replica(ReplicaBase, ASGIServiceServicer):
     """Replica implementation that also serves inter-deployment gRPC requests."""
 
     async def _on_initialized(self):
@@ -1259,9 +1258,7 @@ class Replica(ReplicaBase, InterDeploymentServiceServicer):
         )
 
         # Start the gRPC server for inter-deployment communication
-        add_InterDeploymentServiceServicer_to_server(
-            self, self._inter_deployment_grpc_server
-        )
+        add_ASGIServiceServicer_to_server(self, self._inter_deployment_grpc_server)
         self._internal_grpc_port = self._inter_deployment_grpc_server.add_insecure_port(
             "[::]:0"
         )
@@ -1321,10 +1318,10 @@ class Replica(ReplicaBase, InterDeploymentServiceServicer):
             yield status_code_callback
 
     # ==================== Inter-Deployment gRPC Handlers ====================
-    # These methods implement the InterDeploymentServiceServicer interface
+    # These methods implement the ASGIServiceServicer interface
     # for receiving requests from other deployments via gRPC.
 
-    @_wrap_inter_deployment_grpc_call
+    @_wrap_grpc_call
     async def HandleRequest(
         self,
         context: grpc.aio.ServicerContext,
@@ -1340,7 +1337,7 @@ class Replica(ReplicaBase, InterDeploymentServiceServicer):
             result = (request_metadata.grpc_context, result.SerializeToString())
         return result
 
-    @_wrap_inter_deployment_grpc_call
+    @_wrap_grpc_call
     async def HandleRequestStreaming(
         self,
         context: grpc.aio.ServicerContext,
@@ -1356,7 +1353,7 @@ class Replica(ReplicaBase, InterDeploymentServiceServicer):
                 result = (request_metadata.grpc_context, result.SerializeToString())
             yield result
 
-    @_wrap_inter_deployment_grpc_call
+    @_wrap_grpc_call
     async def HandleRequestWithRejection(
         self,
         context: grpc.aio.ServicerContext,
@@ -1394,7 +1391,7 @@ class Replica(ReplicaBase, InterDeploymentServiceServicer):
             result = (request_metadata.grpc_context, result.SerializeToString())
         return result
 
-    @_wrap_inter_deployment_grpc_call
+    @_wrap_grpc_call
     async def HandleRequestWithRejectionStreaming(
         self,
         context: grpc.aio.ServicerContext,

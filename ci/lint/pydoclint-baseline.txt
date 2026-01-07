@@ -1666,7 +1666,6 @@ python/ray/serve/deployment.py
     DOC201: Function `deployment_to_schema` does not have a return section in docstring
 --------------------
 python/ray/serve/handle.py
-    DOC101: Method `DeploymentHandle.options`: Docstring contains fewer arguments than in function signature.
     DOC201: Method `DeploymentHandle.options` does not have a return section in docstring
     DOC106: Method `DeploymentHandle.remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC201: Method `DeploymentHandle.remote` does not have a return section in docstring

@@ -21,10 +21,10 @@ from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import (
-    InterDeploymentRequest,
+    ASGIRequest,
     RequestMetadata as RequestMetadataProto,
 )
-from ray.serve.generated.serve_pb2_grpc import InterDeploymentServiceStub
+from ray.serve.generated.serve_pb2_grpc import ASGIServiceStub
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -109,51 +109,54 @@ class ActorReplicaWrapper(ReplicaWrapper):
 
 
 class gRPCReplicaWrapper(ReplicaWrapper):
-    """ReplicaWrapper that communicates with replica via gRPC."""
-
-    def __init__(self, stub: InterDeploymentServiceStub, actor_id: ray.ActorID):
+    def __init__(self, stub, actor_id):
         self._stub = stub
         self._actor_id = actor_id
+        self._loop = asyncio.get_running_loop()
 
-    def send_request_java(self, pr: PendingRequest) -> ReplicaResult:
-        """gRPC transport doesn't support Java replicas."""
-        raise NotImplementedError("gRPC transport does not support Java replicas.")
+    def send_request_java(self, pr: PendingRequest):
+        raise RuntimeError("gRPC requests not supported for Java.")
 
     def send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
     ) -> ReplicaResult:
-        """Send the request to a Python replica via gRPC."""
-        # Import here to avoid circular import
+        """Send the request to a Python replica."""
         from ray.serve._private.replica_result import gRPCReplicaResult
 
-        # Get cached serializer
+        # Get serialization options from request metadata
+        request_serialization = pr.metadata.request_serialization
+        response_serialization = pr.metadata.response_serialization
+
+        # Get cached serializer for this request to avoid per-request instantiation overhead
         serializer = RPCSerializer.get_cached_serializer(
-            pr.metadata._request_serialization,
-            pr.metadata._response_serialization,
+            request_serialization, response_serialization
         )
 
-        # Serialize request
-        request = InterDeploymentRequest(
+        asgi_request = ASGIRequest(
             pickled_request_metadata=pickle.dumps(pr.metadata),
             request_args=serializer.dumps_request(pr.args),
             request_kwargs=serializer.dumps_request(pr.kwargs),
         )
-
-        # Call appropriate gRPC method based on streaming and rejection flags
-        if with_rejection:
-            if pr.metadata.is_streaming:
-                call = self._stub.HandleRequestWithRejectionStreaming(request)
-            else:
-                call = self._stub.HandleRequestWithRejection(request)
+        if with_rejection and pr.metadata.is_streaming:
+            # Call a separate handler that may reject the request.
+            # This handler is *always* a streaming call and the first message will
+            # be a system message that accepts or rejects.
+            call = self._stub.HandleRequestWithRejectionStreaming(asgi_request)
+        elif with_rejection and not pr.metadata.is_streaming:
+            # Call a separate handler that may reject the request.
+            # This handler is *always* a unary call and the first message will
+            # be a system message that accepts or rejects.
+            call = self._stub.HandleRequestWithRejection(asgi_request)
         elif pr.metadata.is_streaming:
-            call = self._stub.HandleRequestStreaming(request)
+            call = self._stub.HandleRequestStreaming(asgi_request)
         else:
-            call = self._stub.HandleRequest(request)
+            call = self._stub.HandleRequest(asgi_request)
 
         return gRPCReplicaResult(
             call,
             pr.metadata,
-            serializer,
+            self._actor_id,
+            loop=self._loop,
             with_rejection=with_rejection,
         )
 
@@ -178,7 +181,7 @@ class RunningReplica:
 
         # Cached gRPC channel and stub for inter-deployment communication
         self._grpc_channel: Optional[grpc.aio.Channel] = None
-        self._grpc_stub: Optional[InterDeploymentServiceStub] = None
+        self._grpc_stub: Optional[ASGIServiceStub] = None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -220,7 +223,7 @@ class RunningReplica:
         """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
-    def _get_grpc_stub(self) -> InterDeploymentServiceStub:
+    def _get_grpc_stub(self) -> ASGIServiceStub:
         """Get or create the gRPC stub for this replica."""
         if self._grpc_stub is None:
             node_ip = self._replica_info.node_ip
@@ -247,7 +250,7 @@ class RunningReplica:
                     ),
                 ],
             )
-            self._grpc_stub = InterDeploymentServiceStub(self._grpc_channel)
+            self._grpc_stub = ASGIServiceStub(self._grpc_channel)
 
         return self._grpc_stub
 
