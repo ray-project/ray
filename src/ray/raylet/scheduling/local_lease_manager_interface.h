@@ -19,6 +19,9 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/metrics.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
@@ -92,11 +95,29 @@ class LocalLeaseManagerInterface {
 
   virtual void RecordMetrics() const = 0;
 
+  virtual SchedulerMetrics &GetSchedulerMetrics() const = 0;
+
   virtual void DebugStr(std::stringstream &buffer) const = 0;
 
   virtual size_t GetNumLeaseSpilled() const = 0;
   virtual size_t GetNumWaitingLeaseSpilled() const = 0;
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
+  virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                             const LeaseID &lease_id) const = 0;
+
+  /// Add a reply callback to the lease. We don't overwrite the existing reply callback
+  /// since due to message reordering we may receive the retry before the initial request.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  /// \param send_reply_callback: The callback used for the reply.
+  /// \param reply: The reply of the lease request.
+  ///
+  /// \return True if the reply callback is added successfully.
+  virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                                const LeaseID &lease_id,
+                                rpc::SendReplyCallback send_reply_callback,
+                                rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 
 /// A noop local lease manager. It is a no-op class. We need this because there's no
@@ -172,12 +193,35 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
 
   void RecordMetrics() const override{};
 
+  SchedulerMetrics &GetSchedulerMetrics() const override {
+    RAY_CHECK(false)
+        << "This function should never be called by gcs' local lease manager.";
+    return scheduler_metrics_;
+  }
+
   void DebugStr(std::stringstream &buffer) const override {}
 
   size_t GetNumLeaseSpilled() const override { return 0; }
   size_t GetNumWaitingLeaseSpilled() const override { return 0; }
   size_t GetNumUnschedulableLeaseSpilled() const override { return 0; }
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override {
+    return false;
+  }
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override {
+    return false;
+  }
+  ray::observability::FakeGauge noop_gauge_;
+  mutable SchedulerMetrics scheduler_metrics_{
+      /*scheduler_tasks=*/noop_gauge_,
+      /*scheduler_unscheduleable_tasks=*/noop_gauge_,
+      /*scheduler_failed_worker_startup_total=*/noop_gauge_,
+      /*internal_num_spilled_tasks=*/noop_gauge_,
+      /*internal_num_infeasible_scheduling_classes=*/noop_gauge_,
+  };
 };
-
 }  // namespace raylet
 }  // namespace ray

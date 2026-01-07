@@ -20,6 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -397,17 +398,57 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
 def wait_for_dashboard_agent_available(cluster):
     gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
+    )
 
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
 
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
@@ -653,8 +694,29 @@ class MetricSamplePattern:
         return True
 
 
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
 def get_metric_check_condition(
-    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern],
+    timeseries: PrometheusTimeseries,
+    export_addr: Optional[str] = None,
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
 
@@ -664,6 +726,7 @@ def get_metric_check_condition(
     Args:
         metrics_to_check: A list of MetricSamplePattern. The fields that
             aren't `None` will be matched.
+        timeseries: A PrometheusTimeseries object to store the metrics.
         export_addr: Optional address to export metrics to.
 
     Returns:
@@ -676,7 +739,9 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, _, metric_samples = fetch_prometheus([prom_addr])
+            metric_samples = fetch_prometheus_timeseries(
+                [prom_addr], timeseries
+            ).metric_samples.values()
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -992,25 +1057,6 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_descriptors, metric_samples
 
 
-@dataclass
-class PrometheusTimeseries:
-    """A collection of timeseries from multiple addresses. Each timeseries is a
-    collection of samples with the same metric name and labels. Concretely:
-    - components_dict: a dictionary of addresses to the Component labels
-    - metric_descriptors: a dictionary of metric names to the Metric object
-    - metric_samples: the latest value of each label
-    """
-
-    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
-
-    def flush(self):
-        self.components_dict.clear()
-        self.metric_descriptors.clear()
-        self.metric_samples.clear()
-
-
 def fetch_prometheus_timeseries(
     prom_addreses: List[str],
     result: PrometheusTimeseries,
@@ -1059,20 +1105,6 @@ def fetch_prometheus_metric_timeseries(
     return samples_by_name
 
 
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
-    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
-
-
 def raw_metric_timeseries(
     info: RayContext, result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
@@ -1080,6 +1112,29 @@ def raw_metric_timeseries(
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
+
+
+def get_system_metric_for_component(
+    system_metric: str, component: str, prometheus_server_address: str
+) -> List[float]:
+    """Get the system metric for a given component from a Prometheus server address.
+    Please note:
+    - This function requires the availability of the Prometheus server. Therefore, it
+    requires the server address.
+    - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
+    process id, so it can be used to uniquely identify the process.
+    """
+    session_name = os.path.basename(
+        ray._private.worker._global_node.get_session_dir_path()
+    )
+    query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
+    resp = requests.get(
+        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+    )
+    if resp.status_code != 200:
+        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
+    result = resp.json()
+    return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1826,14 +1881,6 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port() -> int:
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
 def wandb_setup_api_key_hook():
     """
     Example external hook to set up W&B API key in
@@ -1846,12 +1893,13 @@ def wandb_setup_api_key_hook():
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1867,12 +1915,13 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import gcs_service_pb2_grpc
 
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 
@@ -2087,3 +2136,24 @@ def _execute_command_on_node(command: str, node_ip: str):
     except subprocess.CalledProcessError as e:
         print("Exit code:", e.returncode)
         print("Stderr:", e.stderr)
+
+
+RPC_FAILURE_MAP = {
+    "request": {
+        "req_failure_prob": 100,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 0,
+    },
+    "response": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 100,
+        "in_flight_failure_prob": 0,
+    },
+    "in_flight": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 100,
+    },
+}
+
+RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

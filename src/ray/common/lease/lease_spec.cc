@@ -33,8 +33,8 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
       task_spec.required_placement_resources().begin(),
       task_spec.required_placement_resources().end());
   message_->mutable_scheduling_strategy()->CopyFrom(task_spec.scheduling_strategy());
-  message_->mutable_label_selector()->insert(task_spec.label_selector().begin(),
-                                             task_spec.label_selector().end());
+  message_->mutable_label_selector()->CopyFrom(task_spec.label_selector());
+  message_->mutable_fallback_strategy()->CopyFrom(task_spec.fallback_strategy());
   message_->set_depth(task_spec.depth());
   message_->set_parent_task_id(task_spec.parent_task_id());
   message_->mutable_dependencies()->Reserve(task_spec.args_size());
@@ -273,6 +273,10 @@ const LabelSelector &LeaseSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
+const std::vector<FallbackOption> &LeaseSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
+}
+
 ray::FunctionDescriptor LeaseSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
@@ -303,6 +307,9 @@ void LeaseSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
+  // Parse fallback strategy from proto to list of FallbackOption if specified.
+  fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
+
   // Copy dependencies from message
   dependencies_.reserve(message_->dependencies_size());
   for (int i = 0; i < message_->dependencies_size(); ++i) {
@@ -319,9 +326,14 @@ void LeaseSpecification::ComputeResources() {
                                  : GetRequiredResources();
   auto depth = GetDepth();
   auto label_selector = GetLabelSelector();
+  auto fallback_strategy = GetFallbackStrategy();
   const auto &function_descriptor = FunctionDescriptor();
-  auto sched_cls_desc = SchedulingClassDescriptor(
-      resource_set, label_selector, function_descriptor, depth, GetSchedulingStrategy());
+  auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                  label_selector,
+                                                  function_descriptor,
+                                                  depth,
+                                                  GetSchedulingStrategy(),
+                                                  fallback_strategy);
   // Map the scheduling class descriptor to an integer for performance.
   sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   RAY_CHECK_GT(sched_cls_id_, 0);

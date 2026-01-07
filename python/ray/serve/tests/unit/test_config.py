@@ -6,7 +6,12 @@ import pytest
 from ray import cloudpickle, serve
 from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
+from ray.serve._private.config import (
+    DeploymentConfig,
+    ReplicaConfig,
+    _proto_to_dict,
+    prepare_imperative_http_options,
+)
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -91,6 +96,14 @@ def test_autoscaling_config_validation():
         policy={"policy_function": "ray.serve.tests.unit.test_config:fake_policy"}
     )
     assert non_default_autoscaling_config.policy.is_default_policy_function() is False
+
+    # look_back_period_s must be greater than metrics_interval_s
+    with pytest.warns(FutureWarning):
+        AutoscalingConfig(look_back_period_s=5.0, metrics_interval_s=10.0)
+    with pytest.warns(FutureWarning):
+        AutoscalingConfig(look_back_period_s=10.0, metrics_interval_s=10.0)
+    AutoscalingConfig(look_back_period_s=30.0, metrics_interval_s=10.0)
+    AutoscalingConfig(look_back_period_s=20.0, metrics_interval_s=10.0)
 
 
 def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
@@ -653,6 +666,71 @@ def test_http_options():
     assert HTTPOptions(host=None).location == "NoServer"
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
+
+
+def test_prepare_imperative_http_options():
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=None,
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(**{}),
+    ) == HTTPOptions(
+        location=DeploymentMode.HeadOnly
+    )  # in this case we can't know whether location was provided or not
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(),
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"test": "test"},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"host": "0.0.0.0"},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode, host="0.0.0.0")
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"location": "NoServer"},
+    ) == HTTPOptions(location=DeploymentMode.NoServer)
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.Disabled,
+        http_options=None,
+    ) == HTTPOptions(location=DeploymentMode.NoServer)
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.HeadOnly,
+        http_options={"host": "0.0.0.0"},
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly, host="0.0.0.0")
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.HeadOnly,
+        http_options={"location": "NoServer"},
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+
+    with pytest.raises(ValueError, match="not a valid ProxyLocation"):
+        prepare_imperative_http_options(proxy_location="wrong", http_options=None)
+
+    with pytest.raises(ValueError, match="not a valid enumeration"):
+        prepare_imperative_http_options(
+            proxy_location=None, http_options={"location": "123"}
+        )
+
+    with pytest.raises(ValueError, match="Unexpected type"):
+        prepare_imperative_http_options(proxy_location=None, http_options="wrong")
 
 
 def test_with_proto():

@@ -63,7 +63,10 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetAgentPIDs)                   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)                 \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -191,6 +194,18 @@ class NodeManagerServiceHandler {
   virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
                                    GetWorkerPIDsReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAgentPIDs(GetAgentPIDsRequest request,
+                                  GetAgentPIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleKillLocalActor(KillLocalActorRequest request,
+                                    KillLocalActorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelLocalTask(CancelLocalTaskRequest request,
+                                     CancelLocalTaskReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -211,7 +226,7 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override {
+      std::shared_ptr<const AuthenticationToken> auth_token) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 

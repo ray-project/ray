@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
 #include "ray/raylet/lease_dependency_manager.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
@@ -86,6 +87,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_lease_arguments,
       size_t max_pinned_lease_arguments_bytes,
+      SchedulerMetrics &scheduler_metrics,
       std::function<int64_t(void)> get_time_ms =
           []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
@@ -181,6 +183,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   void RecordMetrics() const override;
 
+  SchedulerMetrics &GetSchedulerMetrics() const override { return scheduler_metrics_; }
+
   void DebugStr(std::stringstream &buffer) const override;
 
   size_t GetNumLeaseSpilled() const override { return num_lease_spilled_; }
@@ -188,6 +192,14 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   size_t GetNumUnschedulableLeaseSpilled() const override {
     return num_unschedulable_lease_spilled_;
   }
+
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override;
+
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override;
 
  private:
   struct SchedulingClassInfo;
@@ -248,8 +260,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayLease &lease,
-      rpc::RequestWorkerLeaseReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+      const std::vector<internal::ReplyCallback> &reply_callbacks);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
@@ -366,6 +377,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   /// The maximum amount of bytes that can be used by granted lease arguments.
   size_t max_pinned_lease_arguments_bytes_;
+
+  mutable SchedulerMetrics scheduler_metrics_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

@@ -100,8 +100,8 @@ class ImageDatasource(FileBasedDatasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_size in self._file_sizes():
-            # NOTE: check if file size is not None, because some metadata provider
-            # such as FastFileMetadataProvider does not provide file size information.
+            # NOTE: check if file size is not None, because some metadata providers
+            # may not provide file size information.
             if file_size is not None:
                 total_size += file_size
         return total_size * self._encoding_ratio

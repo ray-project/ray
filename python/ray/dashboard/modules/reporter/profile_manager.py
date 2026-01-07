@@ -287,7 +287,7 @@ class MemoryProfilingManager:
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string of a sucess message or an error message.
+                of the operation and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:

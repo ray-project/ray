@@ -1,11 +1,11 @@
 import csv
 from collections import namedtuple
-from typing import Tuple, Optional, Dict
+from typing import Dict, Optional, Tuple
 
 from ray_release.bazel import bazel_runfile
-from ray_release.test import Test
-from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
+from ray_release.template import load_test_cluster_compute
+from ray_release.test import Test
 
 # Keep 10% for the buffer.
 limit = int(15784 * 0.9)

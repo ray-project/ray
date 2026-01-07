@@ -1,14 +1,14 @@
 from typing import Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.dqn_learner import QF_PREDS, QF_LOSS_KEY
+from ray.rllib.algorithms.dqn.dqn_learner import QF_LOSS_KEY, QF_PREDS
 from ray.rllib.algorithms.iql.iql_learner import (
-    IQLLearner,
     QF_TARGET_PREDS,
-    VF_PREDS_NEXT,
     VF_LOSS,
+    VF_PREDS_NEXT,
+    IQLLearner,
 )
-from ray.rllib.algorithms.sac.sac_learner import QF_TWIN_PREDS, QF_TWIN_LOSS_KEY
+from ray.rllib.algorithms.sac.sac_learner import QF_TWIN_LOSS_KEY, QF_TWIN_PREDS
 from ray.rllib.core import ALL_MODULES
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (

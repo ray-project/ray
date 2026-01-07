@@ -1,6 +1,6 @@
 import unittest
-import numpy as np
 
+import numpy as np
 import tree  # pip install dm_tree
 
 import ray
@@ -12,7 +12,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-
 
 frag_length = 50
 
@@ -119,7 +118,8 @@ class TestAPPOLearner(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

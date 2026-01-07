@@ -631,6 +631,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         """
         args = [self.visit(arg) for arg in expr.args]
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
+
         result = expr.fn(*args, **kwargs)
 
         if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):

@@ -1,11 +1,12 @@
-import tree
 from typing import Any, Dict, Optional
 
+import tree
+
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_PREDS,
 )
-from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
     DefaultSACTorchRLModule,
 )

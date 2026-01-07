@@ -638,7 +638,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest, AddProcessToCgroupFailsIfProcessDoesNot
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddProcessToCgroup(cgroup->GetPath(), "123");
+  Status s = driver.AddProcessToCgroup(cgroup->GetPath(), "-1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 

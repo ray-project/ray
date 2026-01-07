@@ -35,8 +35,10 @@ Exceptions
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
     ray.exceptions.RayCgraphCapacityExceeded
+    ray.exceptions.RayDirectTransportError
     ray.exceptions.RuntimeEnvSetupError
     ray.exceptions.CrossLanguageError
     ray.exceptions.RaySystemError
     ray.exceptions.NodeDiedError
     ray.exceptions.UnserializableException
+    ray.exceptions.AuthenticationError

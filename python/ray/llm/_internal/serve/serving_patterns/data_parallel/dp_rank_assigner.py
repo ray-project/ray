@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 @serve.deployment(num_replicas=1)
-class DPRankAssigner:
+class _DPRankAssigner:
     """
     Data Parallel Rank Assigner.
 
@@ -54,14 +54,11 @@ class DPRankAssigner:
                 f"with dp_size_per_node {self.dp_size_per_node}"
             )
 
-    async def register(
-        self, replica_ctx: "serve.context.ReplicaContext", node_id: Optional[str] = None
-    ):
+    async def register(self, node_id: Optional[str] = None):
         """
         Register a replica and assign a rank to it.
 
         Args:
-            replica_ctx: The replica context.
             node_id: The node id of the replica.
 
         Returns:

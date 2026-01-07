@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 import ray
 import ray.rllib.algorithms.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -15,6 +17,20 @@ class TestIMPALA(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_impala_minibatch_size_check(self):
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .training(minibatch_size=100)
+            .env_runners(rollout_fragment_length=30)
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"`minibatch_size` \(100\) must either be None or a multiple of `rollout_fragment_length` \(30\)",
+        ):
+            config.validate()
 
     def test_impala_lr_schedule(self):
         # Test whether we correctly ignore the "lr" setting.
@@ -64,7 +80,8 @@ class TestIMPALA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

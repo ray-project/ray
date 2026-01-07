@@ -45,6 +45,15 @@ class LabelConstraint {
                   absl::flat_hash_set<std::string> values)
       : key_(std::move(key)), op_(op), values_(std::move(values)) {}
 
+  // Constructor to parse LabelConstraint data type from proto message.
+  explicit LabelConstraint(const rpc::LabelSelectorConstraint &proto)
+      : key_(proto.label_key()),
+        op_(static_cast<LabelSelectorOperator>(proto.operator_())) {
+    for (const auto &value : proto.label_values()) {
+      values_.insert(value);
+    }
+  }
+
   const std::string &GetLabelKey() const { return key_; }
 
   LabelSelectorOperator GetOperator() const { return op_; }
@@ -74,7 +83,19 @@ class LabelSelector {
     }
   }
 
-  rpc::LabelSelector ToProto() const;
+  // Constructor to parse LabelSelector data type from proto message.
+  explicit LabelSelector(const rpc::LabelSelector &proto) {
+    constraints_.reserve(proto.label_constraints_size());
+    for (const auto &proto_constraint : proto.label_constraints()) {
+      constraints_.emplace_back(proto_constraint);
+    }
+  }
+
+  // Convert LabelSelector object to rpc::LabelSelector proto message.
+  void ToProto(rpc::LabelSelector *proto) const;
+
+  // Convert the LabelSelector object back into a string map.
+  google::protobuf::Map<std::string, std::string> ToStringMap() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
 
@@ -83,6 +104,8 @@ class LabelSelector {
   }
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
+
+  std::string DebugString() const;
 
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);

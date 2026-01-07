@@ -13,13 +13,12 @@ from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter, sleep
 
-from dataset import ShareGPTDataset
-
 import ray
+from .dataset import ShareGPTDataset
 from ray import data, serve
 from ray.data.llm import (
     ServeDeploymentProcessorConfig,
-    build_llm_processor,
+    build_processor,
     vLLMEngineProcessorConfig,
 )
 from ray.serve.llm import (
@@ -146,7 +145,7 @@ def build_single_vllm_engine_processor(
         tensor_parallel_size,
         distributed_executor_backend,
     )
-    return build_llm_processor(
+    return build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -175,7 +174,7 @@ def build_shared_vllm_engine_processor(
         distributed_executor_backend,
     )
 
-    processor1 = build_llm_processor(
+    processor1 = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -188,7 +187,7 @@ def build_shared_vllm_engine_processor(
         },
     )
 
-    processor2 = build_llm_processor(
+    processor2 = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -284,7 +283,7 @@ def build_single_serve_deployment_processor(
         deployment_name,
         app_name,
     )
-    return build_llm_processor(
+    return build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -316,7 +315,7 @@ def build_shared_serve_deployment_processor(
         app_name,
     )
 
-    processor1 = build_llm_processor(
+    processor1 = build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -337,7 +336,7 @@ def build_shared_serve_deployment_processor(
         },
     )
 
-    processor2 = build_llm_processor(
+    processor2 = build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",

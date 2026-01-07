@@ -1,9 +1,10 @@
+import sys
+
 import click
 
 from ci.ray_ci.doc.api import API
 from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.module import Module
-from ci.ray_ci.utils import logger
 
 TEAM_API_CONFIGS = {
     "data": {
@@ -102,24 +103,28 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
     white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
 
     # Policy 01: all public APIs should be documented
-    logger.info(f"Validating that public {team} APIs should be documented...")
+    print(
+        f"--- Validating that public {team} APIs should be documented...",
+        file=sys.stderr,
+    )
     good_apis, bad_apis = API.split_good_and_bad_apis(
         api_in_codes, api_in_docs, white_list_apis
     )
 
     if good_apis:
-        logger.info("Public APIs that are documented:")
+        print("Public APIs that are documented:", file=sys.stderr)
         for api in good_apis:
-            logger.info(f"\t{api}")
+            print(f"\t{api}", file=sys.stderr)
 
     if bad_apis:
-        logger.info("Public APIs that are NOT documented:")
+        print("Public APIs that are NOT documented:", file=sys.stderr)
         for api in bad_apis:
-            logger.info(f"\t{api}")
+            print(f"\t{api}", file=sys.stderr)
 
     if bad_apis:
-        logger.info(
-            f"Some public {team} APIs are not documented. Please document them."
+        print(
+            f"Some public {team} APIs are not documented. Please document them.",
+            file=sys.stderr,
         )
         return False
     return True

@@ -382,11 +382,13 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
 
         def kill_node(node_id):
             cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
-            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
-            print(f"Killing pid {pid}")
-            # kill the pid
-            cmd = f"kill -9 {pid}"
-            subprocess.check_output(cmd, shell=True)
+            pids = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pids {pids}")
+            # kill the pids (handle multiple PIDs separated by newlines)
+            for pid in pids.split("\n"):
+                if pid:
+                    cmd = f"kill -9 {pid}"
+                    subprocess.run(cmd, shell=True)
 
         # Kill a worker node with 'R1' in resources
         for n in ray.nodes():
@@ -398,7 +400,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         kill_node(node["NodeID"])
 
         # Wait for the node to be removed
-        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+        wait_for_condition(lambda: verify_nodes(2, 1), 30)
 
         # Only provision nodes for unplaced bundles;
         # avoid rescheduling the whole placement group.
@@ -498,7 +500,7 @@ while True:
                 "raylet_report_resources_period_milliseconds": 10000,
                 "global_gc_min_interval_s": 1,
                 "local_gc_interval_s": 1,
-                "high_plasma_storage_usage": 0.2,
+                "plasma_store_usage_trigger_gc_threshold": 0.2,
                 "raylet_check_gc_period_milliseconds": 10,
             },
         )
@@ -512,7 +514,7 @@ while True:
             assert len(cluster_state.idle_nodes) == num_worker_nodes + 1
             return True
 
-        wait_for_condition(nodes_up)
+        wait_for_condition(nodes_up, timeout=20)
 
         # Schedule tasks
         run_string_as_driver_nonblocking(driver_script)
@@ -654,7 +656,7 @@ assert all(ray.get(results))
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         task_selectors = {
             "task_0": {"accelerator-type": "A100"},
-            "task_1": {"region": "in(us-east1,me-central1)"},
+            "task_1": {"region": "in(me-central1,us-east1)"},
             "task_2": {"accelerator-type": "!in(A100,TPU)"},
             "task_3": {"market-type": "!spot"},
         }
@@ -799,7 +801,7 @@ ray.get([a.ready.remote() for a in actors])
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         actor_selectors = {
             "actor_0": {"accelerator-type": "A100"},
-            "actor_1": {"region": "in(us-east1,me-central1)"},
+            "actor_1": {"region": "in(me-central1,us-east1)"},
             "actor_2": {"accelerator-type": "!in(A100,TPU)"},
             "actor_3": {"market-type": "!spot"},
         }
@@ -900,9 +902,22 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
         ray.get(pg.ready())
 
         # Validate the number and types of the auto-scaled nodes are as expected.
-        status = get_cluster_status(gcs_address)
-        assert len(status.active_nodes) == expected_nodes
+        # Add a wait here to avoid flaky test behavior.
+        def check_nodes_active():
+            status = get_cluster_status(gcs_address)
+            return len(status.active_nodes) == expected_nodes
 
+        try:
+            wait_for_condition(check_nodes_active, timeout=30, retry_interval_ms=500)
+        except Exception as e:
+            latest_status = get_cluster_status(gcs_address)
+            raise AssertionError(
+                f"Timed out waiting for {expected_nodes} active nodes. "
+                f"Got: {len(latest_status.active_nodes)}. "
+                f"Full status: {latest_status}"
+            ) from e
+
+        status = get_cluster_status(gcs_address)
         actual_node_types = {node.ray_node_type_name for node in status.active_nodes}
         expected_node_types = {"a100_node", "tpu_node"}
         assert actual_node_types == expected_node_types

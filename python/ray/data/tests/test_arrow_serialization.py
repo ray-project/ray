@@ -598,6 +598,10 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert len(s_view) > 0.8 * len(s_t)
 
 
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("10.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
+)
 def test_fixed_shape_tensor_array_serialization():
     a = pa.FixedShapeTensorArray.from_numpy_ndarray(
         np.arange(4 * 2 * 3).reshape(4, 2, 3)
@@ -637,19 +641,24 @@ class _VariableShapeTensorType(pa.ExtensionType):
 
 def test_variable_shape_tensor_serialization():
     t = _VariableShapeTensorType(pa.float32(), 2)
-    ar = pa.array(
-        [
-            {
-                "data": np.arange(2 * 3),
-                "shape": [2, 3],
-            },
-            {
-                "data": np.arange(4 * 5),
-                "shape": [4, 5],
-            },
-        ],
-        type=t,
-    )
+    values = [
+        {
+            "data": np.arange(2 * 3, dtype=np.float32).tolist(),
+            "shape": [2, 3],
+        },
+        {
+            "data": np.arange(4 * 5, dtype=np.float32).tolist(),
+            "shape": [4, 5],
+        },
+    ]
+    storage = pa.array(values, type=t.storage_type)
+    ar = pa.ExtensionArray.from_storage(t, storage)
     payload = PicklableArrayPayload.from_array(ar)
     ar2 = payload.to_array()
     assert ar == ar2
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

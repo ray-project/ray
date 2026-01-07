@@ -62,6 +62,15 @@ TEST(SysFsCgroupDriverTest,
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest,
+     CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
+  TempFile temp_fallback_mount_file;
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
   temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");

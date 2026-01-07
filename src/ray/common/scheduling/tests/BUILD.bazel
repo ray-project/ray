@@ -65,3 +65,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "fallback_strategy_test",
+    size = "small",
+    srcs = [
+        "fallback_strategy_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:fallback_strategy",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

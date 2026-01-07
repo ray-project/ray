@@ -2,7 +2,7 @@ import dataclasses
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -15,6 +15,7 @@ from ray.data._internal.block_batching.interfaces import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -25,10 +26,10 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     """Given a list of object references, returns how many are already on the local
     node, how many require fetching from another node, and how many have unknown
     locations. If `DataContext.get_current().enable_get_object_locations_for_metrics` is
-    False, this will return `(-1, -1, -1)` as getting object locations is disabled."""
+    False, this will return `(0, 0, 0)` as getting object locations is disabled."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
-    ctx = ray.data.context.DataContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.enable_get_object_locations_for_metrics:
         locs = ray.experimental.get_object_locations(refs)
         nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
@@ -37,33 +38,69 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
         misses = len(nodes) - hits - unknowns
         return hits, misses, unknowns
 
-    return -1, -1, -1
+    return 0, 0, 0
 
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
+    ctx: DataContext,
     stats: Optional[DatasetStats] = None,
+    max_get_batch_size: Optional[Union[int, Callable[[], int]]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
+        ctx: The ``DataContext`` to use.
         stats: An optional stats object to recording block hits and misses.
+        max_get_batch_size: Maximum number of block references to resolve in a
+            single ``ray.get()`` call. This can be an integer override or a callable
+            that returns the desired batch size dynamically. If ``None``, defaults to
+            ``ctx.iter_get_block_batch_size``.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+    def _get_effective_batch_size() -> int:
+        override: Optional[int]
+        if callable(max_get_batch_size):
+            override = max_get_batch_size()
+        else:
+            override = max_get_batch_size
 
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
+        candidate = override if override is not None else ctx.iter_get_block_batch_size
+        return max(1, candidate)
+
+    pending: List[ObjectRef[Block]] = []
+
+    def _resolve_pending() -> List[Block]:
+        nonlocal hits, misses, unknowns, pending
+        if not pending:
+            return []
+
+        current_hit, current_miss, current_unknown = _calculate_ref_hits(pending)
+        if current_hit == current_miss == current_unknown == -1:
+            hits = misses = unknowns = -1
+        elif hits != -1:
+            hits += current_hit
+            misses += current_miss
+            unknowns += current_unknown
+
         with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
+            blocks = ray.get(pending)
+
+        pending.clear()
+
+        return blocks
+
+    for block_ref in block_ref_iter:
+        pending.append(block_ref)
+        if len(pending) >= _get_effective_batch_size():
+            for block in _resolve_pending():
+                yield block
+
+    for block in _resolve_pending():
         yield block
 
     if stats:
@@ -223,6 +260,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
     def __init__(self):
         self._blocks = []
         self._stopped = False
+        self._last_prefetch_size = 0
         self._condition = threading.Condition()
         self._thread = threading.Thread(
             target=self._run,
@@ -254,14 +292,19 @@ class WaitBlockPrefetcher(BlockPrefetcher):
             except Exception:
                 logger.exception("Error in prefetcher thread.")
 
-        logger.info("Exiting prefetcher's background thread")
+        logger.debug("Exiting prefetcher's background thread")
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         with self._condition:
             if self._stopped:
                 raise RuntimeError("Prefetcher is stopped.")
             self._blocks = blocks
+            self._last_prefetch_size = len(blocks)
             self._condition.notify()
+
+    def num_prefetched_blocks(self) -> int:
+        with self._condition:
+            return self._last_prefetch_size
 
     def stop(self):
         with self._condition:
@@ -279,6 +322,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
 
     def __init__(self):
         self.prefetch_actor = self._get_or_create_actor_prefetcher()
+        self._last_prefetch_size = 0
 
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
@@ -292,7 +336,11 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         ).remote()
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        self._last_prefetch_size = len(blocks)
         self.prefetch_actor.prefetch.remote(*blocks)
+
+    def num_prefetched_blocks(self) -> int:
+        return self._last_prefetch_size
 
 
 @ray.remote(num_cpus=0)

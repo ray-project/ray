@@ -44,7 +44,6 @@ You should see something similar to the following in your console output:
 
 """
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
@@ -52,7 +51,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-
+from ray.tune.result import TRAINING_ITERATION
 
 my_multi_agent_progress_reporter = tune.CLIReporter(
     # In the following dict, the keys are the (possibly nested) keys that can be found

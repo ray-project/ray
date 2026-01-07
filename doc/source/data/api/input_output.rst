@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   read_parquet_bulk
    Dataset.write_parquet
 
 CSV
@@ -368,6 +367,15 @@ WebDataset
 
 .. _data_source_api:
 
+Kafka
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
+
 Datasource API
 --------------
 
@@ -419,7 +427,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.FastFileMetadataProvider
 
 Shuffling API
 -------------

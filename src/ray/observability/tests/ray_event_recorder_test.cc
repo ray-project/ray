@@ -64,11 +64,13 @@ class RayEventRecorderTest : public ::testing::Test {
   RayEventRecorderTest() {
     fake_client_ = std::make_unique<FakeEventAggregatorClient>();
     fake_dropped_events_counter_ = std::make_unique<FakeCounter>();
+    test_node_id_ = NodeID::FromRandom();
     recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
                                                    io_service_,
                                                    max_buffer_size_,
                                                    "gcs",
-                                                   *fake_dropped_events_counter_);
+                                                   *fake_dropped_events_counter_,
+                                                   test_node_id_);
   }
 
   instrumented_io_context io_service_;
@@ -76,7 +78,40 @@ class RayEventRecorderTest : public ::testing::Test {
   std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
   std::unique_ptr<RayEventRecorder> recorder_;
   size_t max_buffer_size_ = 5;
+  NodeID test_node_id_;
 };
+
+TEST_F(RayEventRecorderTest, TestMergeEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+  io_service_.run_one();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  // Only one event should be recorded because the two events are merged into one.
+  ASSERT_EQ(recorded_events.size(), 1);
+  ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(recorded_events[0].session_name(), "test_session_name");
+  ASSERT_EQ(recorded_events[0].node_id(), test_node_id_.Binary());
+  auto state_transitions =
+      recorded_events[0].driver_job_lifecycle_event().state_transitions();
+  ASSERT_EQ(state_transitions.size(), 2);
+  ASSERT_EQ(state_transitions[0].state(), rpc::events::DriverJobLifecycleEvent::CREATED);
+  ASSERT_EQ(state_transitions[1].state(), rpc::events::DriverJobLifecycleEvent::FINISHED);
+}
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
   RayConfig::instance().initialize(
@@ -140,11 +175,14 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
 
   // Verify events
   ASSERT_EQ(recorded_events.size(), 4);
+
+  // Verify first event
   ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(recorded_events[0].session_name(), "test_session_name_1");
   ASSERT_EQ(recorded_events[0].event_type(),
             rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT);
   ASSERT_EQ(recorded_events[0].severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(recorded_events[0].node_id(), test_node_id_.Binary());
   ASSERT_TRUE(recorded_events[0].has_driver_job_definition_event());
   ASSERT_EQ(recorded_events[0].driver_job_definition_event().job_id(), "test_job_id_1");
 
@@ -154,6 +192,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   ASSERT_EQ(recorded_events[1].event_type(),
             rpc::events::RayEvent::DRIVER_JOB_LIFECYCLE_EVENT);
   ASSERT_EQ(recorded_events[1].severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(recorded_events[1].node_id(), test_node_id_.Binary());
   ASSERT_TRUE(recorded_events[1].has_driver_job_lifecycle_event());
   ASSERT_EQ(recorded_events[1].driver_job_lifecycle_event().job_id(), "test_job_id_2");
 
@@ -162,6 +201,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   ASSERT_EQ(recorded_events[2].session_name(), "test_session_name_3");
   ASSERT_EQ(recorded_events[2].event_type(),
             rpc::events::RayEvent::ACTOR_DEFINITION_EVENT);
+  ASSERT_EQ(recorded_events[2].node_id(), test_node_id_.Binary());
   ASSERT_TRUE(recorded_events[2].has_actor_definition_event());
   ASSERT_EQ(recorded_events[2].actor_definition_event().actor_id(), "actor_1");
   ASSERT_EQ(recorded_events[2].actor_definition_event().job_id(), "test_job_id_1");
@@ -171,6 +211,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   ASSERT_EQ(recorded_events[3].session_name(), "test_session_name_4");
   ASSERT_EQ(recorded_events[3].event_type(),
             rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT);
+  ASSERT_EQ(recorded_events[3].node_id(), test_node_id_.Binary());
   ASSERT_TRUE(recorded_events[3].has_actor_lifecycle_event());
   ASSERT_EQ(recorded_events[3].actor_lifecycle_event().actor_id(), "actor_2");
   ASSERT_EQ(recorded_events[3].actor_lifecycle_event().state_transitions_size(), 1);

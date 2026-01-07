@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
+import pyarrow as pa
 import pytest
 from freezegun import freeze_time
 
@@ -39,7 +40,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -627,6 +628,38 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def _create_bundle_with_single_row(row):
+    block = pa.Table.from_pylist([row])
+    block_ref = ray.put(block)
+    metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
+    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+
+
+@pytest.mark.parametrize("min_rows_per_bundle", [2, None])
+def test_internal_input_queue_is_empty_after_early_completion(
+    ray_start_regular_shared, min_rows_per_bundle
+):
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+    op.start(ExecutionOptions())
+
+    ref_bundle = _create_bundle_with_single_row({"id": 0})
+    op.add_input(ref_bundle, 0)
+
+    op.mark_execution_finished()
+
+    assert (
+        op.internal_input_queue_num_blocks() == 0
+    ), op.internal_input_queue_num_blocks()
+
+
 def test_min_max_resource_requirements(restore_data_context):
     data_context = ray.data.DataContext.get_current()
     op = ActorPoolMapOperator(
@@ -637,7 +670,7 @@ def test_min_max_resource_requirements(restore_data_context):
             min_size=1,
             max_size=2,
         ),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_gpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
 
@@ -646,10 +679,36 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    assert (
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-        and max_resource_usage_bound == ExecutionResources.for_limits()
+    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources(
+        gpu=2, object_store_memory=float("inf")
     )
+
+
+def test_min_max_resource_requirements_unbounded(restore_data_context):
+    """Test that unbounded actor pools return infinite max resources."""
+    data_context = ray.data.DataContext.get_current()
+    # ActorPoolStrategy() with no max_size defaults to unbounded (max_size=inf)
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(),
+        ray_remote_args={"num_gpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    # Unbounded pools should return infinite max resources for GPU (which is used),
+    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -758,7 +817,7 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
 
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
-    assert actor_pool_map_op.completed()
+    assert actor_pool_map_op.has_completed()
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
@@ -869,6 +928,77 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
 
     thread.join()
     assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
+
+
+@pytest.mark.parametrize(
+    "retry_on_errors,max_retries,should_succeed",
+    [
+        (True, 3, True),  # Retry enabled, enough retries
+        (True, 2, False),  # Retry enabled, but not enough retries
+        (False, 3, False),  # Retry disabled
+    ],
+)
+def test_actor_init_failure_retry(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    retry_on_errors,
+    max_retries,
+    should_succeed,
+):
+    """Tests that UDF initialization failures are retried based on
+    actor_init_retry_on_errors and actor_init_max_retries settings.
+
+    When the user-provided UDF's __init__ fails, the _MapWorker retries
+    the initialization within the same actor based on the retry settings.
+    If all retries fail, the actor dies and an ActorDiedError is raised.
+    """
+    from ray.exceptions import ActorDiedError
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FailingInitMapper:
+        def __init__(self):
+            # Fail the first 3 initialization attempts, succeed on 4th
+            count = ray.get(init_counter.increment.remote())
+            if count <= 3:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.actor_init_retry_on_errors = retry_on_errors
+    ctx.actor_init_max_retries = max_retries
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    if should_succeed:
+        # With retry enabled and enough retries, operation should eventually succeed
+        result = (
+            ray.data.range(10)
+            .map_batches(
+                FailingInitMapper,
+                batch_size=1,
+            )
+            .take_all()
+        )
+        assert len(result) == 10
+    else:
+        # Without retry or not enough retries, should raise ActorDiedError
+        with pytest.raises(ActorDiedError, match="init_failed"):
+            ray.data.range(10).map_batches(
+                FailingInitMapper,
+                batch_size=1,
+            ).take_all()
 
 
 if __name__ == "__main__":

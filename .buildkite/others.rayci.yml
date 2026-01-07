@@ -5,7 +5,9 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    env:
+      PYTHON: "3.10"
     tags: cibase
 
   - label: doc tests
@@ -18,6 +20,7 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
+        --python-version 3.10
     depends_on:
       - doctestbuild
       - ray-core-build
@@ -30,10 +33,11 @@ steps:
     commands:
       # Java tests need the C++ API for multi-langauge worker tests.
       - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type multi-lang --build-only
+        --python-version 3.10 --build-name corebuild-py3.10
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash -iecuo pipefail
         "./java/test.sh"
-    depends_on: corebuild
+    depends_on: corebuild-multipy
 
   # bot
   - label: ":robot_face: CI weekly green metric"

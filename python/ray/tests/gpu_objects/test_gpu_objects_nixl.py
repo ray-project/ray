@@ -4,10 +4,16 @@ import pytest
 import torch
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
 class GPUTestActor:
+    def __init__(self):
+        self.reserved_tensor1 = torch.tensor([1, 2, 3]).to("cuda")
+        self.reserved_tensor2 = torch.tensor([4, 5, 6]).to("cuda")
+        self.reserved_tensor3 = torch.tensor([7, 8, 9]).to("cuda")
+
     @ray.method(tensor_transport="nixl")
     def echo(self, data, device):
         return data.to(device)
@@ -31,7 +37,7 @@ class GPUTestActor:
         return sum
 
     def consume_with_object_store(self, refs):
-        tensors = [ray.get(ref, _tensor_transport="object_store") for ref in refs]
+        tensors = [ray.get(ref, _use_object_store=True) for ref in refs]
         sum = 0
         for t in tensors:
             assert t.device.type == "cuda"
@@ -44,12 +50,48 @@ class GPUTestActor:
         obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id in gpu_manager.managed_gpu_object_metadata
+        assert gpu_manager.is_managed_object(obj_id)
+        nixl_meta = gpu_manager.gpu_object_store._managed_meta_nixl[obj_id]
+        assert nixl_meta is not None
+        assert gpu_manager.gpu_object_store._managed_meta_counts_nixl[nixl_meta] == 1
+
         del ref
+
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id not in gpu_manager.managed_gpu_object_metadata
+        assert not gpu_manager.is_managed_object(obj_id)
+        assert obj_id not in gpu_manager.gpu_object_store._managed_meta_nixl
+        assert nixl_meta not in gpu_manager.gpu_object_store._managed_meta_counts_nixl
         return "Success"
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict1(self):
+        return {"round1-1": self.reserved_tensor1, "round1-2": self.reserved_tensor2}
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict2(self):
+        return {"round2-1": self.reserved_tensor1, "round2-3": self.reserved_tensor3}
+
+    def sum_dict(self, dict):
+        return sum(v.sum().item() for v in dict.values())
+
+    def get_num_gpu_objects(self):
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        return gpu_object_manager.gpu_object_store.get_num_objects()
+
+    def get_num_managed_meta_nixl(self):
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        return gpu_object_manager.gpu_object_store.get_num_managed_meta_nixl()
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self, signal_actor):
+        ray.get(signal_actor.wait.remote())
+
+    def borrow_and_sum(self, ref_list):
+        return ray.get(ref_list[0]).sum().item()
+
+    def block_main_thread(self, signal_actor):
+        ray.get(signal_actor.wait.remote())
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -65,10 +107,10 @@ def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
     assert torch.equal(ray.get(ref1), tensor)
 
     # # Test ray.get with nixl tensor transport
-    assert torch.equal(ray.get(ref2, _tensor_transport="nixl"), tensor)
+    assert torch.equal(ray.get(ref2), tensor)
 
     # # Test ray.get with object store tensor transport
-    assert torch.equal(ray.get(ref3, _tensor_transport="object_store"), tensor)
+    assert torch.equal(ray.get(ref3, _use_object_store=True), tensor)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -141,6 +183,98 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_send_duplicate_tensor(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    ref1 = src_actor.send_dict1.remote()
+    result1 = dst_actor.sum_dict.remote(ref1)
+    assert ray.get(result1) == 21
+    ref2 = src_actor.send_dict1.remote()
+    result2 = dst_actor.sum_dict.remote(ref2)
+    assert ray.get(result2) == 21
+
+    del ref1
+    del ref2
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+
+    """
+    1. Block background thread on receiver so receive doesn't start
+    2. Wait until the object is created so the transfer gets triggered
+    3. Kill the sender
+    4. Unblock the receiver
+    """
+    signal_actor = SignalActor.remote()
+    actors[1].block_background_thread.remote(signal_actor)
+    ref = actors[0].echo.remote(torch.randn((100, 100)), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    ray.wait([ref])
+    ray.kill(actors[0])
+    signal_actor.send.remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(result)
+
+    exc_str = str(excinfo.value)
+    assert "nixlBackendError" in exc_str and "The source actor may have died" in exc_str
+
+    # Try a transfer with actor[1] receiving again
+    new_actor = GPUTestActor.remote()
+    ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    assert ray.get(result) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_del_before_creating(ray_start_regular):
+    """
+    Blocking the main thread until we free the object from the reference counter.
+    Then unblocking the actor's main thread so the object can be created and then
+    asserting that the object was actually freed.
+    """
+    signal_actor = SignalActor.remote()
+    actor = GPUTestActor.remote()
+    actor.block_main_thread.remote(signal_actor)
+    ref = actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    obj_id = ref.hex()
+    del ref
+    ray.get(signal_actor.send.remote())
+
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.gpu_object_manager.get_gpu_object_metadata(
+            obj_id
+        )
+        is None,
+    )
+    wait_for_condition(
+        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+    )
+
+
+@pytest.mark.skip(
+    "If the tensor metadata doesn't exist at the time of borrowing, this will fail."
+)
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_borrow_after_abort(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    nixl_ref = actors[0].echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
 
 
 if __name__ == "__main__":
