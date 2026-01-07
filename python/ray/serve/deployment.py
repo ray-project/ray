@@ -349,6 +349,8 @@ class Deployment:
                 self._replica_config.placement_group_bundle_label_selector
             )
 
+        # TODO(ryanaoleary@): Add conditional check once fallback_strategy is
+        # added to placement group options.
         placement_group_fallback_strategy = (
             self._replica_config.placement_group_fallback_strategy
         )

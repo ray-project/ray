@@ -505,6 +505,8 @@ def deployment(
                 if placement_group_bundle_label_selector is not DEFAULT.VALUE
                 else None
             ),
+            # TODO(ryanaoleary@): add placement_group_fallback_strategy when
+            # fallback_strategy support is added to placement group options.
             max_replicas_per_node=(
                 max_replicas_per_node
                 if max_replicas_per_node is not DEFAULT.VALUE

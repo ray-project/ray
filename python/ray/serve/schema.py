@@ -416,6 +416,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    # TODO(ryanaoleary@): Support placement_group_fallback_strategy here when
+    # support is added for that field to placement group options.
+
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
