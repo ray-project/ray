@@ -668,229 +668,47 @@ py_test(
     ],
 )
 
-# IMPALA
-# CartPole
+# | APPO (14 total tests)          |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | 200     | ✅          | ❌              | ❌           | ❌         |
+# | (MA/D) TicTacToe               | -2.0    | ❌          | ❌              | ❌           | ✅         |
+
 py_test(
-    name = "learning_tests_cartpole_impala",
+    name = "learning_tests_impala_cartpole_local",
     size = "large",
     srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-# MultiAgentCartPole
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=6",
-    ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-gpus-per-learner=1",
-        "--num-cpus=6",
-    ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-learners=2",
         "--num-cpus=7",
+        "--num-env-runners=7",
+        "--num-learners=0",
+        "--stop-reward=200",
     ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
-        "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
+    name = "learning_tests_impala_tictactoe_multi_gpu",
     size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/tictactoe_impala.py"],
     args = [
         "--as-test",
-        "--num-agents=2",
+        "--num-cpus=16",
+        "--num-env-runners=10",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
-        "--num-cpus=7",
+        "--stop-reward=-2.0",
     ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "multi_gpu",
         "team:rllib",
-        "torch_only",
-    ],
-)
-
-# StatelessCartPole
-py_test(
-    name = "learning_tests_stateless_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_stateless_cartpole_impala_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-# MultiAgentStatelessCartPole
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
     ],
 )
 

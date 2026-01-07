@@ -45,6 +45,7 @@ CartPole-v1 has a maximum episode reward of 500, and IMPALA should
 consistently achieve near-optimal performance on this task.
 """
 from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
@@ -55,12 +56,20 @@ parser = add_rllib_example_script_args(
     default_reward=450.0,
     default_timesteps=2_000_000,
 )
+parser.set_defaults(
+    num_env_runners=4,
+    num_envs_per_env_runner=16,
+    num_learners=1,
+)
 args = parser.parse_args()
 
 
 config = (
     IMPALAConfig()
     .environment("CartPole-v1")
+    .env_runners(
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
+    )
     .training(
         train_batch_size_per_learner=500,
         grad_clip=40.0,

@@ -17,10 +17,10 @@ How to run this script
 ----------------------
 `python tictactoe_impala.py [options]`
 
-To run with default settings (2 trainable agents):
+To run with default settings (5 trainable agents):
 `python tictactoe_impala.py`
 
-To run with more trainable agents:
+To run with a different number of trainable agents:
 `python tictactoe_impala.py --num-agents=4`
 
 To scale up with distributed learning using multiple learners and env-runners:
@@ -65,13 +65,23 @@ parser = add_rllib_example_script_args(
     default_timesteps=2_000_000,
 )
 parser.set_defaults(
-    num_env_runners=5,
+    num_env_runners=4,
+    num_envs_per_env_runner=3,
+    num_learners=1,
+    num_agents=5,
 )
 args = parser.parse_args()
 
 config = (
     IMPALAConfig()
     .environment(TicTacToe)
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+    )
+    .learners(
+        num_learners=args.num_learners,
+    )
     .training(
         train_batch_size_per_learner=1000,
         grad_clip=30.0,
@@ -104,4 +114,4 @@ config = (
 
 
 if __name__ == "__main__":
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    run_rllib_example_script_experiment(config, args)
