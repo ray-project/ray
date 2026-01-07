@@ -6,15 +6,20 @@ These tests require Ray and test end-to-end arithmetic expression evaluation.
 import math
 
 import pandas as pd
-import pyarrow as pa
 import pytest
-from packaging import version
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col, lit
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+pytestmark = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="Expression integration tests require PyArrow >= 20.0.0",
+)
 
 
 class TestArithmeticIntegration:
@@ -100,10 +105,6 @@ class TestArithmeticIntegration:
         expected = pd.DataFrame({"value": values, "result": expected_values})
         assert rows_same(result, expected)
 
-    @pytest.mark.skipif(
-        version.parse(pa.__version__) < version.parse("14.0.0"),
-        reason="Logarithmic expression tests require PyArrow >= 14.0",
-    )
     @pytest.mark.parametrize(
         "expr_factory,expected_fn",
         [
