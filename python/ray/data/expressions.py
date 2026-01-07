@@ -328,9 +328,13 @@ class Expr(ABC):
         """Reverse multiplication operator (for literal * expr)."""
         return LiteralExpr(other)._bin(self, Operation.MUL)
 
-    def __mod__(self, other):
+    def __mod__(self, other: Any):
         """Modulation operator (%)."""
         return self._bin(other, Operation.MOD)
+
+    def __rmod__(self, other: Any):
+        """Modulation operator (%)."""
+        return LiteralExpr(other)._bin(self, Operation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
