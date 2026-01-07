@@ -2044,6 +2044,21 @@ def init(
             FutureWarning,
         )
 
+    # Check for Pydantic v1 and emit deprecation warning
+    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
+
+    if (
+        PYDANTIC_MAJOR_VERSION
+        and PYDANTIC_MAJOR_VERSION == 1
+        and log_once("pydantic_v1_deprecation")
+    ):
+        warnings.warn(
+            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
+            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
+            "See https://github.com/ray-project/ray/issues/58876 for more details.",
+            FutureWarning,
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
