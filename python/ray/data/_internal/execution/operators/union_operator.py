@@ -102,16 +102,14 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
-        if not self._preserve_order:
+        if not self._preserve_order or input_index == self._next_input_to_flush:
             self._output_buffer.append(refs)
             self._metrics.on_output_queued(refs)
         else:
-            if input_index == self._next_input_to_flush:
-                self._output_buffer.append(refs)
-                self._metrics.on_output_queued(refs)
-            else:
-                self._input_buffers[input_index].add(refs)
-                self._metrics.on_input_queued(refs)
+            self._input_buffers[input_index].add(refs)
+            self._metrics.on_input_queued(refs)
+
+        if self._preserve_order:
             self._try_advance_and_flush()
 
     def all_inputs_done(self) -> None:
@@ -139,9 +137,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         while self._next_input_to_flush < len(self._input_ops):
             if not self._input_ops[self._next_input_to_flush].has_completed():
                 break
-            # Head input is complete - flush its buffer and advance
-            while self._input_buffers[self._next_input_to_flush]:
-                refs = self._input_buffers[self._next_input_to_flush].get_next()
+            buffer_to_flush = self._input_buffers[self._next_input_to_flush]
+            while buffer_to_flush:
+                refs = buffer_to_flush.get_next()
                 self._metrics.on_input_dequeued(refs)
                 self._output_buffer.append(refs)
                 self._metrics.on_output_queued(refs)
