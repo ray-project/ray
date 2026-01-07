@@ -5,14 +5,18 @@
 set -euo pipefail
 
 ARCH=$(uname -m)
-if [[ "$ARCH" == "x86_64" ]]; then
-    GCLOUD_ARCH="x86_64"
-elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
-    GCLOUD_ARCH="arm"
-else
-    echo "Unsupported architecture: $ARCH"
-    exit 1
-fi
+case "$ARCH" in
+    x86_64)
+        GCLOUD_ARCH="x86_64"
+        ;;
+    aarch64|arm64)
+        GCLOUD_ARCH="arm"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
 
 GCLOUD_VERSION="550.0.0"
 GCLOUD_TARBALL="google-cloud-cli-${GCLOUD_VERSION}-linux-${GCLOUD_ARCH}.tar.gz"
