@@ -30,7 +30,7 @@ class Parser:
             version = None
             for line in f.readlines():
                 package_line_match = re.search(
-                    r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.-]+)", line
+                    r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.+-]+)", line
                 )
                 if name and version and package_line_match:
                     deps.append(Dep(name=name, version=version, required_by=deps_arr))
@@ -43,7 +43,9 @@ class Parser:
                 req_line_match = re.search(r"-r\s+(.*)$", line)
                 constraint_line_match = re.search(r"-c\s+(.*)$", line)
                 if package_line_match:
-                    name, version = package_line_match[0]
+                    name, version = package_line_match.group(
+                        1
+                    ), package_line_match.group(2)
                 elif (
                     dependency_line_match
                     and not req_line_match
@@ -52,7 +54,7 @@ class Parser:
                         dependency_line_match.group(1) or dependency_line_match.group(2)
                     )
                 ):
-                    # group 1: "# via <package>" or group 2: "#   <package>"
+                    # group 1: "#   <package>" or group 2: "# via <package>"
                     dep = dependency_line_match.group(1) or dependency_line_match.group(
                         2
                     )
