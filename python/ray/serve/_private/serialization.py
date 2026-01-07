@@ -1,8 +1,6 @@
-"""Serialization utilities for gRPC inter-deployment communication."""
-
 import logging
 import pickle
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Dict, Tuple
 
 from ray import cloudpickle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -21,7 +19,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class SerializationMethod:
-    """Available serialization methods for gRPC communication."""
+    """Available serialization methods for RPC communication."""
 
     CLOUDPICKLE = "cloudpickle"
     PICKLE = "pickle"
@@ -35,10 +33,7 @@ _serializer_cache: Dict[Tuple[str, str], "RPCSerializer"] = {}
 
 
 class RPCSerializer:
-    """Serializer for gRPC communication with configurable serialization methods.
-
-    Supports cloudpickle (default), pickle, msgpack, orjson, and noop (pass-through).
-    """
+    """Serializer for RPC communication with configurable serialization methods."""
 
     def __init__(
         self,
@@ -103,7 +98,7 @@ class RPCSerializer:
             self.response_method
         )
 
-    def _get_serializer_funcs(self, method: str) -> Tuple[Callable, Callable]:
+    def _get_serializer_funcs(self, method: str) -> Tuple[Any, Any]:
         """Get dumps and loads functions for a given serialization method."""
         if method == SerializationMethod.CLOUDPICKLE:
             return cloudpickle.dumps, cloudpickle.loads
@@ -116,7 +111,7 @@ class RPCSerializer:
         elif method == SerializationMethod.NOOP:
             return self._get_noop_funcs()
 
-    def _get_noop_funcs(self) -> Tuple[Callable, Callable]:
+    def _get_noop_funcs(self) -> Tuple[Any, Any]:
         """Get no-op serialization functions for binary data."""
 
         def _noop_dumps(obj: Any) -> bytes:
@@ -137,7 +132,7 @@ class RPCSerializer:
 
         return _noop_dumps, _noop_loads
 
-    def _get_pickle_funcs(self) -> Tuple[Callable, Callable]:
+    def _get_pickle_funcs(self) -> Tuple[Any, Any]:
         """Get pickle serialization functions with highest protocol."""
 
         def _pickle_dumps(obj: Any) -> bytes:
@@ -148,15 +143,15 @@ class RPCSerializer:
 
         return _pickle_dumps, _pickle_loads
 
-    def _get_msgpack_funcs(self) -> Tuple[Callable, Callable]:
+    def _get_msgpack_funcs(self) -> Tuple[Any, Any]:
         """Get msgpack serialization functions."""
 
         if ormsgpack is None:
             raise ImportError(
-                "ormsgpack is not installed. Please install it with "
-                "`pip install ormsgpack`."
+                "ormsgpack is not installed. Please install it with `pip install ormsgpack`."
             )
 
+        # Configure ormsgpack with appropriate options
         def _msgpack_dumps(obj: Any) -> bytes:
             return ormsgpack.packb(obj)
 
@@ -165,7 +160,7 @@ class RPCSerializer:
 
         return _msgpack_dumps, _msgpack_loads
 
-    def _get_orjson_funcs(self) -> Tuple[Callable, Callable]:
+    def _get_orjson_funcs(self) -> Tuple[Any, Any]:
         """Get orjson serialization functions."""
 
         if orjson is None:
@@ -173,6 +168,7 @@ class RPCSerializer:
                 "orjson is not installed. Please install it with `pip install orjson`."
             )
 
+        # orjson only supports JSON-serializable types
         def _orjson_dumps(obj: Any) -> bytes:
             try:
                 return orjson.dumps(obj)

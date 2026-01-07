@@ -16,7 +16,11 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_SERVER_OPTIONS,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
+from ray.serve._private.replica_result import (
+    ActorReplicaResult,
+    ReplicaResult,
+    gRPCReplicaResult,
+)
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.utils import JavaActorHandleProxy
@@ -119,9 +123,8 @@ class gRPCReplicaWrapper(ReplicaWrapper):
 
     def send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
-    ) -> ReplicaResult:
+    ) -> gRPCReplicaResult:
         """Send the request to a Python replica."""
-        from ray.serve._private.replica_result import gRPCReplicaResult
 
         # Get serialization options from request metadata
         request_serialization = pr.metadata.request_serialization

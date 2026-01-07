@@ -1308,10 +1308,6 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
             yield status_code_callback
 
-    # ==================== Inter-Deployment gRPC Handlers ====================
-    # These methods implement the ASGIServiceServicer interface
-    # for receiving requests from other deployments via gRPC.
-
     @_wrap_grpc_call
     async def HandleRequest(
         self,
@@ -1320,12 +1316,12 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         *request_args,
         **request_kwargs,
     ):
-        """gRPC handler for unary requests from other deployments."""
         result = await self.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
         if request_metadata.is_grpc_request:
             result = (request_metadata.grpc_context, result.SerializeToString())
+
         return result
 
     @_wrap_grpc_call
@@ -1336,12 +1332,12 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         *request_args,
         **request_kwargs,
     ):
-        """gRPC handler for streaming requests from other deployments."""
         async for result in self.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
             if request_metadata.is_grpc_request:
                 result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result
 
     @_wrap_grpc_call
@@ -1352,10 +1348,14 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         *request_args,
         **request_kwargs,
     ):
-        """gRPC handler for unary requests with rejection from other deployments.
+        """gRPC entrypoint for all unary requests with strict max_ongoing_requests enforcement
 
-        This sends a system message via gRPC metadata indicating if the request
-        was accepted, then returns the actual response.
+        This generator yields a system message indicating if the request was accepted,
+        then the actual response.
+
+        If an exception occurred while processing the request, whether it's a user
+        exception or an error intentionally raised by Serve, it will be returned as
+        a gRPC response instead of raised directly.
         """
         result_gen = self.handle_request_with_rejection(
             request_metadata, *request_args, **request_kwargs
@@ -1368,9 +1368,9 @@ class Replica(ReplicaBase, ASGIServiceServicer):
             ]
         )
         if not queue_len_info.accepted:
-            # NOTE: in gRPC, it's not guaranteed that the initial metadata sent
-            # by the server will be delivered for a stream with no messages.
-            # Therefore, we send a dummy message here to ensure it is populated.
+            # NOTE(edoakes): in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages. Therefore,
+            # we send a dummy message here to ensure it is populated in every case.
             return b""
 
         result = await result_gen.__anext__()
@@ -1380,6 +1380,7 @@ class Replica(ReplicaBase, ASGIServiceServicer):
 
         if request_metadata.is_grpc_request:
             result = (request_metadata.grpc_context, result.SerializeToString())
+
         return result
 
     @_wrap_grpc_call
@@ -1390,10 +1391,14 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         *request_args,
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
-        """gRPC handler for streaming requests with rejection from other deployments.
+        """gRPC entrypoint for all streaming requests with strict max_ongoing_requests enforcement
 
-        This sends a system message via gRPC metadata indicating if the request
-        was accepted, then yields the actual response(s).
+        This generator yields a system message indicating if the request was accepted,
+        then the actual response(s).
+
+        If an exception occurred while processing the request, whether it's a user
+        exception or an error intentionally raised by Serve, it will be returned as
+        a gRPC response instead of raised directly.
         """
         result_gen = self.handle_request_with_rejection(
             request_metadata, *request_args, **request_kwargs
@@ -1406,15 +1411,16 @@ class Replica(ReplicaBase, ASGIServiceServicer):
             ]
         )
         if not queue_len_info.accepted:
-            # NOTE: in gRPC, it's not guaranteed that the initial metadata sent
-            # by the server will be delivered for a stream with no messages.
-            # Therefore, we send a dummy message here to ensure it is populated.
+            # NOTE(edoakes): in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages. Therefore,
+            # we send a dummy message here to ensure it is populated in every case.
             yield b""
             return
 
         async for result in result_gen:
             if request_metadata.is_grpc_request:
                 result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result
 
 
