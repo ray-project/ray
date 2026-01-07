@@ -112,8 +112,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                     attempt_number = state.task_state.attempt_number
 
                 message = (
-                    f"(pid={pid})(node_id={node_id})(attempt={attempt_number}) A task of operator {op_name} with task index "
-                    f"{state.task_idx} has been running for {duration:.2f}s, which is longer"
+                    f"A task of operator {op_name} (pid={pid}, node_id={node_id}, attempt={attempt_number}) has been running for {duration:.2f}s, which is longer"
                     f" than the average task duration of this operator ({avg_duration:.2f}s)."
                     f" If this message persists, please check the stack trace of the "
                     "task for potential hanging issues."
