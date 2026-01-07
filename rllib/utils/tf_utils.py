@@ -903,7 +903,7 @@ class TensorFlowVariables:
             for k, var in self.variables.items():
                 self.placeholders[k] = tf1.placeholder(
                     var.dtype,
-                    var.get_shape().as_list(),
+                    var.shape.as_list(),
                     name="Placeholder_" + k,
                 )
                 self.assignment_nodes[k] = var.assign(self.placeholders[k])
@@ -925,7 +925,7 @@ class TensorFlowVariables:
         Returns:
             The length of all flattened variables concatenated.
         """
-        return sum(np.prod(v.get_shape().as_list()) for v in self.variables.values())
+        return sum(np.prod(v.shape.as_list()) for v in self.variables.values())
 
     def get_flat(self):
         """Gets the weights and returns them as a flat array.
@@ -953,7 +953,7 @@ class TensorFlowVariables:
         Args:
             new_weights (np.ndarray): Flat array containing weights.
         """
-        shapes = [v.get_shape().as_list() for v in self.variables.values()]
+        shapes = [v.shape.as_list() for v in self.variables.values()]
         arrays = _unflatten(new_weights, shapes)
         if not self.sess:
             for v, a in zip(self.variables.values(), arrays):
