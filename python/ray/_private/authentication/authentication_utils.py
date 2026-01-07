@@ -41,3 +41,22 @@ def validate_request_token(auth_header: str) -> bool:
     # validate_authentication_token expects full "Bearer <token>" format
     # and performs equality comparison via C++ layer
     return validate_authentication_token(auth_header)
+
+
+def get_authentication_mode_name(mode: AuthenticationMode) -> str:
+    """Convert AuthenticationMode enum value to string name.
+
+    Args:
+        mode: AuthenticationMode enum value from ray._raylet
+
+    Returns:
+        String name: "disabled", "token", or "k8s"
+    """
+    from ray._raylet import AuthenticationMode
+
+    _MODE_NAMES = {
+        AuthenticationMode.DISABLED: "disabled",
+        AuthenticationMode.TOKEN: "token",
+        AuthenticationMode.K8S: "k8s",
+    }
+    return _MODE_NAMES.get(mode, "unknown")

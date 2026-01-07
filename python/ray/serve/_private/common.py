@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from starlette.types import Scope
 
 import ray
+from ray._common.pydantic_compat import BaseModel
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
@@ -158,6 +159,24 @@ class DeploymentStatus(str, Enum):
     DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
+
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=UPDATING,
+        4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+        """
+        mapping = {
+            DeploymentStatus.DEPLOY_FAILED: 1,
+            DeploymentStatus.UNHEALTHY: 2,
+            DeploymentStatus.UPDATING: 3,
+            DeploymentStatus.UPSCALING: 4,
+            DeploymentStatus.DOWNSCALING: 5,
+            DeploymentStatus.HEALTHY: 6,
+        }
+        return mapping.get(self, 0)
 
 
 class DeploymentStatusTrigger(str, Enum):
@@ -795,6 +814,74 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Use handle.options(_by_reference=True) to enable it."
 )
 
+
+class AutoscalingStatus(str, Enum):
+    UPSCALE = "AUTOSCALING_UPSCALE"
+    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    STABLE = "AUTOSCALING_STABLE"
+
+    @staticmethod
+    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
+        mapping = {
+            AutoscalingStatus.UPSCALE: "scaling up",
+            AutoscalingStatus.DOWNSCALE: "scaling down",
+            AutoscalingStatus.STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
+
+
+class DeploymentSnapshot(BaseModel):
+    snapshot_type: str = "deployment"
+    timestamp_str: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy_name: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    ongoing_requests: float
+    metrics_health: str
+    errors: List[str]
+
+    @staticmethod
+    def format_metrics_health_text(
+        *,
+        time_since_last_collected_metrics_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        """
+        - < 1s  -> integer milliseconds
+        - >= 1s -> seconds with two decimals
+        """
+        if time_since_last_collected_metrics_s is None:
+            return "unknown"
+        val = time_since_last_collected_metrics_s
+        if val < 1.0:
+            return f"{val * 1000:.0f}ms"
+        return f"{val:.2f}s"
+
+    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
+        """Return True if scaling-related fields are equal.
+
+        Used for autoscaling snapshot log deduplication. Compares only:
+        target_replicas, min_replicas, max_replicas, scaling_status
+        """
+        if not isinstance(other, DeploymentSnapshot):
+            return False
+        return (
+            self.app == other.app
+            and self.deployment == other.deployment
+            and self.target_replicas == other.target_replicas
+            and self.min_replicas == other.min_replicas
+            and self.max_replicas == other.max_replicas
+            and self.scaling_status == other.scaling_status
+        )
+
+
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
 QUEUED_REQUESTS_KEY = "queued_requests"
@@ -885,3 +972,7 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+class AutoscalingSnapshotError(str, Enum):
+    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"

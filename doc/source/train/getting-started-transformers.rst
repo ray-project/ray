@@ -321,14 +321,18 @@ training code.
             import ray
             from ray.train.huggingface import TransformersTrainer
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            # optional: preprocess the dataset
-            # hf_datasets = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
-            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # Define the Trainer generation function
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -379,14 +383,18 @@ training code.
                 prepare_trainer,
             )
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            # optional: preprocess the dataset
-            # hf_datasets = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
-            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # [1] Define the full training function
             # =====================================

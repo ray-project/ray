@@ -90,7 +90,7 @@ class WorkerGroupContext:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
-        bundle_label_selector: Optional label selectors to apply per-bundle for workers.
+        label_selector: Optional label selectors to apply per-bundle for workers.
     """
 
     run_attempt_id: str
@@ -98,7 +98,7 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
-    bundle_label_selector: Optional[Dict[str, str]] = None
+    label_selector: Optional[List[Dict[str, str]]] = None
 
 
 class WorkerGroup(BaseWorkerGroup):
@@ -266,19 +266,12 @@ class WorkerGroup(BaseWorkerGroup):
         ):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
-
-            bundle_label_selector = (
-                [worker_group_context.bundle_label_selector.copy()]
-                * worker_group_context.num_workers
-                if worker_group_context.bundle_label_selector
-                else None
-            )
-
             pg = placement_group(
+                # TODO: support heterogeneous workers and placement
                 bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
                 strategy=worker_group_context.placement_strategy,
-                bundle_label_selector=bundle_label_selector,
+                bundle_label_selector=worker_group_context.label_selector,
             )
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
@@ -740,7 +733,7 @@ class WorkerGroup(BaseWorkerGroup):
             workers: Workers sorted by increasing world rank,
                 with the `DistributedContext` set.
         """
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+        workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         node_ip_to_workers = collections.defaultdict(list)
         for worker in workers:
@@ -780,10 +773,10 @@ class WorkerGroup(BaseWorkerGroup):
         return workers
 
     @staticmethod
-    def _sort_workers_by_node_id_and_gpu_id(
+    def _sort_workers_by_gpu_id_grouped_by_node(
         workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
-        """Reorder the workers by their node id and the lowest GPU id.
+        """Reorder the workers by grouping by node id and sorting each group by lowest GPU id.
 
         Example:
             Given workers with the following attributes:
@@ -793,18 +786,22 @@ class WorkerGroup(BaseWorkerGroup):
                 worker_3: id=0, gpu_ids=[1]
 
             The function will perform the following steps:
-                1. Group by node IP:
-                    id=0: worker_1, worker_3
+                1. Group by node id (by default, order node id by insertion order):
                     id=1: worker_0, worker_2
+                    id=0: worker_1, worker_3
 
                 2. Sort each group by GPU ID:
-                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
                     id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
 
-            Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
+            Resulting in the order: [worker_2, worker_0, worker_1, worker_3]
 
         Args:
+            workers: The workers to sort.
             _first_id: The first node id to group by.
+
+        Returns:
+            List of sorted workers.
         """
         node_id_to_workers = collections.defaultdict(list)
 

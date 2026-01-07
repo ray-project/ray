@@ -38,12 +38,12 @@ def ray_tpu_multi_host(monkeypatch):
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_NAME", "test-slice-1")
         monkeypatch.setenv("TPU_WORKER_ID", "0")
-        monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-8")
+        monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-16")
         monkeypatch.setenv("TPU_TOPOLOGY", "2x2x2")
 
         cluster.add_node(
             num_cpus=2,
-            resources={"TPU": 4, "TPU-v4-8-head": 1},
+            resources={"TPU": 4, "TPU-v4-16-head": 1},
         )
         monkeypatch.setenv("TPU_WORKER_ID", "1")
         cluster.add_node(
@@ -142,6 +142,19 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         if node["Alive"] and node["Labels"].get("ray.io/tpu-slice-name") == slice_label
     ]
     assert len(labeled_nodes) == 2
+
+
+def test_scaling_config_validation():
+    with pytest.raises(
+        ValueError, match="Cannot set `label_selector` when `use_tpu=True`"
+    ):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            label_selector={"subcluster": "my_subcluster"},
+        )
 
 
 if __name__ == "__main__":

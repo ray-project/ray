@@ -32,6 +32,7 @@ from ray._common.ray_constants import (
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
@@ -99,7 +100,8 @@ def search_agent(processes):
     for p in processes:
         try:
             for c in p.cmdline():
-                if os.path.join("dashboard", "agent.py") in c:
+                # in case linux truncates the proctitle
+                if AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15] in c:
                     return p
         except Exception:
             pass
@@ -419,6 +421,234 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
+    testcases = (
+        # chrome-invalid-tls.json
+        {
+            "Host": "localtest.me",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "Sec-Ch-Ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Accept": "*/*",
+            "Origin": "https://localtest.me",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Referer": "https://localtest.me/",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # chrome-localhost-notls.json
+        {
+            "Host": "localhost:5000",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "Sec-Ch-Ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Accept": "*/*",
+            "Origin": "http://localhost:5000",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Referer": "http://localhost:5000/",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # chrome-notlocalhost-notls.json
+        {
+            "Host": "localtest.me:5000",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Origin": "http://localtest.me:5000",
+            "Referer": "http://localtest.me:5000/",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # chrome-notlocalhost-port80-notls.json
+        {
+            "Host": "localtest.me",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Origin": "http://localtest.me",
+            "Referer": "http://localtest.me/",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # firefox-invalid-tls.json
+        {
+            "Host": "localtest.me",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Referer": "https://localtest.me/",
+            "Origin": "https://localtest.me",
+            "Connection": "keep-alive",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Priority": "u=0",
+            "Content-Length": "0",
+        },
+        # firefox-localhost-notls.json
+        {
+            "Host": "localhost:5000",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Referer": "http://localhost:5000/",
+            "Origin": "http://localhost:5000",
+            "Connection": "keep-alive",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Priority": "u=0",
+            "Content-Length": "0",
+        },
+        # firefox-notlocalhost-notls.json
+        {
+            "Host": "localtest.me:5000",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Referer": "http://localtest.me:5000/",
+            "Origin": "http://localtest.me:5000",
+            "Connection": "keep-alive",
+            "Priority": "u=0",
+            "Content-Length": "0",
+        },
+        # firefox-notlocalhost-port80-notls.json
+        {
+            "Host": "localtest.me",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Referer": "http://localtest.me/",
+            "Origin": "http://localtest.me",
+            "Connection": "keep-alive",
+            "Priority": "u=0",
+            "Content-Length": "0",
+        },
+        # safari-invalid-tls.json
+        {
+            "Host": "localtest.me",
+            "Accept": "*/*",
+            "Origin": "https://localtest.me",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "User-Agent": "Fake",
+            "Referer": "https://localtest.me/",
+            "Sec-Fetch-Dest": "empty",
+            "Content-Length": "0",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=3, i",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+        },
+        # safari-localhost-notls.json
+        {
+            "Host": "localhost:5000",
+            "Accept": "*/*",
+            "Origin": "http://localhost:5000",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "User-Agent": "Fake",
+            "Referer": "http://localhost:5000/",
+            "Sec-Fetch-Dest": "empty",
+            "Content-Length": "0",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=3, i",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        },
+        # safari-notlocalhost-notls.json
+        {
+            "Host": "localtest.me:5000",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Content-Length": "0",
+            "Referer": "http://localtest.me:5000/",
+            "Origin": "http://localtest.me:5000",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=3, i",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        },
+        # safari-notlocalhost-port80-notls.json
+        {
+            "Host": "localtest.me",
+            "User-Agent": "Fake",
+            "Accept": "*/*",
+            "Content-Length": "0",
+            "Referer": "http://localtest.me/",
+            "Origin": "http://localtest.me",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=3, i",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        },
+        # edge-valid-tls.json
+        {
+            "Content-Length": "0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+            "Sec-Ch-Ua": '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Accept": "*/*",
+            "Origin": "https://testing-dark-field-5895.fly.dev",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Referer": "https://testing-dark-field-5895.fly.dev/",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Priority": "u=1, i",
+            "X-Request-Start": "t=1764259434792741",
+            "Host": "testing-dark-field-5895.fly.dev",
+        },
+        # edge-notlocalhost-notls
+        {
+            "Host": "localtest.me:5000",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+            "Accept": "*/*",
+            "Origin": "http://localtest.me:5000",
+            "Referer": "http://localtest.me:5000/",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        # edge-localhost-notls
+        {
+            "Host": "localhost:5000",
+            "Connection": "keep-alive",
+            "Content-Length": "0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+            "Sec-Ch-Ua": '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Accept": "*/*",
+            "Origin": "http://localhost:5000",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Referer": "http://localhost:5000/",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+
     def dashboard_available():
         try:
             return requests.get(webui_url).status_code == 200
@@ -434,19 +664,14 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
     response.raise_for_status()
 
     # Starting job should be blocked for browsers
-    response = requests.post(
-        webui_url + "/api/jobs/",
-        json={"entrypoint": "ls"},
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/119.0.0.0 Safari/537.36"
-            )
-        },
-    )
-    with pytest.raises(HTTPError):
-        response.raise_for_status()
+    for testcase in testcases:
+        response = requests.post(
+            webui_url + "/api/jobs/",
+            json={"entrypoint": "ls"},
+            headers=testcase,
+        )
+        with pytest.raises(HTTPError):
+            response.raise_for_status()
 
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
