@@ -137,7 +137,10 @@ class RebundleQueue(BaseBundleQueue):
         self._strategy = strategy
         self._pending_bundles: Deque[RefBundle] = deque()
         self._ready_bundles: Deque[RefBundle] = deque()
-        self._consumed_bundles: Deque[List[RefBundle]] = deque()
+
+        self._curr_consumed_bundles: List[RefBundle] = []
+        # The original bundles that formed a ready bundle
+        self._consumed_bundles_list: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
 
     def _merge_bundles(self, pending_to_ready_bundles: Deque[RefBundle]):
@@ -145,7 +148,6 @@ class RebundleQueue(BaseBundleQueue):
 
         assert len(pending_to_ready_bundles) == len(self._pending_bundles)
 
-        self._consumed_bundles.append(list(self._pending_bundles))
         merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue(merged_bundle)
@@ -156,11 +158,13 @@ class RebundleQueue(BaseBundleQueue):
         self._pending_bundles.clear()
         self._total_pending_rows = 0
 
-    def _try_build_ready_bundle(self, flush_remaining: bool = False):
+    def _try_build_ready_bundle(self, flush_remaining: bool = False) -> bool:
         """Attempts to build a ready bundle from a list of pending bundles by:
 
         - Checking the threshold to build a ready bundle defined by `RebundlingStrategy`
         - Appropiately keeping track of queue metrics
+
+        Returns `True` if ready bundle built, otherwise `False`
         """
 
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
@@ -193,17 +197,25 @@ class RebundleQueue(BaseBundleQueue):
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
                 self._on_enqueue(remaining_bundle)
+            
+            return True
 
         # If we're flushing and have leftover bundles, convert them to a ready bundle
         if flush_remaining and self._pending_bundles:
             self._merge_bundles(self._pending_bundles)
+            return True
+        
+        return False
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
         self._total_pending_rows += bundle.num_rows() or 0
         self._pending_bundles.append(bundle)
         self._on_enqueue(bundle)
-        self._try_build_ready_bundle()
+        self._curr_consumed_bundles.append(bundle)
+        if self._try_build_ready_bundle():
+            self._consumed_bundles_list.append(self._curr_consumed_bundles)
+            self._curr_consumed_bundles.clear()
 
     @override
     def has_next(self) -> bool:
@@ -221,7 +233,7 @@ class RebundleQueue(BaseBundleQueue):
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
         self._on_dequeue(ready_bundle)
-        consumed_bundle = self._consumed_bundles.popleft()
+        consumed_bundle = self._consumed_bundles_list.popleft()
         return ready_bundle, consumed_bundle
 
     @override
@@ -233,12 +245,16 @@ class RebundleQueue(BaseBundleQueue):
     @override
     def finalize(self, **kwargs: Any):
         if len(self._pending_bundles) > 0:
-            self._try_build_ready_bundle(flush_remaining=True)
+            assert self._try_build_ready_bundle(flush_remaining=True)
+            self._consumed_bundles_list.append(self._curr_consumed_bundles)
+            self._curr_consumed_bundles.clear()
+
 
     @override
     def clear(self):
         self._reset_metrics()
         self._pending_bundles.clear()
         self._ready_bundles.clear()
-        self._consumed_bundles.clear()
+        self._curr_consumed_bundles.clear()
+        self._consumed_bundles_list.clear()
         self._total_pending_rows = 0
