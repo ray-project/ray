@@ -2801,34 +2801,6 @@ def _changeproctitle(title, next_title):
             ray._raylet.setproctitle(next_title)
 
 
-@DeveloperAPI
-def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
-    """Display message in dashboard.
-
-    Display message for the current task or actor in the dashboard.
-    For example, this can be used to display the status of a long-running
-    computation.
-
-    Args:
-        message: Message to be displayed.
-        key: The key name for the message. Multiple message under
-            different keys will be displayed at the same time. Messages
-            under the same key will be overridden.
-        dtype: The type of message for rendering. One of the
-            following: text, html.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, f"dtype accepts only: {acceptable_dtypes}"
-
-    message_wrapped = {"message": message, "dtype": dtype}
-    message_encoded = json.dumps(message_wrapped).encode()
-
-    worker.core_worker.set_webui_display(key.encode(), message_encoded)
-
-
 # Global variable to make sure we only send out the warning once.
 blocking_get_inside_async_warned = False
 
