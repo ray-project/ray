@@ -106,7 +106,7 @@ class WorkerGroupStateBuilder:
 
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
-    # Shuts down workers after allowing a maximum of patience_s seconds for shutdown hooks to run.
+    """Shuts down workers after allowing a maximum of patience_s seconds for shutdown hooks to run."""
     done_refs = [w.actor.shutdown.remote() for w in workers]
 
     logger.debug(f"Shutting down {len(workers)} workers.")
