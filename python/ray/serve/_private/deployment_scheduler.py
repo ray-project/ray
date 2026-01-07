@@ -748,7 +748,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
                         fallback_labels = fallback.get("bundle_label_selector", [])
                         strategies_to_try.append((req_resources, fallback_labels))
-                elif "fallback_strategy" in scheduling_request.actor_options:
+                elif scheduling_request.actor_options.get("fallback_strategy"):
                     # Fallback strategy provided for Ray Actor.
                     for fallback in scheduling_request.actor_options[
                         "fallback_strategy"
