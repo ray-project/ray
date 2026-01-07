@@ -43,8 +43,8 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         # The index of the input dependency that is currently the source of
         # the output buffer. New inputs from this input dependency will be added
         # directly to the output buffer. Only used when `self._preserve_order` is True.
-        self._input_idx_to_output = 0
-
+        self._next_input_to_flush = 0
+        self._input_ops = input_ops
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
@@ -106,8 +106,13 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             self._output_buffer.append(refs)
             self._metrics.on_output_queued(refs)
         else:
-            self._input_buffers[input_index].add(refs)
-            self._metrics.on_input_queued(refs)
+            if input_index == self._next_input_to_flush:
+                self._output_buffer.append(refs)
+                self._metrics.on_output_queued(refs)
+            else:
+                self._input_buffers[input_index].add(refs)
+                self._metrics.on_input_queued(refs)
+            self._try_advance_and_flush()
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
@@ -115,13 +120,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         if not self._preserve_order:
             return
 
-        assert len(self._output_buffer) == 0, len(self._output_buffer)
-        for input_buffer in self._input_buffers:
-            while input_buffer:
-                refs = input_buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
-                self._output_buffer.append(refs)
-                self._metrics.on_output_queued(refs)
+        assert all(not ref for ref in self._input_buffers)
 
     def has_next(self) -> bool:
         # Check if the output buffer still contains at least one block.
@@ -134,3 +133,16 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def _try_advance_and_flush(self) -> None:
+        """Advance past completed head inputs and flush their buffers."""
+        while self._next_input_to_flush < len(self._input_ops):
+            if not self._input_ops[self._next_input_to_flush].has_completed():
+                break
+            # Head input is complete - flush its buffer and advance
+            while self._input_buffers[self._next_input_to_flush]:
+                refs = self._input_buffers[self._next_input_to_flush].get_next()
+                self._metrics.on_input_dequeued(refs)
+                self._output_buffer.append(refs)
+                self._metrics.on_output_queued(refs)
+            self._next_input_to_flush += 1
