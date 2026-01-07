@@ -121,7 +121,9 @@ llm_config = LLMConfig(
         max_model_len=8192,
     ),
     # Simple: specify resources per worker, auto-replicated by tp*pp
-    bundle_per_worker={"GPU": 1, "CPU": 2},
+    placement_group_config=dict(
+        bundle_per_worker={"GPU": 1, "CPU": 2},
+    ),
 )
 
 # Deploy the application

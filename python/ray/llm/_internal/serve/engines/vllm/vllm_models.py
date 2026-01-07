@@ -48,17 +48,36 @@ class BundleConfig(BaseModelExtended):
 class PlacementGroupConfig(BaseModelExtended):
     """Configuration for placement group."""
 
-    bundles: List[BundleConfig] = Field(description="List of resource bundles")
+    bundle_per_worker: Optional[BundleConfig] = Field(
+        default=None,
+        description=(
+            "Resource bundle specification for each worker. "
+            "Auto-replicated based on tensor_parallel_size * pipeline_parallel_size. "
+            "Cannot be used together with 'bundles'."
+        ),
+    )
+    bundles: Optional[List[BundleConfig]] = Field(
+        default=None, description="List of resource bundles"
+    )
     strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
         default="PACK", description="Placement group strategy"
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def validate_bundles_exist(cls, values):
-        if isinstance(values, dict) and "bundles" not in values:
-            raise ValueError("placement_group_config must contain 'bundles'")
-        return values
+    @model_validator(mode="after")
+    def validate_bundle_options(self):
+        if self.bundle_per_worker is not None and self.bundles is not None:
+            raise ValueError(
+                "Cannot specify both 'bundle_per_worker' and 'bundles' in "
+                "placement_group_config. Use 'bundle_per_worker' for simple "
+                "per-worker resource specification (auto-replicated by tp*pp), "
+                "or 'bundles' for full control."
+            )
+        if self.bundle_per_worker is None and self.bundles is None:
+            raise ValueError(
+                "placement_group_config must specify either 'bundle_per_worker' "
+                "or 'bundles'."
+            )
+        return self
 
 
 class VLLMEngineConfig(BaseModelExtended):
@@ -84,14 +103,6 @@ class VLLMEngineConfig(BaseModelExtended):
         default=None,
         description=(
             "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
-        ),
-    )
-    bundle_per_worker: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description=(
-            "Resource bundle specification for each worker. "
-            "This bundle will be automatically replicated based on "
-            "tensor_parallel_size * pipeline_parallel_size."
         ),
     )
 
@@ -222,7 +233,6 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config
-        bundle_per_worker = llm_config.bundle_per_worker
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
@@ -232,7 +242,6 @@ class VLLMEngineConfig(BaseModelExtended):
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
-            bundle_per_worker=bundle_per_worker,
             placement_group_config=placement_group_config,
         )
 
@@ -264,22 +273,24 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
         if self.placement_group_config:
-            # placement_group_config is validated dict; extract bundles
+            # Check if bundle_per_worker is specified inside placement_group_config
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                # Expand bundle_per_worker to num_devices bundles
+                bundles = []
+                for _ in range(self.num_devices):
+                    bundle = bundle_per_worker.copy()
+                    if self.accelerator_type and self.use_gpu:
+                        bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                    bundles.append(bundle)
+                return bundles
+
+            # Otherwise use explicit bundles list
             bundles = []
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
                 if self.accelerator_type and self.use_gpu:
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
-                    bundle.setdefault(self.ray_accelerator_type(), 0.001)
-                bundles.append(bundle)
-            return bundles
-
-        # If bundle_per_worker is specified, expand it to num_devices bundles
-        if self.bundle_per_worker:
-            bundles = []
-            for _ in range(self.num_devices):
-                bundle = self.bundle_per_worker.copy()
-                if self.accelerator_type and self.use_gpu:
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
@@ -305,16 +316,18 @@ class VLLMEngineConfig(BaseModelExtended):
         if isinstance(self.use_cpu, bool):
             return not self.use_cpu
 
-        # Check placement_group_config bundles for explicit GPU specification
+        # Check placement_group_config for explicit GPU specification
         if self.placement_group_config:
+            # Check bundle_per_worker inside placement_group_config
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                return bundle_per_worker.get("GPU", 0) > 0
+
+            # Check bundles list
             bundles = self.placement_group_config.get("bundles", [])
             if bundles:
                 # If any bundle has GPU > 0, we use GPU
                 return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-
-        # Check bundle_per_worker for explicit GPU specification
-        if self.bundle_per_worker:
-            return self.bundle_per_worker.get("GPU", 0) > 0
 
         # Default behavior based on accelerator_type
         if not self.accelerator_type:

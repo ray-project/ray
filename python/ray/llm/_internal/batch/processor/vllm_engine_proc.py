@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Literal, Optional
 
 import transformers
-from pydantic import ConfigDict, Field, root_validator
+from pydantic import ConfigDict, Field, model_validator, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -57,12 +57,34 @@ class BundleSchema(BaseModelExtended):
 
 
 class PlacementGroupSchema(BaseModelExtended):
-    bundles: List[BundleSchema] = Field(
-        default_factory=list, description="The bundles for the placement group."
+    bundle_per_worker: Optional[BundleSchema] = Field(
+        default=None,
+        description="Resource bundle specification for each worker. "
+        "Auto-replicated based on tensor_parallel_size * pipeline_parallel_size. "
+        "Cannot be used together with 'bundles'.",
+    )
+    bundles: Optional[List[BundleSchema]] = Field(
+        default=None, description="The bundles for the placement group."
     )
     strategy: Literal["PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"] = Field(
         default="PACK", description="The strategy for the placement group."
     )
+
+    @model_validator(mode="after")
+    def validate_bundle_options(self):
+        if self.bundle_per_worker is not None and self.bundles is not None:
+            raise ValueError(
+                "Cannot specify both 'bundle_per_worker' and 'bundles' in "
+                "placement_group_config. Use 'bundle_per_worker' for simple "
+                "per-worker resource specification (auto-replicated by tp*pp), "
+                "or 'bundles' for full control."
+            )
+        if self.bundle_per_worker is None and self.bundles is None:
+            raise ValueError(
+                "placement_group_config must specify either 'bundle_per_worker' "
+                "or 'bundles'."
+            )
+        return self
 
 
 class vLLMEngineProcessorConfig(OfflineProcessorConfig):
@@ -89,22 +111,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "requests will be interpreted as model ID used by HF transformers.",
     )
     # Custom placement group config for TP/PP.
-    bundle_per_worker: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Resource bundle specification for each worker. "
-        "This bundle will be automatically replicated based on "
-        "tensor_parallel_size * pipeline_parallel_size. "
-        "Example: {'CPU': 1, 'GPU': 1} with tp=2, pp=2 creates 4 bundles. "
-        "Cannot be used together with placement_group_config.",
-    )
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Ray placement group configuration for scheduling vLLM engine workers. "
-        "Should be a dictionary with 'bundles' (list of resource dicts, e.g., {'CPU': 1, 'GPU': 1}) "
-        "and an optional 'strategy' key ('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
-        "For ray distributed executor backend, each bundle must specify at most one GPU. "
-        "For mp backend, the 'strategy' field is ignored. "
-        "For simpler configuration, consider using bundle_per_worker instead.",
+        "Can specify either 'bundle_per_worker' (auto-replicated by tp*pp) or 'bundles' "
+        "(full list of resource dicts). Optionally include 'strategy' key "
+        "('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
+        "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}}. "
+        "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
 
     @root_validator(pre=True)
@@ -114,20 +128,8 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         return values
 
     @root_validator(pre=True)
-    def validate_placement_options(cls, values):
-        bundle_per_worker = values.get("bundle_per_worker")
+    def validate_placement_group_config(cls, values):
         placement_group_config = values.get("placement_group_config")
-
-        if bundle_per_worker is not None and placement_group_config is not None:
-            raise ValueError(
-                "Cannot specify both 'bundle_per_worker' and 'placement_group_config'. "
-                "Use 'bundle_per_worker' for simple per-worker resource specification "
-                "(auto-replicated by tp*pp), or 'placement_group_config' for full control."
-            )
-
-        if bundle_per_worker is not None:
-            values["bundle_per_worker"] = BundleSchema(**bundle_per_worker).model_dump()
-
         if placement_group_config is not None:
             values["placement_group_config"] = PlacementGroupSchema(
                 **placement_group_config
@@ -276,7 +278,6 @@ def build_vllm_engine_processor(
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
-                bundle_per_worker=config.bundle_per_worker,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
             ),

@@ -114,7 +114,7 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
 def test_vllm_engine_processor_bundle_per_worker(
     gpu_type, model_opt_125m, engine_kwargs_extra, expected_resources
 ):
-    """Test bundle_per_worker auto-expands to placement_group_config."""
+    """Test bundle_per_worker auto-expands based on tp*pp."""
     engine_kwargs = dict(max_model_len=8192)
     engine_kwargs.update(engine_kwargs_extra)
     config = vLLMEngineProcessorConfig(
@@ -125,7 +125,7 @@ def test_vllm_engine_processor_bundle_per_worker(
         batch_size=64,
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
         tokenize_stage=TokenizerStageConfig(enabled=True),
-        bundle_per_worker={"CPU": 1, "GPU": 1},
+        placement_group_config={"bundle_per_worker": {"CPU": 1, "GPU": 1}},
     )
     processor = ProcessorBuilder.build(config)
     stage = processor.get_stage_by_name("vLLMEngineStage")
@@ -145,14 +145,16 @@ def test_vllm_engine_processor_bundle_per_worker(
 
 
 def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type, model_opt_125m):
-    """Test that specifying both bundle_per_worker and placement_group_config raises error."""
+    """Test that specifying both bundle_per_worker and bundles raises error."""
     with pytest.raises(ValueError, match="Cannot specify both"):
         vLLMEngineProcessorConfig(
             model_source=model_opt_125m,
             engine_kwargs=dict(max_model_len=8192),
             accelerator_type=gpu_type,
-            bundle_per_worker={"CPU": 1, "GPU": 1},
-            placement_group_config=dict(bundles=[{"CPU": 1, "GPU": 1}]),
+            placement_group_config={
+                "bundle_per_worker": {"CPU": 1, "GPU": 1},
+                "bundles": [{"CPU": 1, "GPU": 1}],
+            },
         )
 
 

@@ -73,11 +73,11 @@ The following example shows how to configure a model with both TP and PP (4 GPUs
 
 ## Custom placement groups
 
-You can customize how Ray places vLLM engine workers across nodes using either `bundle_per_worker` (simple) or `placement_group_config` (advanced).
+You can customize how Ray places vLLM engine workers across nodes using `placement_group_config` with either `bundle_per_worker` (simple) or `bundles` (advanced).
 
 ### Simple configuration with bundle_per_worker
 
-The `bundle_per_worker` parameter lets you specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`.
+The `bundle_per_worker` option inside `placement_group_config` lets you specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`.
 
 ::::{tab-set}
 
@@ -93,9 +93,9 @@ The `bundle_per_worker` parameter lets you specify resources for each worker wit
 
 ::::
 
-### Advanced configuration with placement_group_config
+### Advanced configuration with bundles
 
-For full control over bundle specification and placement strategy, use `placement_group_config`. This parameter accepts a dictionary with `bundles` (a list of resource dictionaries) and `strategy` (placement strategy).
+For full control over bundle specification and placement strategy, use `placement_group_config` with `bundles`. This accepts a dictionary with `bundles` (a list of resource dictionaries) and `strategy` (placement strategy).
 
 Ray Serve LLM uses the `PACK` strategy by default, which tries to place workers on as few nodes as possible. If workers can't fit on a single node, they automatically spill to other nodes. For more details on all available placement strategies, see {ref}`Ray Core's placement strategies documentation <pgroup-strategy>`.
 
