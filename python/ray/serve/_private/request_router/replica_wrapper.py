@@ -227,7 +227,7 @@ class RunningReplica:
         """Get or create the gRPC stub for this replica."""
         if self._grpc_stub is None:
             node_ip = self._replica_info.node_ip
-            port = self._replica_info.grpc_port
+            port = self._replica_info.port
             if port is None:
                 raise RuntimeError(
                     f"Replica {self._replica_info.replica_id} does not have a gRPC port "

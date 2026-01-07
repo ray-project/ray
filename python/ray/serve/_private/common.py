@@ -607,8 +607,6 @@ class RunningReplicaInfo:
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
-    # Port for inter-deployment gRPC communication.
-    grpc_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.

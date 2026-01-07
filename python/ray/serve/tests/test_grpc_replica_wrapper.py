@@ -170,7 +170,7 @@ def setup_fake_replica(ray_instance, request) -> RunningReplicaInfo:
         max_ongoing_requests=10,
         is_cross_language=False,
         # Get grpc port from FakeReplicaActor
-        grpc_port=port,
+        port=port,
     )
 
 
