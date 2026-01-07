@@ -29,8 +29,8 @@ class Parser:
             name = None
             version = None
             for line in f.readlines():
-                package_line_match = re.findall(
-                    r"([A-Za-z0-9_\-]+)==([A-Za-z0-9\.\-]+)", line
+                package_line_match = re.search(
+                    r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.-]+)", line
                 )
                 if name and version and package_line_match:
                     deps.append(Dep(name=name, version=version, required_by=deps_arr))
