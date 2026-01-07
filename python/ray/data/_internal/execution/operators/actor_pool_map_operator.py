@@ -20,8 +20,6 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
-import math
-
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -475,17 +473,16 @@ class ActorPoolMapOperator(MapOperator):
             object_store_memory=obj_store_mem_per_task * min_actors,
         )
 
-        # If max_actors is infinite (unbounded pool), return infinite resources.
-        # Otherwise, compute the max resources based on max_actors.
-        if math.isinf(max_actors):
-            max_resource_usage = ExecutionResources.for_limits()
-        else:
-            max_resource_usage = ExecutionResources(
-                cpu=num_cpus_per_actor * max_actors,
-                gpu=num_gpus_per_actor * max_actors,
-                memory=memory_per_actor * max_actors,
-                object_store_memory=obj_store_mem_per_task * max_actors,
-            )
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_resource_usage = ExecutionResources(
+            cpu=0 if num_cpus_per_actor == 0 else num_cpus_per_actor * max_actors,
+            gpu=0 if num_gpus_per_actor == 0 else num_gpus_per_actor * max_actors,
+            memory=0 if memory_per_actor == 0 else memory_per_actor * max_actors,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
 
         return min_resource_usage, max_resource_usage
 
