@@ -109,16 +109,17 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
             raise ValueError(f"Invalid task type: {task_type}")
 
         engine_kwargs = values.get("engine_kwargs", {})
-        engine_kwargs_task = engine_kwargs.get("task", "")
-        if engine_kwargs_task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                engine_kwargs_task,
-                task_type,
-                task_type,
-            )
-            engine_kwargs["task"] = task_type
+        engine_kwargs_task_type = engine_kwargs.get("task_type", "")
+        if engine_kwargs_task_type != task_type:
+            if engine_kwargs_task_type:
+                logger.warning(
+                    "The task_type set in engine kwargs (%s) is different from the "
+                    "config (%s). Overriding the task_type in engine kwargs to %s.",
+                    engine_kwargs_task_type,
+                    task_type,
+                    task_type,
+                )
+            engine_kwargs["task_type"] = task_type
         values["engine_kwargs"] = engine_kwargs
         return values
 
