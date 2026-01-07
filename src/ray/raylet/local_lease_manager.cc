@@ -909,7 +909,6 @@ void LocalLeaseManager::CancelLeaseToGrantWithoutReply(
     const std::shared_ptr<internal::Work> &work) {
   const LeaseID lease_id = work->lease_.GetLeaseSpecification().LeaseId();
   RAY_LOG(DEBUG) << "Canceling lease " << lease_id << " from leases_to_grant_queue.";
-  // XXX: is this the only status??
   if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
