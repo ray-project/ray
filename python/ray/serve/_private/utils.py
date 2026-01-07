@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import copy
+import errno
 import importlib
 import inspect
 import logging
@@ -40,6 +41,21 @@ except ImportError:
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
+
+
+def asyncio_grpc_exception_handler(loop, context):
+    """Exception handler to filter out false positive BlockingIOErrors from gRPC."""
+    exc = context.get("exception")
+    msg = context.get("message")
+    if (
+        exc
+        and isinstance(exc, BlockingIOError)
+        and exc.errno == errno.EAGAIN
+        and "PollerCompletionQueue._handle_events" in msg
+    ):
+        return
+
+    loop.default_exception_handler(context)
 
 
 def validate_ssl_config(

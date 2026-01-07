@@ -107,6 +107,7 @@ from ray.serve._private.thirdparty.get_asgi_route_name import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    asyncio_grpc_exception_handler,
     get_component_file_name,  # noqa: F401
     parse_import_path,
 )
@@ -695,6 +696,7 @@ class ReplicaBase(ABC):
                 )
             ]
         )
+        self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
     @property
     def max_ongoing_requests(self) -> int:
