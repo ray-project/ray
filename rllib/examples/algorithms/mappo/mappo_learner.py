@@ -6,6 +6,9 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     PPOConfig,
 )
+from ray.rllib.connectors.learner import (
+    AddOneTsToEpisodesAndTruncate,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
     SHARED_CRITIC_ID,
@@ -59,6 +62,7 @@ class MAPPOLearner(Learner):
             self._learner_connector is not None
             and self.config.add_default_connectors_to_learner_pipeline
         ):
+            self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
             # At the end of the pipeline (when the batch is already completed), add the
             # GAE connector, which performs a vf forward pass, then computes the GAE
             # computations, and puts the results of this (advantages, value targets)

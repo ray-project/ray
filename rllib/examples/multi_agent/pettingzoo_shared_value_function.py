@@ -28,16 +28,16 @@ Results to expect
 -----------------
 The above options will typically reach a combined reward of 0 or more before 500k env timesteps. Keep in mind, though, that due to the separate learned policies in general, one agent's gain (in per-agent reward) might cause the other agent's reward to decrease at the same time. However, over time, both agents should simply improve, with the shared critic stabilizing this process significantly.
 
-+-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------+
-| Trial name            | status     | loc                |   iter |   total time (s) |     ts |   combined return |   return pursuer_0 |   return pursuer_1 |
-|-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------|
-| MAPPO_env_39b0c_00000 | TERMINATED | 172.29.87.208:9993 |    148 |          2690.21 | 592000 |           2.06999 |            38.2254 |           -36.1554 |
-+-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------+
++-----------------------+------------+--------------------+--------+------------------+
+| Trial name            | status     | loc                |   iter |   total time (s) |
+|-----------------------+------------+--------------------+--------+------------------+
+| MAPPO_env_aaaf6_00000 | TERMINATED | 172.29.87.208:6972 |     56 |          1386.86 |
++-----------------------+------------+--------------------+--------+------------------+
 
 +--------+-------------------+--------------------+--------------------+
 |     ts |   combined return |   return pursuer_0 |   return pursuer_1 |
 +--------+-------------------+--------------------+--------------------|
-| 592000 |           2.06999 |            38.2254 |           -36.1554 |
+| 224000 |           29.5466 |            77.6161 |           -48.0695 |
 +--------+-------------------+--------------------+--------------------+
 
 Note that the two agents (`pursuer_0` and `pursuer_1`) are optimized on the exact same
