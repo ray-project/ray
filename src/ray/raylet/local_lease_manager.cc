@@ -391,16 +391,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and lease id, we're
-              // able to get physical execution context.
-              //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
-              //
-              // - PID: could get from available worker
-              // - Attempt id: could pass a global attempt id generator from raylet
-              // - Cgroup application folder: could pass from raylet
-
               return PoppedWorkerHandler(worker,
                                          status,
                                          lease_id,
@@ -746,8 +736,6 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   auto sched_cls = lease.GetLeaseSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
-    // TODO(hjiang): After remove the lease id from `granted_leases`, corresponding cgroup
-    // will be updated.
     it->second.granted_leases.erase(lease.GetLeaseSpecification().LeaseId());
     if (it->second.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(it);
@@ -921,6 +909,7 @@ void LocalLeaseManager::CancelLeaseToGrantWithoutReply(
     const std::shared_ptr<internal::Work> &work) {
   const LeaseID lease_id = work->lease_.GetLeaseSpecification().LeaseId();
   RAY_LOG(DEBUG) << "Canceling lease " << lease_id << " from leases_to_grant_queue.";
+  // XXX: is this the only status??
   if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
