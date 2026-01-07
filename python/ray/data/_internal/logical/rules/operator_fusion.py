@@ -7,7 +7,7 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
-from ray.data._internal.execution.bundle_queue import ExactSize, RebundleQueue
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -336,7 +336,7 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=RebundleQueue(ExactSize(batch_size)),
+            ref_bundler=RebundleQueue(ExactMultipleSize(batch_size)),
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,

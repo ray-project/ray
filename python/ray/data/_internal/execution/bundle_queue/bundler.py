@@ -27,14 +27,14 @@ class RebundlingStrategy(abc.ABC):
 
     @abc.abstractmethod
     def rows_needed_from_last_pending_bundle(
-        self, num_pending_rows: int, pending_bundle: RefBundle
+        self, total_pending_rows: int, last_pending_bundle: RefBundle
     ) -> int:
         """Used to determine how to rebundle and slice an existing bundle.
 
         Args:
-            num_pending_rows: The number of rows in a batch of pending bundles that will be merged to form
-                a ready bundle
-            pending_bundle: The last pending bundles in that batch ^. The term *last* means the bundle that caused
+            total_pending_rows: The number of rows in a batch of pending bundles that will be merged to form
+                a ready bundle, excluding the last_pending_bundle.
+            last_pending_bundle: The last pending bundles in that batch ^. The term *last* means the bundle that caused
                 `can_build_ready_bundle(num_pending_rows)` to be `True` for the first time.
 
         Returns:
@@ -62,21 +62,21 @@ class EstimateSize(RebundlingStrategy):
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
     @override
-    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
-        return num_pending_rows > 0 and (
+    def can_build_ready_bundle(self, total_pending_rows: int) -> bool:
+        return total_pending_rows > 0 and (
             self._min_rows_per_bundle is None
-            or num_pending_rows >= self._min_rows_per_bundle
+            or total_pending_rows >= self._min_rows_per_bundle
         )
 
     @override
     def rows_needed_from_last_pending_bundle(
-        self, num_pending_rows: int, pending_bundle: RefBundle
+        self, total_pending_rows: int, last_pending_bundle: RefBundle
     ) -> int:
         """Returns all the rows in the pending bundle, since we only care about an estimate"""
-        return pending_bundle.num_rows() or 0
+        return last_pending_bundle.num_rows() or 0
 
 
-class ExactSize(RebundlingStrategy):
+class ExactMultipleSize(RebundlingStrategy):
     def __init__(self, target_num_rows_per_block: int):
         assert (
             target_num_rows_per_block > 0
@@ -89,16 +89,20 @@ class ExactSize(RebundlingStrategy):
 
     @override
     def rows_needed_from_last_pending_bundle(
-        self, num_pending_rows: int, pending_bundle: RefBundle
+        self, total_pending_rows: int, last_pending_bundle: RefBundle
     ) -> int:
-        """Returns an exact # of rows from the last pending bundle."""
-        extra_rows = num_pending_rows - self._target_num_rows
-        pending_rows = pending_bundle.num_rows() or 0
-        assert extra_rows <= pending_rows
+        """Returns an exact MULTIPLE of target_num_rows from the last pending bundle."""
+        pending_rows = last_pending_bundle.num_rows() or 0
+        assert total_pending_rows - pending_rows < self._target_num_rows, (
+            f"Total pending rows={total_pending_rows} should be less than target_num_rows={self._target_num_rows}, "
+            "because last_pending_bundle should trigger building ready bundles"
+        )
+        extra_rows = total_pending_rows % self._target_num_rows
+        assert extra_rows < pending_rows
         return pending_rows - extra_rows
 
 
-"""**For `ExactSize` strategy ONLY**
+"""**For `ExactMultipleSize` strategy ONLY**
 
     Streaming repartition builds fixed-size outputs from a stream of inputs.
 
@@ -136,13 +140,21 @@ class RebundleQueue(BaseBundleQueue):
         self._consumed_bundles: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
 
-    def _merge_bundles(self, pending_to_ready_bundles: List[RefBundle]):
+    def _merge_bundles(self, pending_to_ready_bundles: Deque[RefBundle]):
         from ray.data._internal.execution.interfaces import RefBundle
 
-        self._consumed_bundles.append(pending_to_ready_bundles)
+        assert len(pending_to_ready_bundles) == len(self._pending_bundles)
+
+        self._consumed_bundles.append(list(self._pending_bundles))
         merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue(merged_bundle)
+
+        # Clear the pending queue since all bundles have been processed
+        for bundle in self._pending_bundles:
+            self._on_dequeue(bundle)
+        self._pending_bundles.clear()
+        self._total_pending_rows = 0
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
         """Attempts to build a ready bundle from a list of pending bundles by:
@@ -151,63 +163,40 @@ class RebundleQueue(BaseBundleQueue):
         - Appropiately keeping track of queue metrics
         """
 
-        if not (
-            self._strategy.can_build_ready_bundle(self._total_pending_rows)
-            or flush_remaining
+        if self._pending_bundles and self._strategy.can_build_ready_bundle(
+            self._total_pending_rows
         ):
-            return
+            pending_to_ready_bundles = list(self._pending_bundles)
+            last_pending_bundle = pending_to_ready_bundles.pop()
 
-        pending_row_count_prefix_sum = 0
-        pending_to_ready_bundles: List[RefBundle] = []
-
-        while self._pending_bundles:
-
-            pending_bundle = self._pending_bundles.popleft()
-            self._on_dequeue(pending_bundle)  # Exit the original bundle
-            self._total_pending_rows -= pending_bundle.num_rows() or 0
-            pending_row_count_prefix_sum += pending_bundle.num_rows() or 0
-
-            if self._strategy.can_build_ready_bundle(pending_row_count_prefix_sum):
-                # We now know `pending_bundle` is the bundle that enabled us to
-                # build a ready bundle. Therefore, we may need to slice the bundle.
-                rows_needed = self._strategy.rows_needed_from_last_pending_bundle(
-                    num_pending_rows=pending_row_count_prefix_sum,
-                    pending_bundle=pending_bundle,
-                )
-                assert rows_needed > 0, (
-                    "A refbundle has zero row-count but triggered building a ready bundle"
-                    "This is a bug in the Ray Data code."
-                )
-
-                if rows_needed < pending_bundle.num_rows():
-                    sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
-                    pending_to_ready_bundles.append(sliced_bundle)
-                    self._pending_bundles.appendleft(remaining_bundle)
-                    self._on_enqueue(remaining_bundle)  # Enter the remaining portion
-                    self._total_pending_rows += remaining_bundle.num_rows() or 0
-                else:
-                    assert rows_needed == pending_bundle.num_rows()
-                    pending_to_ready_bundles.append(pending_bundle)
-
-                self._merge_bundles(pending_to_ready_bundles)
-
-                # reset the pending counts and continue converting pending to ready bundles.
-                pending_row_count_prefix_sum = 0
-                pending_to_ready_bundles: List[RefBundle] = []
-                if not flush_remaining:
-                    return
-            else:
-                # Entire pending_bundle complies with strategy. Add it to the list of bundles that
-                # will be merged to form a ready bundle.
-                pending_to_ready_bundles.append(pending_bundle)
-
-        # If we're flushing and have leftover bundles, convert them to a ready bundle
-        if pending_to_ready_bundles:
-            assert flush_remaining, (
-                "There should not be anymore remaining pending bundles. "
+            # We now know `pending_bundle` is the bundle that enabled us to
+            # build a ready bundle. Therefore, we may need to slice the bundle.
+            rows_needed = self._strategy.rows_needed_from_last_pending_bundle(
+                total_pending_rows=self._total_pending_rows,
+                last_pending_bundle=last_pending_bundle,
+            )
+            assert rows_needed > 0, (
+                "A refbundle has zero row-count but triggered building a ready bundle"
                 "This is a bug in the Ray Data code."
             )
+            remaining_bundle: Optional[RefBundle] = None
+            if rows_needed < last_pending_bundle.num_rows():
+                sliced_bundle, remaining_bundle = last_pending_bundle.slice(rows_needed)
+                pending_to_ready_bundles.append(sliced_bundle)
+            else:
+                assert rows_needed == last_pending_bundle.num_rows()
+                pending_to_ready_bundles.append(last_pending_bundle)
+
             self._merge_bundles(pending_to_ready_bundles)
+
+            if remaining_bundle is not None:
+                self._pending_bundles.appendleft(remaining_bundle)
+                self._total_pending_rows += remaining_bundle.num_rows() or 0
+                self._on_enqueue(remaining_bundle)
+
+        # If we're flushing and have leftover bundles, convert them to a ready bundle
+        if flush_remaining and self._pending_bundles:
+            self._merge_bundles(self._pending_bundles)
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):

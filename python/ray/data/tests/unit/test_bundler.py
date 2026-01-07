@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.execution.bundle_queue import ExactSize, RebundleQueue
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import BlockAccessor
 
@@ -76,7 +76,7 @@ def _make_ref_bundles_for_unit_test(raw_bundles: List[List[List[Any]]]) -> tuple
 def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_counts):
     """Test RebundleQueue with various input patterns (unit test)."""
 
-    bundler = RebundleQueue(ExactSize(target))
+    bundler = RebundleQueue(ExactMultipleSize(target))
     bundles, block_data_map = _make_ref_bundles_for_unit_test(in_bundles)
     out_bundles = []
 
