@@ -19,7 +19,6 @@ Run with --help to see all options.
 
 import logging
 import os
-import subprocess
 import sys
 from typing import List
 
@@ -30,8 +29,6 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_manifest,
 )
 from ci.ray_ci.utils import ci_init, ecr_docker_login
-
-from ray_release.configs.global_config import get_global_config
 
 # Configure logging
 logging.basicConfig(
@@ -54,7 +51,6 @@ _DOCKER_AZURE_REGISTRY = os.environ.get(
     "RAYCI_AZURE_REGISTRY",
     "rayreleasetest.azurecr.io",
 )
-_AZURE_REGISTRY_NAME = "rayreleasetest"
 
 # GPU_PLATFORM is the default GPU platform that gets aliased as "gpu"
 # This must match the definition in ci/ray_ci/docker_container.py
@@ -143,18 +139,6 @@ def _get_wanda_image_name(python_version: str, platform: str, image_type: str) -
         return f"{image_type}-anyscale-py{python_version}-{platform}"
 
 
-def _run_shell_command(cmd: str, dry_run: bool = False) -> None:
-    """Run a shell command."""
-    if dry_run:
-        logger.info(f"DRY RUN: Would run: {cmd}")
-        return
-
-    logger.info(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise PushAnyscaleImageError(f"Command failed: {result.stderr}")
-
-
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
     return_code, _ = call_crane_manifest(tag)
@@ -207,10 +191,10 @@ def main(
     """
     Push a Wanda-cached anyscale image to ECR, GCP, and Azure registries.
 
-    Handles authentication for all three registries and copies the image
-    with appropriate tags.
+    NOTE: GCP and Azure authentication must be done BEFORE calling this script
+    (e.g., via gcloud_docker_login.sh and azure_docker_login.sh in the pipeline).
+    ECR authentication is handled internally.
     """
-    # Initialize global config (needed for GCP/Azure credentials)
     ci_init()
 
     dry_run = not upload
@@ -248,28 +232,14 @@ def main(
     logger.info(f"Canonical tag: {canonical_tag}")
     logger.info(f"All tags: {tags}")
 
-    # Determine which registries to push to
-    # GCP and Azure require release config which is only available on release branches
-    global_config = get_global_config()
-    registries = [(ecr_registry, "ECR")]
-
-    if global_config:
-        # Authenticate with GCP
-        gce_credentials = global_config["aws2gce_credentials"]
-        _run_shell_command(f"./release/gcloud_docker_login.sh {gce_credentials}", dry_run)
-
-        # Authenticate with Azure
-        _run_shell_command("./release/azure_docker_login.sh", dry_run)
-        _run_shell_command(f"az acr login --name {_AZURE_REGISTRY_NAME}", dry_run)
-
-        registries.extend(
-            [
-                (_DOCKER_GCP_REGISTRY, "GCP"),
-                (_DOCKER_AZURE_REGISTRY, "Azure"),
-            ]
-        )
-    else:
-        logger.info("Release config not available - pushing to ECR only")
+    # Push to all three registries (ECR, GCP, Azure)
+    # NOTE: Authentication for GCP/Azure must be done in the pipeline step BEFORE
+    # calling this script (e.g., via gcloud_docker_login.sh and azure_docker_login.sh).
+    registries = [
+        (ecr_registry, "ECR"),
+        (_DOCKER_GCP_REGISTRY, "GCP"),
+        (_DOCKER_AZURE_REGISTRY, "Azure"),
+    ]
 
     for tag in tags:
         for registry, name in registries:

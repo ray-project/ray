@@ -167,6 +167,10 @@ steps:
     tags:
       - oss
     commands:
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix.python}}
         --platform {{matrix.platform}}
@@ -214,6 +218,10 @@ steps:
     tags:
       - oss
     commands:
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.8.1-cudnn
@@ -255,6 +263,10 @@ steps:
     tags:
       - oss
     commands:
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
       - bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.1.1-cudnn8
