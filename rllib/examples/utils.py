@@ -466,6 +466,7 @@ def run_rllib_example_script_experiment(
 
     if args.as_test:
         args.verbose = 1
+        args.tune_max_report_freq = 30
 
     # Initialize Ray.
     ray.init(
