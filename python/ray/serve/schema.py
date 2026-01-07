@@ -408,7 +408,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
-    bundle_label_selector: List[Dict[str, str]] = Field(
+    placement_group_bundle_label_selector: List[Dict[str, str]] = Field(
         default=DEFAULT.VALUE,
         description=(
             "A list of label selectors to apply to the placement group "
