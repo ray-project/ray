@@ -11,23 +11,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 QUEUE_MONITOR_ACTOR_PREFIX = "QUEUE_MONITOR::"
 
 
-class QueueMonitorConfig:
-    """Configuration for the QueueMonitor deployment."""
-
-    def __init__(
-        self,
-        broker_url: str,
-        queue_name: str,
-        rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
-    ):
-        self.broker_url = broker_url
-        self.queue_name = queue_name
-        self.rabbitmq_http_url = rabbitmq_http_url
-
-
 @ray.remote(num_cpus=0)
 class QueueMonitorActor:
-
     """
     Actor that monitors queue length by directly querying the broker.
 
@@ -38,27 +23,34 @@ class QueueMonitorActor:
         - RabbitMQ: Uses HTTP management API
     """
 
-    def __init__(self, config: QueueMonitorConfig):
-        self._config = config
-        self._last_queue_length: int = 0
-        self._is_initialized: bool = False
+    def __init__(
+        self,
+        broker_url: str,
+        queue_name: str,
+        rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
+    ):
+        self._broker_url = broker_url
+        self._queue_name = queue_name
+        self._rabbitmq_http_url = rabbitmq_http_url
 
-        self._broker = Broker(
-            self._config.broker_url, http_api=self._config.rabbitmq_http_url
-        )
-        self._is_initialized = True
+        self._broker = Broker(self._broker_url, http_api=self._rabbitmq_http_url)
+
+    def __ray_shutdown__(self):
+        if self._broker is not None:
+            self._broker.close()
+            self._broker = None
 
     def get_config(self) -> Dict[str, Any]:
         """
         Get the QueueMonitor configuration as a serializable dict.
 
         Returns:
-            Dict with 'broker_url' and 'queue_name' keys
+            Dict with 'broker_url', 'queue_name', and 'rabbitmq_http_url' keys
         """
         return {
-            "broker_url": self._config.broker_url,
-            "queue_name": self._config.queue_name,
-            "rabbitmq_http_url": self._config.rabbitmq_http_url,
+            "broker_url": self._broker_url,
+            "queue_name": self._queue_name,
+            "rabbitmq_http_url": self._rabbitmq_http_url,
         }
 
     async def get_queue_length(self) -> int:
@@ -67,50 +59,25 @@ class QueueMonitorActor:
 
         Returns:
             Number of pending tasks in the queue.
+
+        Raises:
+            ValueError: If queue is not found in broker response.
         """
-        if not self._is_initialized:
-            logger.warning(
-                f"QueueMonitor not initialized for queue '{self._config.queue_name}', returning 0"
-            )
-            return 0
+        queues = await self._broker.queues([self._queue_name])
+        if queues is not None:
+            for q in queues:
+                if q.get("name") == self._queue_name:
+                    queue_length = q.get("messages")
+                    return queue_length
 
-        try:
-            queues = await self._broker.queues([self._config.queue_name])
-            print(f"queues: {queues}")
-            if queues is not None:
-                for q in queues:
-                    if q.get("name") == self._config.queue_name:
-                        queue_length = q.get("messages")
-                        self._last_queue_length = queue_length
-                        return queue_length
-
-            print(f"last_queue_length: {self._last_queue_length}")
-
-            if self._last_queue_length is not None:
-                return self._last_queue_length
-            else:
-                logger.warning(
-                    f"No queue length found for queue '{self._config.queue_name}', returning 0"
-                )
-                return 0
-
-        except Exception as e:
-            print(f"error 123123: {e}")
-            logger.warning(
-                f"Failed to query queue length: {e}. Using last known value: {self._last_queue_length}"
-            )
-            return self._last_queue_length
-
-    def shutdown(self) -> None:
-        if self._broker is not None:
-            self._broker.close()
-            self._broker = None
-        self._is_initialized = False
+        raise ValueError(f"Queue '{self._queue_name}' not found in broker response")
 
 
 def create_queue_monitor_actor(
     deployment_name: str,
-    config: QueueMonitorConfig,
+    broker_url: str,
+    queue_name: str,
+    rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
     namespace: str = "serve",
 ) -> ray.actor.ActorHandle:
     """
@@ -118,7 +85,9 @@ def create_queue_monitor_actor(
 
     Args:
         deployment_name: Name of the deployment
-        config: QueueMonitorConfig with broker URL and queue name
+        broker_url: URL of the message broker
+        queue_name: Name of the queue to monitor
+        rabbitmq_http_url: HTTP API URL for RabbitMQ management (only for RabbitMQ)
         namespace: Ray namespace for the actor
 
     Returns:
@@ -128,22 +97,19 @@ def create_queue_monitor_actor(
 
     # Check if actor already exists
     try:
-        existing = ray.get_actor(full_actor_name, namespace=namespace)
+        existing = get_queue_monitor_actor(deployment_name, namespace=namespace)
         logger.info(f"QueueMonitor actor '{full_actor_name}' already exists, reusing")
-
         return existing
     except ValueError:
-        pass  # Actor doesn't exist, create it
+        actor = QueueMonitorActor.options(
+            name=full_actor_name,
+            namespace=namespace,
+        ).remote(broker_url, queue_name, rabbitmq_http_url)
 
-    actor = QueueMonitorActor.options(
-        name=full_actor_name,
-        namespace=namespace,
-    ).remote(config)
-
-    logger.info(
-        f"Created QueueMonitor actor '{full_actor_name}' in namespace '{namespace}'"
-    )
-    return actor
+        logger.info(
+            f"Created QueueMonitor actor '{full_actor_name}' in namespace '{namespace}'"
+        )
+        return actor
 
 
 def get_queue_monitor_actor(
@@ -170,7 +136,7 @@ def get_queue_monitor_actor(
 def kill_queue_monitor_actor(
     deployment_name: str,
     namespace: str = "serve",
-) -> bool:
+) -> None:
     """
     Delete a QueueMonitor actor by name.
 
@@ -178,15 +144,17 @@ def kill_queue_monitor_actor(
         deployment_name: Name of the deployment
         namespace: Ray namespace
 
-    Returns:
-        True if actor was deleted, False if it didn't exist
+    Raises:
+        ValueError: If actor doesn't exist
     """
     full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
+    actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
+    if actor is None:
+        logger.info(f"QueueMonitor actor '{full_actor_name}' does not exist")
+        return
+
     try:
-        actor = ray.get_actor(full_actor_name, namespace=namespace)
-        ray.kill(actor)
+        ray.kill(actor, no_restart=True)
         logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
-        return True
-    except ValueError:
-        # Actor doesn't exist
-        return False
+    except Exception as e:
+        logger.error(f"Failed to delete QueueMonitor actor '{full_actor_name}': {e}")

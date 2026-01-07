@@ -1,5 +1,7 @@
-# Portions of this code are adapted from Flower's broker.py file.
-# https://github.com/mher/flower/blob/master/flower/utils/broker.py
+# This module provides broker clients for querying queue lengths from message brokers.
+# Adapted from Flower's broker.py (https://github.com/mher/flower/blob/master/flower/utils/broker.py)
+# with the following modification:
+# - Added close() method to BrokerBase and RedisBase for resource cleanup
 
 import json
 import logging
@@ -9,13 +11,15 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 
 from tornado import httpclient, ioloop
 
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+
 try:
     import redis
 except ImportError:
     redis = None
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class BrokerBase:

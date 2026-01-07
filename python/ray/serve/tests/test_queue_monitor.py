@@ -8,7 +8,6 @@ import redis
 import ray
 from ray.serve._private.queue_monitor import (
     QueueMonitorActor,
-    QueueMonitorConfig,
     create_queue_monitor_actor,
     get_queue_monitor_actor,
     kill_queue_monitor_actor,
@@ -23,87 +22,59 @@ def redis_client(external_redis):  # noqa: F811
     host, port = redis_address.split(":")
     client = redis.Redis(host=host, port=int(port), db=0)
     yield client
+    # Cleanup: delete test queue after each test
+    client.delete("test_queue")
     client.close()
 
 
 @pytest.fixture
-def redis_config(external_redis):  # noqa: F811
-    """Create a QueueMonitorConfig with the external Redis URL."""
+def redis_broker_url(external_redis):  # noqa: F811
+    """Get the Redis broker URL for the external Redis."""
     redis_address = os.environ.get("RAY_REDIS_ADDRESS")
-    return QueueMonitorConfig(
-        broker_url=f"redis://{redis_address}/0",
-        queue_name="test_queue",
-    )
+    return f"redis://{redis_address}/0"
 
 
 class TestQueueMonitorActor:
     """Integration tests for QueueMonitorActor with real Redis."""
 
-    def test_get_queue_length(self, ray_instance, redis_client, redis_config):
+    def test_get_queue_length(self, ray_instance, redis_client, redis_broker_url):
         """Test queue length returns number of messages from broker."""
         # Push some messages to the queue
         for i in range(30):
             redis_client.lpush("test_queue", f"message_{i}")
 
-        try:
-            monitor = QueueMonitorActor.remote(redis_config)
-            length = ray.get(monitor.get_queue_length.remote())
+        monitor = QueueMonitorActor.remote(redis_broker_url, "test_queue")
+        length = ray.get(monitor.get_queue_length.remote())
 
-            assert length == 30
-        finally:
-            # Clean up
-            redis_client.delete("test_queue")
+        assert length == 30
 
     def test_get_queue_length_empty_queue(
-        self, ray_instance, redis_client, redis_config
+        self, ray_instance, redis_client, redis_broker_url
     ):
         """Test queue length returns 0 for empty queue."""
-        # Ensure queue is empty
-        redis_client.delete("test_queue")
-
-        monitor = QueueMonitorActor.remote(redis_config)
+        monitor = QueueMonitorActor.remote(redis_broker_url, "test_queue")
         length = ray.get(monitor.get_queue_length.remote())
 
         assert length == 0
 
-    def test_shutdown_marks_uninitialized(
-        self, ray_instance, redis_client, redis_config
-    ):
-        """Test shutdown cleans up resources and returns 0 for queue length."""
-        redis_client.lpush("test_queue", "message")
-
-        try:
-            monitor = QueueMonitorActor.remote(redis_config)
-
-            # Verify monitor works before shutdown
-            length = ray.get(monitor.get_queue_length.remote())
-            assert length == 1
-
-            # Shutdown the monitor
-            ray.get(monitor.shutdown.remote())
-
-            # After shutdown, should return 0
-            length = ray.get(monitor.get_queue_length.remote())
-            assert length == 0
-        finally:
-            redis_client.delete("test_queue")
-
-    def test_get_config(self, ray_instance, redis_config):
+    def test_get_config(self, ray_instance, redis_broker_url):
         """Test get_config returns the configuration as a dict."""
-        monitor = QueueMonitorActor.remote(redis_config)
+        monitor = QueueMonitorActor.remote(redis_broker_url, "test_queue")
         config = ray.get(monitor.get_config.remote())
 
-        assert config["broker_url"] == redis_config.broker_url
-        assert config["queue_name"] == redis_config.queue_name
-        assert config["rabbitmq_http_url"] == redis_config.rabbitmq_http_url
+        assert config["broker_url"] == redis_broker_url
+        assert config["queue_name"] == "test_queue"
+        assert config["rabbitmq_http_url"] == "http://guest:guest@localhost:15672/api/"
 
 
 class TestQueueMonitorHelpers:
     """Integration tests for queue monitor helper functions."""
 
-    def test_create_queue_monitor_actor(self, ray_instance, redis_config):
+    def test_create_queue_monitor_actor(self, ray_instance, redis_broker_url):
         """Test creating a named queue monitor actor."""
-        actor = create_queue_monitor_actor("test_deployment", redis_config)
+        actor = create_queue_monitor_actor(
+            "test_deployment", redis_broker_url, "test_queue"
+        )
 
         # Verify the actor works
         config = ray.get(actor.get_config.remote())
@@ -113,11 +84,15 @@ class TestQueueMonitorHelpers:
         kill_queue_monitor_actor("test_deployment")
 
     def test_create_queue_monitor_actor_reuses_existing(
-        self, ray_instance, redis_config
+        self, ray_instance, redis_broker_url
     ):
         """Test that creating an actor with the same name reuses the existing one."""
-        actor1 = create_queue_monitor_actor("test_deployment", redis_config)
-        actor2 = create_queue_monitor_actor("test_deployment", redis_config)
+        actor1 = create_queue_monitor_actor(
+            "test_deployment", redis_broker_url, "test_queue"
+        )
+        actor2 = create_queue_monitor_actor(
+            "test_deployment", redis_broker_url, "test_queue"
+        )
 
         # Both should reference the same actor
         assert actor1 == actor2
@@ -125,9 +100,11 @@ class TestQueueMonitorHelpers:
         # Clean up
         kill_queue_monitor_actor("test_deployment")
 
-    def test_get_queue_monitor_actor(self, ray_instance, redis_config):
+    def test_get_queue_monitor_actor(self, ray_instance, redis_broker_url):
         """Test retrieving an existing queue monitor actor."""
-        actor = create_queue_monitor_actor("test_deployment", redis_config)
+        actor = create_queue_monitor_actor(
+            "test_deployment", redis_broker_url, "test_queue"
+        )
         # Ensure actor is ready before looking it up by name
         ray.get(actor.get_config.remote())
 
@@ -143,23 +120,24 @@ class TestQueueMonitorHelpers:
         with pytest.raises(ValueError):
             get_queue_monitor_actor("nonexistent_deployment")
 
-    def test_kill_queue_monitor_actor(self, ray_instance, redis_config):
+    def test_kill_queue_monitor_actor(self, ray_instance, redis_broker_url):
         """Test killing a queue monitor actor."""
-        actor = create_queue_monitor_actor("test_deployment", redis_config)
+        actor = create_queue_monitor_actor(
+            "test_deployment", redis_broker_url, "test_queue"
+        )
         # Ensure actor is ready before trying to kill it
         ray.get(actor.get_config.remote())
 
-        result = kill_queue_monitor_actor("test_deployment")
-        assert result is True
+        kill_queue_monitor_actor("test_deployment")
 
         # Should not be able to get the actor anymore
         with pytest.raises(ValueError):
             get_queue_monitor_actor("test_deployment")
 
     def test_kill_queue_monitor_actor_not_found(self, ray_instance):
-        """Test killing a non-existent actor returns False."""
-        result = kill_queue_monitor_actor("nonexistent_deployment")
-        assert result is False
+        """Test killing a non-existent actor raises ValueError."""
+        with pytest.raises(ValueError):
+            kill_queue_monitor_actor("nonexistent_deployment")
 
 
 if __name__ == "__main__":
