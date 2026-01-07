@@ -174,6 +174,8 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
     4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
 
+    TODO expand on generic types
+
     Args:
         name: The name of the aggregation. This will be used as the column name
             in the output, e.g., "sum(my_col)".
@@ -372,6 +374,57 @@ class Count(AggregateFnV2[int, int]):
         )
 
     def combine(self, current_accumulator: int, new: int) -> int:
+        return current_accumulator + new
+
+
+@PublicAPI
+class AsList(AggregateFnV2[List, List]):
+    """Listing aggregation combining all values within the group into a single
+    list element.
+
+    Example:
+
+        .. testcode::
+            # Skip testing b/c this example require proper ordering of the output
+            # to be robust and not flaky
+            :skipif: True
+
+            import ray
+            from ray.data.aggregate import AsList
+
+            ds = ray.data.range(10)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Listing all elements per group:
+            result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+            # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
+            #          {'group_key': 1, 'list(id)': [1, 4, 7]},
+            #          {'group_key': 2, 'list(id)': [2, 5, 8]}
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+        ignore_nulls: bool = False,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"list({on or ''})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [],
+        )
+
+    def aggregate_block(self, block: Block) -> AccumulatorType:
+        return BlockColumnAccessor.for_column(
+            block[self.get_target_column()]
+        ).to_pylist()
+
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
         return current_accumulator + new
 
 
