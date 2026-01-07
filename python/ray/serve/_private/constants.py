@@ -555,7 +555,9 @@ RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
 
 # For now, this is used only for testing. In the suite of tests that
 # use gRPC to send requests, we flip this flag on.
-RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0")
+RAY_SERVE_USE_GRPC_BY_DEFAULT = (
+    os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
+)
 
 RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
     not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
