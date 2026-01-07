@@ -164,7 +164,7 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker {
+class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -240,12 +240,21 @@ class CoreWorker {
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
+  /// Initialize the shutdown executor after construction is complete.
+  void InitializeShutdownExecutor();
+
   /// Shut down the worker completely.
   ///
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
   void Shutdown();
+
+  /// Wait for shutdown to complete before destruction.
+  /// Delegates to shutdown executor's completion tracking with timeout.
+  /// \param timeout_ms Maximum time to wait (default: 30 seconds)
+  void WaitForShutdownComplete(
+      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
 
   /// Start receiving and executing tasks.
   void RunTaskExecutionLoop();
@@ -255,6 +264,20 @@ class CoreWorker {
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
+
+  std::function<void()> GetActorShutdownCallback() {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER &&
+        !worker_context_->GetCurrentActorID().IsNil()) {
+      return actor_shutdown_callback_;
+    }
+    return {};
+  }
+
+  void SetExitingDetail(std::string_view detail) {
+    absl::MutexLock lock(&mutex_);
+    exiting_detail_ = std::string(detail);
+  }
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
@@ -1751,9 +1774,6 @@ class CoreWorker {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Whether or not this worker is connected to the raylet and GCS.
-  bool connected_ = false;
-
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -1957,5 +1977,9 @@ class CoreWorker {
 
   /// Callback to free an RDT object when it is out of scope.
   std::function<void(const ObjectID &)> free_actor_object_callback_;
+
+  // Shutdown synchronization primitives
+  std::atomic<bool> connected_{true};
+  std::atomic<bool> event_loops_running_{false};
 };
 }  // namespace ray::core
