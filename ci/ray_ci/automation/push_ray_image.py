@@ -65,10 +65,18 @@ def _format_platform_tag(platform: str) -> str:
     return f"-{versions[0]}{versions[1]}"
 
 
+def _format_architecture_tag(architecture: str) -> str:
+    """Format architecture as suffix (empty for x86_64, -aarch64 for aarch64)."""
+    if architecture == "x86_64":
+        return ""
+    return f"-{architecture}"
+
+
 def _generate_image_tag(
     commit: str,
     python_version: str,
     platform: str,
+    architecture: str = "x86_64",
 ) -> str:
     """
     Generate a destination tag matching the original ray docker image format.
@@ -98,16 +106,20 @@ def _generate_image_tag(
 
     py_tag = _format_python_version_tag(python_version)
     platform_tag = _format_platform_tag(platform)
+    arch_tag = _format_architecture_tag(architecture)
 
-    return f"{version_prefix}{py_tag}{platform_tag}"
+    return f"{version_prefix}{py_tag}{platform_tag}{arch_tag}"
 
 
-def _get_wanda_image_name(python_version: str, platform: str) -> str:
+def _get_wanda_image_name(
+    python_version: str, platform: str, architecture: str = "x86_64"
+) -> str:
     """Get the wanda-cached ray image name."""
+    arch_suffix = "" if architecture == "x86_64" else f"-{architecture}"
     if platform == "cpu":
-        return f"ray-py{python_version}-cpu"
+        return f"ray-py{python_version}-cpu{arch_suffix}"
     else:
-        return f"ray-py{python_version}-{platform}"
+        return f"ray-py{python_version}-{platform}{arch_suffix}"
 
 
 def _image_exists(tag: str) -> bool:
@@ -143,6 +155,12 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
     help="Platform (e.g., 'cpu', 'cu11.7.1-cudnn8')",
 )
 @click.option(
+    "--architecture",
+    type=str,
+    default="x86_64",
+    help="Architecture (e.g., 'x86_64', 'aarch64')",
+)
+@click.option(
     "--upload",
     is_flag=True,
     default=False,
@@ -151,6 +169,7 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
 def main(
     python_version: str,
     platform: str,
+    architecture: str,
     upload: bool,
 ) -> None:
     """
@@ -182,11 +201,11 @@ def main(
         raise PushRayImageError(f"Missing required env vars: {', '.join(missing)}")
 
     # Construct source image from Wanda cache
-    wanda_image_name = _get_wanda_image_name(python_version, platform)
+    wanda_image_name = _get_wanda_image_name(python_version, platform, architecture)
     source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
 
     # Generate destination tag
-    destination_tag = _generate_image_tag(commit, python_version, platform)
+    destination_tag = _generate_image_tag(commit, python_version, platform, architecture)
     full_destination = f"rayproject/ray:{destination_tag}"
 
     logger.info(f"Source image (Wanda): {source_tag}")
