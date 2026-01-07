@@ -557,9 +557,6 @@ RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
 # use gRPC to send requests, we flip this flag on.
 RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0")
 
-# If set to 1, the proxy will use gRPC transport for inter-deployment
-# communication instead of Ray actor calls. If not explicitly set,
-# falls back to RAY_SERVE_USE_GRPC_BY_DEFAULT.
 RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
     not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
     and RAY_SERVE_USE_GRPC_BY_DEFAULT
