@@ -140,6 +140,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
+        self._cache = {}
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         # Clear cached Arrow arrays from any previous fit
@@ -161,10 +162,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
     def _clear_arrow_cache(self):
         """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
-        for col in self.columns:
-            cache_key = f"_arrow_arrays_{col}"
-            if hasattr(self, cache_key):
-                delattr(self, cache_key)
+        self._cache.clear()
 
     def _get_ordinal_map(self, column_name: str) -> Dict[Any, int]:
         """Get the ordinal mapping for a column as a dict.
@@ -258,7 +256,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             Tuple of (keys_array, values_array) for the column's ordinal mapping.
         """
         cache_key = f"_arrow_arrays_{input_col}"
-        if not hasattr(self, cache_key):
+        if cache_key not in self._cache:
             stat_value = self.stats_[f"unique_values({input_col})"]
             if isinstance(stat_value, dict):
                 # Stats are in pandas dict format - convert to Arrow format
@@ -270,8 +268,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             else:
                 # Stats are in Arrow tuple format: (keys_array, values_array)
                 keys_array, values_array = stat_value
-            setattr(self, cache_key, (keys_array, values_array))
-        return getattr(self, cache_key)
+            self._cache[cache_key] = (keys_array, values_array)
+        return self._cache[cache_key]
 
     def _encode_column_vectorized(
         self, column: pa.ChunkedArray, input_col: str
@@ -305,6 +303,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         self.encode_lists = fields["encode_lists"]
         # optional fields
         self._fitted = fields.get("_fitted")
+        # Initialize runtime cache (no need to serialize since it is just a local cache)
+        self._cache = {}
 
     def __repr__(self):
         return (
