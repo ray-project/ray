@@ -48,7 +48,12 @@ class RuntimeEnvConfig(dict):
             downloading remote URIs.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files", "transport_params"}
+    known_fields: Set[str] = {
+        "setup_timeout_seconds",
+        "eager_install",
+        "log_files",
+        "transport_params",
+    }
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
@@ -154,7 +159,7 @@ class RuntimeEnvConfig(dict):
         # assign the default value to setup_timeout_seconds.
         if setup_timeout_seconds == 0:
             setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
-        
+
         return cls(
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
