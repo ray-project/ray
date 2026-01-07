@@ -35,16 +35,14 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._preserve_order = False
 
         # Intermediary buffers used to store blocks from each input dependency.
-        # Only used when `self._prserve_order` is True.
+        # Only used when `self._preserve_order` is True.
         self._input_buffers: List[BundleQueue] = [
             FIFOBundleQueue() for _ in range(len(input_ops))
         ]
 
-        # The index of the input dependency that is currently the source of
-        # the output buffer. New inputs from this input dependency will be added
-        # directly to the output buffer. Only used when `self._preserve_order` is True.
+        self._input_done_flags: List[bool] = [False] * len(input_ops)
         self._next_input_to_flush = 0
-        self._input_ops = input_ops
+
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
@@ -103,12 +101,20 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
         if not self._preserve_order or input_index == self._next_input_to_flush:
+            if self._preserve_order:
+                while self._input_buffers[input_index]:
+                    buffered = self._input_buffers[input_index].get_next()
+                    self._metrics.on_input_dequeued(buffered)
+                    self._output_buffer.append(buffered)
+                    self._metrics.on_output_queued(buffered)
             self._output_buffer.append(refs)
             self._metrics.on_output_queued(refs)
         else:
             self._input_buffers[input_index].add(refs)
             self._metrics.on_input_queued(refs)
 
+    def input_done(self, input_index: int) -> None:
+        self._input_done_flags[input_index] = True
         if self._preserve_order:
             self._try_advance_and_flush()
 
@@ -117,6 +123,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         if not self._preserve_order:
             return
+
         self._try_advance_and_flush()
         assert all(not ref for ref in self._input_buffers)
 
@@ -133,9 +140,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         return self._stats
 
     def _try_advance_and_flush(self) -> None:
-        """Advance past completed head inputs and flush their buffers."""
-        while self._next_input_to_flush < len(self._input_ops):
-            if not self._input_ops[self._next_input_to_flush].has_completed():
+
+        while self._next_input_to_flush < len(self._input_buffers):
+            if not self._input_done_flags[self._next_input_to_flush]:
                 break
             buffer_to_flush = self._input_buffers[self._next_input_to_flush]
             while buffer_to_flush:
