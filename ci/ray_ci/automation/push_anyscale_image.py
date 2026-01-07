@@ -213,11 +213,6 @@ def main(
     # Initialize global config (needed for GCP/Azure credentials)
     ci_init()
 
-    # Check for skip upload env var (set in release config)
-    if os.environ.get("RAYCI_SKIP_UPLOAD", "false") == "true":
-        logger.info("RAYCI_SKIP_UPLOAD is set - skipping upload")
-        return
-
     dry_run = not upload
     if dry_run:
         logger.info("DRY RUN MODE - no images will be pushed")
