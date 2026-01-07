@@ -182,8 +182,13 @@ class RunningReplica:
         else:
             self._actor_handle = actor_handle
 
+        # Lazily created
         self._channel = None
         self._stub = None
+
+        # Replica wrappers
+        self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
+        self._grpc_replica_wrapper = None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -242,11 +247,16 @@ class RunningReplica:
         return self._stub
 
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
-        """Get the appropriate replica wrapper based on request metadata."""
-        if not pr.metadata._by_reference:
-            # Use gRPC transport when _by_reference=False
-            return gRPCReplicaWrapper(self.stub, self._actor_handle._actor_id)
-        return ActorReplicaWrapper(self._actor_handle)
+        if self._grpc_replica_wrapper is None:
+            self._grpc_replica_wrapper = gRPCReplicaWrapper(
+                self.stub, self._actor_handle._actor_id
+            )
+
+        return (
+            self._actor_replica_wrapper
+            if pr.metadata._by_reference
+            else self._grpc_replica_wrapper
+        )
 
     def push_proxy_handle(self, handle: ActorHandle):
         """When on proxy, push proxy's self handle to replica"""
