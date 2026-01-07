@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
-    DEFAULT_GRPC_SERVER_OPTIONS,
+    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import (
@@ -242,7 +242,12 @@ class RunningReplica:
 
             self._grpc_channel = grpc.aio.insecure_channel(
                 target,
-                options=DEFAULT_GRPC_SERVER_OPTIONS,
+                options=[
+                    (
+                        "grpc.max_receive_message_length",
+                        RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
+                    )
+                ],
             )
             self._grpc_stub = ASGIServiceStub(self._grpc_channel)
 
