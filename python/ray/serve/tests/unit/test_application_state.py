@@ -1496,6 +1496,27 @@ class TestOverrideDeploymentInfo:
             == "s3://B"
         )
 
+    def test_override_bundle_label_selector(self, info):
+        """Test bundle_label_selector is propagated from config."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    placement_group_bundles=[{"CPU": 1}],
+                    bundle_label_selector=[{"accelerator-type": "A100"}],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+
+        assert updated_info.replica_config.placement_group_bundle_label_selector == [
+            {"accelerator-type": "A100"}
+        ]
+
 
 class TestAutoscale:
     def test_autoscale(self, mocked_application_state_manager):

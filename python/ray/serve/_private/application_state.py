@@ -1707,6 +1707,10 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+        override_bundle_label_selector = options.pop(
+            "bundle_label_selector",
+            replica_config.placement_group_bundle_label_selector,
+        )
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -1725,6 +1729,7 @@ def override_deployment_info(
             placement_group_bundles=override_placement_group_bundles,
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
+            placement_group_bundle_label_selector=override_bundle_label_selector,
         )
         override_options["replica_config"] = replica_config
 
