@@ -44,6 +44,7 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.SUB: operator.sub,
     Operation.MUL: operator.mul,
     Operation.DIV: operator.truediv,
+    Operation.MOD: operator.mod,
     Operation.FLOORDIV: operator.floordiv,
     Operation.GT: operator.gt,
     Operation.LT: operator.lt,
@@ -128,6 +129,9 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
+    Operation.MOD: lambda left, right: pc.subtract(
+        left, pc.multiply(pc.divide(left, right), right)
+    ),
     Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
