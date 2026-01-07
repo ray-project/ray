@@ -221,6 +221,9 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
+    webui = args.webui
+    if webui == "None":
+        webui = None
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
         node_manager_port=args.node_manager_port,
@@ -234,7 +237,7 @@ if __name__ == "__main__":
         runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,
         session_name=args.session_name,
-        webui=args.webui,
+        webui=webui,
         cluster_id=args.cluster_id,
         node_id=args.node_id,
     )
