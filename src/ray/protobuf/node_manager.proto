@@ -381,6 +381,9 @@ message PushMutableObjectRequest {
   bytes data = 6;
   // The metadata payload. Note that the size of metadata is minimal.
   bytes metadata = 7;
+  // The version of the object from PlasmaObjectHeader.version on the writer node.
+  // This is incremented on each write and used to distinguish retries from stale writes.
+  int64 version = 8;
 }
 
 message PushMutableObjectReply {
