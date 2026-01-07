@@ -55,5 +55,17 @@ def test_parser_empty_file():
         assert len(parsed_deps) == 0
 
 
+def test_parser_package_with_dots():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        lock_file = Path(tmpdir) / "test.lock"
+        with open(lock_file, "w") as f:
+            f.write("zope.interface==5.4.0\n")
+        parser = Parser(lock_file)
+        parsed_deps = parser.parse()
+        assert len(parsed_deps) == 1
+        assert parsed_deps[0].name == "zope.interface"
+        assert parsed_deps[0].version == "5.4.0"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
