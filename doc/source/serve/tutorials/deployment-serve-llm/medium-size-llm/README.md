@@ -15,9 +15,9 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 <a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/medium-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
+This tutorial shows you how to deploy and serve a medium language model in production with Ray Serve LLM. A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. This tutorial deploys Llama-3.1-70&nbsp;B, a medium-sized LLM with 70&nbsp;B parameters. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost.
 
-This tutorial deploys a medium-sized LLM using Ray Serve LLM. For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html). For larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
@@ -212,7 +212,7 @@ You can also retrieve both from the service page in the Anyscale console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
+See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
 3. Click **View in Grafana** and click **Serve LLM Dashboard**
@@ -231,28 +231,38 @@ anyscale service terminate -n deploy-llama-3-70b
 
 ---
 
-## Enable LLM monitoring
+## Monitor your deployment
 
-The *Serve LLM Dashboard* offers deep visibility into model performance, latency, and system behavior, including:
+Ray Serve LLM provides comprehensive monitoring through the Serve LLM Dashboard. This dashboard visualizes key metrics including:
 
-* Token throughput (tokens/sec).
-* Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT).
-* KV cache utilization.
+- **Time to First Token (TTFT)**: Latency before the first token is generated.
+- **Time Per Output Token (TPOT)**: Average latency per generated token.
+- **Token throughput**: Total tokens generated per second.
+- **GPU cache utilization**: Percentage of KV cache memory in use.
+- **Request latency**: End-to-end request duration.
 
-To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. Ensure vLLM V1 is active with `VLLM_USE_V1: "1"`. 
-**Note:** `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
-```yaml
-applications:
-- ...
-  args:
-    llm_configs:
-      - ...
-        runtime_env:
-          env_vars:
-            VLLM_USE_V1: "1"
-        ...
-        log_engine_metrics: true
+To enable engine-level metrics, set `log_engine_metrics: true` in your LLM configuration. This is enabled by default starting with Ray 2.51.0.
+
+The following example shows how to enable monitoring:
+
+```python
+llm_config = LLMConfig(
+    # ... other config ...
+    log_engine_metrics=True,  # Enable detailed metrics
+)
 ```
+
+### Access the dashboard
+
+To view metrics in an Anyscale Service or Workspace:
+
+1. Navigate to your **Service** or **Workspace** page.
+2. Open the **Metrics** tab.
+3. Expand **View in Grafana** and select **Serve LLM Dashboard**.
+
+For a detailed explanation of each metric and how to interpret them for your workload, see [Understand LLM latency and throughput metrics](https://docs.anyscale.com/llm/serving/benchmarking/metrics).
+
+For comprehensive monitoring strategies and best practices, see the [Observability and monitoring guide](https://docs.ray.io/en/latest/serve/llm/user-guides/observability.html).
 
 ---
 
@@ -299,15 +309,12 @@ deployment_config:
 
 ## Troubleshooting
 
-**Hugging Face auth errors**  
-Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
-
-**Out-of-memory errors**  
-Out-of-memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes and context length increase.  
-See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common errors and how to fix them.
+If you encounter issues when deploying your LLM, such as out-of-memory errors, authentication problems, or slow performance, consult the [Troubleshooting Guide](https://docs.anyscale.com/llm/serving/troubleshooting) for solutions to common problems.
 
 ---
 
 ## Summary
 
-In this tutorial, you deployed a medium-sized LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and send requests. You also learned how to monitor your app and troubleshoot common issues.
+In this tutorial, you deployed a medium-sized LLM with Ray Serve LLM, from development to production. You learned how to configure and deploy your service, send requests, monitor performance metrics, and optimize concurrency.
+
+To learn more, take the [LLM Serving Foundations](https://courses.anyscale.com/courses/llm-serving-foundations) course or explore [LLM batch inference](https://docs.anyscale.com/llm/batch-inference) for offline workloads. For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html) or for larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).

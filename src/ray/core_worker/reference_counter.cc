@@ -64,6 +64,43 @@ void ReferenceCounter::ShutdownIfNeeded() {
   }
 }
 
+void ReferenceCounter::UpdateOwnedObjectCounters(const ObjectID &object_id,
+                                                 const Reference &ref,
+                                                 bool decrement) {
+  // Only track objects owned by us, not actors (actors are tracked separately)
+  if (!ref.owned_by_us_ || ObjectID::IsActorID(object_id)) {
+    return;
+  }
+
+  int delta = decrement ? -1 : 1;
+  int64_t size_delta = decrement ? -ref.object_size_ : ref.object_size_;
+
+  // Determine the state of the object and update the appropriate counter
+  if (ref.pending_creation_) {
+    owned_objects_pending_creation_.fetch_add(delta);
+  } else if (!ref.pinned_at_node_id_.has_value() && !ref.spilled) {
+    // If an object is not pinned at some id and isn't spilled, then we know it's in local
+    // memory (inlined)
+    owned_objects_in_memory_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_in_memory_.fetch_add(size_delta);
+    }
+  } else if (ref.spilled && ref.pinned_at_node_id_.has_value()) {
+    // if an object is spilled and at some node id then we know it's spilled somewhere
+    owned_objects_spilled_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_spilled_.fetch_add(size_delta);
+    }
+  } else if (!ref.spilled && ref.pinned_at_node_id_.has_value()) {
+    // owned_objects_in_plasma if (owned_by_us_ && !pending_creation_ && !spilled &&
+    // pinned_at_node_id_)
+    owned_objects_in_plasma_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_in_plasma_.fetch_add(size_delta);
+    }
+  }
+}
+
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
@@ -189,15 +226,16 @@ void ReferenceCounter::AddObjectRefStats(
   stats->set_objects_total(total);
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
-                                      const std::vector<ObjectID> &inner_ids,
-                                      const rpc::Address &owner_address,
-                                      const std::string &call_site,
-                                      const int64_t object_size,
-                                      bool is_reconstructable,
-                                      bool add_local_ref,
-                                      const std::optional<NodeID> &pinned_at_node_id,
-                                      rpc::TensorTransport tensor_transport) {
+void ReferenceCounter::AddOwnedObject(
+    const ObjectID &object_id,
+    const std::vector<ObjectID> &inner_ids,
+    const rpc::Address &owner_address,
+    const std::string &call_site,
+    const int64_t object_size,
+    bool is_reconstructable,
+    bool add_local_ref,
+    const std::optional<NodeID> &pinned_at_node_id,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -236,7 +274,8 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable_,
                                     /*add_local_ref=*/false,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -271,7 +310,8 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable_,
                                     /*add_local_ref=*/true,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -321,7 +361,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool is_reconstructable,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    rpc::TensorTransport tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -363,6 +403,10 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+
+  // Update the owned object counters for the new reference
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
+
   PRINT_REF_COUNT(it);
   return true;
 }
@@ -371,7 +415,11 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
+    // Decrement counter with old size
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
     it->second.object_size_ = object_size;
+    // Increment counter with new size
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
     PushToLocationSubscribers(it);
   }
 }
@@ -769,6 +817,8 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_actors_owned_by_us_--;
     } else {
       num_objects_owned_by_us_--;
+      // Decrement owned object counters for the reference being erased
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     }
   }
   for (const auto &callback : it->second.object_ref_deleted_callbacks) {
@@ -803,7 +853,9 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
@@ -853,7 +905,9 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_node_id_.value_or(NodeID::Nil()) == node_id ||
         it->second.spilled_node_id == node_id) {
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
       UnsetObjectPrimaryCopy(it);
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -890,12 +944,16 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+      // Decrement counter for old state
+      UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
       if (!is_node_dead_(node_id)) {
         it->second.pinned_at_node_id_ = node_id;
       } else {
         UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
+      // Increment counter for new state
+      UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
     }
   }
 }
@@ -935,6 +993,23 @@ size_t ReferenceCounter::NumObjectsOwnedByUs() const {
 size_t ReferenceCounter::NumActorsOwnedByUs() const {
   absl::MutexLock lock(&mutex_);
   return num_actors_owned_by_us_;
+}
+
+void ReferenceCounter::RecordMetrics() {
+  // N.B. Metric reporting can interleave with counter updates, and may have an inaccurate
+  // accounting at certain critical sections of counter updates.
+  owned_object_count_by_state_.Record(owned_objects_spilled_, {{"State", "Spilled"}});
+  owned_object_count_by_state_.Record(owned_objects_in_memory_, {{"State", "InMemory"}});
+  owned_object_count_by_state_.Record(owned_objects_in_plasma_, {{"State", "InPlasma"}});
+  owned_object_count_by_state_.Record(owned_objects_pending_creation_,
+                                      {{"State", "PendingCreation"}});
+
+  owned_object_sizes_by_state_.Record(owned_objects_size_spilled_,
+                                      {{"State", "Spilled"}});
+  owned_object_sizes_by_state_.Record(owned_objects_size_in_memory_,
+                                      {{"State", "InMemory"}});
+  owned_object_sizes_by_state_.Record(owned_objects_size_in_plasma_,
+                                      {{"State", "InPlasma"}});
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
@@ -1412,7 +1487,9 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   bool push = false;
   if (it != object_id_refs_.end()) {
     push = (it->second.pending_creation_ != pending_creation);
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
     it->second.pending_creation_ = pending_creation;
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
   }
   if (push) {
     PushToLocationSubscribers(it);
@@ -1449,6 +1526,9 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     return false;
   }
 
+  // Decrement counter for old state
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
+
   it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
@@ -1464,9 +1544,15 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
+    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     UnsetObjectPrimaryCopy(it);
+    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
     objects_to_recover_.push_back(object_id);
   }
+
+  // Increment counter for new state
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
+
   return true;
 }
 
@@ -1734,12 +1820,12 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   }
 }
 
-std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+std::optional<std::string> ReferenceCounter::GetTensorTransport(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return it->second.tensor_transport_;
 }

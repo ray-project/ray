@@ -24,7 +24,6 @@
 
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -35,12 +34,14 @@ LocalResourceManager::LocalResourceManager(
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    std::function<void(const NodeResources &)> resource_change_subscriber)
+    std::function<void(const NodeResources &)> resource_change_subscriber,
+    ray::observability::MetricInterface &resource_usage_gauge)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
-      resource_change_subscriber_(resource_change_subscriber) {
+      resource_change_subscriber_(resource_change_subscriber),
+      resource_usage_gauge_(resource_usage_gauge) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
@@ -122,7 +123,7 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
-void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   if (prev != last_idle_times_.end() && !prev->second.has_value()) {
     return;
@@ -131,7 +132,7 @@ void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
 
@@ -350,6 +351,9 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
         case WorkFootprint::NODE_WORKERS:
           resource_view_sync_message.add_node_activity("Busy workers on node.");
           break;
+        case WorkFootprint::PULLING_TASK_ARGUMENTS:
+          resource_view_sync_message.add_node_activity("Pulling task arguments.");
+          break;
         default:
           UNREACHABLE;
         }
@@ -463,10 +467,10 @@ LocalResourceManager::GetResourceUsageMap() const {
 
 void LocalResourceManager::RecordMetrics() const {
   for (auto &[resource, resource_usage] : GetResourceUsageMap()) {
-    ray::stats::STATS_resources.Record(resource_usage.avail,
-                                       {{"State", "AVAILABLE"}, {"Name", resource}});
-    ray::stats::STATS_resources.Record(resource_usage.used,
-                                       {{"State", "USED"}, {"Name", resource}});
+    resource_usage_gauge_.Record(resource_usage.avail,
+                                 {{"State", "AVAILABLE"}, {"Name", resource}});
+    resource_usage_gauge_.Record(resource_usage.used,
+                                 {{"State", "USED"}, {"Name", resource}});
   }
 }
 

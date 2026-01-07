@@ -7,6 +7,7 @@ from ray._private.accelerators.accelerator import (
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
+from ray._private.accelerators.metax_gpu import MetaxGPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
@@ -25,6 +26,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         HPUAcceleratorManager,
         NPUAcceleratorManager,
         RBLNAcceleratorManager,
+        MetaxGPUAcceleratorManager,
     }
 
 
@@ -60,6 +62,8 @@ def get_accelerator_manager_for_resource(
             resource_name_to_accelerator_manager["GPU"] = AMDGPUAcceleratorManager
         elif IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
             resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
+        elif MetaxGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+            resource_name_to_accelerator_manager["GPU"] = MetaxGPUAcceleratorManager
         else:
             resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
         get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
@@ -77,6 +81,7 @@ __all__ = [
     "HPUAcceleratorManager",
     "NPUAcceleratorManager",
     "RBLNAcceleratorManager",
+    "MetaxGPUAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",

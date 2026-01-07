@@ -1,27 +1,29 @@
 import asyncio
 import concurrent.futures
 import enum
+import json
 import os
 import platform
 import subprocess
-import json
 import time
-from itertools import chain
-from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
+from itertools import chain
+from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional, Set
 
 import aioboto3
 import boto3
 from botocore.exceptions import ClientError
-from github import Repository
+
+if TYPE_CHECKING:
+    from github import Repository
 
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
-from ray_release.result import (
-    ResultStatus,
-    Result,
-)
 from ray_release.logger import logger
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.util import (
     ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
@@ -34,7 +36,7 @@ MICROCHECK_COMMAND = "@microcheck"
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -355,7 +357,7 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "Repository") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
@@ -451,19 +453,7 @@ class Test(dict):
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        default = {
-            "RAY_BACKEND_LOG_JSON": "1",
-            # Logs the full stack trace from Ray Data in case of exception,
-            # which is useful for debugging failures.
-            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
-            # To make ray data compatible across multiple pyarrow versions.
-            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
-        }
-        default.update(
-            _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
-        )
-
-        return default
+        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
     def get_byod_pips(self) -> List[str]:
         """
@@ -474,7 +464,7 @@ class Test(dict):
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.
-        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py310-cpu
         instead of building custom BYOD images.
         """
         return self["cluster"].get("ray_version", None)
@@ -613,25 +603,6 @@ class Test(dict):
         if byod_ecr:
             return byod_ecr
         return get_global_config()["byod_ecr"]
-
-    def get_ray_image(self) -> str:
-        """
-        Returns the ray docker image to use for this test.
-        """
-        config = get_global_config()
-        repo = self.get_byod_repo()
-        if repo == DATAPLANE_ECR_REPO:
-            repo_name = config["byod_ray_cr_repo"]
-        elif repo == DATAPLANE_ECR_LLM_REPO:
-            repo_name = config["byod_ray_llm_cr_repo"]
-        elif repo == DATAPLANE_ECR_ML_REPO:
-            repo_name = config["byod_ray_ml_cr_repo"]
-        else:
-            raise ValueError(f"Unknown repo {repo}")
-
-        ecr = config["byod_ray_ecr"]
-        tag = self.get_byod_base_image_tag()
-        return f"{ecr}/{repo_name}:{tag}"
 
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """

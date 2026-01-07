@@ -87,7 +87,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication by default
-    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -98,7 +98,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
     }
     ray::UnsetEnv("RAY_AUTH_TOKEN");
     // Reset to default auth mode
-    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -108,12 +108,12 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
         std::make_unique<MockInternalPubSubGcsService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
-    std::optional<rpc::AuthenticationToken> auth_token;
+    std::shared_ptr<rpc::AuthenticationToken> auth_token;
     if (!server_token.empty()) {
-      auth_token = rpc::AuthenticationToken(server_token);
+      auth_token = std::make_shared<rpc::AuthenticationToken>(server_token);
     } else {
       // Empty token means no auth required
-      auth_token = rpc::AuthenticationToken("");
+      auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
@@ -137,10 +137,10 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   void SetClientToken(const std::string &client_token) {
     if (!client_token.empty()) {
       ray::SetEnv("RAY_AUTH_TOKEN", client_token);
-      RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     } else {
       ray::UnsetEnv("RAY_AUTH_TOKEN");
-      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     }
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }

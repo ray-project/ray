@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -48,7 +49,7 @@ class ReplicaContext:
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
-    rank: int
+    rank: ReplicaRank
     world_size: int
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
 
@@ -113,7 +114,7 @@ def _set_internal_replica_context(
     replica_id: ReplicaID,
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
-    rank: int,
+    rank: ReplicaRank,
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
 ):

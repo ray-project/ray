@@ -3,11 +3,23 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Generator,
+    Generic,
+    Iterator,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import ray
 from ray import serve
-from ray._raylet import ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator  # type: ignore[attr-defined]
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
@@ -41,8 +53,13 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# TypeVar for the deployment class type in DeploymentHandle[T]
+T = TypeVar("T")
+# TypeVar for the response/result type in DeploymentResponse[R]
+R = TypeVar("R")
 
-class _DeploymentHandleBase:
+
+class _DeploymentHandleBase(Generic[T]):
     def __init__(
         self,
         deployment_name: str,
@@ -159,9 +176,13 @@ class _DeploymentHandleBase:
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
     def _is_router_running_in_separate_loop(self) -> bool:
+        if self.init_options is None:
+            return False
         return self.init_options._run_router_in_separate_loop
 
-    def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
+    def _options(
+        self, _prefer_local_routing=DEFAULT.VALUE, **kwargs
+    ) -> "DeploymentHandle[T]":
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
                 "Streaming DeploymentHandles are not currently supported when "
@@ -206,10 +227,23 @@ class _DeploymentHandleBase:
                 "application": metadata.app_name,
             }
         )
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
 
         return self._router.assign_request(metadata, *args, **kwargs), metadata
 
-    def __getattr__(self, name):
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "DeploymentHandle[T]":
+        raise NotImplementedError
+
+    def __getattr__(self, name: str) -> "DeploymentHandle[T]":
         return self.options(method_name=name)
 
     def shutdown(self):
@@ -234,11 +268,11 @@ class _DeploymentHandleBase:
             else:
                 await shutdown_future
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
     @classmethod
-    def _deserialize(cls, kwargs):
+    def _deserialize(cls, kwargs: Dict[str, Any]) -> "_DeploymentHandleBase[T]":
         """Required for this class's __reduce__ method to be picklable."""
         return cls(**kwargs)
 
@@ -251,7 +285,7 @@ class _DeploymentHandleBase:
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
-class _DeploymentResponseBase:
+class _DeploymentResponseBase(Generic[R]):
     def __init__(
         self,
         replica_result_future: Union[
@@ -289,9 +323,13 @@ class _DeploymentResponseBase:
                     "loop. Use `await response` instead."
                 )
             try:
-                self._replica_result = self._replica_result_future.result(
-                    timeout=_timeout_s
+                # When _is_router_running_in_separate_loop is True, the future
+                # is a concurrent.futures.Future (not asyncio.Future)
+                sync_future = cast(
+                    concurrent.futures.Future[ReplicaResult],
+                    self._replica_result_future,
                 )
+                self._replica_result = sync_future.result(timeout=_timeout_s)
 
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
@@ -316,7 +354,10 @@ class _DeploymentResponseBase:
                 )
             else:
                 # self._replica_result_future is a object of type asyncio.Future
-                self._replica_result = await self._replica_result_future
+                async_future = cast(
+                    asyncio.Future[ReplicaResult], self._replica_result_future
+                )
+                self._replica_result = await async_future
 
         return self._replica_result
 
@@ -372,7 +413,7 @@ class _DeploymentResponseBase:
 
 
 @PublicAPI(stability="stable")
-class DeploymentResponse(_DeploymentResponseBase):
+class DeploymentResponse(_DeploymentResponseBase[R]):
     """A future-like object wrapping the result of a unary deployment handle call.
 
     From inside a deployment, a `DeploymentResponse` can be awaited to retrieve the
@@ -441,7 +482,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         assert handle.remote(0).result() == 2
     """
 
-    def __await__(self):
+    def __await__(self) -> Generator[Any, None, R]:
         """Yields the final result of the deployment handle call."""
         try:
             replica_result = yield from self._fetch_future_result_async().__await__()
@@ -466,7 +507,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         *,
         timeout_s: Optional[float] = None,
         _skip_asyncio_check: bool = False,
-    ) -> Any:
+    ) -> R:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -554,7 +595,7 @@ class DeploymentResponse(_DeploymentResponseBase):
 
 
 @PublicAPI(stability="stable")
-class DeploymentResponseGenerator(_DeploymentResponseBase):
+class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
     This is returned when using `handle.options(stream=True)` and calling a generator
@@ -614,10 +655,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
             "or `await response.__anext__() instead`."
         )
 
-    def __aiter__(self) -> AsyncIterator[Any]:
+    def __aiter__(self) -> AsyncIterator[R]:
         return self
 
-    async def __anext__(self) -> Any:
+    async def __anext__(self) -> R:
         try:
             replica_result = await self._fetch_future_result_async()
             return await replica_result.__anext__()
@@ -627,10 +668,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
             else:
                 raise asyncio.CancelledError from None
 
-    def __iter__(self) -> Iterator[Any]:
+    def __iter__(self) -> Iterator[R]:
         return self
 
-    def __next__(self) -> Any:
+    def __next__(self) -> R:
         if is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
@@ -639,6 +680,30 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         replica_result = self._fetch_future_result_sync()
         return replica_result.__next__()
+
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
+        """Not supported on `DeploymentResponseGenerator`.
+
+        This method exists only for API parity with `DeploymentResponse.result()` to
+        aid static typing. A `DeploymentResponseGenerator` is returned when using
+        streaming handles (e.g., `handle.options(stream=True)`).
+
+        To consume results, iterate over the generator instead of calling `.result()`:
+          - Outside a deployment: use a standard `for` loop
+          - Inside a deployment: use `async for`
+
+        Always raises `TypeError`.
+        """
+        raise TypeError(
+            "`DeploymentResponseGenerator` doesn't support `.result()`. "
+            "Use iteration instead: `for item in response` (outside deployments) "
+            "or `async for item in response` (inside deployments)."
+        )
 
     @DeveloperAPI
     async def _to_object_ref_gen(self) -> ObjectRefGenerator:
@@ -689,7 +754,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
 
 @PublicAPI(stability="stable")
-class DeploymentHandle(_DeploymentHandleBase):
+class DeploymentHandle(_DeploymentHandleBase[T]):
     """A handle used to make requests to a deployment at runtime.
 
     This is primarily used to compose multiple deployments within a single application.
@@ -734,7 +799,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-    ) -> "DeploymentHandle":
+    ) -> "DeploymentHandle[T]":
         """Set options for this handle and return an updated copy of it.
 
         Example:
@@ -767,7 +832,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
     def remote(
         self, *args, **kwargs
-    ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
+    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
@@ -798,12 +863,14 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
-            response_cls = DeploymentResponseGenerator
+            return DeploymentResponseGenerator(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )
         else:
-            response_cls = DeploymentResponse
-
-        return response_cls(
-            future,
-            request_metadata,
-            _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
-        )
+            return DeploymentResponse(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )

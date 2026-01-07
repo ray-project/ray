@@ -17,22 +17,16 @@
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
-
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 namespace ray {
 namespace rpc {
@@ -159,7 +153,7 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_->load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
@@ -171,8 +165,15 @@ class RayletClient : public RayletClientInterface {
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+  void GetWorkerPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
+
+  /// Get agents pids from raylet, include dashboard and runtime env agent
+  void GetAgentPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
+                    int64_t timeout_ms);
+  void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
 
  protected:
   /// gRPC client to the NodeManagerService.
@@ -187,7 +188,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_ = 0;
+  /// NOTE: `shared_ptr` because it is captured in a callback that can outlive this
+  /// instance.
+  std::shared_ptr<std::atomic<int64_t>> pins_in_flight_;
 };
 
 }  // namespace rpc

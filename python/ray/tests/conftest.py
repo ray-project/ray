@@ -24,6 +24,13 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.test_utils import (
@@ -42,13 +49,6 @@ from ray._private.test_utils import (
     teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
-from ray.tests.authentication_test_utils import (
-    authentication_env_guard,
-    clear_auth_token_sources,
-    reset_auth_token_state,
-    set_auth_mode,
-    set_env_auth_token,
-)
 
 import psutil
 
@@ -1492,6 +1492,34 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
         server.stop()
 
 
+@pytest.fixture(scope="function")
+def event_routing_config(request, monkeypatch):
+    """
+    fixture to toggle event routing modes.
+    Modes:
+      - "default": Uses the existing core_worker to gcs code path.
+      - "aggregator": Enable publishing events to GCS through the Aggregator agent.
+    """
+    mode = getattr(request, "param", "default")
+    # clear envs to ensure default behavior
+    monkeypatch.delenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
+    )
+    monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
+
+    if mode == "aggregator":
+        print("using aggregator mode")
+        # Enable aggregator path in core worker
+        monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
+        monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+        # Ensure aggregator agent publishes to GCS
+        monkeypatch.setenv(
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
+        )
+    yield
+
+
 @pytest.fixture
 def cleanup_auth_token_env():
     """Reset authentication environment variables, files, and caches."""
@@ -1549,3 +1577,20 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.fixture
+def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
+    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
+    with monkeypatch.context() as m:
+        # Enable zero-copy sharing of PyTorch tensors in Ray
+        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
+
+        # Initialize Ray with the required environment variable.
+        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
+
+        # Yield control to the test session
+        yield
+
+        # Shutdown Ray after tests complete
+        ray.shutdown()

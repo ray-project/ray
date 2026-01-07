@@ -600,7 +600,7 @@ message TaskSpec {
   // The key-value label constraints of the node to schedule this task or actor on.
   LabelSelector label_selector = 43;
   // The tensor transport type for this task.
-  TensorTransport tensor_transport = 44;
+  optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
 }
@@ -701,7 +701,7 @@ message ObjectReference {
   string call_site = 3;
   // The tensor transport to use for this object. If not specified, then use the
   // default object store.
-  optional TensorTransport tensor_transport = 4;
+  optional string tensor_transport = 4;
 }
 
 message ObjectReferenceCount {
@@ -729,17 +729,6 @@ message ObjectReferenceCount {
   repeated bytes contains = 6;
 }
 
-enum TensorTransport {
-  // Use the default object store for tensor transport.
-  OBJECT_STORE = 0;
-  // Use NCCL for tensor transport.
-  NCCL = 1;
-  // Use GLOO for tensor transport.
-  GLOO = 2;
-  // Use NIXL for tensor transport.
-  NIXL = 3;
-}
-
 // Argument in the task.
 message TaskArg {
   // A pass-by-ref argument.
@@ -755,7 +744,7 @@ message TaskArg {
   bool is_inlined = 5;
   // The tensor transport to use for this object. If not specified, then use the
   // default object store.
-  optional TensorTransport tensor_transport = 6;
+  optional string tensor_transport = 6;
 }
 
 message ReturnObject {
@@ -772,6 +761,9 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
+  // The direct transport metadata for the object that is needed to trigger
+  // a transfer (if RDT object).
+  optional bytes direct_transport_metadata = 7;
 }
 
 // Task spec of an actor creation task.

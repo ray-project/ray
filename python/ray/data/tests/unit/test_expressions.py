@@ -1,14 +1,39 @@
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
+from pyiceberg.expressions import (
+    And,
+    EqualTo,
+    GreaterThan,
+    GreaterThanOrEqual,
+    In,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+    Not,
+    NotEqualTo,
+    NotIn,
+    NotNull,
+    Or,
+    Reference,
+    literal,
+)
 
+from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionVisitor
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _InlineExprReprVisitor,
+)
+from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
     Expr,
     Operation,
+    UDFExpr,
     UnaryExpr,
     col,
+    download,
     lit,
+    star,
 )
 
 # Tuples of (expr1, expr2, expected_result)
@@ -420,6 +445,248 @@ class TestToPyArrow:
             udf_expr.to_pyarrow()
 
 
+class TestIcebergExpressionVisitor:
+    """Test conversion of Ray Data expressions to PyIceberg expressions via internal visitor."""
+
+    @pytest.mark.parametrize(
+        "ray_expr, equivalent_iceberg_expr, description",
+        [
+            # Basic expressions
+            (
+                col("age"),
+                lambda: Reference("age"),
+                "column reference",
+            ),
+            (
+                lit(42),
+                lambda: literal(42),
+                "integer literal",
+            ),
+            (
+                lit("active"),
+                lambda: literal("active"),
+                "string literal",
+            ),
+            # Comparison operations
+            (
+                col("age") > 18,
+                lambda: GreaterThan(Reference("age"), literal(18)),
+                "greater than",
+            ),
+            (
+                col("age") >= 21,
+                lambda: GreaterThanOrEqual(Reference("age"), literal(21)),
+                "greater than or equal",
+            ),
+            (
+                col("age") < 65,
+                lambda: LessThan(Reference("age"), literal(65)),
+                "less than",
+            ),
+            (
+                col("age") <= 100,
+                lambda: LessThanOrEqual(Reference("age"), literal(100)),
+                "less than or equal",
+            ),
+            (
+                col("status") == "active",
+                lambda: EqualTo(Reference("status"), literal("active")),
+                "equality",
+            ),
+            (
+                col("status") != "inactive",
+                lambda: NotEqualTo(Reference("status"), literal("inactive")),
+                "not equal",
+            ),
+            # Boolean operations
+            (
+                (col("age") > 18) & (col("age") < 65),
+                lambda: And(
+                    GreaterThan(Reference("age"), literal(18)),
+                    LessThan(Reference("age"), literal(65)),
+                ),
+                "logical AND",
+            ),
+            (
+                (col("is_member") == lit(True))
+                | (col("is_premium") == lit(True)),  # noqa: E712
+                lambda: Or(
+                    EqualTo(Reference("is_member"), literal(True)),
+                    EqualTo(Reference("is_premium"), literal(True)),
+                ),
+                "logical OR",
+            ),
+            (
+                ~(col("deleted") == lit(True)),  # noqa: E712
+                lambda: Not(EqualTo(Reference("deleted"), literal(True))),
+                "logical NOT",
+            ),
+            # Unary operations
+            (
+                col("value").is_null(),
+                lambda: IsNull(Reference("value")),
+                "is_null check",
+            ),
+            (
+                col("name").is_not_null(),
+                lambda: NotNull(Reference("name")),
+                "is_not_null check",
+            ),
+            # In operations
+            (
+                col("status").is_in(["active", "pending"]),
+                lambda: In(Reference("status"), ["active", "pending"]),
+                "is_in with list",
+            ),
+            (
+                col("status").not_in(["inactive", "deleted"]),
+                lambda: NotIn(Reference("status"), ["inactive", "deleted"]),
+                "not_in with list",
+            ),
+            # Complex nested expressions
+            (
+                (col("age") >= 21)
+                & (col("country") == "USA")
+                & col("verified").is_not_null(),
+                lambda: And(
+                    And(
+                        GreaterThanOrEqual(Reference("age"), literal(21)),
+                        EqualTo(Reference("country"), literal("USA")),
+                    ),
+                    NotNull(Reference("verified")),
+                ),
+                "complex nested boolean",
+            ),
+            # Alias expressions (should unwrap to inner expression)
+            (
+                (col("age") > 18).alias("is_adult"),
+                lambda: GreaterThan(Reference("age"), literal(18)),
+                "aliased expression",
+            ),
+        ],
+        ids=[
+            "col",
+            "int_lit",
+            "str_lit",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "eq",
+            "ne",
+            "and",
+            "or",
+            "not",
+            "is_null",
+            "is_not_null",
+            "is_in",
+            "not_in",
+            "nested_complex",
+            "alias",
+        ],
+    )
+    def test_iceberg_visitor_equivalence(
+        self, ray_expr, equivalent_iceberg_expr, description
+    ):
+        """Test that Ray Data expressions convert to equivalent PyIceberg expressions.
+
+        This test documents the expected PyIceberg expression for each Ray Data expression
+        and verifies the conversion produces the correct type.
+        """
+
+        # Convert Ray expression to Iceberg using internal visitor
+        visitor = _IcebergExpressionVisitor()
+        converted = visitor.visit(ray_expr)
+        expected = equivalent_iceberg_expr()
+
+        # Verify they're the same type
+        assert converted == expected, (
+            f"Expression mismatch for {description}: "
+            f"got {converted}, expected {expected}"
+        )
+
+    def test_iceberg_visitor_unsupported_arithmetic(self):
+        """Test that arithmetic operations raise appropriate errors."""
+
+        visitor = _IcebergExpressionVisitor()
+
+        # Arithmetic operations are not supported in Iceberg filters
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            visitor.visit(col("price") + 10)
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            visitor.visit(col("quantity") * 2)
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            visitor.visit(col("total") - col("discount"))
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            visitor.visit(col("revenue") / col("count"))
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            visitor.visit(col("items") // 5)
+
+    def test_iceberg_visitor_unsupported_expressions(self):
+        visitor = _IcebergExpressionVisitor()
+
+        # UDF expressions
+        def dummy_fn(x):
+            return x
+
+        udf_expr = UDFExpr(
+            fn=dummy_fn,
+            args=[col("x")],
+            kwargs={},
+            data_type=DataType(int),
+        )
+
+        with pytest.raises(
+            TypeError, match="UDF expressions cannot be converted to Iceberg"
+        ):
+            visitor.visit(udf_expr)
+
+        # Download expressions
+        with pytest.raises(
+            TypeError, match="Download expressions cannot be converted to Iceberg"
+        ):
+            visitor.visit(download("uri"))
+
+        # Star expressions
+        with pytest.raises(
+            TypeError, match="Star expressions cannot be converted to Iceberg"
+        ):
+            visitor.visit(star())
+
+    def test_iceberg_visitor_in_requires_literal_list(self):
+        """Test that IN/NOT_IN operations require literal lists."""
+        visitor = _IcebergExpressionVisitor()
+
+        # This should work - literal list
+        expr = col("status").is_in(["active", "pending"])
+        result = visitor.visit(expr)
+        assert isinstance(result, In)
+
+        # This should fail - column reference on right side
+        # Note: This is prevented at the BinaryExpr level, not the visitor
+        # The visitor will raise an error if right operand is not a LiteralExpr
+        with pytest.raises(
+            ValueError, match="IN operation requires right operand to be a literal list"
+        ):
+            # Create a BinaryExpr directly to bypass col.is_in() validation
+            invalid_expr = BinaryExpr(Operation.IN, col("a"), col("b"))
+            visitor.visit(invalid_expr)
+
+
 def _build_complex_expr():
     """Build a convoluted expression that exercises all visitor code paths.
 
@@ -527,6 +794,117 @@ def test_expression_repr(expr_fn, expected):
     """Test tree representation of expressions with a comprehensive example."""
     expr = expr_fn()
     assert repr(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "expr_fn,expected_prefix",
+    [
+        (
+            _build_complex_expr,
+            "~((((((((col('age') + 10) * col('rate')) / 2.5) >= 100) & (col('name').is_not_null() | ((col('status')",
+        ),
+    ],
+    ids=["complex_expression"],
+)
+def test_expression_inline_repr(expr_fn, expected_prefix):
+    """Test inline representation of expressions with a comprehensive example.
+
+    Note: This tests that the visitor generates the correct untruncated representation.
+    Top-level truncation is handled by callers of the visitor, not the visitor itself.
+    Individual literals may be truncated based on max_literal_length.
+    """
+    expr = expr_fn()
+    visitor = _InlineExprReprVisitor()
+    inline_repr = visitor.visit(expr)
+    # Verify the representation starts correctly
+    assert inline_repr.startswith(expected_prefix)
+    # Verify the representation ends correctly (not truncated at top level)
+    assert inline_repr.endswith(".alias('complex_filter')")
+
+
+class TestUDFExprStructuralEquality:
+    """Test structural equality for UDFExpr."""
+
+    def test_callable_class_udf_structural_equality(self):
+        """Test that callable class UDFs with same spec are structurally equal.
+
+        Each call to ExpressionAwareCallableClass.__call__ creates a new _placeholder
+        function, but structurally_equals should still return True when the
+        callable_class_spec is the same.
+        """
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        class AddOffset:
+            def __init__(self, offset):
+                self.offset = offset
+
+            def __call__(self, x: pa.Array) -> pa.Array:
+                return pc.add(x, self.offset)
+
+        # Create the same callable class instance
+        add_five = AddOffset(5)
+
+        # Each call creates a new _placeholder function internally,
+        # but the callable_class_spec should be the same
+        expr1 = add_five(col("value"))
+        expr2 = add_five(col("value"))
+
+        # These should be structurally equal despite having different
+        # _placeholder function objects
+        assert expr1.structurally_equals(expr2)
+        assert expr2.structurally_equals(expr1)
+
+        # Different constructor args should not be equal
+        add_ten = AddOffset(10)
+        expr3 = add_ten(col("value"))
+        assert not expr1.structurally_equals(expr3)
+
+        # Different column args should not be equal
+        expr4 = add_five(col("other"))
+        assert not expr1.structurally_equals(expr4)
+
+    def test_regular_function_udf_structural_equality(self):
+        """Test that regular function UDFs compare fn correctly."""
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        def add_one(x: pa.Array) -> pa.Array:
+            return pc.add(x, 1)
+
+        @udf(return_dtype=DataType.int32())
+        def add_two(x: pa.Array) -> pa.Array:
+            return pc.add(x, 2)
+
+        expr1 = add_one(col("value"))
+        expr2 = add_one(col("value"))
+        expr3 = add_two(col("value"))
+
+        # Same function should be equal
+        assert expr1.structurally_equals(expr2)
+
+        # Different functions should not be equal
+        assert not expr1.structurally_equals(expr3)
+
+    def test_callable_class_vs_regular_function_udf(self):
+        """Test that callable class UDFs are not equal to regular function UDFs."""
+        from ray.data.expressions import udf
+
+        @udf(return_dtype=DataType.int32())
+        class AddOne:
+            def __call__(self, x: pa.Array) -> pa.Array:
+                return pc.add(x, 1)
+
+        @udf(return_dtype=DataType.int32())
+        def add_one(x: pa.Array) -> pa.Array:
+            return pc.add(x, 1)
+
+        class_expr = AddOne()(col("value"))
+        func_expr = add_one(col("value"))
+
+        # Different types of UDFs should not be equal
+        assert not class_expr.structurally_equals(func_expr)
+        assert not func_expr.structurally_equals(class_expr)
 
 
 if __name__ == "__main__":

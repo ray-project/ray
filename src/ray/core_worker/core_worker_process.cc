@@ -30,8 +30,11 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/server_call.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/env.h"
@@ -161,12 +164,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #endif
   }
 
-  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager_),
-      options.session_name);
-
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
 #if defined(__APPLE__)
@@ -213,7 +210,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.language,
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
-                                                    options.startup_token,
                                                     &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
@@ -223,6 +219,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     QuickExit();
   }
   RAY_CHECK_GE(assigned_port, 0);
+
+  // Create EventAggregatorClient. Use deferred connection if port is invalid
+  // (minimal install writes -1 to indicate metrics agent not available).
+  auto event_aggregator_client =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
+      std::move(event_aggregator_client),
+      options.session_name,
+      local_node_id);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -327,8 +336,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
+      *owned_objects_counter_,
+      *owned_objects_size_counter_,
       RayConfig::instance().lineage_pinning_enabled());
-
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -352,7 +362,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
-      *reference_counter,
       options.check_signals,
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
@@ -365,7 +374,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter.get(),
+      /*reference_counting_enabled=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
       [this](const RayObject &obj) {
@@ -474,6 +483,18 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
         core_worker->free_actor_object_callback_(object_id);
+      },
+      /*set_direct_transport_metadata=*/
+      [this,
+       set_direct_transport_metadata = std::move(options.set_direct_transport_metadata)](
+          const ObjectID &object_id, std::string direct_transport_metadata) {
+        io_service_.post(
+            [set_direct_transport_metadata,
+             object_id,
+             direct_transport_metadata = std::move(direct_transport_metadata)]() {
+              set_direct_transport_metadata(object_id, direct_transport_metadata);
+            },
+            "CoreWorker.SetDirectTransportMetadata");
       });
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
@@ -497,6 +518,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
+      *raylet_client_pool,
+      gcs_client,
       *memory_store,
       *task_manager,
       *actor_creator,
@@ -535,6 +558,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
+      gcs_client,
       std::move(lease_policy),
       memory_store,
       *task_manager,
@@ -546,12 +570,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       lease_request_rate_limiter,
       /*tensor_transport_getter=*/
       [](const ObjectID &object_id) {
-        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
-        // supported for actor tasks. Therefore, normal tasks should always use
-        // OBJECT_STORE.
-        return rpc::TensorTransport::OBJECT_STORE;
+        // Currently, RDT is only supported for actor tasks.
+        return std::nullopt;
       },
-      boost::asio::steady_timer(io_service_),
+      io_service_,
       *scheduler_placement_time_ms_histogram_);
 
   auto report_locality_data_callback = [this](
@@ -585,9 +607,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+        auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
             node_id, /*filter_dead_nodes=*/false);
-        if (node_info == nullptr) {
+        if (!node_info) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
           // 1. We filled our cache after the GCS cleared the node info due to
@@ -691,7 +713,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       worker_id_(options.worker_type == WorkerType::DRIVER
                      ? ComputeDriverIdFromJob(options_.job_id)
-                     : WorkerID::FromRandom()),
+                     : options_.worker_id),
       io_work_(io_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
@@ -773,6 +795,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
   // line.
   InitializeSystemConfig();
+  rpc::SetServerCallThreadPoolMode(rpc::ServerCallThreadPoolMode::CORE_WORKER);
 
   // Assume stats module will be initialized exactly once in once process.
   // So it must be called in CoreWorkerProcess constructor and will be reused
@@ -790,13 +813,17 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // for java worker or in constructor of CoreWorker for python worker.
 
   // We need init stats before using it/spawning threads.
-  stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  stats::Init(global_tags, worker_id_);
   task_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTaskByStateGaugeMetric()));
   actor_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetActorByStateGaugeMetric()));
   total_lineage_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
+  owned_objects_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
+  owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
       new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
 
@@ -822,17 +849,25 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
     // Initialize metrics agent client.
-    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
-    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-      if (server_status.ok()) {
-        stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-      } else {
-        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
-                          "Metrics will not be exported. "
-                       << "Exporter agent status: " << server_status.ToString();
-      }
-    });
+    // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
+    if (options_.metrics_agent_port > 0) {
+      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
+      metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+        if (server_status.ok()) {
+          stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+          stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to establish connection to the metrics exporter agent. "
+                 "Metrics will not be exported. "
+              << "Exporter agent status: " << server_status.ToString();
+        }
+      });
+    } else {
+      RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
+                       "with dashboard support: `pip install 'ray[default]'`.";
+    }
   }
 }
 

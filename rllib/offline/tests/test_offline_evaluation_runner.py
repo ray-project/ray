@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.
@@ -116,9 +116,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Ensure that the metrics of the `default_policy` are also a dict.
         self.assertIsInstance(metrics[DEFAULT_MODULE_ID], ResultDict)
         # Make sure that the metric for the total eval loss is a `Stats` instance.
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
-        self.assertIsInstance(metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], Stats)
+        self.assertIsInstance(
+            metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], StatsBase
+        )
         # Ensure that the `_batch_iterator` instance was built. Note, this is
         # built in the first call to `OfflineEvaluationRunner.run()`.
         from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator

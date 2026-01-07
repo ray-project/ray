@@ -79,12 +79,12 @@ install_shellcheck() {
     local name="shellcheck-v${shellcheck_version}"
     if [[ "${osname}" == "linux" || "${osname}" == "darwin" ]]; then
       sudo mkdir -p /usr/local/bin || true
-      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+      curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
         sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
       }
     else
       mkdir -p /usr/local/bin
-      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      curl -sSfL -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
       unzip "${name}.zip" "${name}.exe"
       mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
     fi
@@ -108,7 +108,7 @@ install_nvm() {
       (
         cd "${NVM_HOME}"
         local target="./nvm-${ver}.zip"
-        curl -f -s -L -o "${target}" \
+        curl -sSfL -o "${target}" \
           "https://github.com/coreybutler/nvm-windows/releases/download/${ver}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
@@ -156,13 +156,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSfL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -246,16 +246,12 @@ install_pip_packages() {
     # For DAG visualization
     requirements_packages+=("pydot")
     requirements_packages+=("pytesseract==0.3.13")
-    requirements_packages+=("spacy==3.7.5")
-    requirements_packages+=("spacy_langdetect==0.1.2")
   fi
 
   # Additional RLlib test dependencies.
   if [[ "${RLLIB_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
-    #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
-    pip install --no-dependencies mlagents==0.28.0
 
     # Install MuJoCo.
     sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
@@ -382,13 +378,6 @@ install_pip_packages() {
 
   if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     download_mnist
-  fi
-
-  if [[ "${DOC_TESTING-}" == 1 ]]; then
-    # Todo: This downgrades spacy and related dependencies because
-    # `en_core_web_sm` is only compatible with spacy < 3.6.
-    # We should move to a model that does not depend on a stale version.
-    python -m spacy download en_core_web_sm
   fi
 }
 

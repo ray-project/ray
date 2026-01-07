@@ -283,14 +283,22 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         subprocess.check_output("ray stop --force", shell=True)
 
 
-def test_get_and_write_node_ip_address(shutdown_only):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+def test_get_node_to_connect_ip_address(shutdown_only, call_ray_start):
+    """
+    Make sure the node ip address is correctly fetched from the raylet process when
+    using get_node_to_connect_ip_address to resolve the node to connect to.
+    """
     ray.init()
     node_ip = ray.util.get_node_ip_address()
-    session_dir = ray._private.worker._global_node.get_session_dir_path()
-    cached_node_ip_address = ray._private.services.get_cached_node_ip_address(
-        session_dir
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        ray._private.worker.global_worker.gcs_client
     )
-    assert cached_node_ip_address == node_ip
+    assert getattr(node_info, "node_manager_address", None) == node_ip
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
@@ -308,9 +316,43 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        cluster.gcs_address, "127.0.0.3"
+        ray._raylet.GcsClient(address=cluster.gcs_address), "127.0.0.3"
     )
-    assert node_info["node_manager_port"] == node2.node_manager_port
+    assert node_info.node_manager_port == node2.node_manager_port
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_get_node_to_connect_for_driver_filters_by_node_name(ray_start_cluster):
+    """
+    Test that get_node_to_connect_for_driver correctly filters nodes by node_name.
+    """
+    cluster = ray_start_cluster
+    # add first node with a specific node_name
+    node1 = cluster.add_node(node_name="node_one")
+    # add second node with a different node_name
+    node2 = cluster.add_node(node_name="node_two")
+    cluster.wait_for_nodes()
+
+    assert node1.node_ip_address == node2.node_ip_address
+    assert node1.node_manager_port != node2.node_manager_port
+
+    ray.init(address=cluster.address, _redis_password=cluster.redis_password)
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+
+    # Test filtering by node_name for node_one
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, node_name="node_one"
+    )
+    assert node_info.node_manager_port == node1.node_manager_port
+    assert node_info.node_name == "node_one"
+
+    # Test filtering by node_name for node_two
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, node_name="node_two"
+    )
+    assert node_info.node_manager_port == node2.node_manager_port
+    assert node_info.node_name == "node_two"
 
 
 def test_default_resource_not_allowed_error(shutdown_only):

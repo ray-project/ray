@@ -48,7 +48,7 @@ avoid-escape = false
 [tool.ruff.lint.isort]
 combine-as-imports = true
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]
-known-local-folder = ["ray"]
+known-local-folder = ["ray", "ray_release"]
 known-third-party = ["grpc"]
 
 [tool.ruff.lint.isort.sections]
@@ -65,7 +65,7 @@ afterray = ["psutil", "setproctitle"]
 "python/ray/__init__.py" = ["I"]
 "python/ray/dag/__init__.py" = ["I"]
 "python/ray/air/__init__.py" = ["I"]
-"release/*" = ["I"]
+"release/*_tests/*.py" = ["I"]
 
 # TODO(matthewdeng): Remove this line
 "python/ray/tune/__init__.py" = ["I"]

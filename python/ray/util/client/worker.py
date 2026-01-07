@@ -2,6 +2,7 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
+
 import base64
 import json
 import logging
@@ -17,7 +18,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import grpc
 
-import ray._private.tls_utils
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -173,27 +173,28 @@ class Worker:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
+        from ray._private.grpc_utils import init_grpc_channel
+
+        # Prepare credentials if secure connection is requested
+        credentials = None
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
             elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-                (
-                    server_cert_chain,
-                    private_key,
-                    ca_cert,
-                ) = ray._private.tls_utils.load_certs_from_env()
-                credentials = grpc.ssl_channel_credentials(
-                    certificate_chain=server_cert_chain,
-                    private_key=private_key,
-                    root_certificates=ca_cert,
-                )
+                # init_grpc_channel will handle this via load_certs_from_env()
+                credentials = None
             else:
+                # Default SSL credentials (no specific certs)
                 credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(
-                self._conn_str, credentials, options=GRPC_OPTIONS
-            )
-        else:
-            self.channel = grpc.insecure_channel(self._conn_str, options=GRPC_OPTIONS)
+
+        # Create channel with auth interceptors via helper
+        # This automatically adds auth interceptors when token auth is enabled
+        self.channel = init_grpc_channel(
+            self._conn_str,
+            options=GRPC_OPTIONS,
+            asynchronous=False,
+            credentials=credentials,
+        )
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -233,15 +234,14 @@ class Worker:
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
                 logger.debug(
-                    "Ray client server unavailable, " f"retrying in {timeout}s..."
+                    f"Ray client server unavailable, retrying in {timeout}s..."
                 )
                 logger.debug(f"Received when checking init: {e.details()}")
                 # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
             logger.debug(
-                "Waiting for Ray to become ready on the server, "
-                f"retry in {timeout}s..."
+                f"Waiting for Ray to become ready on the server, retry in {timeout}s..."
             )
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
@@ -523,7 +523,7 @@ class Worker:
     ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         if not isinstance(object_refs, list):
             raise TypeError(
-                "wait() expected a list of ClientObjectRef, " f"got {type(object_refs)}"
+                f"wait() expected a list of ClientObjectRef, got {type(object_refs)}"
             )
         for ref in object_refs:
             if not isinstance(ref, ClientObjectRef):
@@ -836,12 +836,27 @@ class Worker:
                 serialized_job_config = None
             else:
                 with tempfile.TemporaryDirectory() as tmp_dir:
+                    from ray._private.ray_constants import (
+                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+                    )
+
                     runtime_env = job_config.runtime_env or {}
+                    # Determine whether to respect .gitignore files based on environment variable
+                    # Default is True (respect .gitignore). Set to False if env var is "1".
+                    include_gitignore = (
+                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+                    )
                     runtime_env = upload_py_modules_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        scratch_dir=tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     runtime_env = upload_working_dir_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        scratch_dir=tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)

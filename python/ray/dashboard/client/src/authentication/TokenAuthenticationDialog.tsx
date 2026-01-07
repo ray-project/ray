@@ -68,11 +68,13 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
       setShowToken(!showToken);
     };
 
-    // Different messages based on whether this is initial auth or re-auth
-    const title = "Token Authentication Required";
-    const message = hasExistingToken
-      ? "The authentication token is invalid or has expired. Please provide a valid authentication token."
-      : "Token authentication is enabled for this cluster. Please provide a valid authentication token.";
+    // Different messages based on whether this is initial auth or re-auth.
+    const title = "Authentication Token Required";
+    const message =
+      (hasExistingToken
+        ? "The existing authentication token is invalid."
+        : "Token authentication is enabled.") +
+      " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/token-auth.html";
 
     return (
       <Dialog
@@ -88,7 +90,7 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
         <DialogContent>
           <DialogContentText
             id="token-auth-dialog-description"
-            sx={{ marginBottom: 2 }}
+            sx={{ marginBottom: 2, whiteSpace: "pre-line" }}
           >
             {message}
           </DialogContentText>
@@ -118,7 +120,19 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
                     edge="end"
                     disabled={isSubmitting}
                   >
-                    {showToken ? <VisibilityOff /> : <Visibility />}
+                    {showToken ? (
+                      <VisibilityOff
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    ) : (
+                      <Visibility
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    )}
                   </IconButton>
                 </InputAdornment>
               ),

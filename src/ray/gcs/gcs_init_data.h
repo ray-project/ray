@@ -15,9 +15,9 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_table_storage.h"
+#include "ray/gcs/postable/postable.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

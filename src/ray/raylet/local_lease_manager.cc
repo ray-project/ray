@@ -26,7 +26,6 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/placement_group_util.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -57,6 +56,7 @@ LocalLeaseManager::LocalLeaseManager(
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_lease_arguments,
     size_t max_pinned_lease_arguments_bytes,
+    SchedulerMetrics &scheduler_metrics,
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
@@ -70,6 +70,7 @@ LocalLeaseManager::LocalLeaseManager(
       leased_workers_(leased_workers),
       get_lease_arguments_(get_lease_arguments),
       max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes),
+      scheduler_metrics_(scheduler_metrics),
       get_time_ms_(get_time_ms),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
@@ -113,6 +114,8 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
       RAY_LOG(DEBUG) << "Waiting for args for lease: " << lease_id;
       auto it = waiting_lease_queue_.insert(waiting_lease_queue_.end(), std::move(work));
       RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
+      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+          WorkFootprint::PULLING_TASK_ARGUMENTS);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, lease can be granted " << lease_id;
@@ -322,6 +325,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           auto it = waiting_lease_queue_.insert(waiting_lease_queue_.begin(),
                                                 std::move(*work_it));
           RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
+          cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+              WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
@@ -497,6 +502,10 @@ void LocalLeaseManager::SpillWaitingLeases() {
       num_waiting_lease_spilled_++;
       waiting_leases_index_.erase(lease_id);
       it = waiting_lease_queue_.erase(it);
+      if (waiting_lease_queue_.empty()) {
+        cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
+            WorkFootprint::PULLING_TASK_ARGUMENTS);
+      }
     } else {
       if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "RayLease " << lease_id
@@ -724,6 +733,10 @@ void LocalLeaseManager::LeasesUnblocked(const std::vector<LeaseID> &ready_ids) {
       leases_to_grant_[scheduling_key].push_back(work);
       waiting_lease_queue_.erase(it->second);
       waiting_leases_index_.erase(it);
+      if (waiting_lease_queue_.empty()) {
+        cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
+            WorkFootprint::PULLING_TASK_ARGUMENTS);
+      }
     }
   }
   ScheduleAndGrantLeases();
@@ -885,6 +898,10 @@ std::vector<std::shared_ptr<internal::Work>> LocalLeaseManager::CancelLeasesWith
         cancelled_works.push_back(work);
         return true;
       });
+  if (waiting_lease_queue_.empty()) {
+    cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
+        WorkFootprint::PULLING_TASK_ARGUMENTS);
+  }
 
   return cancelled_works;
 }
@@ -990,7 +1007,7 @@ void LocalLeaseManager::Grant(
 
   RAY_CHECK(!leased_workers.contains(lease_spec.LeaseId()));
   leased_workers[lease_spec.LeaseId()] = worker;
-  cluster_resource_scheduler_.GetLocalResourceManager().SetBusyFootprint(
+  cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
       WorkFootprint::NODE_WORKERS);
 
   // Update our internal view of the cluster state.
@@ -1187,8 +1204,10 @@ uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
 }
 
 void LocalLeaseManager::RecordMetrics() const {
-  ray::stats::STATS_scheduler_tasks.Record(granted_lease_args_.size(), "Executing");
-  ray::stats::STATS_scheduler_tasks.Record(waiting_leases_index_.size(), "Waiting");
+  scheduler_metrics_.scheduler_tasks.Record(granted_lease_args_.size(),
+                                            {{"State", "Executing"}});
+  scheduler_metrics_.scheduler_tasks.Record(waiting_leases_index_.size(),
+                                            {{"State", "Waiting"}});
 }
 
 void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
