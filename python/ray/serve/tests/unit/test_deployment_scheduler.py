@@ -974,6 +974,93 @@ def test_filter_nodes_by_labels():
     assert set(filtered.keys()) == {"n1", "n2"}
 
 
+def test_get_strategies_to_try():
+    """Test strategy generation logic in DefaultDeploymentScheduler._get_strategies_to_try,
+    verifying that the scheduler correctly generates a list of (resources, labels) tuples to
+    attempt for scheduling."""
+
+    # Setup scheduler with mocks
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="head_node",
+        create_placement_group_fn_override=None,
+    )
+
+    # Basic Ray Actor
+    req_basic = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+    )
+    strategies = scheduler._get_strategies_to_try(req_basic)
+    assert len(strategies) == 1
+    assert strategies[0][0] == {"CPU": 1}
+    assert strategies[0][1] == []
+
+    # Actor with label_selector and fallback_strategy
+    req_fallback = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r2", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={
+            "label_selector": {"region": "us-west"},
+            "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+        },
+        actor_init_args=(),
+        on_scheduled=Mock(),
+    )
+    strategies = scheduler._get_strategies_to_try(req_fallback)
+    assert len(strategies) == 2
+
+    assert strategies[0][0] == {"CPU": 1}
+    assert strategies[0][1] == [{"region": "us-west"}]
+    assert strategies[1][0] == {"CPU": 1}
+    assert strategies[1][1] == [{"region": "us-east"}]
+
+    # Scheduling replica with placement group PACK strategy and bundle_label_selector
+    req_pack = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r4", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 0.1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 5}],
+        placement_group_strategy="PACK",
+        placement_group_bundle_label_selector=[
+            {"accelerator-type": "H100"},
+            {"accelerator-type": "H100"},
+        ],
+    )
+    strategies = scheduler._get_strategies_to_try(req_pack)
+    assert len(strategies) == 1
+
+    assert strategies[0][0] == {"CPU": 0.1}
+    assert strategies[0][1] == [{"accelerator-type": "H100"}]
+
+    # Scheduling replica with placement group STRICT_PACK strategy and bundle_label_selector
+    req_pg = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r3", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 2}],
+        placement_group_strategy="STRICT_PACK",
+        placement_group_bundle_label_selector=[{"accelerator-type": "A100"}],
+    )
+    strategies = scheduler._get_strategies_to_try(req_pg)
+    assert len(strategies) == 1
+
+    assert strategies[0][0] == {"CPU": 2}
+    assert strategies[0][1] == [{"accelerator-type": "A100"}]
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
