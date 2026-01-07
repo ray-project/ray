@@ -407,6 +407,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             optional[c_string] tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback
+        (void(const CObjectID &, const c_string &) nogil) set_direct_transport_metadata
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
@@ -432,7 +433,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         int runtime_env_hash
-        int startup_token
+        CWorkerID worker_id
         CClusterID cluster_id
         c_string session_name
         c_string entrypoint

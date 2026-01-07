@@ -671,6 +671,118 @@ def test_with_column_logarithmic_operations(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").sin(), math.sin, id="sin"),
+        pytest.param(lambda: col("value").cos(), math.cos, id="cos"),
+        pytest.param(lambda: col("value").tan(), math.tan, id="tan"),
+        pytest.param(lambda: col("value").asin(), math.asin, id="asin"),
+        pytest.param(lambda: col("value").acos(), math.acos, id="acos"),
+        pytest.param(lambda: col("value").atan(), math.atan, id="atan"),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param(
+            [0.0, math.pi / 6, math.pi / 4, math.pi / 3, math.pi / 2],
+            id="trigonometric_angles",
+        ),
+        pytest.param([0, 1, 2, 3], id="integer_angles"),
+    ],
+)
+def test_with_column_trigonometric_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+    input_values,
+):
+    """Test trigonometric expressions (sin, cos, tan, asin, acos, atan)."""
+    values = input_values
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+
+    # For inverse trigonometric functions, we need to handle domain restrictions
+    # asin and acos require input in [-1, 1]
+    if expected_fn in (math.asin, math.acos):
+        # Use values in the valid domain for inverse trig functions
+        values = [-1.0, -0.5, 0.0, 0.5, 1.0]
+        ds = ray.data.from_items([{"value": v} for v in values])
+
+    expected_values = [expected_fn(v) for v in values]
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "test_data, expr_factory, expected_results, test_id",
+    [
+        # Test negate
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").negate(),
+            [-5, 3, 0],
+            "negate",
+        ),
+        # Test sign
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").sign(),
+            [1, -1, 0],
+            "sign",
+        ),
+        # Test abs
+        pytest.param(
+            [{"x": 5}, {"x": -3}, {"x": 0}],
+            lambda: col("x").abs(),
+            [5, 3, 0],
+            "abs",
+        ),
+        # Test power with integer exponent
+        pytest.param(
+            [{"x": 2}, {"x": 3}, {"x": 4}],
+            lambda: col("x").power(2),
+            [4, 9, 16],
+            "power_int",
+        ),
+        # Test power with float exponent
+        pytest.param(
+            [{"x": 4}, {"x": 9}, {"x": 16}],
+            lambda: col("x").power(0.5),
+            [2.0, 3.0, 4.0],
+            "power_sqrt",
+        ),
+    ],
+)
+def test_with_column_arithmetic_operations(
+    ray_start_regular_shared,
+    test_data,
+    expr_factory,
+    expected_results,
+    test_id,
+):
+    """Test arithmetic helper expressions: negate, sign, power, abs."""
+    ds = ray.data.from_items(test_data)
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+
+    # Create expected dataframe
+    expected_df = pd.DataFrame(test_data)
+    expected_df["result"] = expected_results
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "test_data, expression, expected_results, test_description",
     [
         # Test with null values

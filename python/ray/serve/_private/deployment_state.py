@@ -36,7 +36,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
-    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
@@ -187,9 +186,17 @@ class DeploymentStateUpdateResult:
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_S = int(
+    os.environ.get(
+        "RAY_SERVE_SLOW_STARTUP_WARNING_S",
+        os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30),
+    )
+)
 SLOW_STARTUP_WARNING_PERIOD_S = int(
-    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+    os.environ.get(
+        "RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S",
+        os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30),
+    )
 )
 
 ALL_REPLICA_STATES = list(ReplicaState)
@@ -2084,7 +2091,6 @@ class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
     FORCE_STOP_UNHEALTHY_REPLICAS = RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS
-    MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = False
 
     def __init__(
         self,
@@ -2327,22 +2333,8 @@ class DeploymentState:
 
     @property
     def _failed_to_start_threshold(self) -> int:
-        # Use global override if set, otherwise use deployment config
-        value = MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT
-        if value is not None and not self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED:
-            logger.warning(
-                "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT is deprecated and will be removed in the future. "
-                "Please use 'max_constructor_retry_count' instead in configurations."
-            )
-            self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = True
-        base_retry_count = (
-            value
-            if value is not None
-            else self._target_state.info.deployment_config.max_constructor_retry_count
-        )
-
         return min(
-            base_retry_count,
+            self._target_state.info.deployment_config.max_constructor_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
