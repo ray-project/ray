@@ -185,13 +185,12 @@ def _get_learner_bundles(config):
         else:
             return []
 
-    num_cpus_per_learner = (
-        config.num_cpus_per_learner
-        if config.num_cpus_per_learner != "auto"
-        else 1
-        if config.num_gpus_per_learner == 0
-        else 0
-    )
+    if config.num_cpus_per_learners != "auto":
+        num_cpus_per_learner = config.num_cpus_per_learner
+    elif config.num_gpus_per_learner == 0:
+        num_cpus_per_learner = 1
+    else:
+        num_cpus_per_learner = 0
 
     # aggregator actors are co-located with learners and use 1 CPU each
     bundles = [
@@ -207,13 +206,13 @@ def _get_learner_bundles(config):
 
 def _get_main_process_bundle(config):
     if config.num_learners == 0:
-        num_cpus_per_learner = (
-            config.num_cpus_per_learner
-            if config.num_cpus_per_learner != "auto"
-            else 1
-            if config.num_gpus_per_learner == 0
-            else 0
-        )
+        if config.num_cpus_per_learners != "auto":
+            num_cpus_per_learner = config.num_cpus_per_learner
+        elif config.num_gpus_per_learner == 0:
+            num_cpus_per_learner = 1
+        else:
+            num_cpus_per_learner = 0
+
         bundle = {
             "CPU": max(num_cpus_per_learner, config.num_cpus_for_main_process),
             "GPU": config.num_gpus_per_learner,
