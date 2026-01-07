@@ -1423,9 +1423,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1456,9 +1453,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1539,9 +1533,6 @@
     - __suffix__: aws
     - __suffix__: aws.py312
       python: "3.12"
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2112,9 +2103,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2141,9 +2129,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2168,9 +2153,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2196,9 +2178,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2232,10 +2211,6 @@
     - __suffix__: aws.py312
       frequency: weekly
       python: "3.12"
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
-
 
 - name: compiled_graphs
   python: "3.10"
@@ -2383,9 +2358,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2463,11 +2435,8 @@
     - __suffix__: aws.py312
       frequency: manual
       python: "3.12"
-    - __suffix__: aws.py313
-      python: "3.13"
-      frequency: manual
       smoke_test:
-        frequency: manual
+        frequency: nightly-3x
     - __suffix__: gce
       env: gce
       frequency: manual
