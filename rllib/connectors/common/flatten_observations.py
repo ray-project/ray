@@ -306,7 +306,7 @@ class FlattenObservations(ConnectorV2):
             spaces = {}
             assert isinstance(
                 input_observation_space, gym.spaces.Dict
-            ), f"To flatten a Multi-Agent observation, its expected that observation space is a dictionary, its actual type is {type(input_observation_space)}"
+            ), f"To flatten a Multi-Agent observation, it is expected that observation space is a dictionary, its actual type is {type(input_observation_space)}"
 
             for agent_id, space in input_observation_space.items():
                 # Remove keys, if necessary.
