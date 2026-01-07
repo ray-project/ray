@@ -165,6 +165,99 @@ steps:
       - ray-java-build-aarch64
       - ray-dashboard-build-aarch64
 
+  # Build ray-cpp core (C++ headers, libs, examples) for aarch64
+  - name: ray-cpp-core-build-aarch64
+    label: "wanda: cpp core py{{matrix}} (aarch64)"
+    wanda: ci/docker/ray-cpp-core.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags:
+      - release_wheels
+      - oss
+    instance_type: builder-arm64
+
+  # Build ray-cpp wheel for aarch64
+  - name: ray-cpp-wheel-build-aarch64
+    label: "wanda: cpp wheel py{{matrix}} (aarch64)"
+    wanda: ci/docker/ray-cpp-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags:
+      - release_wheels
+      - linux_wheels
+      - oss
+    instance_type: builder-arm64
+    depends_on:
+      - ray-core-build-aarch64
+      - ray-cpp-core-build-aarch64
+      - ray-java-build-aarch64
+      - ray-dashboard-build-aarch64
+
+  # Upload wheels to S3 (aarch64)
+  # Gating: only on releases/* OR (master AND nightly)
+  - label: ":s3: upload: wheel py{{matrix}} (aarch64)"
+    key: linux_wheels_upload_aarch64
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
+    instance_type: small-arm64
+    commands:
+      # Extract wheel from wanda image (Wanda cache in ECR)
+      - wanda_image="$RAYCI_WORK_REPO:$RAYCI_BUILD_ID-ray-wheel-py{{matrix}}-aarch64"
+      - container_id=$(docker create $wanda_image)
+      - mkdir -p /tmp/wheels
+      - docker cp ${container_id}:/ /tmp/wheels/
+      - docker rm ${container_id}
+      - mv /tmp/wheels/*.whl .whl/
+      - ./ci/build/copy_build_artifacts.sh wheel
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    depends_on:
+      - ray-wheel-build-aarch64
+    tags:
+      - release_wheels
+      - skip-on-premerge
+
+  # Upload cpp wheels to S3 (aarch64)
+  # Gating: only on releases/* OR (master AND nightly)
+  - label: ":s3: upload: cpp wheel py{{matrix}} (aarch64)"
+    key: linux_cpp_wheels_upload_aarch64
+    if: build.branch =~ /^releases\// || (build.branch == "master" && build.env("RAYCI_SCHEDULE") == "nightly")
+    instance_type: small-arm64
+    commands:
+      # Extract cpp wheel from wanda image (Wanda cache in ECR)
+      - wanda_image="$RAYCI_WORK_REPO:$RAYCI_BUILD_ID-ray-cpp-wheel-py{{matrix}}-aarch64"
+      - container_id=$(docker create $wanda_image)
+      - mkdir -p /tmp/wheels
+      - docker cp ${container_id}:/ /tmp/wheels/
+      - docker rm ${container_id}
+      - mv /tmp/wheels/*.whl .whl/
+      - ./ci/build/copy_build_artifacts.sh wheel
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    depends_on:
+      - ray-cpp-wheel-build-aarch64
+    tags:
+      - release_wheels
+      - skip-on-premerge
+
   - name: ray-extra-image-cpu-build-aarch64
     label: "wanda: ray-extra py{{matrix}} cpu (aarch64)"
     wanda: ci/docker/ray-extra-image-cpu.wanda.yaml
