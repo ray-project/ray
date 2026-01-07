@@ -469,8 +469,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 self._max_chunk_size = _get_max_chunk_size(
                     table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
-            from ray.air.util.transform_pyarrow import _is_native_tensor_type
             from ray.data._internal.arrow_ops import transform_pyarrow
+            from ray.data._internal.utils.transform_pyarrow import (
+                _is_native_tensor_type,
+            )
 
             # HACK: This is so dumb. Currently, pyarrow native FixedShapeTensorArrays
             # are viewed contiguously in every setting, regardless of shape/ndim,

@@ -615,7 +615,7 @@ class _BaseFixedShapeArrowTensorType(
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
         """
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(self._shape, self.value_type.to_pandas_dtype())
 
@@ -1119,7 +1119,7 @@ class ArrowVariableShapedTensorType(
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
         """
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(
             self.shape,
