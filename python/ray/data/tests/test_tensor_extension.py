@@ -1348,7 +1348,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         )
         assert mock_deserialize.call_count == 1  # Still 1, proving cache hit
         assert deserialized1.shape == deserialized2.shape
-        assert deserialized1.scalar_type == deserialized2.scalar_type
+        assert deserialized1.value_type == deserialized2.value_type
         assert deserialized1.extension_name == deserialized2.extension_name
 
     # Test 3: Different serialized data produces different cache entries
@@ -1362,7 +1362,7 @@ def test_arrow_extension_serialize_deserialize_cache():
     )
     # Should be different from previous deserialization
     assert deserialized3.shape == (3, 4)
-    assert deserialized3.scalar_type == pa.int32()
+    assert deserialized3.value_type == pa.int32()
     assert deserialized3.shape != deserialized1.shape
 
     # Test 4: Cache parameter generation works correctly
@@ -1429,7 +1429,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         assert mock_deserialize_shared.call_count == 0
         # Both should be equal (cache hit)
         assert deserialized_a.shape == deserialized_b.shape
-        assert deserialized_a.scalar_type == deserialized_b.scalar_type
+        assert deserialized_a.value_type == deserialized_b.value_type
         assert deserialized_a.extension_name == deserialized_b.extension_name
 
 
@@ -1545,7 +1545,7 @@ def test_arrow_extension_serialize_deserialize_cache_thread_safety():
     assert len(results) == 10
     for result in results[1:]:
         assert result.shape == results[0].shape
-        assert result.scalar_type == results[0].scalar_type
+        assert result.value_type == results[0].value_type
 
 
 if __name__ == "__main__":
