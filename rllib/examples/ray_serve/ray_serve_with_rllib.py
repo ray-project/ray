@@ -152,7 +152,8 @@ if __name__ == "__main__":
     try:
         # Create the environment that we would like to receive
         # served actions for.
-        env = gym.make("CartPole-v1", render_mode="human")
+        render_mode = None if args.no_render else "human"
+        env = gym.make("CartPole-v1", render_mode=render_mode)
         obs, _ = env.reset()
 
         num_episodes = 0
