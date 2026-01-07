@@ -1,4 +1,4 @@
-jupyterlab==3.6.1
+jupyterlab>=4.2.7
 ipywidgets
 google-cloud-storage
 grpcio>=1.66.1

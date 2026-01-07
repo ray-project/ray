@@ -12,6 +12,7 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
+from ray_release.byod.build_context import BuildContext
 from ray_release.configs.global_config import get_global_config, init_global_config
 from ray_release.test import Test
 
@@ -72,11 +73,13 @@ def test_build_anyscale_custom_byod_image() -> None:
             with open(os.path.join(byod_dir, "foo.sh"), "wt") as f:
                 f.write("echo foo")
 
+            build_context: BuildContext = {
+                "post_build_script": test.get_byod_post_build_script(),
+            }
             build_anyscale_custom_byod_image(
                 test.get_anyscale_byod_image(),
                 test.get_anyscale_base_byod_image(),
-                test.get_byod_post_build_script(),
-                test.get_byod_python_depset(),
+                build_context,
                 release_byod_dir=byod_dir,
             )
         assert (" ".join(cmds[0])).startswith(
