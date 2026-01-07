@@ -3,7 +3,6 @@ import os
 import random
 import string
 import time
-import traceback
 from typing import List, Optional, Tuple
 
 from google.cloud import storage as gcs_storage
@@ -12,7 +11,6 @@ from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import (
     LAST_LOGS_LENGTH,
     create_cluster_env_from_image,
-    get_cluster_name,
     get_custom_cluster_env_name,
 )
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
@@ -44,7 +42,7 @@ from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, ResultStatus, handle_exception
+from ray_release.result import Result, ResultStatus, update_result_from_exception
 from ray_release.signal_handling import (
     reset_signal_handling,
     setup_signal_handling,
@@ -232,28 +230,17 @@ def _local_environment_information(
     command_runner: CommandRunner,
     build_timeout: int,
     cluster_timeout: int,
-    cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
     # Start cluster
-    if cluster_id:
-        buildkite_group(":rocket: Using existing cluster")
-        # Re-use existing cluster ID for development
-        cluster_manager.cluster_id = cluster_id
-        cluster_manager.cluster_name = get_cluster_name(cluster_id)
-    else:
-        buildkite_group(":gear: Building cluster environment")
+    buildkite_group(":gear: Building cluster environment")
 
-        if cluster_env_id:
-            cluster_manager.cluster_env_id = cluster_env_id
+    cluster_manager.cluster_env_id = cluster_env_id
 
-        cluster_manager.build_configs(timeout=build_timeout)
+    cluster_manager.build_configs(timeout=build_timeout)
 
-        if isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
-
-    result.cluster_url = cluster_manager.get_cluster_url()
-    result.cluster_id = cluster_manager.cluster_id
+    if isinstance(command_runner, AnyscaleJobRunner):
+        command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
 
 def _prepare_remote_environment(
@@ -399,8 +386,6 @@ def run_release_test(
     anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -418,8 +403,6 @@ def run_release_test(
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
         test_definition_root=test_definition_root,
         log_streaming_limit=log_streaming_limit,
         image=image,
@@ -477,15 +460,7 @@ def run_release_test_kuberay(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
-
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
+        update_result_from_exception(result, pipeline_exception)
         raise pipeline_exception
     return result
 
@@ -496,8 +471,6 @@ def run_release_test_anyscale(
     result: Result,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
@@ -521,14 +494,16 @@ def run_release_test_anyscale(
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
+        cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
-        if image and not cluster_env_id:
+        if image:
             cluster_env_id = create_cluster_env_from_image(
                 image, test.get_name(), test.get_byod_runtime_env()
             )
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
+
         (
             prepare_cmd,
             prepare_timeout,
@@ -550,7 +525,6 @@ def run_release_test_anyscale(
             command_runner,
             build_timeout,
             cluster_timeout,
-            cluster_id,
             cluster_env_id,
         )
 
@@ -586,22 +560,13 @@ def run_release_test_anyscale(
         pipeline_exception = e
         metrics = {}
 
-    # Obtain the cluster URL again as it is set after the
+    # Obtain the cluster info again as it is set after the
     # command was run in case of anyscale jobs
     if isinstance(command_runner, AnyscaleJobRunner):
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
-
-    if cluster_manager:
-        buildkite_group(":earth_africa: Terminating cluster")
-        cluster_manager.terminate_cluster(wait=False)
-
-    if hasattr(command_runner, "cleanup"):
-        command_runner.cleanup()
 
     reset_signal_handling()
 
@@ -624,20 +589,8 @@ def run_release_test_anyscale(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
 
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
-        try:
-            raise pipeline_exception
-        except Exception:
-            if not result.last_logs:
-                result.last_logs = traceback.format_exc()
+        update_result_from_exception(result, pipeline_exception, with_last_logs=True)
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:

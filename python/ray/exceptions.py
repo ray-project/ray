@@ -178,10 +178,20 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                # Store args separately to avoid writing to user-defined
+                # read-only or property-based `args`.
+                self._ray_task_error_args = (cause,)
+
+            @property
+            def args(self):
+                return self._ray_task_error_args
+
+            @args.setter
+            def args(self, value):
+                self._ray_task_error_args = value
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, self._ray_task_error_args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -206,10 +216,18 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                self._ray_task_error_args = (cause,)
+
+            @property
+            def args(self):
+                return self._ray_task_error_args
+
+            @args.setter
+            def args(self, value):
+                self._ray_task_error_args = value
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, self._ray_task_error_args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -244,6 +262,15 @@ class RayTaskError(RayError):
                 " be subclassed! This exception is raised as"
                 " RayTaskError only. You can use `ray_task_error.cause` to"
                 f" access the user exception. Failure in subclassing: {e}"
+            )
+            return self
+        except Exception as e:
+            logger.warning(
+                "Failed to combine RayTaskError with user exception type "
+                f"{type(self.cause)}; raising RayTaskError only. This can "
+                "happen when the user exception overrides attributes like "
+                "`args` or otherwise blocks subclass construction. "
+                f"Failure in subclassing: {e}"
             )
             return self
 
@@ -949,6 +976,13 @@ class RayChannelTimeoutError(RayChannelError, TimeoutError):
 @PublicAPI(stability="alpha")
 class RayCgraphCapacityExceeded(RaySystemError):
     """Raised when the Compiled Graph channel's buffer is at max capacity"""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayDirectTransportError(RaySystemError):
+    """Raised when there is an error during a Ray direct transport transfer."""
 
     pass
 

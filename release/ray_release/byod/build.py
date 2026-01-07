@@ -1,8 +1,10 @@
 import os
 import subprocess
 import sys
+import tempfile
 from typing import Dict, List, Optional
 
+from ray_release.byod.build_context import BuildContext, fill_build_context_dir
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
 from ray_release.test import (
@@ -12,55 +14,45 @@ from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
-RELEASE_BYOD_DIR = (
-    os.path.join(bazel_workspace_dir, "release/ray_release/byod")
-    if bazel_workspace_dir
-    else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
-)
-
 
 def build_anyscale_custom_byod_image(
     image: str,
     base_image: str,
-    post_build_script: str,
-    python_depset: Optional[str] = None,
+    build_context: BuildContext,
+    release_byod_dir: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
         return
 
-    env = os.environ.copy()
-    env["DOCKER_BUILDKIT"] = "1"
-    docker_build_cmd = [
-        "docker",
-        "build",
-        "--progress=plain",
-        "--build-arg",
-        f"BASE_IMAGE={base_image}",
-    ]
-    if post_build_script:
-        docker_build_cmd.extend(
-            ["--build-arg", f"POST_BUILD_SCRIPT={post_build_script}"]
-        )
-    if python_depset:
-        docker_build_cmd.extend(["--build-arg", f"PYTHON_DEPSET={python_depset}"])
+    if not release_byod_dir:
+        if bazel_workspace_dir:
+            release_byod_dir = os.path.join(
+                bazel_workspace_dir, "release/ray_release/byod"
+            )
+        else:
+            release_byod_dir = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 
-    docker_build_cmd.extend(
-        [
-            "-t",
-            image,
-            "-f",
-            os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
-            RELEASE_BYOD_DIR,
-        ]
-    )
-    subprocess.check_call(
-        docker_build_cmd,
-        stdout=sys.stderr,
-        env=env,
-    )
+    with tempfile.TemporaryDirectory() as build_dir:
+        fill_build_context_dir(build_context, build_dir, release_byod_dir)
+
+        docker_build_cmd = "docker build --progress=plain .".split()
+        docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
+        docker_build_cmd += ["-t", image]
+
+        env = os.environ.copy()
+        env["DOCKER_BUILDKIT"] = "1"
+
+        subprocess.check_call(
+            docker_build_cmd,
+            stdout=sys.stderr,
+            cwd=build_dir,
+            env=env,
+        )
+
     if not base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
-        _validate_image(image)
+        _check_ray_commit_in_image(image)
+
     _push_image(image)
     if os.environ.get("BUILDKITE"):
         subprocess.run(
@@ -96,7 +88,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
     return image_list
 
 
-def _validate_image(byod_image: str) -> None:
+def _check_ray_commit_in_image(byod_image: str) -> None:
     docker_ray_commit = (
         subprocess.check_output(
             [
