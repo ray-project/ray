@@ -29,7 +29,7 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_copy,
     call_crane_manifest,
 )
-from ci.ray_ci.utils import ecr_docker_login
+from ci.ray_ci.utils import ci_init, ecr_docker_login
 
 from ray_release.configs.global_config import get_global_config
 
@@ -210,6 +210,9 @@ def main(
     Handles authentication for all three registries and copies the image
     with appropriate tags.
     """
+    # Initialize global config (needed for GCP/Azure credentials)
+    ci_init()
+
     # Check for skip upload env var (set in release config)
     if os.environ.get("RAYCI_SKIP_UPLOAD", "false") == "true":
         logger.info("RAYCI_SKIP_UPLOAD is set - skipping upload")
