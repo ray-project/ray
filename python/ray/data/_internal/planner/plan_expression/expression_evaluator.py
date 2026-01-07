@@ -132,9 +132,7 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M
-        pc.subtract(
-            left, pc.multiply(pc.floor(pc.divide(left, right)), right)
-        )
+        pc.subtract(left, pc.multiply(pc.floor(pc.divide(left, right)), right))
     ),
     Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
     Operation.GT: pc.greater,
