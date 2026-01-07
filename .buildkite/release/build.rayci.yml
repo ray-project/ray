@@ -171,7 +171,9 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      - bazel run //ci/ray_ci/automation:push_anyscale_image --
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix.python}}
         --platform {{matrix.platform}}
         --image-type ray
@@ -222,7 +224,9 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      - bazel run //ci/ray_ci/automation:push_anyscale_image --
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.8.1-cudnn
         --image-type ray-llm
@@ -267,7 +271,9 @@ steps:
       - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
       - bash release/azure_docker_login.sh
       - az acr login --name rayreleasetest
-      - bazel run //ci/ray_ci/automation:push_anyscale_image --
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
         --python-version {{matrix}}
         --platform cu12.1.1-cudnn8
         --image-type ray-ml
