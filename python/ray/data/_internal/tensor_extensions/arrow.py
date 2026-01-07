@@ -236,6 +236,13 @@ def pyarrow_table_from_pydict(
     """
     Convert a Python dictionary to a pyarrow Table.
 
+    Args:
+        pydict: A dictionary mapping column names to column values.
+            Values can be either lists or PyArrow arrays.
+
+    Returns:
+        A PyArrow Table created from the input dictionary.
+
     Raises:
         ArrowConversionError: if the conversion fails.
     """
