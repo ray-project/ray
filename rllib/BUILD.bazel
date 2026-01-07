@@ -2935,6 +2935,21 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_offline_rl_stateful",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_rl_stateful.py"],
+    # Include the offline data files.
+    data = [
+        "offline/tests/data/statelesscartpole",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
