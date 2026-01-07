@@ -647,7 +647,7 @@ void CoreWorker::KillChildProcs() {
 
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
-    const std::string &detail,
+    std::string_view detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Preserve actor creation failure details by marking a distinct shutdown reason
   // when initialization raised an exception. An exception payload is provided.
@@ -662,8 +662,7 @@ void CoreWorker::Exit(
                                          creation_task_exception_pb_bytes);
 }
 
-void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
-                           const std::string &detail) {
+void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type, std::string_view detail) {
   RAY_LOG(DEBUG) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
                  << ", detail=" << detail;
 
@@ -1865,7 +1864,7 @@ void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder,
     const JobID &job_id,
     const TaskID &task_id,
-    const std::string &name,
+    std::string_view name,
     const TaskID &current_task_id,
     uint64_t task_index,
     const TaskID &caller_id,
@@ -1875,12 +1874,12 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const std::string &debugger_breakpoint,
+    std::string_view debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
-    const std::string &call_site,
+    std::string_view call_site,
     const TaskID &main_thread_current_task_id,
-    const std::string &concurrency_group_name,
+    std::string_view concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
@@ -1968,9 +1967,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     int max_retries,
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist,
-    const std::string &call_site,
+    std::string_view debugger_breakpoint,
+    std::string_view serialized_retry_exception_allowlist,
+    std::string_view call_site,
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
@@ -2048,8 +2047,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
-                               const std::string &extension_data,
-                               const std::string &call_site,
+                               std::string_view extension_data,
+                               std::string_view call_site,
                                ActorID *return_actor_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
@@ -2341,17 +2340,16 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status;
 }
 
-Status CoreWorker::SubmitActorTask(
-    const ActorID &actor_id,
-    const RayFunction &function,
-    const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options,
-    int max_retries,
-    bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist,
-    const std::string &call_site,
-    std::vector<rpc::ObjectReference> &task_returns,
-    const TaskID current_task_id) {
+Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
+                                   const RayFunction &function,
+                                   const std::vector<std::unique_ptr<TaskArg>> &args,
+                                   const TaskOptions &task_options,
+                                   int max_retries,
+                                   bool retry_exceptions,
+                                   std::string_view serialized_retry_exception_allowlist,
+                                   std::string_view call_site,
+                                   std::vector<rpc::ObjectReference> &task_returns,
+                                   const TaskID current_task_id) {
   SubscribeToNodeChanges();
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
@@ -2596,7 +2594,7 @@ std::optional<rpc::ActorTableData::ActorState> CoreWorker::GetLocalActorState(
   return actor_task_submitter_->GetLocalActorState(actor_id);
 }
 
-ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
+ActorID CoreWorker::DeserializeAndRegisterActorHandle(std::string_view serialized,
                                                       const ObjectID &outer_object_id,
                                                       bool add_local_ref) {
   auto actor_handle = std::make_unique<ActorHandle>(serialized);
@@ -4601,8 +4599,8 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
 
 void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
                                     int32_t attempt_number,
-                                    const std::string &stdout_path,
-                                    const std::string &stderr_path,
+                                    std::string_view stdout_path,
+                                    std::string_view stderr_path,
                                     int64_t stdout_start_offset,
                                     int64_t stderr_start_offset) const {
   if (options_.is_local_mode) {
