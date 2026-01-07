@@ -20,8 +20,6 @@ GCLOUD_TARBALL="google-cloud-cli-${GCLOUD_VERSION}-linux-${GCLOUD_ARCH}.tar.gz"
 
 curl -fO "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${GCLOUD_TARBALL}"
 tar -xf "$GCLOUD_TARBALL"
-# Use system Python to avoid bundled Python issues
-export CLOUDSDK_PYTHON=python3
 ./google-cloud-sdk/install.sh -q
 PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
 export PATH
