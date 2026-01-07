@@ -185,7 +185,7 @@ def _get_learner_bundles(config):
         else:
             return []
 
-    if config.num_cpus_per_learners != "auto":
+    if config.num_cpus_per_learner != "auto":
         num_cpus_per_learner = config.num_cpus_per_learner
     elif config.num_gpus_per_learner == 0:
         num_cpus_per_learner = 1
@@ -206,7 +206,7 @@ def _get_learner_bundles(config):
 
 def _get_main_process_bundle(config):
     if config.num_learners == 0:
-        if config.num_cpus_per_learners != "auto":
+        if config.num_cpus_per_learner != "auto":
             num_cpus_per_learner = config.num_cpus_per_learner
         elif config.num_gpus_per_learner == 0:
             num_cpus_per_learner = 1
