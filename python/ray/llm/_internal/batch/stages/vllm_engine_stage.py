@@ -190,6 +190,7 @@ class vLLMOutputData(BaseModel):
                 and data.embeddings.dtype == torch.bfloat16
             ):
                 data.embeddings = data.embeddings.to(torch.float32)
+            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
