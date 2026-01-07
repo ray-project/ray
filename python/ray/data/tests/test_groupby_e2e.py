@@ -470,13 +470,16 @@ def test_groupby_tabular_sum(
     )
 
 
-@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("num_parts", [1, 10])
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_e2e(
-    ray_start_regular_shared_2_cpus, batch_format, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
 ):
     ds = ray.data.range(10)
-    ds = ds.with_column("group_key", col("id") % 3)
+    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
 
     # Listing all elements per group:
     result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
@@ -491,10 +494,13 @@ def test_as_list_e2e(
     ]
 
 
-@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("num_parts", [1, 10])
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_with_nulls(
-    ray_start_regular_shared_2_cpus, batch_format, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
 ):
     # Test with nulls included (default behavior: ignore_nulls=False)
     ds = ray.data.from_items(
@@ -505,7 +511,7 @@ def test_as_list_with_nulls(
             {"group": "B", "value": None},
             {"group": "B", "value": 5},
         ]
-    )
+    ).repartition(num_parts)
 
     # Default: nulls are included in the list
     result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
