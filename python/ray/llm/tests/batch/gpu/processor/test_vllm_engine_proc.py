@@ -7,6 +7,7 @@ from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
+from ray.exceptions import UserCodeException
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
@@ -338,10 +339,10 @@ def test_generation_model_missing_prompt_and_tokenized_prompt(gpu_type, model_op
         ds = processor(ds)
         ds = ds.materialize()
 
-    error_str = str(exc_info.value)
-    assert (
-        "Either 'prompt' (text) or 'tokenized_prompt' (tokens) must be provided"
-        in error_str
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, UserCodeException)
+    assert "Either 'prompt' or 'prompt_token_ids' must be provided" in str(
+        exc_info.value
     )
 
 
