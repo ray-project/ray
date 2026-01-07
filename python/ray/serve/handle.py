@@ -799,6 +799,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
+        _response_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         """Set options for this handle and return an updated copy of it.
 
@@ -810,6 +813,19 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
+
+        Args:
+            method_name: The name of the method to call on the deployment.
+            multiplexed_model_id: The model ID for model multiplexing.
+            stream: If True, return a generator for streaming responses.
+            _by_reference: If True (default), use Ray actor calls. If False,
+                use gRPC for inter-deployment communication.
+            _request_serialization: Serialization method for request arguments
+                when using gRPC (_by_reference=False). Options: "cloudpickle",
+                "pickle", "msgpack", "orjson", "noop".
+            _response_serialization: Serialization method for responses when
+                using gRPC (_by_reference=False). Options: "cloudpickle",
+                "pickle", "msgpack", "orjson", "noop".
         """
         if use_new_handle_api is not DEFAULT.VALUE:
             warnings.warn(
@@ -828,6 +844,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _by_reference=_by_reference,
+            _request_serialization=_request_serialization,
+            _response_serialization=_response_serialization,
         )
 
     def remote(

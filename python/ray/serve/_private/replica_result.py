@@ -6,9 +6,14 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Callable, Coroutine, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Optional, Union
+
+import grpc
 
 import ray
+
+if TYPE_CHECKING:
+    from ray.serve._private.serialization import RPCSerializer
 from ray.exceptions import TaskCancelledError
 from ray.serve._private.common import ReplicaQueueLengthInfo, RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -261,3 +266,195 @@ class ActorReplicaResult(ReplicaResult):
         ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
 
         return self._obj_ref_gen
+
+
+class gRPCReplicaResult(ReplicaResult):
+    """ReplicaResult for gRPC inter-deployment communication."""
+
+    def __init__(
+        self,
+        call: Union[grpc.aio.UnaryUnaryCall, grpc.aio.UnaryStreamCall],
+        metadata: RequestMetadata,
+        serializer: "RPCSerializer",
+        *,
+        with_rejection: bool = False,
+    ):
+        # Import here to avoid circular import
+        from ray.serve._private.serialization import RPCSerializer
+
+        self._call = call
+        self._is_streaming: bool = metadata.is_streaming
+        self._request_id: str = metadata.request_id
+        self._serializer: RPCSerializer = serializer
+        self._with_rejection = with_rejection
+        self._rejection_response: Optional[ReplicaQueueLengthInfo] = None
+        self._cached_result: Optional[Any] = None
+        self._result_lock = threading.Lock()
+        self._done_callbacks = []
+        self._is_done = False
+        self._stream_iterator = None
+
+        # Set up done callback to track completion
+        if hasattr(call, "add_done_callback"):
+            call.add_done_callback(self._on_call_done)
+
+    def _on_call_done(self, call):
+        """Called when the gRPC call completes."""
+        self._is_done = True
+        for callback in self._done_callbacks:
+            try:
+                callback(self)
+            except Exception:
+                logger.exception("Error in done callback")
+
+    def _deserialize_response(self, response) -> Any:
+        """Deserialize a gRPC response."""
+        if response.is_error:
+            # Deserialize and raise the exception
+            exception = self._serializer.loads_response(response.serialized_message)
+            raise exception
+        return self._serializer.loads_response(response.serialized_message)
+
+    async def get_rejection_response(self) -> Optional[ReplicaQueueLengthInfo]:
+        """Get the queue length info from the replica to handle rejection."""
+        if not self._with_rejection:
+            return None
+
+        try:
+            if self._rejection_response is None:
+                # For gRPC, rejection info is sent in initial metadata
+                initial_metadata = await self._call.initial_metadata()
+                metadata_dict = dict(initial_metadata)
+
+                accepted = metadata_dict.get("accepted", "1") == "1"
+                num_ongoing = int(metadata_dict.get("num_ongoing_requests", "0"))
+
+                self._rejection_response = ReplicaQueueLengthInfo(
+                    accepted=accepted,
+                    num_ongoing_requests=num_ongoing,
+                )
+
+            return self._rejection_response
+        except asyncio.CancelledError as e:
+            logger.info(
+                "Cancelling gRPC request that has already been assigned to a replica."
+            )
+            self.cancel()
+            raise e from None
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                raise asyncio.CancelledError()
+            raise
+
+    def get(self, timeout_s: Optional[float]):
+        """Synchronously get the result (blocking)."""
+        assert (
+            not self._is_streaming
+        ), "get() can only be called on a unary gRPCReplicaResult."
+
+        # Run the async get in an event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're already in an async context, can't use run_until_complete
+                raise RuntimeError(
+                    "Cannot call get() from an async context. Use get_async() instead."
+                )
+            return loop.run_until_complete(
+                asyncio.wait_for(self.get_async(), timeout=timeout_s)
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"gRPC call timed out after {timeout_s}s")
+
+    async def get_async(self):
+        """Asynchronously get the result."""
+        assert (
+            not self._is_streaming
+        ), "get_async() can only be called on a unary gRPCReplicaResult."
+
+        try:
+            with self._result_lock:
+                if self._cached_result is not None:
+                    return self._cached_result
+
+            response = await self._call
+            result = self._deserialize_response(response)
+
+            with self._result_lock:
+                self._cached_result = result
+
+            return result
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                raise asyncio.CancelledError()
+            raise
+        except asyncio.CancelledError:
+            raise RequestCancelledError(self._request_id)
+
+    def __next__(self):
+        """Synchronously get the next streaming result."""
+        assert (
+            self._is_streaming
+        ), "next() can only be called on a streaming gRPCReplicaResult."
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                raise RuntimeError(
+                    "Cannot call __next__() from an async context. "
+                    "Use __anext__() instead."
+                )
+            return loop.run_until_complete(self.__anext__())
+        except StopAsyncIteration:
+            raise StopIteration
+
+    async def __anext__(self):
+        """Asynchronously get the next streaming result."""
+        assert (
+            self._is_streaming
+        ), "__anext__() can only be called on a streaming gRPCReplicaResult."
+
+        try:
+            if self._stream_iterator is None:
+                self._stream_iterator = self._call.__aiter__()
+
+            response = await self._stream_iterator.__anext__()
+            return self._deserialize_response(response)
+        except grpc.aio.AioRpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                raise asyncio.CancelledError()
+            raise
+        except StopAsyncIteration:
+            raise
+
+    def add_done_callback(self, callback: Callable):
+        """Add a callback to be called when the request completes."""
+        if self._is_done:
+            callback(self)
+        else:
+            self._done_callbacks.append(callback)
+
+    def cancel(self):
+        """Cancel the gRPC request."""
+        self._call.cancel()
+
+    def to_object_ref(self, *, timeout_s: Optional[float] = None) -> ray.ObjectRef:
+        """Convert to ObjectRef (not supported for gRPC results)."""
+        raise NotImplementedError(
+            "gRPCReplicaResult does not support conversion to ObjectRef. "
+            "Use get() or get_async() instead."
+        )
+
+    async def to_object_ref_async(self) -> ray.ObjectRef:
+        """Convert to ObjectRef async (not supported for gRPC results)."""
+        raise NotImplementedError(
+            "gRPCReplicaResult does not support conversion to ObjectRef. "
+            "Use get_async() instead."
+        )
+
+    def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
+        """Convert to ObjectRefGenerator (not supported for gRPC results)."""
+        raise NotImplementedError(
+            "gRPCReplicaResult does not support conversion to ObjectRefGenerator. "
+            "Use async iteration instead."
+        )

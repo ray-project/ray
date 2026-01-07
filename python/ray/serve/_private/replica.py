@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from importlib import import_module
 from typing import (
     Any,
@@ -27,6 +28,7 @@ from typing import (
     Union,
 )
 
+import grpc
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -57,6 +59,7 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
@@ -96,6 +99,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
@@ -115,10 +119,103 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
+from ray.serve.generated.serve_pb2 import (
+    InterDeploymentRequest,
+    InterDeploymentResponse,
+)
+from ray.serve.generated.serve_pb2_grpc import (
+    InterDeploymentServiceServicer,
+    add_InterDeploymentServiceServicer_to_server,
+)
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _wrap_inter_deployment_grpc_call(f):
+    """Decorator that wraps inter-deployment gRPC method handlers.
+
+    This decorator handles:
+    - Deserializing the request using RPCSerializer
+    - Calling the underlying method
+    - Serializing the response using RPCSerializer
+    - Error handling and returning errors as gRPC responses
+    """
+
+    def serialize(result, metadata, serializer):
+        return serializer.dumps_response(result)
+
+    @wraps(f)
+    async def wrapper(
+        self,
+        request: InterDeploymentRequest,
+        context: grpc.aio.ServicerContext,
+    ):
+        request_metadata = pickle.loads(request.pickled_request_metadata)
+
+        # Get cached serializer with options from metadata
+        serializer = RPCSerializer.get_cached_serializer(
+            request_metadata._request_serialization,
+            request_metadata._response_serialization,
+        )
+
+        request_args = serializer.loads_request(request.request_args)
+        request_kwargs = serializer.loads_request(request.request_kwargs)
+
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
+
+        try:
+            result = await f(
+                self, context, request_metadata, *request_args, **request_kwargs
+            )
+            return InterDeploymentResponse(
+                serialized_message=serialize(result, request_metadata, serializer)
+            )
+        except (Exception, asyncio.CancelledError) as e:
+            return InterDeploymentResponse(
+                serialized_message=serializer.dumps_response(e),
+                is_error=True,
+            )
+
+    @wraps(f)
+    async def gen_wrapper(
+        self,
+        request: InterDeploymentRequest,
+        context: grpc.aio.ServicerContext,
+    ):
+        request_metadata = pickle.loads(request.pickled_request_metadata)
+
+        # Get cached serializer with options from metadata
+        serializer = RPCSerializer.get_cached_serializer(
+            request_metadata._request_serialization,
+            request_metadata._response_serialization,
+        )
+
+        request_args = serializer.loads_request(request.request_args)
+        request_kwargs = serializer.loads_request(request.request_kwargs)
+
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
+
+        try:
+            async for result in f(
+                self, context, request_metadata, *request_args, **request_kwargs
+            ):
+                yield InterDeploymentResponse(
+                    serialized_message=serialize(result, request_metadata, serializer)
+                )
+        except (Exception, asyncio.CancelledError) as e:
+            yield InterDeploymentResponse(
+                serialized_message=serializer.dumps_response(e),
+                is_error=True,
+            )
+
+    if inspect.isasyncgenfunction(f):
+        return gen_wrapper
+    else:
+        return wrapper
 
 
 ReplicaMetadata = Tuple[
@@ -592,6 +689,20 @@ class ReplicaBase(ABC):
         self._grpc_port: Optional[int] = None
 
         self._rank: Optional[ReplicaRank] = None
+
+        # gRPC server for inter-deployment communication
+        self._inter_deployment_grpc_server = grpc.aio.server(
+            options=[
+                (
+                    "grpc.max_receive_message_length",
+                    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),
+                (
+                    "grpc.max_send_message_length",
+                    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),
+            ]
+        )
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -1136,13 +1247,27 @@ class ReplicaBase(ABC):
             raise e from None
 
 
-class Replica(ReplicaBase):
+class Replica(ReplicaBase, InterDeploymentServiceServicer):
+    """Replica implementation that also serves inter-deployment gRPC requests."""
+
     async def _on_initialized(self):
         # Get current rank from replica context during initialization
         current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
             servable_object=self._user_callable_wrapper.user_callable,
             rank=current_rank,
+        )
+
+        # Start the gRPC server for inter-deployment communication
+        add_InterDeploymentServiceServicer_to_server(
+            self, self._inter_deployment_grpc_server
+        )
+        self._internal_grpc_port = self._inter_deployment_grpc_server.add_insecure_port(
+            "[::]:0"
+        )
+        await self._inter_deployment_grpc_server.start()
+        logger.debug(
+            f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
         )
 
         # Save the initialization latency if the replica is initializing
@@ -1194,6 +1319,115 @@ class Replica(ReplicaBase):
 
         with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
             yield status_code_callback
+
+    # ==================== Inter-Deployment gRPC Handlers ====================
+    # These methods implement the InterDeploymentServiceServicer interface
+    # for receiving requests from other deployments via gRPC.
+
+    @_wrap_inter_deployment_grpc_call
+    async def HandleRequest(
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ):
+        """gRPC handler for unary requests from other deployments."""
+        result = await self.handle_request(
+            request_metadata, *request_args, **request_kwargs
+        )
+        if request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+        return result
+
+    @_wrap_inter_deployment_grpc_call
+    async def HandleRequestStreaming(
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ):
+        """gRPC handler for streaming requests from other deployments."""
+        async for result in self.handle_request_streaming(
+            request_metadata, *request_args, **request_kwargs
+        ):
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+            yield result
+
+    @_wrap_inter_deployment_grpc_call
+    async def HandleRequestWithRejection(
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ):
+        """gRPC handler for unary requests with rejection from other deployments.
+
+        This sends a system message via gRPC metadata indicating if the request
+        was accepted, then returns the actual response.
+        """
+        result_gen = self.handle_request_with_rejection(
+            request_metadata, *request_args, **request_kwargs
+        )
+        queue_len_info: ReplicaQueueLengthInfo = await result_gen.__anext__()
+        await context.send_initial_metadata(
+            [
+                ("accepted", str(int(queue_len_info.accepted))),
+                ("num_ongoing_requests", str(queue_len_info.num_ongoing_requests)),
+            ]
+        )
+        if not queue_len_info.accepted:
+            # NOTE: in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages.
+            # Therefore, we send a dummy message here to ensure it is populated.
+            return b""
+
+        result = await result_gen.__anext__()
+        # Consume the result generator to ensure all request operations are completed.
+        async for _ in result_gen:
+            pass
+
+        if request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+        return result
+
+    @_wrap_inter_deployment_grpc_call
+    async def HandleRequestWithRejectionStreaming(
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncGenerator[Any, None]:
+        """gRPC handler for streaming requests with rejection from other deployments.
+
+        This sends a system message via gRPC metadata indicating if the request
+        was accepted, then yields the actual response(s).
+        """
+        result_gen = self.handle_request_with_rejection(
+            request_metadata, *request_args, **request_kwargs
+        )
+        queue_len_info: ReplicaQueueLengthInfo = await result_gen.__anext__()
+        await context.send_initial_metadata(
+            [
+                ("accepted", str(int(queue_len_info.accepted))),
+                ("num_ongoing_requests", str(queue_len_info.num_ongoing_requests)),
+            ]
+        )
+        if not queue_len_info.accepted:
+            # NOTE: in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages.
+            # Therefore, we send a dummy message here to ensure it is populated.
+            yield b""
+            return
+
+        async for result in result_gen:
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+            yield result
 
 
 class ReplicaActor:

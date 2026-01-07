@@ -607,6 +607,8 @@ class RunningReplicaInfo:
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
+    # Port for inter-deployment gRPC communication.
+    grpc_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -728,7 +730,15 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
+    # When True, use Ray actor calls (by reference with ObjectRefs).
+    # When False, use gRPC for inter-deployment communication.
     _by_reference: bool = True
+
+    # Serialization method for request arguments when using gRPC transport (_by_reference=False).
+    _request_serialization: str = "cloudpickle"
+
+    # Serialization method for response data when using gRPC transport (_by_reference=False).
+    _response_serialization: str = "cloudpickle"
 
     @property
     def is_http_request(self) -> bool:

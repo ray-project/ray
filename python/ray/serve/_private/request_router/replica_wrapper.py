@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import pickle
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Set
+
+import grpc
 
 import ray
 from ray.actor import ActorHandle
@@ -9,11 +12,22 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
 )
+from ray.serve._private.constants import (
+    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.utils import JavaActorHandleProxy
-from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.serve.generated.serve_pb2 import (
+    InterDeploymentRequest,
+    RequestMetadata as RequestMetadataProto,
+)
+from ray.serve.generated.serve_pb2_grpc import InterDeploymentServiceStub
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaWrapper(ABC):
@@ -94,6 +108,56 @@ class ActorReplicaWrapper(ReplicaWrapper):
         )
 
 
+class gRPCReplicaWrapper(ReplicaWrapper):
+    """ReplicaWrapper that communicates with replica via gRPC."""
+
+    def __init__(self, stub: InterDeploymentServiceStub, actor_id: ray.ActorID):
+        self._stub = stub
+        self._actor_id = actor_id
+
+    def send_request_java(self, pr: PendingRequest) -> ReplicaResult:
+        """gRPC transport doesn't support Java replicas."""
+        raise NotImplementedError("gRPC transport does not support Java replicas.")
+
+    def send_request_python(
+        self, pr: PendingRequest, *, with_rejection: bool
+    ) -> ReplicaResult:
+        """Send the request to a Python replica via gRPC."""
+        # Import here to avoid circular import
+        from ray.serve._private.replica_result import gRPCReplicaResult
+
+        # Get cached serializer
+        serializer = RPCSerializer.get_cached_serializer(
+            pr.metadata._request_serialization,
+            pr.metadata._response_serialization,
+        )
+
+        # Serialize request
+        request = InterDeploymentRequest(
+            pickled_request_metadata=pickle.dumps(pr.metadata),
+            request_args=serializer.dumps_request(pr.args),
+            request_kwargs=serializer.dumps_request(pr.kwargs),
+        )
+
+        # Call appropriate gRPC method based on streaming and rejection flags
+        if with_rejection:
+            if pr.metadata.is_streaming:
+                call = self._stub.HandleRequestWithRejectionStreaming(request)
+            else:
+                call = self._stub.HandleRequestWithRejection(request)
+        elif pr.metadata.is_streaming:
+            call = self._stub.HandleRequestStreaming(request)
+        else:
+            call = self._stub.HandleRequest(request)
+
+        return gRPCReplicaResult(
+            call,
+            pr.metadata,
+            serializer,
+            with_rejection=with_rejection,
+        )
+
+
 @PublicAPI(stability="alpha")
 class RunningReplica:
     """Contains info on a running replica.
@@ -111,6 +175,10 @@ class RunningReplica:
             self._actor_handle = JavaActorHandleProxy(actor_handle)
         else:
             self._actor_handle = actor_handle
+
+        # Cached gRPC channel and stub for inter-deployment communication
+        self._grpc_channel: Optional[grpc.aio.Channel] = None
+        self._grpc_stub: Optional[InterDeploymentServiceStub] = None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -152,7 +220,43 @@ class RunningReplica:
         """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
+    def _get_grpc_stub(self) -> InterDeploymentServiceStub:
+        """Get or create the gRPC stub for this replica."""
+        if self._grpc_stub is None:
+            node_ip = self._replica_info.node_ip
+            port = self._replica_info.grpc_port
+            if port is None:
+                raise RuntimeError(
+                    f"Replica {self._replica_info.replica_id} does not have a gRPC port "
+                    "configured. Ensure the replica has started its gRPC server."
+                )
+
+            target = f"{node_ip}:{port}"
+            logger.debug(f"Creating gRPC channel to replica at {target}")
+
+            self._grpc_channel = grpc.aio.insecure_channel(
+                target,
+                options=[
+                    (
+                        "grpc.max_receive_message_length",
+                        RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                    ),
+                    (
+                        "grpc.max_send_message_length",
+                        RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                    ),
+                ],
+            )
+            self._grpc_stub = InterDeploymentServiceStub(self._grpc_channel)
+
+        return self._grpc_stub
+
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
+        """Get the appropriate replica wrapper based on request metadata."""
+        if not pr.metadata._by_reference:
+            # Use gRPC transport when _by_reference=False
+            stub = self._get_grpc_stub()
+            return gRPCReplicaWrapper(stub, self._actor_handle._actor_id)
         return ActorReplicaWrapper(self._actor_handle)
 
     def push_proxy_handle(self, handle: ActorHandle):

@@ -469,6 +469,12 @@ DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
 
+# Max message length for inter-deployment gRPC communication.
+# Default is 4MB, the same as the default gRPC max message length.
+RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    "RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH", 4 * 1024 * 1024
+)
+
 # Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
 METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
 

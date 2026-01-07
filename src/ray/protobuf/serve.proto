@@ -434,3 +434,34 @@ message DeploymentArgs {
 message ApplicationArgs {
   bool external_scaler_enabled = 1;
 }
+
+// Inter-deployment gRPC communication messages and service.
+// Used when deployments communicate via gRPC instead of Ray actor calls.
+message InterDeploymentRequest {
+  // Pickled RequestMetadata containing request ID, method name, etc.
+  bytes pickled_request_metadata = 1;
+  // Serialized request arguments (using configured serialization method).
+  bytes request_args = 2;
+  // Serialized request keyword arguments.
+  bytes request_kwargs = 3;
+}
+
+message InterDeploymentResponse {
+  // Serialized response or exception.
+  bytes serialized_message = 1;
+  // True if serialized_message contains an exception.
+  bool is_error = 2;
+}
+
+// Service for inter-deployment gRPC communication.
+// This is used when handle.options(_use_grpc=True) is set.
+service InterDeploymentService {
+  // Unary request handler.
+  rpc HandleRequest(InterDeploymentRequest) returns (InterDeploymentResponse);
+  // Streaming request handler.
+  rpc HandleRequestStreaming(InterDeploymentRequest) returns (stream InterDeploymentResponse);
+  // Unary request with rejection support for backpressure.
+  rpc HandleRequestWithRejection(InterDeploymentRequest) returns (InterDeploymentResponse);
+  // Streaming request with rejection support for backpressure.
+  rpc HandleRequestWithRejectionStreaming(InterDeploymentRequest) returns (stream InterDeploymentResponse);
+}
