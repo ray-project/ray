@@ -437,7 +437,7 @@ class Preprocessor(abc.ABC):
         (`_transform_pandas`, `_transform_numpy`, `_transform_arrow`) are implemented.
         Defaults to Pandas.
 
-        Can be overriden by Preprocessor classes depending on which transform
+        Can be overridden by Preprocessor classes depending on which transform
         path is the most optimal.
         """
         return BatchFormat.PANDAS
