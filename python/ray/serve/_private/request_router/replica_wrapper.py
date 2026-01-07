@@ -182,9 +182,8 @@ class RunningReplica:
         else:
             self._actor_handle = actor_handle
 
-        # Cached gRPC channel and stub for inter-deployment communication
-        self._grpc_channel: Optional[grpc.aio.Channel] = None
-        self._grpc_stub: Optional[ASGIServiceStub] = None
+        self._channel: Optional[grpc.aio.Channel] = None
+        self._stub: Optional[ASGIServiceStub] = None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -226,22 +225,11 @@ class RunningReplica:
         """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
-    def _get_grpc_stub(self) -> ASGIServiceStub:
-        """Get or create the gRPC stub for this replica."""
-        if self._grpc_stub is None:
-            node_ip = self._replica_info.node_ip
-            port = self._replica_info.port
-            if port is None:
-                raise RuntimeError(
-                    f"Replica {self._replica_info.replica_id} does not have a gRPC port "
-                    "configured. Ensure the replica has started its gRPC server."
-                )
-
-            target = f"{node_ip}:{port}"
-            logger.debug(f"Creating gRPC channel to replica at {target}")
-
-            self._grpc_channel = grpc.aio.insecure_channel(
-                target,
+    @property
+    def stub(self):
+        if self._stub is None:
+            self._channel = grpc.aio.insecure_channel(
+                f"{self._replica_info.node_ip}:{self._replica_info.port}",
                 options=[
                     (
                         "grpc.max_receive_message_length",
@@ -249,16 +237,15 @@ class RunningReplica:
                     )
                 ],
             )
-            self._grpc_stub = ASGIServiceStub(self._grpc_channel)
+            self._stub = ASGIServiceStub(self._channel)
 
-        return self._grpc_stub
+        return self._stub
 
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
         """Get the appropriate replica wrapper based on request metadata."""
         if not pr.metadata._by_reference:
             # Use gRPC transport when _by_reference=False
-            stub = self._get_grpc_stub()
-            return gRPCReplicaWrapper(stub, self._actor_handle._actor_id)
+            return gRPCReplicaWrapper(self.stub, self._actor_handle._actor_id)
         return ActorReplicaWrapper(self._actor_handle)
 
     def push_proxy_handle(self, handle: ActorHandle):
