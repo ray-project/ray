@@ -14,9 +14,9 @@
 #pragma once
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -215,7 +215,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // Maps the remote node object ID (i.e., the object ID that the remote node writes to)
   // to the corresponding local object ID (i.e., the object ID that the local node reads
   // from) and the number of readers.
-  std::unordered_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
+  absl::flat_hash_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
       ABSL_GUARDED_BY(remote_writer_object_to_local_reader_lock_);
 
   // Creates a Raylet client for each mutable object. When the polling thread detects a
@@ -244,7 +244,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // For objects larger than the gRPC max payload size *that this node receives from a
   // writer node*, this map tracks how many bytes have been received so far for a single
   // object write.
-  std::unordered_map<ObjectID, uint64_t> written_so_far_
+  absl::flat_hash_map<ObjectID, uint64_t> written_so_far_
       ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;

@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
     vLLMOutputData,
-    vLLMTaskType,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -129,8 +129,9 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # Test that this should be overridden by the stage.
-            "task": vLLMTaskType.EMBED,
+            # This is overriden in the processor, so it remains unchanged when we bypass
+            # the processor and pass it directly to the stage via vLLMEngineStageUDF.
+            "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
             "disable_log_stats": False,
         },
@@ -138,7 +139,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     assert udf.model == model_llama_3_2_216M
     assert udf.task_type == vLLMTaskType.GENERATE
-    assert udf.engine_kwargs["task"] == vLLMTaskType.GENERATE
+    assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
@@ -169,7 +170,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
         enable_log_requests=False,
@@ -264,7 +265,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -315,7 +316,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -337,6 +338,113 @@ async def test_vllm_wrapper_embed(model_opt_125m):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pooling_params,expect_same_output",
+    [
+        ({}, True),
+        ({"truncate_prompt_tokens": 3}, False),
+        ({"normalize": True}, False),
+    ],
+)
+async def test_vllm_wrapper_embed_pooling_params(
+    model_opt_125m, pooling_params, expect_same_output
+):
+    prompt = "Hello! How's the weather?"
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task_type=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            "pooling_params": pooling_params,
+        },
+        {
+            "__idx_in_batch": 1,
+            "prompt": prompt,
+            # By default, no pooling params are applied.
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        # Validate pooling params for idx=0
+        if idx == 0 and pooling_params:
+            for key, expected_value in pooling_params.items():
+                assert hasattr(request.params, key)
+                actual_value = getattr(request.params, key)
+                assert actual_value == expected_value
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    assert (
+        outputs[0]["embeddings"] == outputs[1]["embeddings"]
+    ).all() == expect_same_output
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Sufficiently long prompt to trigger truncation to max_model_len
+    prompt = "Hello! How's the weather?" * 10_000
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task_type=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            # Long prompts shouldn't induce vLLM errors as prommpt length is truncated
+            # to max_model_len when truncate_prompt_tokens is set to -1
+            "pooling_params": {"truncate_prompt_tokens": -1},
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
@@ -346,7 +454,7 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         enable_lora=True,
         max_lora_rank=16,
@@ -388,9 +496,12 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
-    """Test the JSON output with xgrammar backend. We have to use
-    a real checkpoint as we need to verify the outputs.
+@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
+    """Test the JSON output with xgrammar backend.
+
+    This test verifies both the new structured_outputs API and backward
+    compatibility with the deprecated guided_decoding parameter.
     """
 
     class AnswerModel(BaseModel):
@@ -407,7 +518,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         structured_outputs_config={"backend": "xgrammar"},
         seed=42,
@@ -420,7 +531,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                "guided_decoding": {"json": json_schema},
+                param_key: {"json": json_schema},
             },
         },
     ]

@@ -14,8 +14,7 @@ boto3==1.29.7
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0 ; python_version < "3.12"
 cloudpickle==3.0.0 ; python_version >= "3.12"
-tornado==6.1 ; python_version < "3.12"
-tornado==6.2.0 ; python_version >= "3.12"
+tornado>=6.2.0
 cython==0.29.37
 fastapi>=0.115.12
 feather-format==0.4.1
@@ -136,6 +135,7 @@ cffi>=1.17.1,<2
 fastrlock>=0.8.3; sys_platform != 'darwin'
 lz4>=4.4.5
 pyyaml>=6.0.3
+msgpack>=1.1.2
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of

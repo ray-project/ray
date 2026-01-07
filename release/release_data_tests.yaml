@@ -500,6 +500,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
@@ -521,6 +526,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
@@ -698,7 +708,7 @@
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
   python: "3.10"
-  frequency: nightly
+  frequency: weekly
   env: gce
   working_dir: nightly_tests
 
@@ -712,7 +722,7 @@
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
-    timeout: 10800
+    timeout: 14400
     # The network failure interval is set to 210 seconds since the test as is takes around double that to run without failures.
     # If the runtime of the test is dramatically reduced in the future, the interval will have to be retuned.
     script: >

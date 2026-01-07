@@ -120,6 +120,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             {"rllib": self.__class__.__name__}
         )
 
+        self._shared_data = None
+
     @abc.abstractmethod
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
@@ -304,3 +306,19 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 f"RLlib {self.__class__.__name__}: Skipping Prometheus logging for metric '{metric.info['name']}'. "
                 f"Received num_steps={num_steps}, but the number of steps must be greater than 0."
             )
+
+    def _reset_envs_and_episodes(self, explore: bool):
+        """Helper method to reset the envs, ongoing episodes and shared data.
+
+        This resets the global env_ts and agent_ts variables and deletes ongoing episodes.
+        The done episodes are preserved.
+
+        Args:
+            explore: Whether we sample in exploration or inference mode.
+        """
+        self._ongoing_episodes = [None for _ in range(self.num_envs)]
+        self._shared_data = {}
+        self._reset_envs(self._ongoing_episodes, self._shared_data, explore)
+        # We just reset the env. Don't have to force this again in the next
+        # call to `self._sample_timesteps()`.
+        self._needs_initial_reset = False
