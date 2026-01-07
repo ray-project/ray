@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List
 
-from networkx import DiGraph
+from networkx import DiGraph, descendants
 
 
 @dataclass
@@ -36,25 +36,35 @@ class DependencyGraph:
         self.add_edges(deps)
 
     def remove_dropped_dependencies(self, dropped_dependencies: List[str]):
-        """Remove dependencies and their children from the graph"""
+        """Removes a list of dependencies and any other dependencies that become
+        orphaned as a result.
+
+        A dependency is considered orphaned if all packages that require it are
+        also removed.
+
+        Args:
+            dropped_dependencies: A list of dependency names to remove.
+
+        Raises:
+            ValueError: If a dependency in `dropped_dependencies` is not in the graph.
+        """
         for dep in dropped_dependencies:
             if not self.graph.has_node(dep):
                 raise ValueError(f"Dependency {dep} not found in deps")
 
         to_remove = set(dropped_dependencies)
 
-        # Find nodes that should be removed because nothing else requires them
-        # A node should be removed if ALL its predecessors (dependents) are being removed
+        # Only descendants of dropped packages can become orphaned
+        candidates = set()
+        for dep in dropped_dependencies:
+            candidates.update(descendants(self.graph, dep))
+
+        # Check each candidate - remove if ALL predecessors are being removed
         changed = True
         while changed:
             changed = False
-            for node in list(self.graph.nodes()):
-                if node in to_remove:
-                    continue
-                # Get all packages that require this node
+            for node in candidates - to_remove:
                 dependents = set(self.graph.predecessors(node))
-                # If this node has dependents and ALL of them are being removed,
-                # then this node is no longer needed
                 if dependents and dependents.issubset(to_remove):
                     to_remove.add(node)
                     changed = True
