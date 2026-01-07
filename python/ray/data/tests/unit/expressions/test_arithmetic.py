@@ -13,9 +13,16 @@ import math
 
 import pandas as pd
 import pytest
+from pkg_resources import parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
+from ray.data.tests.conftest import get_pyarrow_version
+
+pytestmark = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="Expression unit tests require PyArrow >= 20.0.0",
+)
 
 # ──────────────────────────────────────
 # Basic Arithmetic Operations
