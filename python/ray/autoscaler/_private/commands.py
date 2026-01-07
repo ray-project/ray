@@ -1111,6 +1111,7 @@ def attach_cluster(
     no_config_cache: bool = False,
     new: bool = False,
     port_forward: Optional[Port_forward] = None,
+    ip: Optional[str] = None,
 ) -> None:
     """Attaches to a screen for the specified cluster.
 
@@ -1151,6 +1152,7 @@ def attach_cluster(
         no_config_cache=no_config_cache,
         port_forward=port_forward,
         _allow_uninitialized_state=True,
+        ip=ip,
     )
 
 
@@ -1169,6 +1171,7 @@ def exec_cluster(
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
     extra_screen_args: Optional[str] = None,
+    ip: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1199,17 +1202,34 @@ def exec_cluster(
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_running_head_node(
-        config,
-        config_file,
-        override_cluster_name,
-        create_if_needed=start,
-        _allow_uninitialized_state=_allow_uninitialized_state,
-    )
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+    if ip:
+        # IP specified by user, find the node with the IP
+        use_internal_ip = config.get("provider", {}).get("use_internal_ips", False)
+        try:
+            target_node = provider.get_node_id(ip, use_internal_ip=use_internal_ip)
+            cli_logger.print("Attaching to node with IP: {}", cf.bold(ip))
+        except ValueError as e:
+            cli_logger.abort("Could not find node with IP {}. {}", cf.bold(ip), str(e))
+            raise
+
+        is_head_node = (
+            provider.node_tags(target_node)[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
+        )
+    else:
+        # Default attaching to head node
+        target_node = _get_running_head_node(
+            config,
+            config_file,
+            override_cluster_name,
+            create_if_needed=start,
+            _allow_uninitialized_state=_allow_uninitialized_state,
+        )
+        is_head_node = True
+
     updater = NodeUpdaterThread(
-        node_id=head_node,
+        node_id=target_node,
         provider_config=config["provider"],
         provider=provider,
         auth_config=config["auth"],
@@ -1220,7 +1240,7 @@ def exec_cluster(
         ray_start_commands=[],
         runtime_hash="",
         file_mounts_contents_hash="",
-        is_head_node=True,
+        is_head_node=is_head_node,
         rsync_options={
             "rsync_exclude": config.get("rsync_exclude"),
             "rsync_filter": config.get("rsync_filter"),
