@@ -688,6 +688,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
     const std::vector<ObjectID> &object_ids) const {
   absl::MutexLock lock(&mutex_);
   std::vector<rpc::Address> owner_addresses;
+  owner_addresses.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
     bool has_owner = GetOwnerInternal(object_id, &owner_addr);
@@ -1143,6 +1144,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
   std::vector<rpc::Address> new_borrowers;
+  new_borrowers.reserve(borrower_ref.borrow().borrowers.size() + 1);
 
   // The worker is still using the reference, so it is still a borrower.
   if (borrower_ref.RefCount() > 0) {

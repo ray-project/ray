@@ -247,6 +247,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
+  task_deps.reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -913,6 +914,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
   if (reply.dynamic_return_objects_size() > 0) {
+    dynamic_return_ids.reserve(reply.dynamic_return_objects_size());
+    dynamic_returns_in_plasma.reserve(reply.dynamic_return_objects_size());
     RAY_CHECK(reply.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
@@ -947,6 +950,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  direct_return_ids.reserve(reply.return_objects_size());
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     StatusOr<bool> direct_or = HandleTaskReturn(object_id,
@@ -1822,6 +1826,7 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
 
 std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   std::vector<ObjectID> plasma_dependencies;
+  plasma_dependencies.reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
