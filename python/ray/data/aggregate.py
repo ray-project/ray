@@ -422,6 +422,12 @@ class AsList(AggregateFnV2[List, List]):
             # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
             #          {'group_key': 1, 'list(id)': [1, 4, 7]},
             #          {'group_key': 2, 'list(id)': [2, 5, 8]}
+
+    Args:
+        on: The name of the column to collect values from. Must be provided.
+        alias_name: Optional name for the resulting column.
+        ignore_nulls: Whether to ignore null values when collecting. If `True`,
+            nulls are skipped. If `False` (default), nulls are included in the list.
     """
 
     def __init__(
@@ -438,9 +444,12 @@ class AsList(AggregateFnV2[List, List]):
         )
 
     def aggregate_block(self, block: Block) -> AccumulatorType:
-        return BlockColumnAccessor.for_column(
-            block[self.get_target_column()]
-        ).to_pylist()
+        column_accessor = BlockColumnAccessor.for_column(block[self.get_target_column()])
+
+        if self._ignore_nulls:
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.to_pylist()
 
     def combine(
         self, current_accumulator: AccumulatorType, new: AccumulatorType
