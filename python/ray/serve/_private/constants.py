@@ -334,12 +334,6 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
-# HTTP request timeout
-SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
-
-# HTTP request disconnect disabled
-SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
-
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
@@ -489,13 +483,13 @@ RAY_SERVE_ENABLE_TASK_EVENTS = get_env_bool("RAY_SERVE_ENABLE_TASK_EVENTS", "0")
 
 # This is deprecated and will be removed in the future.
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
-    "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "1"
+    "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"
 )
 
 # Use pack instead of spread scheduling strategy.
 RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
-    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "1"),
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
@@ -579,10 +573,6 @@ RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
-
-NO_ROUTES_MESSAGE = "Route table is not populated yet."
-NO_REPLICAS_MESSAGE = "No replicas are available yet."
-DRAINING_MESSAGE = "This node is being drained."
 
 # If throughput optimized Ray Serve is enabled, set the following constants.
 # This should be at the end.
