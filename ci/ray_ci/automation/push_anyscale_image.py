@@ -228,20 +228,26 @@ def main(
     logger.info(f"Canonical tag: {canonical_tag}")
     logger.info(f"All tags: {tags}")
 
-    # Authenticate with GCP
-    gce_credentials = get_global_config()["aws2gce_credentials"]
-    _run_shell_command(f"./release/gcloud_docker_login.sh {gce_credentials}", dry_run)
+    # Determine which registries to push to
+    # GCP and Azure require release config which is only available on release branches
+    global_config = get_global_config()
+    registries = [(ecr_registry, "ECR")]
 
-    # Authenticate with Azure
-    _run_shell_command("./release/azure_docker_login.sh", dry_run)
-    _run_shell_command(f"az acr login --name {_AZURE_REGISTRY_NAME}", dry_run)
+    if global_config:
+        # Authenticate with GCP
+        gce_credentials = global_config["aws2gce_credentials"]
+        _run_shell_command(f"./release/gcloud_docker_login.sh {gce_credentials}", dry_run)
 
-    # Push to all registries with all tags
-    registries = [
-        (ecr_registry, "ECR"),
-        (_DOCKER_GCP_REGISTRY, "GCP"),
-        (_DOCKER_AZURE_REGISTRY, "Azure"),
-    ]
+        # Authenticate with Azure
+        _run_shell_command("./release/azure_docker_login.sh", dry_run)
+        _run_shell_command(f"az acr login --name {_AZURE_REGISTRY_NAME}", dry_run)
+
+        registries.extend([
+            (_DOCKER_GCP_REGISTRY, "GCP"),
+            (_DOCKER_AZURE_REGISTRY, "Azure"),
+        ])
+    else:
+        logger.info("Release config not available - pushing to ECR only")
 
     for tag in tags:
         for registry, name in registries:
