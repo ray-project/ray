@@ -24,7 +24,6 @@ from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
-    FixedShapeTensorArray,
 )
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
@@ -35,6 +34,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorArray
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,

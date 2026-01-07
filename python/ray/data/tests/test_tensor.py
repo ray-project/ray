@@ -8,10 +8,10 @@ import pytest
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+    ArrowTensorArray,
 )
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext

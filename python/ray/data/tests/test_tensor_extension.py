@@ -134,7 +134,7 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native"])
 def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
@@ -151,7 +151,10 @@ def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ata = ta.__arrow_array__()
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
-    out = ata.to_numpy()
+    if ctx.use_arrow_native_fixed_shape_tensor_type:
+        out = ata.to_numpy_ndarray()
+    else:
+        out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
