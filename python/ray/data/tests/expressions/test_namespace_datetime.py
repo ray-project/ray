@@ -31,19 +31,18 @@ class TestDatetimeNamespace:
 
         ds = ray.data.from_items([{"ts": ts}])
 
-        result_ds = ds.select(
-            [
-                col("ts").dt.year().alias("year"),
-                col("ts").dt.month().alias("month"),
-                col("ts").dt.day().alias("day"),
-                col("ts").dt.hour().alias("hour"),
-                col("ts").dt.minute().alias("minute"),
-                col("ts").dt.second().alias("second"),
-                col("ts").dt.strftime("%Y-%m-%d").alias("date_str"),
-                col("ts").dt.floor("day").alias("ts_floor"),
-                col("ts").dt.ceil("day").alias("ts_ceil"),
-                col("ts").dt.round("day").alias("ts_round"),
-            ]
+        result_ds = (
+            ds.with_column("year", col("ts").dt.year())
+            .with_column("month", col("ts").dt.month())
+            .with_column("day", col("ts").dt.day())
+            .with_column("hour", col("ts").dt.hour())
+            .with_column("minute", col("ts").dt.minute())
+            .with_column("second", col("ts").dt.second())
+            .with_column("date_str", col("ts").dt.strftime("%Y-%m-%d"))
+            .with_column("ts_floor", col("ts").dt.floor("day"))
+            .with_column("ts_ceil", col("ts").dt.ceil("day"))
+            .with_column("ts_round", col("ts").dt.round("day"))
+            .drop_columns(["ts"])
         )
 
         actual = result_ds.to_pandas()
@@ -58,9 +57,10 @@ class TestDatetimeNamespace:
                     "minute": 30,
                     "second": 0,
                     "date_str": "2024-01-02",
-                    "ts_floor": datetime.datetime(2024, 1, 2, 0, 0, 0),
-                    "ts_ceil": datetime.datetime(2024, 1, 3, 0, 0, 0),
-                    "ts_round": datetime.datetime(2024, 1, 3, 0, 0, 0),
+                    "ts_floor": pd.Timestamp("2024-01-02"),
+                    "ts_ceil": pd.Timestamp("2024-01-03"),
+                    # round("day") rounds to nearest day; 10:30 < 12:00 so rounds down
+                    "ts_round": pd.Timestamp("2024-01-02"),
                 }
             ]
         )
@@ -72,7 +72,7 @@ class TestDatetimeNamespace:
         ds = ray.data.from_items([{"value": 1}])
 
         with pytest.raises(Exception):
-            ds.select(col("value").dt.year()).to_pandas()
+            ds.with_column("year", col("value").dt.year()).to_pandas()
 
 
 if __name__ == "__main__":

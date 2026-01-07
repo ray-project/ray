@@ -183,6 +183,18 @@ class TestArithmeticIntegration:
         expected["result"] = expected_results
         assert rows_same(result, expected)
 
+    def test_age_group_calculation_with_dataset(self, ray_start_regular_shared):
+        """Test floor division for grouping values (e.g., age into decades)."""
+        test_data = [
+            {"age": 25},
+            {"age": 17},
+            {"age": 30},
+        ]
+        ds = ray.data.from_items(test_data)
+        result = ds.with_column("age_group", col("age") // 10 * 10).to_pandas()
+        expected = pd.DataFrame({"age": [25, 17, 30], "age_group": [20, 10, 30]})
+        assert rows_same(result, expected)
+
 
 if __name__ == "__main__":
     import sys

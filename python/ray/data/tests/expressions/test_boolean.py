@@ -99,11 +99,6 @@ class TestBooleanIntegration:
                 "complex_not",
             ),
             pytest.param(
-                lambda: col("age") // 10 * 10,
-                [20, 10, 30],
-                "age_group_calculation",
-            ),
-            pytest.param(
                 lambda: (col("age") >= 21)
                 & (col("score") >= 10)
                 & col("active").is_not_null()
