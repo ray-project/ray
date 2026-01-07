@@ -31,7 +31,7 @@ from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
-    get_all_node_info_with_retry,
+    get_all_node_info_until_retrieved,
     is_in_test,
     open_log,
     try_to_symlink,
@@ -264,7 +264,7 @@ class Node:
                 head_node_selector = GetAllNodeInfoRequest.NodeSelector()
                 head_node_selector.is_head_node = True
 
-                node_infos = get_all_node_info_with_retry(
+                node_infos = get_all_node_info_until_retrieved(
                     self.get_gcs_client(),
                     timeout_per_retry=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
                     node_selectors=[head_node_selector],
@@ -273,7 +273,11 @@ class Node:
                 logger.exception(f"Failed to get head node info: {repr(e)}")
                 raise e
 
-            node_info = next(iter(node_infos))
+            node_info = None
+            for info in node_infos:
+                node_info = info
+                if info.state == GcsNodeInfo.GcsNodeState.ALIVE:
+                    break
             self._head_temp_dir = getattr(node_info, "temp_dir", None)
             if self._head_temp_dir is None:
                 raise Exception(
@@ -534,7 +538,7 @@ class Node:
                     assert not self._default_worker
                     self.temp_dir = self._head_temp_dir
 
-        # Assumes session_name is resolved before _init_temp is called
+        assert self._session_name is not None
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
         session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
         self._sockets_dir = os.path.join(self._session_dir, "sockets")

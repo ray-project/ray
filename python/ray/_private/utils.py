@@ -1117,7 +1117,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
-def get_all_node_info_with_retry(
+def get_all_node_info_until_retrieved(
     gcs_client: GcsClient,
     node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
     state_filter: Optional[int] = None,
