@@ -59,7 +59,7 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
@@ -694,11 +694,11 @@ class ReplicaBase(ABC):
             options=[
                 (
                     "grpc.max_receive_message_length",
-                    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
                 ),
                 (
                     "grpc.max_send_message_length",
-                    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
                 ),
             ]
         )

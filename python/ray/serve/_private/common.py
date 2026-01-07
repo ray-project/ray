@@ -728,8 +728,7 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
-    # Tracing context
-    # TODO(edoakes): port tracing support to OSS.
+    # Tracing context (unused)
     tracing_context: Optional[Dict[str, str]] = None
 
     # Whether it is a direct ingress request

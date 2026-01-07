@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
@@ -242,11 +242,11 @@ class RunningReplica:
                 options=[
                     (
                         "grpc.max_receive_message_length",
-                        RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                        RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
                     ),
                     (
                         "grpc.max_send_message_length",
-                        RAY_SERVE_INTER_DEPLOYMENT_GRPC_MAX_MESSAGE_LENGTH,
+                        RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
                     ),
                 ],
             )
