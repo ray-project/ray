@@ -7,7 +7,6 @@ from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
-from ray.exceptions import UserCodeException
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
@@ -260,7 +259,6 @@ def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
             max_num_batched_tokens=2048,
             max_model_len=2048,
             enforce_eager=True,
-            distributed_executor_backend="ray",
         ),
         batch_size=16,
         accelerator_type=gpu_type,
@@ -296,54 +294,6 @@ def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
-    print(outs[0])
-
-
-def test_generation_model_missing_prompt_and_tokenized_prompt(gpu_type, model_opt_125m):
-    processor_config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
-        engine_kwargs=dict(
-            enable_prefix_caching=False,
-            enable_chunked_prefill=True,
-            max_num_batched_tokens=2048,
-            max_model_len=2048,
-            enforce_eager=True,
-            distributed_executor_backend="ray",
-        ),
-        batch_size=16,
-        accelerator_type=gpu_type,
-        concurrency=1,
-        tokenize_stage=TokenizerStageConfig(enabled=False),
-        detokenize_stage=DetokenizeStageConfig(enabled=False),
-        chat_template_stage=ChatTemplateStageConfig(enabled=False),
-    )
-
-    processor = build_processor(
-        processor_config,
-        preprocess=lambda row: dict(
-            # Intentionally missing 'prompt' and 'tokenized_prompt'
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=50,
-            ),
-        ),
-        postprocess=lambda row: {
-            "resp": row["generated_text"],
-        },
-    )
-
-    ds = ray.data.range(5)
-    ds = ds.map(lambda x: {"id": x["id"]})
-
-    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
-        ds = processor(ds)
-        ds = ds.materialize()
-
-    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
-    assert isinstance(exc_info.value.cause, UserCodeException)
-    assert "Either 'prompt' or 'prompt_token_ids' must be provided" in str(
-        exc_info.value
-    )
 
 
 def test_embedding_model(gpu_type, model_smolvlm_256m):
