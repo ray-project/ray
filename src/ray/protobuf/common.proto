@@ -761,6 +761,9 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
+  // The direct transport metadata for the object that is needed to trigger
+  // a transfer (if RDT object).
+  optional bytes direct_transport_metadata = 7;
 }
 
 // Task spec of an actor creation task.
