@@ -174,7 +174,27 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
     4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
 
-    TODO expand on generic types
+    Generic Type Parameters:
+        This class is parameterized by two type variables:
+
+        - ``AccumulatorType``: The type of the intermediate state (accumulator) used
+          during aggregation. This is what `aggregate_block` returns, what `combine`
+          takes as inputs and returns, and what `finalize` receives. For simple
+          aggregations like `Sum`, this might just be a numeric type. For more complex
+          aggregations like `Mean`, this could be a composite type like
+          ``List[Union[int, float]]`` representing ``[sum, count]``.
+
+        - ``AggOutputType``: The type of the final result after `finalize` is called.
+          This is what gets written to the output dataset. For `Sum`, this is the
+          same as the accumulator type (a number). For `Mean`, the accumulator is
+          ``[sum, count]`` but the output is a single ``float`` (the computed mean).
+
+        Examples of type parameterization in built-in aggregations::
+
+            Count(AggregateFnV2[int, int])               # accumulator: int, output: int
+            Sum(AggregateFnV2[Union[int, float], ...])   # accumulator: number, output: number
+            Mean(AggregateFnV2[List[...], float])        # accumulator: [sum, count], output: float
+            Std(AggregateFnV2[List[...], float])         # accumulator: [M2, mean, count], output: float
 
     Args:
         name: The name of the aggregation. This will be used as the column name
