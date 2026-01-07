@@ -828,7 +828,7 @@ def to_numpy(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import _is_native_tensor_type
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
