@@ -508,6 +508,59 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Queue ratio is below threshold, so no backpressure limit.
         assert result is None
 
+    def test_backpressure_applied_fast_producer_slow_consumer(self):
+        """Test backpressure IS applied when producer is faster than consumer.
+
+        In a fast producer → slow consumer scenario:
+        - Queue builds up (producer outputs faster than consumer can process)
+        - Downstream capacity is low (slow consumer has fewer pending inputs)
+        - Queue/capacity ratio exceeds threshold → backpressure applied
+        """
+        # Fast producer -> slow consumer topology
+        producer_op, producer_state = self._mock_task_pool_map_operator(
+            num_tasks_running=5,  # Fast producer, many concurrent tasks
+            max_concurrency_limit=10,
+        )
+        consumer_op, consumer_state = self._mock_task_pool_map_operator(
+            num_tasks_running=1,  # Slow consumer, few concurrent tasks
+            max_concurrency_limit=2,
+        )
+        producer_op.output_dependencies = [consumer_op]
+
+        topology = {
+            producer_op: producer_state,
+            consumer_op: consumer_state,
+        }
+
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+
+        # High utilization to trigger backpressure evaluation
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+
+        # Fast producer scenario: large queue, low downstream capacity
+        # Queue ratio = 2000 / 200 = 10 (well above 2.0 threshold)
+        queue_ratio = self._set_queue_ratio(
+            producer_op,
+            producer_state,
+            rm,
+            queue_size=2000,  # Large queue (producer outputting fast)
+            downstream_capacity=200,  # Low capacity (slow consumer)
+        )
+        assert queue_ratio > 2.0  # Verify ratio exceeds backpressure threshold
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        # Producer should be backpressured (cannot add more inputs)
+        assert policy.can_add_input(producer_op) is False
+        # Output bytes should be limited to 0 (full backpressure)
+        assert policy.max_task_output_bytes_to_read(producer_op) == 0
+
 
 if __name__ == "__main__":
     import sys
