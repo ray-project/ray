@@ -182,8 +182,8 @@ class RunningReplica:
         else:
             self._actor_handle = actor_handle
 
-        self._channel: Optional[grpc.aio.Channel] = None
-        self._stub: Optional[ASGIServiceStub] = None
+        self._channel = None
+        self._stub = None
 
     @property
     def replica_id(self) -> ReplicaID:
