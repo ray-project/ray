@@ -34,7 +34,7 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
 
-  // repr_name is only available after the actor creation.
+  // repr_name is only available after actor creation.
   data.set_repr_name("MyActor(id=123)");
   auto event2 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1");
