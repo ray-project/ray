@@ -4197,10 +4197,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     }
     (*used_resources_map)[resource_name] = allocations;
   }
-  google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
-                                                            webui_display_.end());
-  (*stats->mutable_webui_display()) = webui_map;
-
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_in_plasma(memory_store_stats.num_in_plasma);
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
@@ -4519,11 +4515,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
-  absl::MutexLock lock(&mutex_);
-  webui_display_[key] = message;
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
