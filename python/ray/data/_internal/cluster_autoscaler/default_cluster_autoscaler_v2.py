@@ -4,9 +4,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from logging import getLogger
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import ray
+from .base_autoscaling_coordinator import AutoscalingCoordinator
 from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
 )
@@ -93,6 +94,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
+        autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
+        get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
     ):
         if resource_utilization_calculator is None:
             assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
@@ -112,7 +115,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         self._requester_id = f"data-{execution_id}"
-        self._autoscaling_coordinator = DefaultAutoscalingCoordinator()
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator()
+        self._autoscaling_coordinator = autoscaling_coordinator
+        if get_node_counts is None:
+            get_node_counts = self._get_node_resource_spec_and_count
+        self._get_node_counts = get_node_counts
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
@@ -168,7 +176,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             return
 
         resource_request = []
-        node_resource_spec_count = self._get_node_resource_spec_and_count()
+        node_resource_spec_count = self._get_node_counts()
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
