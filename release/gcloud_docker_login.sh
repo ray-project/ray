@@ -4,8 +4,21 @@
 
 set -euo pipefail
 
-curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
-tar -xf google-cloud-cli-441.0.0-linux-arm.tar.gz
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" ]]; then
+    GCLOUD_ARCH="x86_64"
+elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+    GCLOUD_ARCH="arm"
+else
+    echo "Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+GCLOUD_VERSION="550.0.0"
+GCLOUD_TARBALL="google-cloud-cli-${GCLOUD_VERSION}-linux-${GCLOUD_ARCH}.tar.gz"
+
+curl -fO "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${GCLOUD_TARBALL}"
+tar -xf "$GCLOUD_TARBALL"
 ./google-cloud-sdk/install.sh -q
 PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
 export PATH
