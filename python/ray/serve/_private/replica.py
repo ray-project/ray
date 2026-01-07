@@ -690,7 +690,7 @@ class ReplicaBase(ABC):
         self._rank: Optional[ReplicaRank] = None
 
         # gRPC server for inter-deployment communication
-        self._inter_deployment_grpc_server = grpc.aio.server(
+        self._server = grpc.aio.server(
             options=[
                 (
                     "grpc.max_receive_message_length",
@@ -1254,11 +1254,9 @@ class Replica(ReplicaBase, ASGIServiceServicer):
         )
 
         # Start the gRPC server for inter-deployment communication
-        add_ASGIServiceServicer_to_server(self, self._inter_deployment_grpc_server)
-        self._internal_grpc_port = self._inter_deployment_grpc_server.add_insecure_port(
-            "[::]:0"
-        )
-        await self._inter_deployment_grpc_server.start()
+        add_ASGIServiceServicer_to_server(self, self._server)
+        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
+        await self._server.start()
         logger.debug(
             f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
         )
