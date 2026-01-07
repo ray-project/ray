@@ -1708,7 +1708,7 @@ def override_deployment_info(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
         override_bundle_label_selector = options.pop(
-            "bundle_label_selector",
+            "placement_group_bundle_label_selector",
             replica_config.placement_group_bundle_label_selector,
         )
 

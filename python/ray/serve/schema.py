@@ -477,7 +477,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     @root_validator
     def validate_bundle_label_selector(cls, values):
         placement_group_bundles = values.get("placement_group_bundles", None)
-        bundle_label_selector = values.get("bundle_label_selector", None)
+        bundle_label_selector = values.get(
+            "placement_group_bundle_label_selector", None
+        )
 
         if bundle_label_selector not in [DEFAULT.VALUE, None]:
             if placement_group_bundles in [DEFAULT.VALUE, None]:
