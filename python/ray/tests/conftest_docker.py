@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 from typing import List
@@ -89,8 +90,20 @@ head_node_vol = volume()
 worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
+_AUTH_ENV_KEYS = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+
+
+def _merge_auth_envs(envs: dict) -> dict:
+    merged = dict(envs)
+    for key in _AUTH_ENV_KEYS:
+        value = os.environ.get(key)
+        if value is not None:
+            merged[key] = value
+    return merged
+
 
 def gen_head_node(envs):
+    envs = _merge_auth_envs(envs or {})
     return container(
         image="rayproject/ray:ha_integration",
         name=head_node_container_name,
@@ -122,6 +135,7 @@ def gen_head_node(envs):
 
 
 def gen_worker_node(envs, num_cpus):
+    envs = _merge_auth_envs(envs or {})
     return container(
         image="rayproject/ray:ha_integration",
         network="{gcs_network.name}",
