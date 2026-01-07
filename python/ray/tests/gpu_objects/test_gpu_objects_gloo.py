@@ -11,6 +11,9 @@ import torch
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.experimental.collective import create_collective_group
+from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+    CollectiveTransportMetadata,
+)
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -68,7 +71,6 @@ class ErrorActor:
     def recv(self, tensor):
         return tensor
 
-    @ray.method(concurrency_group="_ray_system")
     def clear_gpu_object_store(self):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -80,6 +82,9 @@ class ErrorActor:
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self):
+        time.sleep(100)
+
+    def block_main_thread(self):
         time.sleep(100)
 
 
@@ -138,12 +143,12 @@ def test_gc_gpu_object_metadata(ray_start_regular):
     ref = actors[0].echo.remote(tensor)
     gpu_obj_id = ref.hex()
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    assert gpu_obj_id in gpu_object_manager.managed_gpu_object_metadata
+    assert gpu_object_manager.is_managed_object(gpu_obj_id)
     ray.get(actors[1].double.remote(ref))
     del ref
 
     wait_for_condition(
-        lambda: gpu_obj_id not in gpu_object_manager.managed_gpu_object_metadata,
+        lambda: not gpu_object_manager.is_managed_object(gpu_obj_id),
     )
 
 
@@ -522,7 +527,17 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     task_args = (gpu_ref,)
-    gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
+    gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
+        dst_actor, task_args
+    )
+
+    gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+        gpu_obj_id,
+        CollectiveTransportMetadata(
+            tensor_meta=[(tensor.shape, tensor.dtype)],
+            tensor_device=tensor.device,
+        ),
+    )
 
     # Check dst_actor has the GPU object
     ret_val_dst = ray.get(
@@ -796,7 +811,7 @@ def test_wait_tensor_freed(ray_start_regular):
     gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
     obj_id = "random_id"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object_primary(obj_id, [tensor])
+    gpu_object_store.add_object_primary(obj_id, [tensor], "GLOO")
 
     assert gpu_object_store.has_object(obj_id)
     with pytest.raises(TimeoutError):
@@ -823,8 +838,8 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     obj_id1 = "random_id1"
     obj_id2 = "random_id2"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object_primary(obj_id1, [tensor])
-    gpu_object_store.add_object_primary(obj_id2, [tensor])
+    gpu_object_store.add_object_primary(obj_id1, [tensor], "GLOO")
+    gpu_object_store.add_object_primary(obj_id2, [tensor], "GLOO")
 
     assert gpu_object_store.has_object(obj_id1)
     assert gpu_object_store.has_object(obj_id2)
@@ -948,13 +963,15 @@ def test_send_fails(ray_start_regular):
         ray.get(result_ref)
 
 
-def test_send_actor_dies(ray_start_regular):
+def test_send_actor_dies_before_sending(ray_start_regular):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
 
-    # Try a transfer with the sender's background thread blocked,
+    gpu_obj_ref = actors[0].send.remote(torch.randn(100, 100))
+    # Wait for the object to actually be created on the sender
+    ray.wait([gpu_obj_ref])
+    # Block the background thread before triggering the transfer
     # so the send doesn't happen before the actor is killed
-    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
     actors[0].block_background_thread.remote()
     result_ref = actors[1].recv.remote(gpu_obj_ref)
     ray.kill(actors[0])
