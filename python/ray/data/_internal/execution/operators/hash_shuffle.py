@@ -1666,9 +1666,9 @@ class HashShuffleAggregator:
 
         # Per-sequence mapping of partition-id to `PartitionState` with individual
         # locks for thread-safe block accumulation
-        self._input_seq_partition_buckets: Dict[int, Dict[int, PartitionBucket]] = (
-            self._allocate_partition_buckets(num_input_seqs, target_partition_ids)
-        )
+        self._input_seq_partition_buckets: Dict[
+            int, Dict[int, PartitionBucket]
+        ] = self._allocate_partition_buckets(num_input_seqs, target_partition_ids)
         self._partitions_lock = threading.Lock()  # For lazy state creation
 
         self._bg_thread = threading.Thread(
@@ -1767,7 +1767,9 @@ class HashShuffleAggregator:
 
             result = defaultdict(defaultdict)
 
-            for seq_id, partition_map in list(self._input_seq_partition_buckets.items()):
+            for seq_id, partition_map in list(
+                self._input_seq_partition_buckets.items()
+            ):
                 for partition_id, partition in list(partition_map.items()):
                     result[f"seq_{seq_id}"][f"partition_{partition_id}"] = {
                         # NOTE: qsize() is approximate but sufficient for debug logging
