@@ -23,7 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
-agentic
+[Aa]gentic
 Alibaba
 Alpaca
 Anyscale
@@ -114,6 +114,7 @@ streamable
 Softmax
 streamable
 subprocess
+subtask(s)?
 teardown
 tiktoken
 tokenization
