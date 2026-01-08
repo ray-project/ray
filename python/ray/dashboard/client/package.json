@@ -22,7 +22,7 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-icons": "^4.7.1",
-    "react-router-dom": "^6.4.3",
+    "react-router-dom": "^6.30.3",
     "react-scripts": "^5.0.1",
     "react-window": "^1.8.5",
     "swr": "^2.1.0",
