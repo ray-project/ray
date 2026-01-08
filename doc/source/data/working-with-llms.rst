@@ -71,7 +71,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
          |
          v
     - Preprocess (Custom Function)
-    - PrepareImage (Optional, for VLMs)
+    - PrepareImage (Optional, for VLM / Omni models)
     - ChatTemplate (Applies chat template to messages)
     - Tokenize (Converts text to token IDs)
     - LLM Engine (vLLM/SGLang inference on GPU)
@@ -87,11 +87,11 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **PrepareImage**: Extracts and prepares images from multimodal inputs. Enable with ``prepare_image_stage=True``.
 - **ChatTemplate**: Applies the model's chat template to convert messages into a prompt string.
 - **Tokenize**: Converts the prompt string into token IDs for the model.
-- **LLM Engine**: The GPU-accelerated inference stage running vLLM or SGLang.
+- **LLM Engine**: The accelerated (GPU/TPU) inference stage running vLLM or SGLang.
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize) use autoscaling actor pools, while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize) use autoscaling actor pools (except for ServeDeployment and HTTP request handling stages), while the GPU stage uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -112,7 +112,7 @@ Each replica runs an independent inference engine. Set ``concurrency`` to match 
 Text generation
 ---------------
 
-Use :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` for chat completions and text generation tasks.
+Use :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` or :class:`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` for chat completions and text generation tasks.
 
 **Key configuration options:**
 

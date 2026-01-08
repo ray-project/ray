@@ -49,5 +49,4 @@ Stage configs
     ~ChatTemplateStageConfig
     ~TokenizerStageConfig
     ~DetokenizeStageConfig
-    ~PrepareImageStageConfig
     ~PrepareMultimodalStageConfig
