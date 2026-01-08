@@ -16,6 +16,8 @@ from ray.serve._private.common import (
     ReplicaID,
 )
 from ray.serve._private.config import ReplicaConfig
+from ray.serve.config import StaticPlacementConfig
+from ray.util.placement_group import PlacementGroup
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
@@ -154,6 +156,12 @@ class ReplicaSchedulingRequest:
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
+    # Static placement configuration for external placement group control.
+    # When set, uses an external placement group instead of creating one.
+    static_placement_config: Optional[StaticPlacementConfig] = None
+    # The rank of this replica (used with static_placement_config to determine
+    # which bundle indices to use).
+    replica_rank: Optional[int] = None
 
     @property
     def required_resources(self) -> Resources:
@@ -555,9 +563,55 @@ class DeploymentScheduler(ABC):
         replica_id = scheduling_request.replica_id
         deployment_id = replica_id.deployment_id
         placement_group = None
+        bundle_indices = None  # Track bundle indices for static placement
 
         scheduling_strategy = default_scheduling_strategy
-        if scheduling_request.placement_group_bundles is not None:
+
+        # Handle static placement configuration (external placement group)
+        if scheduling_request.static_placement_config is not None:
+            static_config = scheduling_request.static_placement_config
+            replica_rank = scheduling_request.replica_rank
+
+            if replica_rank is None:
+                logger.error(
+                    f"static_placement_config is set but replica_rank is None "
+                    f"for {replica_id}. Cannot schedule replica."
+                )
+                scheduling_request.status = (
+                    ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+                )
+                return
+
+            try:
+                bundle_indices = static_config.get_bundle_indices_for_replica(
+                    replica_rank
+                )
+                primary_bundle_index = static_config.get_primary_bundle_index_for_replica(
+                    replica_rank
+                )
+            except KeyError as e:
+                logger.error(
+                    f"Failed to get bundle indices for replica rank {replica_rank}: {e}"
+                )
+                scheduling_request.status = (
+                    ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+                )
+                return
+
+            # Use the external placement group with specific bundle index
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group=static_config.placement_group,
+                placement_group_bundle_index=primary_bundle_index,
+                placement_group_capture_child_tasks=static_config.capture_child_tasks,
+            )
+            placement_group = static_config.placement_group
+            target_labels = None
+            logger.info(
+                f"Scheduling replica {replica_id} (rank={replica_rank}) on "
+                f"external placement group bundle {primary_bundle_index}, "
+                f"all assigned bundles: {bundle_indices}"
+            )
+        elif scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
@@ -634,7 +688,11 @@ class DeploymentScheduler(ABC):
             placement_group = scheduling_strategy.placement_group
 
         scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
-        scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
+        scheduling_request.on_scheduled(
+            actor_handle,
+            placement_group=placement_group,
+            bundle_indices=bundle_indices,
+        )
 
     @abstractmethod
     def get_node_to_compact(

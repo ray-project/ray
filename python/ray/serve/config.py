@@ -1,6 +1,7 @@
 import json
 import logging
 import warnings
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -17,6 +18,7 @@ from ray._common.pydantic_compat import (
     validator,
 )
 from ray._common.utils import import_attr, import_module_and_attr
+from ray.util.placement_group import PlacementGroup
 
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
@@ -752,3 +754,147 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class StaticPlacementConfig:
+    """Configuration for static deployment placement using an external placement group.
+
+    This allows Serve deployments to be colocated with other Ray actors/tasks on
+    specific placement group bundles. This is useful for scenarios like:
+    - RL training workflows needing zero-copy weight sync via CUDA IPC
+    - GPU time-sharing between inference and training workloads
+
+    When using static placement:
+    - Replica count is fixed to the number of entries in `replica_bundle_mapping`
+    - Autoscaling is not supported
+    - The placement group lifecycle is managed externally (not by Serve)
+    - Replicas are restarted on their assigned bundles after failures
+
+    Example:
+        .. code-block:: python
+
+            import ray
+            from ray.util.placement_group import placement_group
+            from ray import serve
+            from ray.serve.config import StaticPlacementConfig
+
+            # Create external placement group
+            pg = placement_group([{"GPU": 1, "CPU": 1}] * 4)
+            ray.get(pg.ready())
+
+            @serve.deployment(
+                _placement_info=StaticPlacementConfig(
+                    placement_group=pg,
+                    replica_bundle_mapping={
+                        0: [0, 1],  # Replica 0 uses bundles 0 and 1
+                        1: [2, 3],  # Replica 1 uses bundles 2 and 3
+                    },
+                ),
+            )
+            class MyLLMServer:
+                pass
+
+    Args:
+        placement_group: An existing placement group to use for scheduling replicas.
+            The placement group must be created and ready before deployment.
+        replica_bundle_mapping: A mapping from replica rank (0-indexed) to the list
+            of bundle indices that replica should use. The replica actor will be
+            scheduled on the first bundle in its list. Additional bundles can be
+            used by child actors created by the replica (accessible via
+            `serve.get_replica_context().bundle_indices`).
+        capture_child_tasks: If True (default), child tasks and actors created by
+            the replica will be captured by the placement group. Set to False to
+            allow children to be scheduled outside the placement group.
+    """
+
+    placement_group: PlacementGroup
+    replica_bundle_mapping: Dict[int, List[int]]
+    capture_child_tasks: bool = True
+
+    def __post_init__(self):
+        """Validate the configuration after initialization."""
+        self._validate()
+
+    def _validate(self):
+        """Validate the static placement configuration.
+
+        Raises:
+            ValueError: If the configuration is invalid.
+        """
+        if not self.replica_bundle_mapping:
+            raise ValueError(
+                "replica_bundle_mapping cannot be empty. "
+                "At least one replica must be mapped to bundle indices."
+            )
+
+        # Check that ranks are contiguous starting from 0
+        ranks = sorted(self.replica_bundle_mapping.keys())
+        expected_ranks = list(range(len(ranks)))
+        if ranks != expected_ranks:
+            raise ValueError(
+                f"Replica ranks must be contiguous integers starting from 0. "
+                f"Got ranks: {ranks}, expected: {expected_ranks}"
+            )
+
+        # Check that each replica has at least one bundle
+        for rank, bundle_indices in self.replica_bundle_mapping.items():
+            if not bundle_indices:
+                raise ValueError(
+                    f"Replica rank {rank} must be mapped to at least one bundle index. "
+                    f"Got empty list."
+                )
+            if not all(isinstance(idx, int) and idx >= 0 for idx in bundle_indices):
+                raise ValueError(
+                    f"Bundle indices for replica rank {rank} must be non-negative "
+                    f"integers. Got: {bundle_indices}"
+                )
+
+        # Check that bundle indices are unique across all replicas
+        all_bundle_indices = []
+        for bundle_indices in self.replica_bundle_mapping.values():
+            all_bundle_indices.extend(bundle_indices)
+
+        if len(all_bundle_indices) != len(set(all_bundle_indices)):
+            raise ValueError(
+                "Bundle indices must be unique across all replicas. "
+                f"Found duplicate indices in mapping: {self.replica_bundle_mapping}"
+            )
+
+    @property
+    def num_replicas(self) -> int:
+        """Return the number of replicas defined by this configuration."""
+        return len(self.replica_bundle_mapping)
+
+    def get_bundle_indices_for_replica(self, replica_rank: int) -> List[int]:
+        """Get the bundle indices assigned to a specific replica.
+
+        Args:
+            replica_rank: The rank of the replica (0-indexed).
+
+        Returns:
+            List of bundle indices assigned to this replica.
+
+        Raises:
+            KeyError: If the replica rank is not in the mapping.
+        """
+        if replica_rank not in self.replica_bundle_mapping:
+            raise KeyError(
+                f"Replica rank {replica_rank} not found in mapping. "
+                f"Valid ranks: {list(self.replica_bundle_mapping.keys())}"
+            )
+        return self.replica_bundle_mapping[replica_rank]
+
+    def get_primary_bundle_index_for_replica(self, replica_rank: int) -> int:
+        """Get the primary bundle index for a replica (first in its list).
+
+        The replica actor will be scheduled on this bundle.
+
+        Args:
+            replica_rank: The rank of the replica (0-indexed).
+
+        Returns:
+            The primary bundle index for scheduling the replica actor.
+        """
+        return self.get_bundle_indices_for_replica(replica_rank)[0]

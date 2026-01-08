@@ -554,6 +554,9 @@ class ReplicaBase(ABC):
         # subclass implementations.
         self._shutting_down = False
 
+        # Bundle indices for static placement (populated in `initialize`).
+        self._bundle_indices: Optional[List[int]] = None
+
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
@@ -665,6 +668,7 @@ class ReplicaBase(ABC):
             rank=rank,
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
+            bundle_indices=self._bundle_indices,
         )
 
     def _configure_logger_and_profilers(
@@ -917,8 +921,14 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(
-        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        rank: Optional[ReplicaRank],
+        bundle_indices: Optional[List[int]] = None,
     ):
+        # Store bundle_indices for static placement
+        self._bundle_indices = bundle_indices
+
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -1257,7 +1267,10 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        bundle_indices: Optional[List[int]] = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1270,7 +1283,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config, rank)
+        await self._replica_impl.initialize(deployment_config, rank, bundle_indices)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):

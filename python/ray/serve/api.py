@@ -44,6 +44,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    StaticPlacementConfig,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -341,6 +342,7 @@ def deployment(
         Union[Dict, RequestRouterConfig, None]
     ] = DEFAULT.VALUE,
     max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+    _placement_info: Default[Optional[StaticPlacementConfig]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -408,6 +410,12 @@ def deployment(
         request_router_config: Config for the request router used for this deployment.
         max_constructor_retry_count: Maximum number of times to retry the deployment
             constructor. Defaults to 20.
+        _placement_info: [ALPHA] Static placement configuration for using an external
+            placement group. When provided, replicas will be scheduled on specific
+            bundles in the given placement group according to the replica_bundle_mapping.
+            This is mutually exclusive with placement_group_bundles,
+            placement_group_strategy, max_replicas_per_node, and autoscaling_config.
+            The number of replicas is fixed to the number of entries in the mapping.
     Returns:
         `Deployment`
     """
@@ -419,6 +427,44 @@ def deployment(
 
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
+    # Validate _placement_info constraints
+    static_placement_config = (
+        _placement_info if _placement_info is not DEFAULT.VALUE else None
+    )
+    if static_placement_config is not None:
+        # _placement_info is mutually exclusive with other placement options
+        if placement_group_bundles is not DEFAULT.VALUE:
+            raise ValueError(
+                "_placement_info cannot be used together with placement_group_bundles. "
+                "Use _placement_info for external placement group control."
+            )
+        if placement_group_strategy is not DEFAULT.VALUE:
+            raise ValueError(
+                "_placement_info cannot be used together with placement_group_strategy. "
+                "Use _placement_info for external placement group control."
+            )
+        if max_replicas_per_node is not DEFAULT.VALUE:
+            raise ValueError(
+                "_placement_info cannot be used together with max_replicas_per_node. "
+                "Bundle placement is controlled by _placement_info.replica_bundle_mapping."
+            )
+        if autoscaling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "_placement_info cannot be used together with autoscaling_config. "
+                "Static placement requires a fixed number of replicas."
+            )
+        # Override num_replicas with the mapping size
+        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
+            if num_replicas != static_placement_config.num_replicas:
+                raise ValueError(
+                    f"num_replicas ({num_replicas}) does not match the number of "
+                    f"replicas in _placement_info.replica_bundle_mapping "
+                    f"({static_placement_config.num_replicas}). "
+                    "When using _placement_info, num_replicas is determined by the mapping."
+                )
+        # Set num_replicas to match the mapping
+        num_replicas = static_placement_config.num_replicas
 
     if num_replicas == "auto":
         num_replicas = None
@@ -500,6 +546,7 @@ def deployment(
                 if max_replicas_per_node is not DEFAULT.VALUE
                 else None
             ),
+            static_placement_config=static_placement_config,
         )
 
         return Deployment(
