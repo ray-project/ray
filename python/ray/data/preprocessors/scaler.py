@@ -133,8 +133,13 @@ class StandardScaler(SerializablePreprocessorBase):
 
     def _transform_arrow(self, table: pa.Table) -> pa.Table:
         """Transform using fast native PyArrow operations."""
-        for input_col, output_col in zip(self.columns, self.output_columns):
-            column = table.column(input_col)
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j
+        input_columns = [table.column(input_col) for input_col in self.columns]
+
+        for input_col, output_col, column in zip(
+            self.columns, self.output_columns, input_columns
+        ):
             s_mean = self.stats_[f"mean({input_col})"]
             s_std = self.stats_[f"std({input_col})"]
 

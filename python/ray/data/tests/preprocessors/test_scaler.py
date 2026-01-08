@@ -465,6 +465,64 @@ def test_standard_scaler_arrow_transform_null_stats():
     assert result_df["A"].isna().all(), "All values should be null when stats are None"
 
 
+def test_standard_scaler_arrow_transform_overlapping_columns():
+    """Test StandardScaler _transform_arrow with overlapping input/output columns.
+
+    This tests the case where output_columns[i] == columns[j] for i < j.
+    The Arrow implementation must read all input columns before writing any output
+    to avoid corrupting data that will be read later.
+    """
+    # columns=['A', 'B'], output_columns=['B', 'C']
+    # Without the fix, B would be overwritten before being read as input
+    col_a = [2.0, 4.0, 6.0]  # mean=4, std=2 -> scaled: [-1, 0, 1]
+    col_b = [10.0, 20.0, 30.0]  # mean=20, std=10 -> scaled: [-1, 0, 1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+
+    scaler = StandardScaler(["A", "B"], output_columns=["B", "C"])
+
+    # Manually set stats
+    scaler.stats_ = {
+        "mean(A)": 4.0,
+        "std(A)": 2.0,
+        "mean(B)": 20.0,
+        "std(B)": 10.0,
+    }
+    scaler._fitted = True
+
+    # Test Arrow transform
+    table = pa.Table.from_pandas(in_df)
+    result_table = scaler._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Test pandas transform for comparison
+    pandas_result = scaler._transform_pandas(in_df.copy())
+
+    # Column A should be unchanged (not in output_columns with same index)
+    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
+
+    # Column B should contain scaled A: (A - 4) / 2 = [-1, 0, 1]
+    expected_b = [-1.0, 0.0, 1.0]
+    assert result_df["B"].tolist() == expected_b, (
+        f"Column B should contain scaled A. Expected {expected_b}, "
+        f"got {result_df['B'].tolist()}"
+    )
+
+    # Column C should contain scaled B: (B - 20) / 10 = [-1, 0, 1]
+    expected_c = [-1.0, 0.0, 1.0]
+    assert result_df["C"].tolist() == expected_c, (
+        f"Column C should contain scaled B. Expected {expected_c}, "
+        f"got {result_df['C'].tolist()}"
+    )
+
+    # Arrow and pandas results should match
+    pd.testing.assert_frame_equal(
+        result_df,
+        pandas_result,
+        check_like=True,
+        obj="Arrow vs Pandas transform results should match",
+    )
+
+
 class TestScalerSerialization:
     """Test serialization/deserialization functionality for scaler preprocessors."""
 
