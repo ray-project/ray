@@ -159,5 +159,5 @@ examples:
     skill_level: advanced
     use_cases:
       - computer vision
-    link: tutorials/video-analysis/content/README
+    link: tutorials/video-analysis/README
     related_technology: integrations
