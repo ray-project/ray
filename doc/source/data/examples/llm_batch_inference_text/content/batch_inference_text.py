@@ -3,6 +3,8 @@ from typing import Any
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
+DATASET_LIMIT = 10_000
+
 # Define the path to the sample CSV file hosted on S3.
 # This dataset contains 2 million rows of synthetic customer data.
 path = "https://llm-guide.s3.us-west-2.amazonaws.com/data/ray-data-llm/customers-2000000.csv"
@@ -11,9 +13,9 @@ path = "https://llm-guide.s3.us-west-2.amazonaws.com/data/ray-data-llm/customers
 print("Loading dataset from remote URL...")
 ds = ray.data.read_csv(path)
 
-# Limit the dataset to 10,000 rows for this example.
-print("Limiting dataset to 10,000 rows for initial processing.")
-ds_small = ds.limit(10_000)
+# Limit the dataset. If DATASET_LIMIT > dataset size, the entire dataset will be processed.
+print(f"Limiting dataset to {DATASET_LIMIT} images for initial processing.")
+ds_large = ds.limit(DATASET_LIMIT)
 
 # Repartition the dataset to enable parallelism across multiple workers (GPUs).
 # By default, streaming datasets might not be optimally partitioned. Repartitioning

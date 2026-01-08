@@ -6,6 +6,8 @@ import datasets
 from PIL import Image
 from io import BytesIO
 
+DATASET_LIMIT = 10_000
+
 # Load the BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face with ~5M images.
 print("Loading BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face...")
 hf_dataset = datasets.load_dataset("BLIP3o/BLIP3o-Pretrain-Short-Caption", split="train", streaming=True)
@@ -14,9 +16,9 @@ hf_dataset = hf_dataset.select_columns(["jpg"])
 ds = ray.data.from_huggingface(hf_dataset)
 print("Dataset loaded successfully.")
 
-# Limit the dataset to 10,000 images for this example.
-print("Limiting dataset to 10,000 images for initial processing.")
-ds_small = ds.limit(10_000)
+# Limit the dataset. If DATASET_LIMIT > dataset size, the entire dataset will be processed.
+print(f"Limiting dataset to {DATASET_LIMIT} images for initial processing.")
+ds_large = ds.limit(DATASET_LIMIT)
 
 # Repartition the dataset to enable parallelism across multiple workers (GPUs).
 # By default, streaming datasets might not be optimally partitioned. Repartitioning

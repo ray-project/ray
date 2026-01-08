@@ -4,6 +4,8 @@ from pprint import pprint
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
+DATASET_LIMIT = 1_000_000
+
 # Define the path to the sample CSV file hosted on S3.
 # This dataset contains 2 million rows of synthetic customer data.
 path = "https://llm-guide.s3.us-west-2.amazonaws.com/data/ray-data-llm/customers-2000000.csv"
@@ -12,10 +14,9 @@ path = "https://llm-guide.s3.us-west-2.amazonaws.com/data/ray-data-llm/customers
 print("Loading dataset from remote URL...")
 ds = ray.data.read_csv(path)
 
-# The dataset has ~2M rows
-# Configure how many images to process (default: 1M for demonstration).
-print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
-ds_large = ds.limit(1_000_000)
+# Limit the dataset. If DATASET_LIMIT > dataset size, the entire dataset will be processed.
+print(f"Limiting dataset to {DATASET_LIMIT} images for initial processing.")
+ds_large = ds.limit(DATASET_LIMIT)
 
 # As we increase our compute, we can increase the number of partitions for more parallelism
 num_partitions_large = 256
