@@ -84,7 +84,7 @@ def upload_working_dir_if_needed(
             f"{_LOG_ONCE_DEFAULT_EXCLUDE_PREFIX}{d}"
         ):
             logger.warning(
-                "Directory %r is now ignored by default when packaging the working"
+                "Directory %r is now ignored by default when packaging the working "
                 "directory. To disable this behavior, set "
                 "the `RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES=''` environment "
                 "variable.",
