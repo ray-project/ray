@@ -1,11 +1,10 @@
 from typing import Any
-from io import BytesIO
 
-from pprint import pprint
 import ray
+from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 import datasets
 from PIL import Image
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from io import BytesIO
 
 # Load the BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face with ~5M images.
 print("Loading BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face...")
@@ -23,6 +22,9 @@ ds_small = ds.limit(10_000)
 # By default, streaming datasets might not be optimally partitioned. Repartitioning
 # splits the data into a specified number of blocks, allowing Ray to process them
 # in parallel.
+# Tip: Repartition count should typically be 2-4x your worker (GPU) count.
+# Example: 4 GPUs → 8-16 partitions, 10 GPUs → 20-40 partitions.
+# This ensures enough parallelism while avoiding excessive overhead.
 num_partitions = 64
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
@@ -40,12 +42,23 @@ processor_config = vLLMEngineProcessorConfig(
 )
 
 
+# Filter function to validate images before processing.
+# Returns True for valid images, False for corrupt/malformed ones.
+def is_valid_image(row: dict[str, Any]) -> bool:
+    try:
+        Image.open(BytesIO(row['jpg']['bytes']))
+        return True
+    except Exception:
+        return False
+
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
     # Convert bytes image to PIL 
     image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
-    # Resize for consistency + predictable vision-token budget
+    # Resize to 225x225 for consistency and predictable vision-token budget.
+    # This resolution balances quality with memory usage. Adjust based on your
+    # model's expected input size and available GPU memory.
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
@@ -83,7 +96,6 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
         # Include only the fields you need in the output.
     }
 
-
 # Build the LLM processor with the configuration and functions.
 processor = build_llm_processor(
     processor_config,
@@ -91,16 +103,20 @@ processor = build_llm_processor(
     postprocess=postprocess,
 )
 
+from pprint import pprint
 
-# Run the processor on the small dataset.
-processed_small = processor(ds_small)
+# Filter out invalid images before processing.
+ds_small_filtered = ds_small.filter(is_valid_image)
+
+# Run the processor on the filtered dataset.
+processed_small = processor(ds_small_filtered)
 
 # Materialize the dataset to memory.
 # You can also use writing APIs such as write_parquet() or write_json() to persist the dataset.
 processed_small = processed_small.materialize()
 
+print(f"\nProcessed {processed_small.count()} rows successfully.")
 # Display the first 3 entries to verify the output.
 sampled = processed_small.take(3)
-print("\n==================GENERATED CAPTIONS===============\n")
+print("\n==================GENERATED OUTPUT===============\n")
 pprint(sampled)
-

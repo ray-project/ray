@@ -1,11 +1,11 @@
 from typing import Any
-from io import BytesIO
 
 from pprint import pprint
 import ray
+from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 import datasets
 from PIL import Image
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from io import BytesIO
 
 # Load the BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face with ~5M images.
 print("Loading BLIP3o/BLIP3o-Pretrain-Short-Caption dataset from Hugging Face...")
@@ -15,11 +15,11 @@ hf_dataset = hf_dataset.select_columns(["jpg"])
 ds = ray.data.from_huggingface(hf_dataset)
 print("Dataset loaded successfully.")
 
-# Configure how many images to process (default: 1M for demonstration).
-print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
+# Limit the dataset to 10,000 images for this example.
+print("Limiting dataset to 10,000 images for initial processing.")
 ds_large = ds.limit(1_000_000)
 
-# Repartition the dataset to increase parallelism across multiple workers.
+# As we increase our compute, we can increase the number of partitions for more parallelism
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
@@ -37,12 +37,23 @@ processor_config_large = vLLMEngineProcessorConfig(
 )
 
 
+# Filter function to validate images before processing.
+# Returns True for valid images, False for corrupt/malformed ones.
+def is_valid_image(row: dict[str, Any]) -> bool:
+    try:
+        Image.open(BytesIO(row['jpg']['bytes']))
+        return True
+    except Exception:
+        return False
+
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
     # Convert bytes image to PIL 
     image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
-    # Resize for consistency + predictable vision-token budget
+    # Resize to 225x225 for consistency and predictable vision-token budget.
+    # This resolution balances quality with memory usage. Adjust based on your
+    # model's expected input size and available GPU memory.
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
@@ -80,7 +91,6 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
         # Include only the fields you need in the output.
     }
 
-
 # Build the LLM processor with the configuration and functions.
 processor_large = build_llm_processor(
     processor_config_large,
@@ -88,12 +98,15 @@ processor_large = build_llm_processor(
     postprocess=postprocess,
 )
 
+# Filter out invalid images before processing.
+ds_large_filtered = ds_large.filter(is_valid_image)
 
 # Run the compute-scaled processor on the larger dataset.
-processed_large = processor_large(ds_large)
+processed_large = processor_large(ds_large_filtered)
 processed_large = processed_large.materialize()
 
-print(f"\nProcessed {processed_large.count()} images successfully.")
-print("\nSample outputs:")
-pprint(processed_large.take(3))
-
+print(f"\nProcessed {processor_large.count()} rows successfully.")
+# Display the first 3 entries to verify the output.
+sampled = processor_large.take(3)
+print("\n==================GENERATED OUTPUT===============\n")
+pprint(sampled)

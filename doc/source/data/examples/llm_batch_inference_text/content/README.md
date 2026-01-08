@@ -23,7 +23,7 @@ Offline (batch) inference optimizes for throughput over latency. Unlike online i
 Choose batch inference when:
 - You have a fixed dataset to process (such as daily reports or data migrations)
 - Throughput matters more than immediate results
-- You want to take advantage of fault tolerance and checkpointing for long-running jobs
+- You want to take advantage of fault tolerance for long-running jobs
 
 On the contrary, if you are more interested in optimizing for latency, consider [deploying your LLM with Ray Serve LLM for online inference](https://docs.ray.io/en/latest/serve/llm/index.html).
 
@@ -67,6 +67,9 @@ ds_small = ds.limit(10_000)
 # By default, streaming datasets might not be optimally partitioned. Repartitioning
 # splits the data into a specified number of blocks, allowing Ray to process them
 # in parallel.
+# Tip: Repartition count should typically be 2-4x your worker (GPU) count.
+# Example: 4 GPUs → 8-16 partitions, 10 GPUs → 20-40 partitions.
+# This ensures enough parallelism while avoiding excessive overhead.
 num_partitions = 128
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
@@ -96,7 +99,7 @@ from ray.data.llm import vLLMEngineProcessorConfig
 processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
-        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+        max_model_len=256,  # Hard cap: system prompt + user prompt + output tokens must fit within this limit
     ),
     batch_size=256,
     accelerator_type="L4",
@@ -123,8 +126,8 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY."
-                            "Be concise and output only the formatted date and nothing else."
+                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY. "
+                            "Be concise and output only the formatted date and nothing else. "
                             "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '11-29-2020'"
             },
             {
@@ -133,15 +136,16 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
             },
         ],
         sampling_params=dict(
-            temperature=0.3,
-            max_tokens=32, # low max tokens because we are simply formatting a date
-            detokenize=False,
+            temperature=0,  # Use 0 for deterministic date formatting
+            max_tokens=32,  # Low max tokens because we are simply formatting a date
         ),
     )
 
 # Postprocess function extracts the generated text from the engine output.
 # The **row syntax returns all original columns in the input dataset.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
+    # Example: validation check, formatting...
+    
     return {
         "formatted_date": row["generated_text"],
         **row,  # Include all original columns.
@@ -179,8 +183,9 @@ processed_small = processor(ds_small)
 # You can also use writing APIs such as write_parquet() or write_csv() to persist the dataset.
 processed_small = processed_small.materialize()
 
+print(f"\nProcessed {processed_small.count()} rows successfully.")
 # Display the first 3 entries to verify the output.
-sampled = processed_small.take(3)
+sampled = processed_large.take(3)
 print("\n==================GENERATED OUTPUT===============\n")
 pprint(sampled)
 ```
@@ -189,9 +194,15 @@ pprint(sampled)
 
 For production workloads, deploy your batch inference processor as an [Anyscale Job](https://docs.anyscale.com/platform/jobs). Anyscale takes care of the infrastructure layer and runs your jobs on your dedicated clusters with automatic retries, monitoring, and scheduling.
 
+### Anyscale Runtime
+
+Anyscale Jobs run on [Anyscale Runtime](https://docs.anyscale.com/runtime/data), which includes performance optimizations over open-source Ray Data. Key improvements include faster shuffles, optimized memory management, improved autoscaling, and enhanced fault tolerance for large-scale data processing.
+
+These optimizations are automatic and require no code changes. Your Ray Data pipelines benefit from them simply by running on Anyscale. For batch inference workloads specifically, Anyscale Runtime provides better GPU utilization and reduced overhead when scaling across many nodes.
+
 ### Configure an Anyscale Job
 
-Save your batch inference code as `batch_inference.py`, then create a job configuration file:
+Save your batch inference code as `batch_inference_text.py`, then create a job configuration file:
 
 ```yaml
 # job.yaml
@@ -229,9 +240,8 @@ anyscale job status --name my-llm-batch-inference-text
 anyscale job logs --name my-llm-batch-inference-text
 ```
 
-The Ray Dashboard remains available for detailed monitoring. To access it, go over your Anyscale Job in your console.  
+The Ray Dashboard remains available for detailed monitoring. To access it, go to your Anyscale Job in your console.  
 For cluster-level information, click the **Metrics** tab then **Data** tab, and for task-level information, click the **Ray Workloads** tab then **Data** tab.
-
 
 ## Monitor the execution
 
@@ -251,8 +261,6 @@ Your Ray Data processing pipeline can easily scale up to process more data. By d
 
 
 ```python
-import os
-
 # The dataset has ~2M rows
 # Configure how many images to process (default: 1M for demonstration).
 print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
@@ -271,11 +279,11 @@ You can scale the number of concurrent workers based on the compute available in
 processor_config_large = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
-        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+        max_model_len=256,  # Hard cap: system prompt + user prompt + output tokens must fit within this limit
     ),
     batch_size=256,
-    accelerator_type="L4", # Or upgrade to larger GPU
-    concurrency=10, # Deploy 10 workers across 10 GPUs to maximize throughput
+    accelerator_type="L4",  # Or upgrade to larger GPU
+    concurrency=10,  # Deploy 10 workers across 10 GPUs to maximize throughput
 )
 
 # Build the LLM processor with the configuration and functions.
@@ -295,13 +303,15 @@ processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
 print(f"\nProcessed {processed_large.count()} rows successfully.")
-print("\nSample outputs:")
-pprint(processed_large.take(3))
+# Display the first 3 entries to verify the output.
+sampled = processed_large.take(3)
+print("\n==================GENERATED OUTPUT===============\n")
+pprint(sampled)
 ```
 
 ## Performance optimization tips
 
-When scaling to larger datasets, consider these optimizations tips:
+When scaling to larger datasets, consider these optimizations tips. For comprehensive guidance, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) and the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization).
 
 **Analyze your pipeline**  
 Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
@@ -327,34 +337,37 @@ Dataset throughput:
 ```
 
 **Adjust concurrency**  
-Increase the `concurrency` parameter to add more parallel workers.
+The `concurrency` parameter controls how many model replicas run in parallel. To determine the right value:
+- *Available GPU count:* Start with the number of GPUs in your cluster. Each replica needs at least one GPU (more if using tensor parallelism).
+- *Model memory footprint:* Ensure your model fits in GPU memory. For example, an 8B parameter model in FP16 requires ~16GB, fitting on a single L4 (24GB) or A10G (24GB).
+- *CPU-bound preprocessing:* If preprocessing is slower than inference, adding more GPU replicas won't help. Check `stats()` output to identify if preprocessing is the bottleneck.
 
 **Tune batch size**  
-Larger batch sizes may improve throughput but increase memory usage.
+The `batch_size` parameter controls how many requests Ray Data sends to vLLM at once. vLLM uses continuous batching internally, controlled by `max_num_seqs` in `engine_kwargs`. This directly impacts GPU memory allocation since vLLM pre-allocates KV cache for up to `max_num_seqs` concurrent sequences.
+
+- *Too small `batch_size`:* vLLM scheduler is undersaturated, risking GPU idle time.
+- *Too large `batch_size`:* vLLM scheduler is oversaturated, causing overhead latency. Also increases retry cost on failure since the entire batch is retried.
+
+You can try the following suggestions:
+1. Start with `batch_size` equal to `max_num_seqs` in your vLLM engine parameters. See [vLLM engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html) for defaults.
+2. Monitor GPU utilization in the Ray Dashboard (see [Monitor the execution](#monitor-the-execution) section).
+3. Adjust `max_num_seqs` in `engine_kwargs` to optimize GPU utilization, and re-adapt `batch_size` accordingly.
 
 **Tune preprocessing and inference stage parallelism**  
 Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
-**Use quantization to reduce memory footprint**  
-Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. A common option is FP8 (8-bit floating point), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
+See [Configure parallelism for Ray Data LLM](https://docs.anyscale.com/llm/batch-inference/resource-allocation/concurrency-and-batching.md) for detailed guidance.
 
-```python
-processor_config = vLLMEngineProcessorConfig(
-    model_source="facebook/opt-125m",
-    engine_kwargs={
-        "quantization": "fp8",  # Or "awq", "gptq", etc.
-        "max_model_len": 8192,
-    },
-    batch_size=128,
-    accelerator_type="L4",
-    concurrency=4,
-)
-```
+**Use quantization to reduce memory footprint**  
+Quantization reduces model precision to save GPU memory and improve throughput; vLLM supports this via the `quantization` field in `engine_kwargs`. Note that lower precision may impact output quality, and not all models or GPUs support all quantization types, see [Quantization for LLM batch inference](https://docs.anyscale.com/llm/batch-inference/throughput-optimization/quantization.md) for more guidance.
+
+**Fault tolerance and checkpointing**  
+Ray Data automatically handles fault tolerance - if a worker fails, only that worker's current batch is retried. For long-running Anyscale Jobs, you can enable job-level checkpointing to resume from failures. See [Anyscale Runtime checkpointing documentation](https://docs.anyscale.com/runtime/data#enable-job-level-checkpointing) for more information.
 
 **Scale to larger models with model parallelism**  
 Model parallelism distributes large models across multiple GPUs when they don't fit on a single GPU. Use tensor parallelism to split model layers horizontally across multiple GPUs within a single node and use pipeline parallelism to split model layers vertically across multiple nodes, with each node processing different layers of the model.
 
-Forward model parallelism parameters to your inference engine using the `engine_kwargs` argument of your `vLLMEngineProcessorConfig` object. If your GPUs span multiple nodes, set `ray` as the distributed executor backend to enable cross-node parallelism:
+Forward model parallelism parameters to your inference engine using the `engine_kwargs` argument of your `vLLMEngineProcessorConfig` object. If your GPUs span multiple nodes, set `ray` as the distributed executor backend to enable cross-node parallelism. This example snippet uses DeepSeek-R1, a large reasoning model requiring multiple GPUs over multiple nodes:
 
 ```python
 processor_config = vLLMEngineProcessorConfig(
@@ -372,12 +385,6 @@ processor_config = vLLMEngineProcessorConfig(
 ```
 
 Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_parallel_size`. For detailed guidance on parallelism strategies, see the [vLLM parallelism and scaling documentation](https://docs.vllm.ai/en/stable/serving/distributed_serving.html).
-
-**Monitor GPU utilization**  
-Use the Ray Dashboard to identify bottlenecks and adjust parameters.
-
-For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). For all available engine parameters, see the [vLLM Engine Arguments documentation](https://docs.vllm.ai/en/stable/serving/engine_args.html).
-
 
 ## Summary
 
