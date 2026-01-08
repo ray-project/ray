@@ -398,14 +398,14 @@ Review the per-operator throughput numbers and durations to spot slowest stages 
 **Adjust concurrency**  
 The `concurrency` parameter controls how many model replicas run in parallel. To determine the right value:
 - *Available GPU count:* Start with the number of GPUs in your cluster. Each replica needs at least one GPU (more if using tensor parallelism).
-- *Model memory footprint:* Ensure your model fits in GPU memory. For example, an 8B parameter model in FP16 requires ~16GB, fitting on a single L4 (24GB) or A10G (24GB).
+- *Model memory footprint:* Ensure your model fits in GPU memory. For example, an 8&nbsp;B parameter model in FP16 requires ~16&nbsp;GB, fitting on a single L4 (24&nbsp;GB) or A10G (24&nbsp;GB).
 - *CPU-bound preprocessing:* If preprocessing (image decoding, resizing) is slower than inference, adding more GPU replicas won't help. Check `stats()` output to identify if preprocessing is the bottleneck.
 
 **Tune batch size**  
 The `batch_size` parameter controls how many requests Ray Data sends to vLLM at once. vLLM uses continuous batching internally, controlled by `max_num_seqs` in `engine_kwargs`. This directly impacts GPU memory allocation since vLLM pre-allocates KV cache for up to `max_num_seqs` concurrent sequences.
 
-- *Too small `batch_size`:* vLLM scheduler is undersaturated, risking GPU idle time.
-- *Too large `batch_size`:* vLLM scheduler is oversaturated, causing overhead latency. Also increases retry cost on failure since the entire batch is retried.
+- *Too small `batch_size`:* vLLM scheduler is under-saturated, risking GPU idle time.
+- *Too large `batch_size`:* vLLM scheduler is over-saturated, causing overhead latency. Also increases retry cost on failure since the entire batch is retried.
 
 You can try the following suggestions:
 1. Start with `batch_size` equal to `max_num_seqs` in your vLLM engine parameters. See [vLLM engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html) for defaults.
@@ -421,7 +421,7 @@ Use `repartition()` to control parallelism during your preprocessing stage. On t
 See [Configure parallelism for Ray Data LLM](https://docs.anyscale.com/llm/batch-inference/resource-allocation/concurrency-and-batching.md) for detailed guidance.
 
 **Use quantization to reduce memory footprint**  
-Quantization reduces model precision to save GPU memory and improve throughput; vLLM supports this via the `quantization` field in `engine_kwargs`. Note that lower precision may impact output quality, and not all models or GPUs support all quantization types, see [Quantization for LLM batch inference](https://docs.anyscale.com/llm/batch-inference/throughput-optimization/quantization.md) for more guidance.
+Quantization reduces model precision to save GPU memory and improve throughput; vLLM supports this with the `quantization` field in `engine_kwargs`. Note that lower precision may impact output quality, and not all models or GPUs support all quantization types, see [Quantization for LLM batch inference](https://docs.anyscale.com/llm/batch-inference/throughput-optimization/quantization.md) for more guidance.
 
 **Fault tolerance and checkpointing**  
 Ray Data automatically handles fault tolerance - if a worker fails, only that worker's current batch is retried. For long-running Anyscale Jobs, you can enable job-level checkpointing to resume from failures. See [Anyscale Runtime checkpointing documentation](https://docs.anyscale.com/runtime/data#enable-job-level-checkpointing) for more information.
@@ -429,7 +429,7 @@ Ray Data automatically handles fault tolerance - if a worker fails, only that wo
 **Scale to larger models with model parallelism**  
 Model parallelism distributes large models across multiple GPUs when they don't fit on a single GPU. Use tensor parallelism to split model layers horizontally across multiple GPUs within a single node and use pipeline parallelism to split model layers vertically across multiple nodes, with each node processing different layers of the model.
 
-Forward model parallelism parameters to your inference engine using the `engine_kwargs` argument of your `vLLMEngineProcessorConfig` object. If your GPUs span multiple nodes, set `ray` as the distributed executor backend to enable cross-node parallelism. This example snippet uses Llama-3.2-90B-Vision-Instruct, a large vision model requiring multiple GPUs:
+Forward model parallelism parameters to your inference engine using the `engine_kwargs` argument of your `vLLMEngineProcessorConfig` object. If your GPUs span multiple nodes, set `ray` as the distributed executor backend to enable cross-node parallelism. This example snippet uses Llama-3.2-90&nbsp;B-Vision-Instruct, a large vision model requiring multiple GPUs:
 
 ```python
 processor_config = vLLMEngineProcessorConfig(
