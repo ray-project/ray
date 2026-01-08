@@ -374,7 +374,7 @@ def _shuffle_block(
 
 
 @dataclass
-class PartitionState:
+class PartitionBucket:
     """Per-partition state for thread-safe block accumulation.
 
     Each partition has its own lock and queue, eliminating cross-partition
@@ -400,8 +400,8 @@ class PartitionState:
         return blocks
 
     @staticmethod
-    def create() -> "PartitionState":
-        return PartitionState(lock=threading.Lock(), queue=queue.Queue())
+    def create() -> "PartitionBucket":
+        return PartitionBucket(lock=threading.Lock(), queue=queue.Queue())
 
 
 @dataclass
@@ -1660,7 +1660,7 @@ class HashShuffleAggregator:
 
         # Per-sequence mapping of partition-id to `PartitionState` with individual
         # locks for thread-safe block accumulation
-        self._input_seq_partition_shards: Dict[int, Dict[int, PartitionState]] = {}
+        self._input_seq_partition_shards: Dict[int, Dict[int, PartitionBucket]] = {}
         self._partitions_lock = threading.Lock()  # For lazy state creation
 
         self._bg_thread = threading.Thread(
@@ -1670,9 +1670,9 @@ class HashShuffleAggregator:
         )
         self._bg_thread.start()
 
-    def _get_or_create_partition(
+    def _get_or_create_partition_bucket(
         self, seq_id: int, partition_id: int
-    ) -> PartitionState:
+    ) -> PartitionBucket:
         """Gets or creates partition state for (seq_id, partition_id)."""
 
         if (
@@ -1687,7 +1687,7 @@ class HashShuffleAggregator:
                 if partition_id not in self._input_seq_partition_shards[seq_id]:
                     self._input_seq_partition_shards[seq_id][
                         partition_id
-                    ] = PartitionState.create()
+                    ] = PartitionBucket.create()
 
         return self._input_seq_partition_shards[seq_id][partition_id]
 
@@ -1697,32 +1697,32 @@ class HashShuffleAggregator:
         Uses per-(sequence, partition) locking to avoid cross-partition contention.
         Performs incremental compaction when the block count exceeds threshold.
         """
-        partition = self._get_or_create_partition(input_seq_id, partition_id)
+        bucket = self._get_or_create_partition_bucket(input_seq_id, partition_id)
 
         # Add partition shard into the queue
-        partition.queue.put(partition_shard)
+        bucket.queue.put(partition_shard)
         # Check whether queue exceeded compaction threshold
         if (
             self._aggregation.is_compacting()
-            and partition.queue.qsize()
+            and bucket.queue.qsize()
             >= self._current_compaction_thresholds[partition_id]
         ):
             # NOTE: We're only taking partition lock during compaction, but not
             #       accepting into the queue to simply guarantee that no more than
             #       one compaction is running at any given moment in time
-            with partition.lock:
+            with bucket.lock:
                 # Check queue size again to avoid running compaction
                 # again after previous just finished
                 if (
-                    partition.queue.qsize()
+                    bucket.queue.qsize()
                     < self._current_compaction_thresholds[partition_id]
                 ):
                     return
 
-                blocks_to_compact = partition.drain_queue()
+                blocks_to_compact = bucket.drain_queue()
                 compacted = self._aggregation.compact(blocks_to_compact)
                 # Requeue compacted block back into the queue
-                partition.queue.put(compacted)
+                bucket.queue.put(compacted)
 
                 # NOTE: We revise compaction thresholds for partition after every
                 #       compaction to amortize the cost of compaction.
