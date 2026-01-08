@@ -72,10 +72,11 @@ class TestHashShuffleAggregator:
         agg = MockCompactingAggregation()
         aggregator = _HashShuffleAggregatorClass(
             aggregator_id=0,
+            num_input_seqs=2,
             target_partition_ids=[0, 1, 2],
             agg_factory=lambda: agg,
             target_max_block_size=None,
-            min_max_num_blocks_compaction_thresholds=(3, 2000),
+            min_max_shards_compaction_thresholds=(3, 2000),
         )
 
         # Pre-generate blocks: split a 100-row block into 10 chunks of 10 rows
@@ -136,6 +137,7 @@ class TestHashShuffleAggregator:
 
         aggregator = _HashShuffleAggregatorClass(
             aggregator_id=1,
+            num_input_seqs=1,
             target_partition_ids=[0],
             agg_factory=MockNonCompactingAggregation,
             target_max_block_size=None,
@@ -153,6 +155,7 @@ class TestHashShuffleAggregator:
 
         aggregator = _HashShuffleAggregatorClass(
             aggregator_id=2,
+            num_input_seqs=1,
             target_partition_ids=[0],
             agg_factory=MockNonCompactingAggregation,
             target_max_block_size=50,
