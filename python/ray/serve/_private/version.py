@@ -145,29 +145,43 @@ class DeploymentVersion:
 
     def to_proto(self) -> bytes:
         # TODO(simon): enable cross language user config
+
+        placement_group_bundles = (
+            json.dumps(self.placement_group_bundles)
+            if self.placement_group_bundles is not None
+            else ""
+        )
+
+        placement_group_bundle_label_selector = (
+            json.dumps(self.placement_group_bundle_label_selector)
+            if self.placement_group_bundle_label_selector is not None
+            else ""
+        )
+
+        placement_group_fallback_strategy = (
+            json.dumps(self.placement_group_fallback_strategy)
+            if self.placement_group_fallback_strategy is not None
+            else ""
+        )
+
+        placement_group_strategy = (
+            self.placement_group_strategy
+            if self.placement_group_strategy is not None
+            else ""
+        )
+        max_replicas_per_node = (
+            self.max_replicas_per_node if self.max_replicas_per_node is not None else 0
+        )
+
         return DeploymentVersionProto(
             code_version=self.code_version,
             deployment_config=self.deployment_config.to_proto(),
             ray_actor_options=json.dumps(self.ray_actor_options),
-            placement_group_bundles=json.dumps(self.placement_group_bundles)
-            if self.placement_group_bundles is not None
-            else "",
-            placement_group_strategy=self.placement_group_strategy
-            if self.placement_group_strategy is not None
-            else "",
-            placement_group_bundle_label_selector=json.dumps(
-                self.placement_group_bundle_label_selector
-            )
-            if self.placement_group_bundle_label_selector is not None
-            else "",
-            placement_group_fallback_strategy=json.dumps(
-                self.placement_group_fallback_strategy
-            )
-            if self.placement_group_fallback_strategy is not None
-            else "",
-            max_replicas_per_node=self.max_replicas_per_node
-            if self.max_replicas_per_node is not None
-            else 0,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            placement_group_bundle_label_selector=placement_group_bundle_label_selector,
+            placement_group_fallback_strategy=placement_group_fallback_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
     @classmethod
