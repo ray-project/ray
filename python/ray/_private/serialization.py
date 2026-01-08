@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 import google.protobuf.message
 
 import ray._private.utils
+import ray._raylet as _raylet_module
 import ray.cloudpickle as pickle
 import ray.exceptions
 from ray._private import (
@@ -17,7 +18,6 @@ from ray._private import (
     tensor_serialization_utils,
 )
 from ray._raylet import (
-    MEMCOPY_THREAD_COUNT,
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -60,6 +60,8 @@ from ray.exceptions import (
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
+
+MEMCOPY_THREAD_COUNT = getattr(_raylet_module, "MEMCOPY_THREAD_COUNT", 6)
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(

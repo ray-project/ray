@@ -21,8 +21,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <utility>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace ray {
@@ -215,9 +215,7 @@ ParallelMemcopyThreadPool *CreateParallelMemcopyThreadPool(int num_threads) {
   return new ParallelMemcopyThreadPool(num_threads);
 }
 
-void DestroyParallelMemcopyThreadPool(ParallelMemcopyThreadPool *pool) {
-  delete pool;
-}
+void DestroyParallelMemcopyThreadPool(ParallelMemcopyThreadPool *pool) { delete pool; }
 
 void parallel_memcopy_with_pool(ParallelMemcopyThreadPool *pool,
                                 uint8_t *dst,
