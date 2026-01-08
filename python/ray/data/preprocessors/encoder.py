@@ -540,7 +540,7 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
 
         # Create one-hot encoded matrix using vectorized NumPy operations
         num_rows = len(column)
-        indices_np = indices_filled.to_numpy(zero_copy_only=False)
+        indices_np = indices_filled.to_numpy()
 
         one_hot_matrix = np.zeros((num_rows, num_categories), dtype=np.uint8)
 
