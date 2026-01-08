@@ -1,0 +1,20 @@
+# Ray-ML Anyscale CUDA Image (for release tests)
+# Installs ray wheel into the ray-ml CUDA base-extra-testdeps image
+#
+# This produces the anyscale test image for ray-ml GPU release tests.
+# Uses ray-ml base with extra test dependencies.
+#
+name: "ray-ml-anyscale-py$PYTHON_VERSION-cu$CUDA_VERSION$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-ml-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps"  # ray-ml base with test deps
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                       # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BASE_VARIANT=base-extra-testdeps
+  - IMAGE_TYPE=ray-ml
+  - PLATFORM=cu$CUDA_VERSION
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION
