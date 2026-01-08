@@ -190,6 +190,7 @@ class vLLMOutputData(BaseModel):
                 and data.embeddings.dtype == torch.bfloat16
             ):
                 data.embeddings = data.embeddings.to(torch.float32)
+            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -219,7 +220,7 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
         # Flag to log deprecation warning only once
         self._guided_decoding_warning_logged = False
 
@@ -234,6 +235,19 @@ class vLLMEngineWrapper:
         self.dynamic_lora_loading_path = dynamic_lora_loading_path
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
+
+        # Set runner and convert based on task type.
+        if self.task_type == vLLMTaskType.GENERATE:
+            kwargs["runner"] = "generate"
+        elif self.task_type == vLLMTaskType.EMBED:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "embed"
+        elif self.task_type == vLLMTaskType.CLASSIFY:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "classify"
+        elif self.task_type == vLLMTaskType.SCORE:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "reward"
 
         try:
             import vllm
@@ -629,6 +643,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -638,6 +656,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 model,
                 self.model,
             )
+
         return engine_kwargs
 
     async def _generate_with_error_handling(
