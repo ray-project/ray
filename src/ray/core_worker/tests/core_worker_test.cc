@@ -52,6 +52,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace core {
@@ -116,8 +117,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
     auto worker_context = std::make_unique<WorkerContext>(
         WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
-    auto core_worker_server =
-        std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, true);
+    auto core_worker_server = std::make_unique<rpc::GrpcServer>(
+        WorkerTypeString(options.worker_type), 0, GetLocalhostIP());
     core_worker_server->RegisterService(
         std::make_unique<rpc::CoreWorkerGrpcService>(
             io_service_, *service_handler, /*max_active_rpcs_per_handler_=*/-1),
