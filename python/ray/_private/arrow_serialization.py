@@ -456,7 +456,6 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
     import pyarrow as pa
     import pyarrow.compute as pc
 
-    assert _is_binary_view(a.type), a.type
     # Buffer scheme: [bitmap, views, data0, data1, ..., dataN]
     #
     # NB: In the C API there is a trailing buffer containing buffer lengths as 64-bit integers. This
@@ -515,7 +514,6 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
         )
 
     # Otherwise, compact the array
-    assert hasattr(pa.types, "is_string_view")
     if pa.types.is_string_view(a.type):
         compacted = pc.cast(a, pa.large_string())
         compacted_view = pc.cast(compacted, pa.string_view())
