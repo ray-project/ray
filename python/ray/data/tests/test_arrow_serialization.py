@@ -189,6 +189,11 @@ def string_array():
 
 
 @pytest.fixture
+def string_view_array():
+    return pa.array(["foo", "barbarbarbarbar", "bz", None, "quuxquuxquuxquux"] * 200, type=pa.string_view())
+
+
+@pytest.fixture
 def large_string_array():
     return pa.array(["foo", "bar", "bz", None, "quux"] * 200, type=pa.large_string())
 
@@ -196,6 +201,11 @@ def large_string_array():
 @pytest.fixture
 def binary_array():
     return pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200)
+
+
+@pytest.fixture
+def binary_view_array():
+    return pa.array([b"foo", b"barbarbarbarbar", b"bz", None, b"quuxquuxquuxquux"] * 200, type=pa.binary_view())
 
 
 @pytest.fixture
@@ -378,10 +388,14 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("boolean_array"), 0.8),
     # String array
     (lazy_fixture("string_array"), 0.1),
+    # String View array
+    (lazy_fixture("string_view_array"), 0.1),
     # Large string array
     (lazy_fixture("large_string_array"), 0.1),
     # Binary array
     (lazy_fixture("binary_array"), 0.1),
+    # Binary View array
+    (lazy_fixture("binary_view_array"), 0.1),
     # Fixed size binary array
     (lazy_fixture("fixed_size_binary_array"), 0.1),
     # Large binary array
