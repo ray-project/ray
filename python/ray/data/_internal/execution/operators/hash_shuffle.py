@@ -700,7 +700,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
-                "num_cpus": 0.5,
+                "num_cpus": 1.0,
                 "memory": self._estimate_shuffling_memory_req(
                     block_metadata,
                     target_max_block_size=(
