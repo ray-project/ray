@@ -1541,7 +1541,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
@@ -1565,7 +1567,9 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
