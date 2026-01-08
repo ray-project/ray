@@ -790,7 +790,7 @@ class ObjectReconstructionFailedError(ObjectLostError):
         ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
             "The object cannot be reconstructed because its reference was "
             "not found in the reference counter. "
-            "Please file an issue at https://github.com/ray-project/ray/issues/"
+            "Please file an issue at https://github.com/ray-project/ray/issues."
         ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED: (
             "The object cannot be reconstructed because the task that would "
@@ -824,7 +824,7 @@ class ObjectReconstructionFailedError(ObjectLostError):
         self.reason_message = reason_message or self.REASON_MESSAGES.get(
             self.reason,
             "Unknown error reason. This should not happen, please file an issue "
-            "at https://github.com/ray-project/ray/issues/",
+            "at https://github.com/ray-project/ray/issues.",
         )
 
     def __str__(self):
