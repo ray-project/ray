@@ -148,7 +148,7 @@ class TableBlockBuilder(BlockBuilder):
     def num_rows(self) -> int:
         return self._num_rows
 
-    def nun_blocks(self) -> int:
+    def num_blocks(self) -> int:
         return len(self._tables)
 
     def get_estimated_memory_usage(self) -> int:

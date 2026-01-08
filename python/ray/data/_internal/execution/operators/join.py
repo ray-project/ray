@@ -363,7 +363,7 @@ class JoinOperator(HashShufflingOperatorBase):
             if shuffle_aggregation_type is not None:
                 if not issubclass(shuffle_aggregation_type, ShuffleAggregation):
                     raise TypeError(
-                        f"shuffle_aggregation_type must be a subclass of {ShuffleAggregation.__class__}, "
+                        f"shuffle_aggregation_type must be a subclass of {ShuffleAggregation}, "
                         f"got {shuffle_aggregation_type}"
                     )
 

@@ -1728,7 +1728,7 @@ class HashShuffleAggregator:
                 #       compaction to amortize the cost of compaction.
                 self._current_compaction_thresholds[partition_id] = min(
                     self._current_compaction_thresholds[partition_id] * 2,
-                    self._max_num_blocks_compaction_threshold
+                    self._max_num_blocks_compaction_threshold,
                 )
 
     def finalize(
