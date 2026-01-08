@@ -1643,12 +1643,12 @@ class HashShuffleAggregator:
         self._min_num_blocks_compaction_threshold = (
             min_max_shards_compaction_thresholds[0]
             if min_max_shards_compaction_thresholds is not None
-            else self._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD
+            else None
         )
         self._max_num_blocks_compaction_threshold = (
             min_max_shards_compaction_thresholds[1]
             if min_max_shards_compaction_thresholds is not None
-            else self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD
+            else None
         )
 
         self._current_compaction_thresholds: Dict[int, int] = defaultdict(
@@ -1728,7 +1728,7 @@ class HashShuffleAggregator:
                 #       compaction to amortize the cost of compaction.
                 self._current_compaction_thresholds[partition_id] = min(
                     self._current_compaction_thresholds[partition_id] * 2,
-                    self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
+                    self._max_num_blocks_compaction_threshold
                 )
 
     def finalize(
