@@ -2,7 +2,6 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
-from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     BlockTransformer,
@@ -171,7 +170,9 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         return aggregator_total_memory_required
 
     @classmethod
-    def _get_min_max_partition_shards_compaction_thresholds(cls) -> Optional[Tuple[int, int]]:
+    def _get_min_max_partition_shards_compaction_thresholds(
+        cls,
+    ) -> Optional[Tuple[int, int]]:
         return (
             cls._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD,
             cls._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,

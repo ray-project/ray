@@ -609,9 +609,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
             target_max_block_size=(
-                None
-                if disallow_block_splitting
-                else data_context.target_max_block_size
+                None if disallow_block_splitting else data_context.target_max_block_size
             ),
             min_max_shards_compaction_thresholds=(
                 self._get_min_max_partition_shards_compaction_thresholds()
@@ -1240,7 +1238,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         raise NotImplementedError()
 
     @classmethod
-    def _get_min_max_partition_shards_compaction_thresholds(cls) -> Optional[Tuple[int, int]]:
+    def _get_min_max_partition_shards_compaction_thresholds(
+        cls,
+    ) -> Optional[Tuple[int, int]]:
         return None
 
 
@@ -1383,7 +1383,9 @@ class AggregatorPool:
             self._aggregator_partition_map,
         )
 
-        self._min_max_shards_compaction_thresholds = min_max_shards_compaction_thresholds
+        self._min_max_shards_compaction_thresholds = (
+            min_max_shards_compaction_thresholds
+        )
 
     def start(self):
         # Check cluster resources before starting aggregators
