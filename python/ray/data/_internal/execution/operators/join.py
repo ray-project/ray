@@ -385,6 +385,7 @@ class JoinOperator(HashShufflingOperatorBase):
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
+            num_input_seqs=2,
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=_create_joining_aggregation,

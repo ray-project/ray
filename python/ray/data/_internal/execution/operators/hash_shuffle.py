@@ -521,6 +521,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         *,
         key_columns: List[Tuple[str]],
         partition_aggregation_factory: ShuffleAggregationFactory,
+        num_input_seqs: int,
         num_partitions: Optional[int] = None,
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
@@ -604,6 +605,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             ray_remote_args.update(aggregator_ray_remote_args_override)
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
+            num_input_seqs=num_input_seqs,
             num_partitions=target_num_partitions,
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
@@ -1272,6 +1274,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             input_ops=[input_op],
             data_context=data_context,
             key_columns=[key_columns],
+            num_input_seqs=1,
             num_partitions=num_partitions,
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             partition_aggregation_factory=_create_concat_aggregation,

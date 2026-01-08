@@ -108,6 +108,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             input_ops=[input_op],
             data_context=data_context,
             key_columns=[key_columns],
+            num_input_seqs=1,
             num_partitions=(
                 # NOTE: In case of global aggregations (ie with no key columns specified),
                 #       we override number of partitions to 1, since the whole dataset
