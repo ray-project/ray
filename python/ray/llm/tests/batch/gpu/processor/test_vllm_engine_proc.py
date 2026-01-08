@@ -290,6 +290,44 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert all("prompt" in out for out in outs)
 
 
+def test_classification_model(gpu_type):
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="HuggingFaceTB/fineweb-edu-classifier",
+        task_type="classify",
+        engine_kwargs=dict(
+            max_model_len=512,  # Model only supports up to 512 tokens
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            prompt="This is a great educational content.",
+            pooling_params=dict(
+                truncate_prompt_tokens=-1,
+            ),
+        ),
+        postprocess=lambda row: {
+            "probs": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("probs" in out for out in outs)
+
+
 @pytest.mark.parametrize("use_nested_config", [True, False])
 def test_legacy_vision_model(
     gpu_type, model_smolvlm_256m, use_nested_config, image_asset

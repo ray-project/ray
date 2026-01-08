@@ -19,7 +19,8 @@ def test_http_request_processor():
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == ["HttpRequestStage"]
     stage = processor.get_stage_by_name("HttpRequestStage")
-    assert stage.map_batches_kwargs["concurrency"] == 4
+    assert stage.map_batches_kwargs["compute"].min_size == 4
+    assert stage.map_batches_kwargs["compute"].max_size == 4
     assert stage.fn_constructor_kwargs["url"] == "http://localhost:8000"
     assert stage.fn_constructor_kwargs["additional_header"] == {
         "Authorization": "Bearer 1234567890"
