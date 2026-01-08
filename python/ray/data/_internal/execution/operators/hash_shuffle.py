@@ -1684,7 +1684,7 @@ class HashShuffleAggregator:
         Uses per-(sequence, partition) locking to avoid cross-partition contention.
         Performs incremental compaction when the block count exceeds threshold.
         """
-        bucket = self._get_or_create_partition_bucket(input_seq_id, partition_id)
+        bucket = self._input_seq_partition_buckets[input_seq_id][partition_id]
 
         # Add partition shard into the queue
         bucket.queue.put(partition_shard)
