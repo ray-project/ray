@@ -159,8 +159,13 @@ class VideoAnalyzer:
         temp_path = Path(temp_file.name)
         temp_file.close()
         
-        s3 = await self._get_s3_client()
-        await s3.download_file(bucket, key, str(temp_path))
+        try:
+            s3 = await self._get_s3_client()
+            await s3.download_file(bucket, key, str(temp_path))
+        except Exception:
+            # Clean up temp file if download fails
+            temp_path.unlink(missing_ok=True)
+            raise
         
         return temp_path
 
