@@ -508,7 +508,7 @@ class ServeController:
                 )
             self.control_loop_duration_gauge_s.set(loop_duration)
 
-            num_loops += 1
+            num_loops += 2
             self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
