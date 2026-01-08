@@ -13,7 +13,6 @@ from ray.experimental import (
     TensorTransportManager,
     TensorTransportMetadata,
     register_tensor_transport,
-    register_tensor_transport_on_actors,
 )
 
 
@@ -122,7 +121,9 @@ class SharedMemoryTransport(TensorTransportManager):
 
 
 def test_register_and_use_custom_transport(ray_start_regular):
-    register_tensor_transport("shared_memory", ["cpu"], SharedMemoryTransport)
+    register_tensor_transport(
+        "shared_memory", ["cpu"], SharedMemoryTransport, pickle_class_by_value=True
+    )
 
     @ray.remote
     class Actor:
@@ -134,7 +135,6 @@ def test_register_and_use_custom_transport(ray_start_regular):
             return data.sum().item()
 
     actors = [Actor.remote() for _ in range(2)]
-    register_tensor_transport_on_actors("shared_memory", actors)
     ref = actors[0].echo.remote(torch.tensor([1, 2, 3]))
     result = actors[1].sum.remote(ref)
     assert ray.get(result) == 6

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
-from ray.exceptions import RayDirectTransportError
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -208,6 +207,8 @@ class NixlTensorTransport(TensorTransportManager):
                 elif state == "DONE":
                     break
         except Exception:
+            from ray.exceptions import RayDirectTransportError
+
             raise RayDirectTransportError(
                 f"The NIXL recv failed for object id: {obj_id}. The source actor may have died during the transfer. "
                 f"The exception thrown from the nixl recv was:\n {traceback.format_exc()}"

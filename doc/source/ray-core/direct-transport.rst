@@ -320,15 +320,16 @@ Error handling
 Advanced: Registering a new tensor transport
 --------------------------------------------
 
-Ray allows users to register new tensor transports for use in RDT at runtime.
+Ray allows users to register new tensor transports at runtime for use with RDT.
 To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
 defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
-Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport, and the class that implements `TensorTransportManager`.
-from the process where you submit the actor tasks that will use the tensor transport.
-Then, call `register_tensor_transport_on_actors <ray.experimental.register_tensor_transport_on_actors>` with the transport name and the actors that will use the tensor transport (the source and destination actors).
-See this example `test file <https://github.com/ray-project/ray/blob/master/python/ray/tests/gpu_objects/test_gpu_objects_gloo.py>`__  for a full working custom transport example.
+Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport,
+and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
+to use the transport with, and actors only have access to transports registered before their creation.
 
-Note that if the actor restarts, you need to register the transport again on the actor through `register_tensor_transport_on_actors`.
+There is also a `pickle_class_by_value` parameter which will pickle your custom transport manager class by value to register it on actors.
+Set this to True if you define your transport in a module only your driver has access too, e.g. if you define the transport
+in the driver script itself as shown in the following example.
 
 .. code-block:: python
 
@@ -336,7 +337,6 @@ Note that if the actor restarts, you need to register the transport again on the
    import ray
    from ray.experimental import (
       register_tensor_transport,
-      register_tensor_transport_on_actors,
       TensorTransportManager,
       TensorTransportMetadata,
       CommunicatorMetadata,
@@ -354,8 +354,18 @@ Note that if the actor restarts, you need to register the transport again on the
       ...
 
 
-   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
-   register_tensor_transport_on_actors("CUSTOM", [actor1, actor2])
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport, pickle_class_by_value=True)
+
+
+Note that there are currently some limitations with custom transports:
+- Actor restarts aren't supported. Your actor will not have access to the custom transport after the restart.
+- You must create your actor on the same process you registered the custom tensor transport on. For example, you can't
+  use your custom transport with an actor if you registered the custom transport on the driver and created the actor
+  inside a task.
+- Actors only have access to custom transports registered before their creation.
+- If you have an out-of-order actor and the process where you submit the actor task is different from
+  where you created the actor, Ray can't guarantee it has registered your custom transport on the actor
+  at task submission time.
 
 
 Advanced: RDT Internals

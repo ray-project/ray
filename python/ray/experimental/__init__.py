@@ -5,7 +5,6 @@ from ray.experimental.gpu_object_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
     register_tensor_transport,
-    register_tensor_transport_on_actors,
     wait_tensor_freed,
 )
 from ray.experimental.locations import get_local_object_locations, get_object_locations
@@ -17,7 +16,6 @@ __all__ = [
     "GPUObjectManager",
     "wait_tensor_freed",
     "register_tensor_transport",
-    "register_tensor_transport_on_actors",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",

@@ -4,7 +4,17 @@ import time
 import warnings
 from collections import defaultdict
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._private import ray_constants
@@ -122,6 +132,34 @@ class GPUObjectManager:
         self._monitor_failures_thread = None
         # Event to signal the monitor_failures thread to shutdown
         self._monitor_failures_shutdown_event = threading.Event()
+
+        # If the actor isn't in the dict, the task to launch the custom transport registration task hasn't been submitted yet.
+        # If the value is an object ref, we have to wait for the registration task to complete.
+        # If the value is True, the actor has registered any custom transports.
+        # The value should never be False.
+        # TODO: This is a short-term solution. In the future, we'll do registration with actor initialization
+        # to make actor restarts and submitting from another worker work.
+        self.actor_id_to_transports_registered: Dict[str, Union[ObjectRef, bool]] = {}
+
+    def register_custom_transports_on_actor(self, actor: "ray.actor.ActorHandle"):
+        from ray.experimental.gpu_object_manager.util import (
+            register_custom_tensor_transports_on_actor,
+        )
+
+        ref = register_custom_tensor_transports_on_actor(actor)
+        # ref is None if there are no custom transports registered.
+        self.actor_id_to_transports_registered[actor._actor_id] = (
+            True if ref is None else ref
+        )
+
+    def wait_until_custom_transports_registered(self, actor: "ray.actor.ActorHandle"):
+        actor_id = actor._actor_id
+        if actor_id not in self.actor_id_to_transports_registered:
+            self.register_custom_transports_on_actor(actor)
+
+        if self.actor_id_to_transports_registered[actor_id] is not True:
+            ray.get(self.actor_id_to_transports_registered[actor_id])
+            self.actor_id_to_transports_registered[actor_id] = True
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -446,10 +484,11 @@ class GPUObjectManager:
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
-    ):
+    ) -> bool:
         """
         Triggers the transfer if the tensor metadata is available for the object. If it's
         not available, the transfer is queued up until the metadata is available.
+        Returns True if there's any RDT managed objects in the task args, False otherwise.
         """
         gpu_object_ids: Set[str] = set()
         for arg in task_args:
@@ -473,6 +512,9 @@ class GPUObjectManager:
                         self._queued_transfers[obj_id].append(dst_actor)
                 if tensor_transport_meta is not None:
                     self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
+            return True
+        else:
+            return False
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", obj_id: str
