@@ -13,7 +13,7 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 
 **⏱️ Time to complete**: 15 minutes
 
-This example shows you how to run batch inference for large language models (LLMs) using [Ray Data LLM APIs](https://docs.ray.io/en/latest/data/api/llm.html). In this use case, the batch inference job reformats dates across a large customer dataset.
+This example shows you how to run batch inference for large language models (LLMs) using [Ray Data LLM APIs](https://docs.ray.io/en/latest/data/api/llm.html). In this use case, the batch inference job infers company industries from company names across a large customer dataset.
 
 
 ## When to use LLM batch inference
@@ -29,7 +29,7 @@ On the contrary, if you are more interested in optimizing for latency, consider 
 
 ## Prepare a Ray Data dataset
 
-Ray Data LLM runs batch inference for LLMs on Ray Data datasets. In this tutorial, you perform batch inference with an LLM to reformat dates and the source is a 2-million-row CSV file containing sample customer data.
+Ray Data LLM runs batch inference for LLMs on Ray Data datasets. In this tutorial, you perform batch inference with an LLM to infer company industries from company names. The source is a 2-million-row CSV file containing sample customer data.
 
 First, load the data from a remote URL then repartition the dataset to ensure the workload can be distributed across multiple GPUs.
 
@@ -111,7 +111,7 @@ For more details on the configuration options you can pass to the vLLM engine, s
 
 ### Define the preprocess and postprocess functions
 
-The task is to format the `Subscription Date` field as `MM-DD-YYYY` using an LLM.
+The task is to infer the industry category from the `Company` field using an LLM.
 
 Define a preprocess function to prepare `messages` and `sampling_params` for the vLLM engine, and a postprocess function to extract the `generated_text`.
 
@@ -126,28 +126,26 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY. "
-                            "Be concise and output only the formatted date and nothing else. "
-                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '11-29-2020'"
+                "content": "You are a helpful assistant that infers company industries. "
+                           "Based on the company name provided, output only the industry category. "
+                           "Choose from: Law Firm, Healthcare, Technology, Retail, Consulting, Manufacturing, Finance, Real Estate, Other."
             },
             {
                 "role": "user",
-                "content": f"Convert this date:\n{row['Subscription Date']}."
+                "content": f"What industry is this company in: {row['Company']}"
             },
         ],
         sampling_params=dict(
-            temperature=0,  # Use 0 for deterministic date formatting
-            max_tokens=32,  # Low max tokens because we are simply formatting a date
+            temperature=0,  # Use 0 for deterministic output
+            max_tokens=16,  # Max output tokens. Industry names are short
         ),
     )
 
 # Postprocess function extracts the generated text from the engine output.
 # The **row syntax returns all original columns in the input dataset.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
-    # Example: validation check, formatting...
-    
     return {
-        "formatted_date": row["generated_text"],
+        "inferred_industry": row["generated_text"],
         **row,  # Include all original columns.
     }
 ```
@@ -388,6 +386,6 @@ Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_
 
 ## Summary
 
-In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8 B, and adding simple pre/post-processing to normalize dates. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
+In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8B, and adding simple pre/post-processing to infer company industries. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
 
 See [Anyscale batch inference optimization](https://docs.anyscale.com/llm/batch-inference) for more information on using Ray Data with Anyscale and for more advanced use cases, see [Working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).

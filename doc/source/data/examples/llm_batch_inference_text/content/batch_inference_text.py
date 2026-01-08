@@ -43,18 +43,18 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY. "
-                            "Be concise and output only the formatted date and nothing else. "
-                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '11-29-2020'"
+                "content": "You are a helpful assistant that infers company industries. "
+                           "Based on the company name provided, output only the industry category. "
+                           "Choose from: Law Firm, Healthcare, Technology, Retail, Consulting, Manufacturing, Finance, Real Estate, Other."
             },
             {
                 "role": "user",
-                "content": f"Convert this date:\n{row['Subscription Date']}."
+                "content": f"What industry is this company in: {row['Company']}"
             },
         ],
         sampling_params=dict(
-            temperature=0,  # Use 0 for deterministic date formatting
-            max_tokens=32,  # Low max tokens because we are simply formatting a date
+            temperature=0,  # Use 0 for deterministic output
+            max_tokens=16,  # Max output tokens. Industry names are short
         ),
     )
 
@@ -62,7 +62,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
 # The **row syntax returns all original columns in the input dataset.
 def postprocess(row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "formatted_date": row["generated_text"],
+        "inferred_industry": row["generated_text"],
         **row,  # Include all original columns.
     }
 
