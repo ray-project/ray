@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.broker import Broker
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
@@ -104,6 +105,9 @@ def create_queue_monitor_actor(
         actor = QueueMonitorActor.options(
             name=full_actor_name,
             namespace=namespace,
+            max_restarts=-1,
+            max_task_retries=-1,
+            resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         ).remote(broker_url, queue_name, rabbitmq_http_url)
 
         logger.info(
@@ -154,7 +158,7 @@ def kill_queue_monitor_actor(
         return
 
     try:
-        ray.kill(actor, no_restart=True)
+        del actor
         logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
     except Exception as e:
         logger.error(f"Failed to delete QueueMonitor actor '{full_actor_name}': {e}")
