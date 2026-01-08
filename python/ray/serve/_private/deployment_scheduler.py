@@ -802,7 +802,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if scheduling_request.placement_group_fallback_strategy:
             # Fallback strategy provided for placement group.
             for fallback in scheduling_request.placement_group_fallback_strategy:
-                fallback_bundles = fallback.get("bundles", primary_bundles)
+                fallback_bundles = fallback.get("bundles")
+                if fallback_bundles is None:
+                    fallback_bundles = primary_bundles
+
+                if fallback_bundles is None:
+                    fallback_bundles = []
+
                 req_resources = sum(
                     [Resources(b) for b in fallback_bundles], Resources()
                 )
