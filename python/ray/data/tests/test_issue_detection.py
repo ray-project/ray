@@ -124,7 +124,7 @@ class TestHangingExecutionIssueDetector:
 
         log_output = log_capture.getvalue()
         warn_msg = (
-            r"A task of operator .+ with task index .+ has been running for [\d\.]+s"
+            r"A task of operator .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
         )
         assert re.search(warn_msg, log_output) is None, log_output
 
@@ -139,7 +139,7 @@ class TestHangingExecutionIssueDetector:
         assert re.search(warn_msg, log_output) is not None, log_output
 
     @patch("time.perf_counter")
-    def test_hanging_detector_detects_issues(
+    def test_hanging_deitector_detects_issues(
         self, mock_perf_counter, ray_start_regular_shared
     ):
         """Test that the hanging detector correctly identifies tasks that exceed the adaptive threshold."""
