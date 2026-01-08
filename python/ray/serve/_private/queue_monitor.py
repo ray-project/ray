@@ -62,13 +62,18 @@ class QueueMonitorActor:
             Number of pending tasks in the queue.
 
         Raises:
-            ValueError: If queue is not found in broker response.
+            ValueError: If queue is not found in broker response or
+                if queue data is missing the 'messages' field.
         """
         queues = await self._broker.queues([self._queue_name])
         if queues is not None:
             for q in queues:
                 if q.get("name") == self._queue_name:
                     queue_length = q.get("messages")
+                    if queue_length is None:
+                        raise ValueError(
+                            f"Queue '{self._queue_name}' is missing 'messages' field"
+                        )
                     return queue_length
 
         raise ValueError(f"Queue '{self._queue_name}' not found in broker response")
@@ -152,13 +157,10 @@ def kill_queue_monitor_actor(
         ValueError: If actor doesn't exist
     """
     full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
-    actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
-    if actor is None:
-        logger.info(f"QueueMonitor actor '{full_actor_name}' does not exist")
-        return
-
     try:
-        ray.kill(actor, no_restart=True)
-        logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
-    except Exception as e:
-        logger.error(f"Failed to delete QueueMonitor actor '{full_actor_name}': {e}")
+        actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
+    except ValueError:
+        raise ValueError(f"QueueMonitor actor '{full_actor_name}' does not exist")
+
+    ray.kill(actor, no_restart=True)
+    logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
