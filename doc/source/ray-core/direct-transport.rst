@@ -327,10 +327,6 @@ Then call `register_tensor_transport <ray.experimental.register_tensor_transport
 and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
 to use the transport with, and actors only have access to transports registered before their creation.
 
-There is also a `pickle_class_by_value` parameter which will pickle your custom transport manager class by value to register it on actors.
-Set this to True if you define your transport in a module only your driver has access too, e.g. if you define the transport
-in the driver script itself as shown in the following example.
-
 .. code-block:: python
 
    import sys
@@ -354,7 +350,7 @@ in the driver script itself as shown in the following example.
       ...
 
 
-   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport, pickle_class_by_value=True)
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
 
 
 Note that there are currently some limitations with custom transports:

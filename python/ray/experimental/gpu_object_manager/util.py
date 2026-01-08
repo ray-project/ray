@@ -1,4 +1,3 @@
-import inspect
 import threading
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
@@ -24,8 +23,6 @@ class TransportManagerInfo(NamedTuple):
     transport_manager_class: type[TensorTransportManager]
     # list of support device types for the transport
     devices: List[str]
-    # whether to pickle the class definition by value or by reference
-    pickle_class_by_value: bool
 
 
 transport_manager_info: Dict[str, TransportManagerInfo] = {}
@@ -36,13 +33,15 @@ transport_managers: Dict[str, TensorTransportManager] = {}
 # To protect the singleton instances of transport managers
 transport_managers_lock = threading.Lock()
 
+# Flipped to True when the first custom transport is registered.
+has_custom_transports = False
+
 
 @PublicAPI(stability="alpha")
 def register_tensor_transport(
     transport_name: str,
     devices: List[str],
     transport_manager_class: type[TensorTransportManager],
-    pickle_class_by_value: bool = False,
 ):
     """
     Register a new tensor transport for use in Ray.
@@ -51,13 +50,11 @@ def register_tensor_transport(
         transport_name: The name of the transport protocol.
         devices: List of device types supported by this transport (e.g., ["cuda", "cpu"]).
         transport_manager_class: A class that implements TensorTransportManager.
-        pickle_class_by_value: Whether to pickle the class definition by value or by reference.
-            You may need to pickle by value if all worker python environments in the cluster don't
-            have the module where the transport_manager_class is defined.
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
     global transport_manager_info
+    global has_custom_transports
 
     transport_name = transport_name.upper()
 
@@ -70,8 +67,10 @@ def register_tensor_transport(
         )
 
     transport_manager_info[transport_name] = TransportManagerInfo(
-        transport_manager_class, devices, pickle_class_by_value
+        transport_manager_class, devices
     )
+
+    has_custom_transports = True
 
 
 DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL"]
@@ -117,23 +116,9 @@ def register_custom_tensor_transports_on_actor(
     Otherwise returns an object ref for a task on the actor that will register the custom transports.
     """
     global transport_manager_info
+    global has_custom_transports
 
-    no_custom_transports = True
-    for transport_name, transport_info in transport_manager_info.items():
-        # Get the module the class was defined in.
-        if transport_name not in DEFAULT_TRANSPORTS:
-            no_custom_transports = False
-            module = inspect.getmodule(transport_info.transport_manager_class)
-            # If the class doesn't have a module, it will pickled by value anyways.
-            if module is not None and transport_info.pickle_class_by_value:
-                # If the class has a module, cloudpickle will pickle by ref. We need to
-                # tell it to pickle classes in this module by value, so this custom class
-                # can be deserialized on the actor.
-                from ray import cloudpickle
-
-                cloudpickle.register_pickle_by_value(module)
-
-    if no_custom_transports:
+    if not has_custom_transports:
         return None
 
     def register_transport_on_actor(

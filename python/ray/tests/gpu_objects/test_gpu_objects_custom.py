@@ -121,9 +121,7 @@ class SharedMemoryTransport(TensorTransportManager):
 
 
 def test_register_and_use_custom_transport(ray_start_regular):
-    register_tensor_transport(
-        "shared_memory", ["cpu"], SharedMemoryTransport, pickle_class_by_value=True
-    )
+    register_tensor_transport("shared_memory", ["cpu"], SharedMemoryTransport)
 
     @ray.remote
     class Actor:
@@ -133,6 +131,14 @@ def test_register_and_use_custom_transport(ray_start_regular):
 
         def sum(self, data):
             return data.sum().item()
+
+    # Classes defined in test files get pickled by ref. So we need to
+    # explcitly pickle the transport class in this module by value.
+    # Note that this doesn't happen if you define the transport class on the
+    # driver, something with pytest convinces cloudpickle to pickle by ref.
+    from ray import cloudpickle
+
+    cloudpickle.register_pickle_by_value(sys.modules[SharedMemoryTransport.__module__])
 
     actors = [Actor.remote() for _ in range(2)]
     ref = actors[0].echo.remote(torch.tensor([1, 2, 3]))
