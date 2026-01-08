@@ -47,6 +47,18 @@ The pipeline splits work across three [Ray Serve deployments](https://docs.ray.i
 6. Aggregates results and returns tags, captions, and scene changes
 
 
+## Why Ray Serve?
+
+This pipeline has three distinct workloads: a GPU-bound encoder running SigLIP, a CPU-bound decoder doing cosine similarity, and a CPU-heavy ingress running FFmpeg. Traditional serving frameworks force you to bundle these into a single container with fixed resources, wasting GPU when the decoder runs or starving FFmpeg when the encoder dominates.
+
+Ray Serve solves this with **heterogeneous [resource allocation](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html#configure-ray-serve-deployments) per deployment**. The encoder requests 1 GPU, the decoder requests 1 CPU, and the ingress requests 6 CPUs for parallel FFmpeg. Each deployment [scales independently](https://docs.ray.io/en/latest/serve/autoscaling-guide.html) based on its own queue depth—GPU replicas scale with encoding demand while CPU replicas scale separately with decoding demand. The load test demonstrates this: throughput scales near-linearly from 2.4 to 67.5 requests/second as the system provisions replicas to match load.
+
+The pipeline also benefits from **zero-copy data transfer**. The ingress passes encoder results directly to the decoder as unawaited [DeploymentResponse](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.handle.DeploymentResponse.html) references rather than serialized data. Ray stores the embeddings in its [object store](https://docs.ray.io/en/latest/ray-core/objects.html), and the decoder retrieves them directly without routing through the ingress. When encoder and decoder land on the same node, this transfer is zero-copy.
+
+**Request pipelining** keeps the GPU saturated. By allowing two concurrent requests per encoder replica via `max_ongoing_requests`, one request prepares data on CPU while another computes on GPU. This achieves 100% GPU utilization without batching, which would add latency from waiting for requests to accumulate.
+
+Finally, **[deployment composition](https://docs.ray.io/en/latest/serve/model_composition.html)** lets you define the encoder, decoder, and ingress as separate classes, then wire them together with `.bind()`. Ray Serve handles deployment ordering, health checks, and request routing. The ingress maintains explicit state (EMA for scene detection) across chunks, which works correctly even when autoscaling routes requests to different decoder replicas—no sticky sessions required.
+
 ---
 
 ## Setup
