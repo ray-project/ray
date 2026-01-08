@@ -157,10 +157,7 @@ def kill_queue_monitor_actor(
         ValueError: If actor doesn't exist
     """
     full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
-    try:
-        actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
-    except ValueError:
-        raise ValueError(f"QueueMonitor actor '{full_actor_name}' does not exist")
+    actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
 
     ray.kill(actor, no_restart=True)
     logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
