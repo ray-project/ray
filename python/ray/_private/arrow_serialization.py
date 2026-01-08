@@ -443,6 +443,10 @@ def _binary_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload
     )
 
 
+# Views are defined in the spec as 16-bytes: https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
+ARROW_VIEW_BYTE_SIZE = 16
+
+
 def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     """Serialize binary (variable-sized binary view, string view) arrays to
     PicklableArrayPayload.
@@ -468,9 +472,9 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
         bitmap_buf = None
 
     # Copy view buffer, if needed.
-    #
-    # Views are defined in the spec as 16-bytes: https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
-    view_buf = _copy_normal_buffer_if_needed(buffers[1], 16, a.offset, len(a))
+    view_buf = _copy_normal_buffer_if_needed(
+        buffers[1], ARROW_VIEW_BYTE_SIZE, a.offset, len(a)
+    )
 
     bytes_allocated = sum(len(b) for b in a.buffers()[2:])
 
@@ -478,7 +482,10 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
     seen_view_slices: set[tuple[int, int, int]] = set()
     for index in range(len(a)):
         view: tuple[int, int, int, int] = struct.unpack(
-            "<iiii", view_buf[(index * 16) : (index + 1) * 16]
+            "<iiii",
+            view_buf[
+                (index * ARROW_VIEW_BYTE_SIZE) : (index + 1) * ARROW_VIEW_BYTE_SIZE
+            ],
         )
         string_length, _, buffer_index, buffer_offset = view
         if string_length <= 12:
