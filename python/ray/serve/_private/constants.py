@@ -26,9 +26,6 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
-
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
