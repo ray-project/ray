@@ -1487,7 +1487,7 @@ def test_arrow_extension_deserialize_cache_per_class():
 
         # Verify they have the same shape and dtype (same logical content)
         assert deserialized_v1_1.shape == deserialized_v2_1.shape
-        assert deserialized_v1_1.scalar_type == deserialized_v2_1.scalar_type
+        assert deserialized_v1_1.value_type == deserialized_v2_1.value_type
 
         # But different extension names (different classes)
         assert deserialized_v1_1.extension_name != deserialized_v2_1.extension_name
