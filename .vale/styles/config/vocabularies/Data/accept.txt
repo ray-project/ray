@@ -41,6 +41,7 @@ RGB
 SGLang
 Spotify('s)?
 TFRecord(s)?
+TPU(s)?
 [Tt]okenizer(s)?
 UDF(s)?
 VLM(s)?
