@@ -93,7 +93,7 @@ class TestPPO(unittest.TestCase):
         )
         for pred, gt in zip(two_term, correct):
             if gt is not None:
-                self.assertEqual(pred, gt)
+                self.assertAlmostEqual(pred, gt)
         # Test case where an episode is truncated (state value should be included)
         correct = [0.9405, 1.0, None, 0.9405, 1.9405, None]
         term_trunc = simulate_vt_calculation(
@@ -106,7 +106,7 @@ class TestPPO(unittest.TestCase):
         )
         for pred, gt in zip(term_trunc, correct):
             if gt is not None:
-                self.assertEqual(pred, gt)
+                self.assertAlmostEqual(pred, gt)
 
     def test_ppo_value_bootstrapping(self):
         """Test whether PPO's value bootstrapping works properly."""
