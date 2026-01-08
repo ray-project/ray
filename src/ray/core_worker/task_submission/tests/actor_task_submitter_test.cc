@@ -249,8 +249,10 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
-  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
-  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(
+      obj1, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(
+      obj2, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -298,8 +300,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
-  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
-  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(
+      obj1, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(
+      obj2, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.

@@ -649,6 +649,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "mlflow",
     "nevergrad",
     "numpy",
     "pandas",

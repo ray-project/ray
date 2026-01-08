@@ -131,6 +131,14 @@ class RayObject {
     return tensor_transport_;
   }
 
+  void SetDirectTransportMetadata(std::string direct_transport_metadata) {
+    direct_transport_metadata_.emplace(std::move(direct_transport_metadata));
+  }
+
+  const std::optional<std::string> &GetDirectTransportMetadata() const {
+    return direct_transport_metadata_;
+  }
+
  private:
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
@@ -176,6 +184,9 @@ class RayObject {
   int64_t creation_time_nanos_;
   /// The tensor transport to use for transferring this object.
   std::optional<std::string> tensor_transport_;
+  /// The direct transport metadata for the object if the object is a direct transport
+  /// object.
+  std::optional<std::string> direct_transport_metadata_;
 };
 
 }  // namespace ray
