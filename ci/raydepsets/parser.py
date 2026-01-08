@@ -28,7 +28,7 @@ class Parser:
             deps_arr = []
             name = None
             version = None
-            for line in f.readlines():
+            for line in f:
                 package_line_match = re.search(
                     r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.+-]+)", line
                 )
