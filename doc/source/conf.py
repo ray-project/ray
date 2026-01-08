@@ -609,6 +609,9 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    # Apply orphan metadata to documents from examples.yml files
+    app.connect('source-read', mark_documents_as_orphan)
+
 
 redoc = [
     {
@@ -750,3 +753,18 @@ assert (
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
+
+def mark_documents_as_orphan(app, docname, source):
+    """
+    Apply orphan metadata to documents referenced in examples.yml files.
+    
+    This function marks documents as orphan if they appear in any of the
+    examples.yml files processed during pregenerate_example_rsts().
+    This prevents Sphinx from warning about documents not included in any toctree.
+    """
+    # Check if this document is in our collected list from examples.yml
+    if docname in app._example_orphan_documents:
+        # (MyST-NB expects this to exist when it writes to it)
+        app.env.metadata.setdefault(docname, {})
+        app.env.metadata[docname]["orphan"] = True
+    
