@@ -58,7 +58,6 @@ from ray.serve._private.request_router.pow_2_router import (
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    asyncio_grpc_exception_handler,
     generate_request_id,
     resolve_deployment_response,
 )
@@ -524,7 +523,6 @@ class AsyncioRouter:
         self._self_actor_id = self_actor_id
         self._handle_source = handle_source
         self._event_loop = event_loop
-        self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
         self._request_router_class = request_router_class
         self._request_router_kwargs = (
             request_router_kwargs if request_router_kwargs else {}

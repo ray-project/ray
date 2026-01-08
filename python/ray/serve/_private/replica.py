@@ -696,6 +696,7 @@ class ReplicaBase(ABC):
                 )
             ]
         )
+        # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
     @property
