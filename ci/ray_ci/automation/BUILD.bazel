@@ -331,3 +331,30 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_binary(
+    name = "push_anyscale_image",
+    srcs = ["push_anyscale_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_push_anyscale_image",
+    size = "small",
+    srcs = ["test_push_anyscale_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":push_anyscale_image",
+        ci_require("pytest"),
+    ],
+)

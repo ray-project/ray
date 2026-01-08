@@ -1,5 +1,55 @@
 group: release build
 steps:
+  # Build ray core components (required for wheel builds)
+  - name: ray-core-build
+    label: "wanda: core binary parts py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-core.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags: oss
+
+  - name: ray-dashboard-build
+    label: "wanda: dashboard"
+    wanda: ci/docker/ray-dashboard.wanda.yaml
+    env:
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags: oss
+
+  - name: ray-java-build
+    label: "wanda: java build (x86_64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags: oss
+    env:
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
+
+  - name: ray-wheel-build
+    label: "wanda: wheel py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags: oss
+    depends_on:
+      - ray-core-build
+      - ray-java-build
+      - ray-dashboard-build
+
   - name: raycpubaseextra-testdeps
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
     wanda: docker/base-extra-testdeps/cpu.wanda.yaml
@@ -67,26 +117,72 @@ steps:
     depends_on:
       - ray-mlcudabaseextra
 
-  - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
+  # Build ray anyscale images using wanda (CPU)
+  - name: ray-anyscale-cpu-build
+    label: "wanda: ray-anyscale py{{matrix}} cpu"
+    wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
+    matrix:
+      # This list should be kept in sync with the list of supported Python in
+      # release test suite
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - raycpubaseextra-testdeps
+
+  # Build ray anyscale images using wanda (CUDA)
+  - name: ray-anyscale-cuda-build
+    label: "wanda: ray-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    wanda: ci/docker/ray-anyscale-cuda.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "12.3.2-cudnn9"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - raycudabaseextra-testdeps
+
+  # Push anyscale images to ECR/GCP/Azure registries
+  - label: ":docker: push: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
     key: anyscalebuild
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- anyscale
-        --python-version {{matrix.python}} --platform {{matrix.platform}}
-        --image-type ray --upload
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
+        --python-version {{matrix.python}}
+        --platform {{matrix.platform}}
+        --image-type ray
+        --upload
     depends_on:
-      - manylinux-x86_64
-      - forge
-      - raycpubaseextra-testdeps
-      - raycudabaseextra-testdeps
+      - ray-anyscale-cpu-build
+      - ray-anyscale-cuda-build
     matrix:
       setup:
         python:
-          # This list should be kept in sync with the list of supported Python in
-          # release test suite
           - "3.10"
           - "3.11"
           - "3.12"
@@ -94,35 +190,93 @@ steps:
           - cu12.3.2-cudnn9
           - cpu
 
-  - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
+  # Build ray-llm anyscale image using wanda
+  - name: ray-llm-anyscale-cuda-build
+    label: "wanda: ray-llm-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    wanda: ci/docker/ray-llm-anyscale-cuda.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.11"
+        cuda:
+          - "12.8.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - ray-llmbaseextra-testdeps
+
+  # Push ray-llm anyscale images to ECR/GCP/Azure registries
+  - label: ":docker: push: ray-llm-anyscale py{{matrix}} cu12.8.1-cudnn"
     key: anyscalellmbuild
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
-        --platform cu12.8.1-cudnn --image-type ray-llm --upload
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
+        --python-version {{matrix}}
+        --platform cu12.8.1-cudnn
+        --image-type ray-llm
+        --upload
     depends_on:
-      - manylinux-x86_64
-      - forge
-      - ray-llmbaseextra-testdeps
+      - ray-llm-anyscale-cuda-build
     matrix:
       - "3.11"
 
-  - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
+  # Build ray-ml anyscale image using wanda
+  - name: ray-ml-anyscale-cuda-build
+    label: "wanda: ray-ml-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    wanda: ci/docker/ray-ml-anyscale-cuda.wanda.yaml
+    matrix:
+      setup:
+        python:
+          # This list should be kept in sync with the list of supported Python in
+          # release test suite
+          - "3.10"
+        cuda:
+          - "12.1.1-cudnn8"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - ray-mlcudabaseextra-testdeps
+
+  # Push ray-ml anyscale images to ECR/GCP/Azure registries
+  - label: ":docker: push: ray-ml-anyscale py{{matrix}} cu12.1.1-cudnn8"
     key: anyscalemlbuild
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
       - oss
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8 --image-type ray-ml --upload
+      # Authenticate with GCP and Azure before pushing
+      - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+      - bash release/azure_docker_login.sh
+      - az acr login --name rayreleasetest
+      # PATH must include gcloud SDK for crane to use docker credential helper
+      - export PATH=$(pwd)/google-cloud-sdk/bin:$PATH &&
+        bazel run //ci/ray_ci/automation:push_anyscale_image --
+        --python-version {{matrix}}
+        --platform cu12.1.1-cudnn8
+        --image-type ray-ml
+        --upload
     depends_on:
-      - manylinux-x86_64
-      - forge
-      - ray-mlcudabaseextra-testdeps
+      - ray-ml-anyscale-cuda-build
     matrix:
       # This list should be kept in sync with the list of supported Python in
       # release test suite

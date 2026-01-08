@@ -1,0 +1,20 @@
+# Ray Anyscale CPU Image (for release tests)
+# Installs ray wheel into the CPU base-extra-testdeps image
+#
+# This produces the anyscale test image for CPU-only release tests.
+# Unlike the regular ray image, this uses base-extra-testdeps which
+# includes additional test dependencies.
+#
+name: "ray-anyscale-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra-testdeps"  # CPU base with test deps
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"        # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra-testdeps
+  - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX
