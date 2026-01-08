@@ -15,6 +15,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 
 * :ref:`Text generation <text_generation>` - Chat completions with LLMs
 * :ref:`Embeddings <embedding_models>` - Generate text embeddings
+* :ref:`Classification <classification_models>` - Content classifiers and sentiment analyzers
 * :ref:`Vision-language models <vision_language_model>` - Process images with VLMs
 * :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
 * :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
@@ -176,6 +177,25 @@ Key differences from text generation:
 
 - Use ``prompt`` input instead of ``messages``
 - Access results through ``row["embeddings"]``
+
+.. _classification_models:
+
+Classification
+--------------
+
+Ray Data LLM supports batch inference with sequence classification models, such as content classifiers and sentiment analyzers:
+
+.. literalinclude:: doc_code/working-with-llms/classification_example.py
+    :language: python
+    :start-after: __classification_example_start__
+    :end-before: __classification_example_end__
+
+Key differences for classification models:
+
+- Set ``task_type="classify"`` (or ``task_type="score"`` for scoring models)
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access classification logits through ``row["embeddings"]``
 
 .. _openai_compatible_api_endpoint:
 
