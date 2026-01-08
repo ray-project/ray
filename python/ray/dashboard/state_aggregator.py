@@ -407,6 +407,9 @@ class StateAPIManager:
                     )
 
             partial_failure_warning = None
+            print(
+                f"[kunchd] state_aggregator list_objects: len(tasks)={len(tasks)}, unresponsive_nodes={unresponsive_nodes}"
+            )
             if len(tasks) > 0 and unresponsive_nodes > 0:
                 warning_msg = NODE_QUERY_FAILURE_WARNING.format(
                     type="raylet",
@@ -418,6 +421,9 @@ class StateAPIManager:
                     raise DataSourceUnavailable(warning_msg)
                 partial_failure_warning = (
                     f"The returned data may contain incomplete result. {warning_msg}"
+                )
+                print(
+                    f"[kunchd] state_aggregator: Setting partial_failure_warning: {partial_failure_warning}"
                 )
 
             result = []
@@ -440,12 +446,18 @@ class StateAPIManager:
             # Add callsite warnings if it is not configured.
             callsite_warning = []
             callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
+            print(
+                f"[kunchd] state_aggregator: RAY_record_ref_creation_sites={callsite_enabled}"
+            )
             if not callsite_enabled:
                 callsite_warning.append(
                     "Callsite is not being recorded. "
                     "To record callsite information for each ObjectRef created, set "
                     "env variable RAY_record_ref_creation_sites=1 during `ray start` "
                     "and `ray.init`."
+                )
+                print(
+                    f"[kunchd] state_aggregator: Setting callsite_warning: {callsite_warning}"
                 )
 
             num_after_truncation = len(result)
@@ -454,6 +466,9 @@ class StateAPIManager:
             # Sort to make the output deterministic.
             result.sort(key=lambda entry: entry["object_id"])
             result = list(islice(result, option.limit))
+            print(
+                f"[kunchd] state_aggregator: Returning ListApiResponse with total={total_objects}, num_after_truncation={num_after_truncation}, num_filtered={num_filtered}, result_len={len(result)}, partial_failure_warning={partial_failure_warning}, warnings={callsite_warning}"
+            )
             return ListApiResponse(
                 result=result,
                 partial_failure_warning=partial_failure_warning,

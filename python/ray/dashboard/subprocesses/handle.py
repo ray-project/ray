@@ -113,6 +113,21 @@ class SubprocessModuleHandle:
             self.incarnation, self.process.pid if self.process else None
         )
 
+    def __del__(self):
+        """Log when the handle is garbage collected without proper cleanup."""
+        if self.process is not None and self.process.is_alive():
+            print(
+                f"[kunchd] WARNING: SubprocessModuleHandle.__del__ called but process {self.process.pid} ({self.module_cls.__name__}) is still running! This may cause 'subprocess is still running' warning."
+            )
+        elif self.process is not None:
+            print(
+                f"[kunchd] SubprocessModuleHandle.__del__: Process {self.process.pid} ({self.module_cls.__name__}) exists but not alive"
+            )
+        else:
+            print(
+                f"[kunchd] SubprocessModuleHandle.__del__: {self.module_cls.__name__} - process already cleaned up"
+            )
+
     def start_module(self):
         """
         Start the module. Should be non-blocking.
@@ -132,6 +147,9 @@ class SubprocessModuleHandle:
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
+        print(
+            f"[kunchd] SubprocessModuleHandle.start_module: Started {self.module_cls.__name__} subprocess with pid={self.process.pid}"
+        )
         child_conn.close()
 
     def wait_for_module_ready(self):
@@ -166,6 +184,9 @@ class SubprocessModuleHandle:
         """
         Destroy the module. This is called when the module is unhealthy.
         """
+        print(
+            f"[kunchd] SubprocessModuleHandle.destroy_module: Destroying {self.module_cls.__name__} subprocess (pid={self.process.pid if self.process else None})"
+        )
         self.incarnation += 1
 
         if self.parent_conn:
@@ -173,8 +194,15 @@ class SubprocessModuleHandle:
             self.parent_conn = None
 
         if self.process:
+            process_pid = self.process.pid
+            print(
+                f"[kunchd] SubprocessModuleHandle.destroy_module: Killing process {process_pid}"
+            )
             self.process.kill()
             self.process.join()
+            print(
+                f"[kunchd] SubprocessModuleHandle.destroy_module: Process {process_pid} joined successfully"
+            )
             self.process = None
 
         if self.http_client_session:
@@ -184,6 +212,7 @@ class SubprocessModuleHandle:
         if self.health_check_task:
             self.health_check_task.cancel()
             self.health_check_task = None
+        print("[kunchd] SubprocessModuleHandle.destroy_module: Cleanup complete")
 
     async def _health_check(self) -> aiohttp.web.Response:
         """

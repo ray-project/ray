@@ -370,6 +370,9 @@ class StateApiClient(SubmissionClient):
         if warn_data_source_not_available:
             warning_msgs = api_response.get("partial_failure_warning", None)
             if warning_msgs:
+                print(
+                    f"[kunchd] EMITTING WARNING (partial_failure_warning): {warning_msgs}"
+                )
                 warnings.warn(warning_msgs)
 
         if warn_data_truncation:
@@ -382,6 +385,9 @@ class StateApiClient(SubmissionClient):
                 # Unless we allow users to set a higher
                 # `RAY_MAX_LIMIT_FROM_DATA_SOURCE`, the data will
                 # always be truncated at the data source.
+                print(
+                    f"[kunchd] EMITTING WARNING (data_truncation): total={total} > num_after_truncation={num_after_truncation}"
+                )
                 warnings.warn(
                     (
                         "The returned data may contain incomplete result. "
@@ -399,6 +405,9 @@ class StateApiClient(SubmissionClient):
             num_filtered = api_response["num_filtered"]
             data = api_response["result"]
             if num_filtered > len(data):
+                print(
+                    f"[kunchd] EMITTING WARNING (limit): num_filtered={num_filtered} > len(data)={len(data)}"
+                )
                 warnings.warn(
                     (
                         f"Limit last {len(data)} entries "
@@ -413,6 +422,9 @@ class StateApiClient(SubmissionClient):
             warnings_to_print = api_response.get("warnings", [])
             if warnings_to_print:
                 for warning_to_print in warnings_to_print:
+                    print(
+                        f"[kunchd] EMITTING WARNING (server_side): {warning_to_print}"
+                    )
                     warnings.warn(warning_to_print)
 
     def _raise_on_missing_output(self, resource: StateResource, api_response: dict):
@@ -511,7 +523,20 @@ class StateApiClient(SubmissionClient):
         if raise_on_missing_output:
             self._raise_on_missing_output(resource, list_api_response)
         if _explain:
+            print(f"[kunchd] About to call _print_api_warning for {resource.value}")
+            print(f"[kunchd] api_response keys: {list_api_response.keys()}")
+            print(
+                f"[kunchd] partial_failure_warning: {list_api_response.get('partial_failure_warning')}"
+            )
+            print(
+                f"[kunchd] total: {list_api_response.get('total')}, num_after_truncation: {list_api_response.get('num_after_truncation')}"
+            )
+            print(
+                f"[kunchd] num_filtered: {list_api_response.get('num_filtered')}, result_len: {len(list_api_response.get('result', []))}"
+            )
+            print(f"[kunchd] warnings: {list_api_response.get('warnings')}")
             self._print_api_warning(resource, list_api_response)
+            print(f"[kunchd] _print_api_warning completed for {resource.value}")
         return [dict_to_state(d, resource) for d in list_api_response["result"]]
 
     def summary(

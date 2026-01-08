@@ -82,6 +82,7 @@ class TesterContainer(Container):
         """
         # Only test state api
         test_targets = ["//python/ray/tests:test_state_api"]
+        test_arg = "'-k=test_network_partial_failures and not timeout'"
         # shard tests and remove empty chunks
         chunks = list(
             filter(

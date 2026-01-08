@@ -3175,14 +3175,14 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         a = [f.remote() for _ in range(4)]  # noqa
         wait_for_condition(lambda: len(list_objects()) == 4)
 
-        print("[Kunchd] Hola")
-
         # Make sure when there's 0 node failure, it doesn't print the error.
         with pytest.warns(None) as record:
             list_objects(_explain=True)
         for warning in record:
-            print(f"[Kunchd] Warning captured: {warning.message}")
-        assert len(record) == 0
+            print(f"[Kunchd] Warning captured: {warning}")
+        assert (
+            len(record) == 0
+        ), f"[Kunchd] Warnings captured: {[(w.category.__name__, str(w.message)) for w in record]}"
 
         # Kill raylet so that list_objects will have network error on querying raylets.
         cluster.remove_node(n, allow_graceful=False)
