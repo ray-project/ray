@@ -159,7 +159,7 @@ def test_fill_build_context_dir_empty() -> None:
     ):
         ctx = make_build_context(base_dir=source_dir)
 
-        fill_build_context_dir(ctx, build_dir, source_dir)
+        fill_build_context_dir(ctx, source_dir, build_dir)
 
         # Check Dockerfile
         with open(os.path.join(build_dir, "Dockerfile")) as f:
@@ -200,7 +200,7 @@ def test_fill_build_context_dir() -> None:
             python_depset="deps.lock",
         )
 
-        fill_build_context_dir(ctx, build_dir, source_dir)
+        fill_build_context_dir(ctx, source_dir, build_dir)
 
         # Check Dockerfile
         with open(os.path.join(build_dir, "Dockerfile")) as f:
