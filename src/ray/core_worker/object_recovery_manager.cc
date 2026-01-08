@@ -138,9 +138,10 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
-  LineageEligibility eligibility = reference_counter_.GetLineageEligibility(object_id);
+  LineageReconstructionEligibility eligibility =
+      reference_counter_.GetLineageReconstructionEligibility(object_id);
 
-  if (eligibility != LineageEligibility::ELIGIBLE) {
+  if (eligibility != LineageReconstructionEligibility::ELIGIBLE) {
     auto error_type_opt = ToErrorType(eligibility);
     rpc::ErrorType error_type = error_type_opt.value_or(rpc::ErrorType::OBJECT_LOST);
     RAY_LOG(INFO).WithField(object_id)

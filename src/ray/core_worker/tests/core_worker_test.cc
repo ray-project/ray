@@ -351,8 +351,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -402,8 +407,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -458,8 +468,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -509,8 +524,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -576,7 +596,7 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
       rpc_address,
       "call_site",
       /*object_size=*/100,
-      /*lineage_eligibility=*/LineageEligibility::INELIGIBLE_PUT,
+      /*lineage_eligibility=*/LineageReconstructionEligibility::INELIGIBLE_PUT,
       /*add_local_ref=*/true);
   memory_store.Put(memory_store_object,
                    inlined_dependency_id,
@@ -707,8 +727,13 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -811,8 +836,13 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", 0, LineageEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -905,7 +935,7 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      owner_address,
                                      "",
                                      object_size,
-                                     LineageEligibility::INELIGIBLE_PUT,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
   // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
   // bumps the sequence id by 1
@@ -1012,7 +1042,7 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActo
                                      owner_address,
                                      "test",
                                      0,
-                                     LineageEligibility::INELIGIBLE_PUT,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
 
   rpc::WaitForActorRefDeletedRequest request;
@@ -1089,7 +1119,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                                      owner_address,
                                      "test",
                                      0,
-                                     LineageEligibility::INELIGIBLE_PUT,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
 
   rpc::TaskSpec task_spec_msg;

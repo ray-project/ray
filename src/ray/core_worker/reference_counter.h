@@ -99,7 +99,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
-      LineageEligibility lineage_eligibility,
+      LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       const std::optional<std::string> &tensor_transport = std::nullopt) override
@@ -244,7 +244,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const rpc::Address &borrower_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  LineageEligibility GetLineageEligibility(const ObjectID &object_id) const override;
+  LineageReconstructionEligibility GetLineageReconstructionEligibility(
+      const ObjectID &object_id) const override;
   int64_t EvictLineage(int64_t min_bytes_to_evict) override;
 
   void UpdateObjectPendingCreation(const ObjectID &object_id,
@@ -312,7 +313,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     Reference(rpc::Address owner_address,
               std::string call_site,
               int64_t object_size,
-              LineageEligibility lineage_eligibility,
+              LineageReconstructionEligibility lineage_eligibility,
               std::optional<NodeID> pinned_at_node_id,
               std::optional<std::string> tensor_transport)
         : call_site_(std::move(call_site)),
@@ -356,7 +357,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us_ &&
-          lineage_eligibility_ != LineageEligibility::ELIGIBLE) {
+          lineage_eligibility_ != LineageReconstructionEligibility::ELIGIBLE) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -444,7 +445,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Whether the object is eligible for lineage reconstruction, determined before
     /// task resubmission. See https://github.com/ray-project/ray/pull/59625.
-    LineageEligibility lineage_eligibility_ = LineageEligibility::ELIGIBLE;
+    LineageReconstructionEligibility lineage_eligibility_ =
+        LineageReconstructionEligibility::ELIGIBLE;
 
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
@@ -516,7 +518,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               const rpc::Address &owner_address,
                               const std::string &call_site,
                               const int64_t object_size,
-                              LineageEligibility lineage_eligibility,
+                              LineageReconstructionEligibility lineage_eligibility,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
                               const std::optional<std::string> &tensor_transport)

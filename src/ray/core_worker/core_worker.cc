@@ -963,7 +963,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      rpc_address_,
                                      CurrentCallSite(),
                                      object.GetSize(),
-                                     LineageEligibility::INELIGIBLE_PUT,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true,
                                      NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -1050,7 +1050,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        rpc_address_,
                                        CurrentCallSite(),
                                        data_size + metadata->Size(),
-                                       LineageEligibility::INELIGIBLE_PUT,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
@@ -3264,13 +3264,14 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   size_t num_returns = task_spec.NumReturns();
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
-      reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
-                                         /*contained_ids=*/{},
-                                         rpc_address_,
-                                         CurrentCallSite(),
-                                         -1,
-                                         LineageEligibility::INELIGIBLE_LOCAL_MODE,
-                                         /*add_local_ref=*/true);
+      reference_counter_->AddOwnedObject(
+          task_spec.ReturnId(i),
+          /*contained_ids=*/{},
+          rpc_address_,
+          CurrentCallSite(),
+          -1,
+          LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE,
+          /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -4380,7 +4381,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       rpc_address_,
       call_site,
       request.object_size(),
-      LineageEligibility::INELIGIBLE_PUT,
+      LineageReconstructionEligibility::INELIGIBLE_PUT,
       /*add_local_ref=*/false,
       /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);

@@ -275,11 +275,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
-      LineageEligibility lineage_eligibility;
+      LineageReconstructionEligibility lineage_eligibility;
       if (max_retries == 0) {
-        lineage_eligibility = LineageEligibility::INELIGIBLE_NO_RETRIES;
+        lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
       } else {
-        lineage_eligibility = LineageEligibility::ELIGIBLE;
+        lineage_eligibility = LineageReconstructionEligibility::ELIGIBLE;
       }
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will

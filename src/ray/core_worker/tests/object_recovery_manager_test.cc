@@ -214,7 +214,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_TRUE(failed_reconstructions_.empty());
@@ -246,7 +246,7 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   rpc::Address address;
   address.set_node_id(NodeID::FromRandom().Binary());
@@ -266,7 +266,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   rpc::Address address1;
   address1.set_node_id(NodeID::FromRandom().Binary());
@@ -291,7 +291,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {});
 
@@ -310,7 +310,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->AddLocalReference(object_id, "");
 
@@ -352,7 +352,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
                                  rpc::Address(),
                                  "",
                                  0,
-                                 LineageEligibility::ELIGIBLE,
+                                 LineageReconstructionEligibility::ELIGIBLE,
                                  /*add_local_ref=*/true);
     task_manager_->AddTask(object_id.TaskId(), dependencies);
     dependencies = {object_id};
@@ -375,7 +375,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
 
   ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
@@ -393,7 +393,7 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
 
   ObjectID object_id = ObjectID::FromRandom();
@@ -402,7 +402,7 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {dep_id});
   RAY_LOG(INFO) << object_id;
@@ -424,7 +424,7 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->AddLocalReference(object_id, "");
   ref_counter_->EvictLineage(1);
@@ -444,7 +444,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, NodeID::FromRandom());
 
@@ -468,7 +468,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPutObjectReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::INELIGIBLE_PUT,
+                               LineageReconstructionEligibility::INELIGIBLE_PUT,
                                /*add_local_ref=*/true);
 
   ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
@@ -485,7 +485,7 @@ TEST_F(ObjectRecoveryManagerTest, TestNoRetriesReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::INELIGIBLE_NO_RETRIES,
+                               LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES,
                                /*add_local_ref=*/true);
 
   ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
@@ -507,7 +507,7 @@ TEST_F(ObjectRecoveryManagerTest, TestBorrowedObjectReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {dep_id});
 
@@ -532,7 +532,7 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               LineageEligibility::ELIGIBLE,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {});
   task_manager_->CancelTask(object_id.TaskId());

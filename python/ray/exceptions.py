@@ -760,7 +760,7 @@ class ObjectReconstructionFailedError(ObjectLostError):
         ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED: (
             "The object cannot be reconstructed because the maximum number of "
             "task retries has been exceeded. "
-            "To prevent this error, set `@ray.remote(max_retries=N)`."
+            "Consider increasing the number of retries using `@ray.remote(max_retries=N)`."
         ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED: (
             "The object cannot be reconstructed because its lineage has been "
@@ -776,7 +776,7 @@ class ObjectReconstructionFailedError(ObjectLostError):
         ErrorType.OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED: (
             "The object cannot be reconstructed because the task was created "
             "with max_retries=0. "
-            "To prevent this error, set `@ray.remote(max_retries=N)`."
+            "Consider enabling retries using `@ray.remote(max_retries=N)`."
         ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED: (
             "The object cannot be reconstructed because it crossed an ownership "
@@ -789,8 +789,8 @@ class ObjectReconstructionFailedError(ObjectLostError):
         ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
             "The object cannot be reconstructed because its reference was "
-            "not found. The reference counter is no longer tracking "
-            "this object."
+            "not found in the reference counter. "
+            "Please file an issue at https://github.com/ray-project/ray/issues/"
         ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED: (
             "The object cannot be reconstructed because the task that would "
@@ -822,7 +822,9 @@ class ObjectReconstructionFailedError(ObjectLostError):
         super().__init__(object_ref_hex, owner_address, call_site)
         self.reason = reason
         self.reason_message = reason_message or self.REASON_MESSAGES.get(
-            self.reason, ""
+            self.reason,
+            "Unknown error reason. This should not happen, please file an issue "
+            "at https://github.com/ray-project/ray/issues/",
         )
 
     def __str__(self):

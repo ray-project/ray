@@ -232,7 +232,7 @@ void ReferenceCounter::AddOwnedObject(
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
-    LineageEligibility lineage_eligibility,
+    LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport) {
@@ -358,7 +358,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
-    LineageEligibility lineage_eligibility,
+    LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport) {
@@ -585,8 +585,9 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
     if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
-        ref->second.lineage_eligibility_ == LineageEligibility::ELIGIBLE) {
-      ref->second.lineage_eligibility_ = LineageEligibility::INELIGIBLE_LINEAGE_EVICTED;
+        ref->second.lineage_eligibility_ == LineageReconstructionEligibility::ELIGIBLE) {
+      ref->second.lineage_eligibility_ =
+          LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED;
     }
   }
 
@@ -1638,15 +1639,15 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-LineageEligibility ReferenceCounter::GetLineageEligibility(
+LineageReconstructionEligibility ReferenceCounter::GetLineageReconstructionEligibility(
     const ObjectID &object_id) const {
   if (!lineage_pinning_enabled_) {
-    return LineageEligibility::INELIGIBLE_LINEAGE_DISABLED;
+    return LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED;
   }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return LineageEligibility::INELIGIBLE_REF_NOT_FOUND;
+    return LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND;
   }
   return it->second.lineage_eligibility_;
 }
