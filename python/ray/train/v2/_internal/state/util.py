@@ -1,5 +1,6 @@
 import time
 
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
@@ -57,13 +58,30 @@ def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     exec_options = data_config._execution_options
     if isinstance(exec_options, dict):
         execution_options = {
-            ds_name: options.to_dict() for ds_name, options in exec_options.items()
+            ds_name: execution_options_to_dict(options)
+            for ds_name, options in exec_options.items()
         }
     else:
-        execution_options = exec_options.to_dict() if exec_options is not None else None
+        execution_options = (
+            execution_options_to_dict(exec_options)
+            if exec_options is not None
+            else None
+        )
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
         execution_options=execution_options,
         enable_shard_locality=data_config._enable_shard_locality,
     )
+
+
+def execution_options_to_dict(execution_options: ExecutionOptions) -> dict:
+    """Convert this ExecutionOptions object to a dict."""
+    return {
+        "resource_limits": execution_options.resource_limits.to_resource_dict(),
+        "exclude_resources": execution_options.exclude_resources.to_resource_dict(),
+        "locality_with_output": execution_options.locality_with_output,
+        "preserve_order": execution_options.preserve_order,
+        "actor_locality_enabled": execution_options.actor_locality_enabled,
+        "verbose_progress": execution_options.verbose_progress,
+    }

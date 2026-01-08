@@ -16,10 +16,9 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
     BackendConfig as BackendConfigSchema,
     CheckpointConfig as CheckpointConfigSchema,
-    DatasetsDetails,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
-    RunConfiguration,
+    RunContext,
     RunStatus,
     RuntimeConfig as RuntimeConfigSchema,
     ScalingConfig as ScalingConfigSchema,
@@ -68,11 +67,6 @@ class TrainStateManager:
         dataset_config: DataConfig,
     ) -> None:
 
-        datasets_details = DatasetsDetails(
-            datasets=list(datasets.keys()),
-            data_config=construct_data_config(dataset_config),
-        )
-
         runtime_config = RuntimeConfigSchema(
             failure_config=FailureConfigSchema(
                 max_failures=run_config.failure_config.max_failures,
@@ -109,11 +103,12 @@ class TrainStateManager:
         except (TypeError, ValueError):
             train_loop_config = "Non-JSON serializable"
 
-        run_configuration = RunConfiguration(
+        run_context = RunContext(
             train_loop_config=train_loop_config,
             backend_config=backend_config,
             scaling_config=scaling_config,
-            datasets_details=datasets_details,
+            datasets=list(datasets.keys()),
+            data_config=construct_data_config(dataset_config),
             runtime_config=runtime_config,
         )
 
@@ -127,7 +122,7 @@ class TrainStateManager:
             start_time_ns=current_time_ns(),
             controller_log_file_path=controller_log_file_path,
             framework_versions={"ray": ray.__version__},
-            run_configuration=run_configuration,
+            run_context=run_context,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -303,7 +298,7 @@ class TrainStateManager:
 
     def get_train_run_framework(self, run_id: str) -> Optional[TrainingFramework]:
         run = self._runs[run_id]
-        return run.run_configuration.backend_config.framework
+        return run.run_context.backend_config.framework
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)
