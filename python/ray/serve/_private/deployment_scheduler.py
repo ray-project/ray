@@ -893,7 +893,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         return replicas_to_stop
 
-    def _filter_nodes_by_labels(
+    def _filter_nodes_by_label_selector(
         self,
         available_nodes: Dict[str, Resources],
         required_labels: Dict[str, str],
