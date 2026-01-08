@@ -1,24 +1,23 @@
 """
-Example: Resetting KV Cache in Ray Serve LLM which is Control Plane Messages.
+Example: Resetting KV Cache in Ray Serve LLM via Control Plane Messages.
 
 This example demonstrates two approaches to reset the KV cache on all replicas
-of a Ray Serve LLM deployment:
+of a Ray Serve LLM deployment using DevIngress:
 
 1. **HTTP Endpoint Path** (`--use-http`):
-   Extends the OpenAI-compatible ingress with a custom `/reset_prefix_cache`
-   endpoint. External clients can call this endpoint to trigger a cache reset.
-
-   NOTE: This approach exposes cache reset functionality over HTTP, which may
-   not be suitable for production environments where you want tighter control
-   over when cache resets occur.
+   Calls the built-in `/reset_prefix_cache` HTTP endpoint provided by
+   DevIngress via CacheManagerIngressMixin. Useful for external clients.
 
 2. **In-Cluster Serve Handle Path** (default):
-   Uses Ray Serve's deployment handles and the dispatch API to send control
-   plane messages directly to all replicas. This approach keeps cache reset
-   logic within the cluster, providing better security and control.
+   Uses Ray Serve's deployment handles and the broadcast API to send control
+   plane messages directly to all replicas. This keeps cache reset logic
+   within the cluster, avoiding HTTP overhead.
+
+Both approaches use the same DevIngress server which provides control plane
+endpoints (/sleep, /wakeup, /is_sleeping, /reset_prefix_cache).
 
 The example:
-1. Starts a Serve application with 2 replicas
+1. Starts a Serve application with DevIngress and 2 replicas
 2. Populates the KV cache on both replicas by sending multiple requests
 3. Measures request time for a cached request (control)
 4. Resets the KV cache using the selected method
@@ -29,7 +28,7 @@ Usage:
     # In-cluster path (using serve handles directly)
     python reset_kv_cache_example.py
 
-    # HTTP endpoint path (extending OpenAI ingress)
+    # HTTP endpoint path
     python reset_kv_cache_example.py --use-http
 """
 
@@ -40,61 +39,17 @@ import time
 import httpx
 
 from ray import serve
-from ray.llm._internal.serve.core.ingress.ingress import DEFAULT_ENDPOINTS
-from ray.llm._internal.serve.utils.dispatch import dispatch
-from ray.serve.llm import LLMConfig, build_llm_deployment, build_openai_app
-from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
-
-# Only import Request when needed for HTTP path
-try:
-    from fastapi import Request
-except ImportError:
-    Request = None
-
+from ray.llm._internal.serve.core.ingress.dev_ingress import build_dev_openai_app
+from ray.llm._internal.serve.utils.broadcast import broadcast
+from ray.serve.llm import LLMConfig
 
 # =============================================================================
-# HTTP Endpoint Path: Custom Ingress with /reset_prefix_cache endpoint
-# =============================================================================
-
-
-class KVCacheResetIngress(OpenAiIngress):
-    """Custom OpenAI-compatible ingress with KV cache reset endpoint.
-
-    This ingress extends the standard OpenAI endpoints with a custom
-    /reset_prefix_cache endpoint that allows external clients to trigger
-    a cache reset via HTTP.
-
-    WARNING: Exposing cache reset over HTTP may not be suitable for production
-    environments. Consider using the in-cluster serve handle approach for
-    better security and control.
-    """
-
-    async def reset_prefix_cache(self, request: Request):
-        """Reset the KV cache on all replicas for the specified model.
-
-        Args:
-            request: The FastAPI request object. Expects a `model` query
-                parameter specifying the model ID to reset cache for.
-        """
-        model_id = request.query_params.get("model")
-        handle = self._get_configured_serve_handle(model_id)
-        dispatch(handle, "reset_prefix_cache")
-
-
-# Endpoint map for the custom ingress
-HTTP_ENDPOINTS = {
-    "reset_prefix_cache": lambda app: app.post("/reset_prefix_cache"),
-    **DEFAULT_ENDPOINTS,
-}
-
-
-# =============================================================================
-# Server Startup Functions
+# Server Startup
 # =============================================================================
 
 
 def create_llm_config(model: str) -> LLMConfig:
-    """Create the LLM configuration shared by both server modes."""
+    """Create the LLM configuration."""
     return LLMConfig(
         model_loading_config=dict(model_id=model),
         deployment_config=dict(num_replicas=2, name="llm"),
@@ -106,34 +61,17 @@ def create_llm_config(model: str) -> LLMConfig:
     )
 
 
-def start_server_with_http_endpoint(llm_config: LLMConfig):
-    """Start the server with custom HTTP endpoint for cache reset.
+def start_server(llm_config: LLMConfig):
+    """Start the server with DevIngress for control plane endpoints.
 
-    This approach extends the OpenAI ingress with a /reset_prefix_cache
-    endpoint that external clients can call to trigger cache reset.
+    DevIngress provides built-in control plane endpoints:
+    - /reset_prefix_cache (via CacheManagerIngressMixin)
+    - /sleep, /wakeup, /is_sleeping (via SleepableIngressMixin)
     """
-    llm_deployment = build_llm_deployment(llm_config)
-    ingress_cls = make_fastapi_ingress(KVCacheResetIngress, endpoint_map=HTTP_ENDPOINTS)
-    ingress_options = KVCacheResetIngress.get_deployment_options([llm_config])
-    ingress_app = serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[llm_deployment],
-    )
-
-    print("Starting server with HTTP endpoint for cache reset...")
-    serve.run(ingress_app)
-    print("Server started. /reset_prefix_cache endpoint available.")
-
-
-def start_server_standard(llm_config: LLMConfig):
-    """Start the server with standard OpenAI endpoints.
-
-    Cache reset is performed via in-cluster serve handles, not exposed
-    over HTTP.
-    """
-    app = build_openai_app({"llm_configs": [llm_config]})
-    print("Starting server (standard mode)...")
+    app = build_dev_openai_app({"llm_configs": [llm_config]})
+    print("Starting server with DevIngress...")
     serve.run(app)
-    print("Server started. Cache reset via serve handles only.")
+    print("Server started. Control plane endpoints available.")
 
 
 # =============================================================================
@@ -144,22 +82,23 @@ def start_server_standard(llm_config: LLMConfig):
 async def reset_cache_via_http(model: str):
     """Reset KV cache via HTTP endpoint.
 
-    This calls the /reset_prefix_cache endpoint exposed by KVCacheResetIngress.
+    This calls the /reset_prefix_cache endpoint provided by DevIngress
+    via CacheManagerIngressMixin.
     """
-    url = f"http://localhost:8000/reset_prefix_cache?model={model}"
+    url = "http://localhost:8000/reset_prefix_cache"
     async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(url)
+        response = await client.post(url, json={"model": model})
         response.raise_for_status()
 
 
 def reset_cache_via_handle(model: str):
     """Reset KV cache via in-cluster serve handle.
 
-    This uses the dispatch API to send control plane messages directly to
+    This uses the broadcast API to send control plane messages directly to
     all replicas without exposing functionality over HTTP.
     """
     llm_handle = serve.get_deployment_handle("LLMServer:llm", app_name="default")
-    dispatch(llm_handle, "reset_prefix_cache")
+    broadcast(llm_handle, "reset_prefix_cache")
 
 
 # =============================================================================
@@ -207,17 +146,16 @@ async def populate_cache(prompts: list[str], model: str, repeat: int = 20):
 async def main(use_http: bool):
     model = "Qwen/Qwen2.5-0.5B-Instruct"
 
-    # Create shared LLM config
+    # Create LLM config and start server
     llm_config = create_llm_config(model)
+    start_server(llm_config)
 
-    # 1. Start the server
-    if use_http:
-        start_server_with_http_endpoint(llm_config)
-        reset_method = "HTTP endpoint (/reset_prefix_cache)"
-    else:
-        start_server_standard(llm_config)
-        reset_method = "in-cluster serve handle"
-
+    # Determine reset method
+    reset_method = (
+        "HTTP endpoint (/reset_prefix_cache)"
+        if use_http
+        else "in-cluster serve handle (broadcast API)"
+    )
     print(f"\nUsing {reset_method} for cache reset.\n")
 
     # Use long prompts to ensure prefill time is significant
@@ -271,22 +209,12 @@ async def main(use_http: bool):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Demonstrate KV cache reset in Ray Serve LLM.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # Use in-cluster serve handles (recommended for production)
-    python reset_kv_cache_example.py
-
-    # Use HTTP endpoint (for external access, less secure)
-    python reset_kv_cache_example.py --use-http
-        """,
     )
     parser.add_argument(
         "--use-http",
         action="store_true",
-        help="Use HTTP endpoint for cache reset instead of serve handles. "
-        "This exposes a /reset_prefix_cache endpoint that external clients "
-        "can call. Not recommended for production.",
+        help="Reset cache via HTTP /reset_prefix_cache endpoint instead of "
+        "in-cluster serve handles. Both use the same DevIngress server.",
     )
     args = parser.parse_args()
 
