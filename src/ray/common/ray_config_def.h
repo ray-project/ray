@@ -854,9 +854,9 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// Ex. unlimited failures for all RPCs with 25% request failures, 50% response
 /// failures, and 10% in-flight failures.
 ///     export
-///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":25,"in_flight_failure_prob":50}}'
-/// This will set the probabilities for all RPCs to 10% for request failures, 25% for
-/// response failures, and 50% for in-flight failures.
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10}}'
+/// This will set the probabilities for all RPCs to 25% for request failures, 50% for
+/// response failures, and 10% for in-flight failures.
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
 /// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
