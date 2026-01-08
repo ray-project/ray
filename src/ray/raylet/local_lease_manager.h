@@ -299,8 +299,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     explicit SchedulingClassInfo(int64_t cap)
         : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the granted lease ids in this scheduling class.
-    ///
-    /// TODO(hjiang): Store cgroup manager along with lease id as the value for map.
     absl::flat_hash_set<LeaseID> granted_leases;
     /// The total number of leases that can run from this scheduling class.
     uint64_t capacity;

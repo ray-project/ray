@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -250,11 +250,10 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
-            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
             "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0",
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -299,8 +298,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0",
                 "pyOpenSSL",
             ]
         )
@@ -373,7 +371,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.12.0",
+                "vllm[audio]>=0.13.0",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
@@ -795,9 +793,8 @@ if __name__ == "__main__":
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.9",
+        python_requires=">=3.10",
         classifiers=[
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",

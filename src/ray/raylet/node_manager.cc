@@ -214,9 +214,8 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
-      node_manager_server_("NodeManager",
-                           config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+      node_manager_server_(
+          "NodeManager", config.node_manager_port, config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -1713,7 +1712,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   auto const &type = message->type()->str();
   auto const &error_message = message->error_message()->str();
-  // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = JobID::FromBinary(message->job_id()->str());
   auto error_data = gcs::CreateErrorTableData(
@@ -2939,6 +2937,18 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
                      std::make_move_iterator(drivers.end()));
   for (const auto &worker : all_workers) {
     reply->add_pids(worker->GetProcess().GetId());
+  }
+  send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
+}
+
+void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                                     rpc::GetAgentPIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  if (dashboard_agent_manager_) {
+    reply->set_dashboard_agent_pid(dashboard_agent_manager_->GetPid());
+  }
+  if (runtime_env_agent_manager_) {
+    reply->set_runtime_env_agent_pid(runtime_env_agent_manager_->GetPid());
   }
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
