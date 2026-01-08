@@ -801,7 +801,7 @@ class MultiAgentEpisode:
         together that are split through `cut`. For sequential multi-agent environments
         using slice might cause problems from hanging observation/actions.
         This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos of the individual agents at the concatenation boundaries.
         Also, `self.is_done` must not be True, meaning `self.is_terminated` and
         `self.is_truncated` are both False.
