@@ -690,6 +690,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         )
 
         if use_pack_strategy:
+            # This branch is only reached if each deployment either:
+            # 1. Use STRICT_PACK placement group strategy, or
+            # 2. Do not use placement groups at all.
+            # This ensures Serve's best-fit node selection is respected by Ray Core
+            # (since _soft_target_node_id only works with STRICT_PACK).
             self._schedule_with_pack_strategy()
         else:
             self._schedule_with_spread_strategy()
