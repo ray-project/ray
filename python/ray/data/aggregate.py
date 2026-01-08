@@ -405,9 +405,9 @@ class AsList(AggregateFnV2[List, List]):
     Example:
 
         .. testcode::
+            :skipif: True
             # Skip testing b/c this example require proper ordering of the output
             # to be robust and not flaky
-            :skipif: True
 
             import ray
             from ray.data.aggregate import AsList
