@@ -15,7 +15,7 @@
 - Post the following message if ANY of these conditions are true:
   - The PR description is blank or contains only template boilerplate
   - The PR title is generic (e.g., "fix bug", "update", "changes") without specifics
-  - The PR description does not explain *what* problem is present nor *how* the problem is fixed. A sentence each is sufficient.
+  - The PR description does not explain *what* problem is present nor *how* the problem is fixed (a sentence for each is sufficient).
 
 > ⚠️ **This PR needs a clearer title and/or description.**
 >
