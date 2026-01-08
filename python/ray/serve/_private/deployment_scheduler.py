@@ -752,7 +752,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         strategies_to_try = self._get_strategies_to_try(scheduling_request)
 
         target_node = None
-        for res, labels in strategies_to_try:
+        for required_resources, required_labels in placement_candidates:
             target_node = self._find_best_available_node(
                 res,
                 self._get_available_resources_per_node(),
