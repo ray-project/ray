@@ -644,14 +644,16 @@ def test_ordinal_encoder():
         null_encoder.fit(null_ds)
     null_encoder.fit(nonnull_ds)
 
-    # Verify transform fails for null values.
-    with pytest.raises((UserCodeException, ValueError)):
-        null_encoder.transform(null_ds).materialize()
+    # Verify transform handles null values silently (null -> NaN in output)
+    result_df = null_encoder.transform(null_ds).to_pandas()
+    assert result_df["A"].iloc[0] == 0  # 1 -> 0
+    assert pd.isna(result_df["A"].iloc[1])  # None -> NaN
     null_encoder.transform(nonnull_ds)
 
-    # Verify transform_batch fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform_batch(null_df)
+    # Verify transform_batch handles null values silently (null -> NaN in output)
+    result_batch = null_encoder.transform_batch(null_df)
+    assert result_batch["A"].iloc[0] == 0  # 1 -> 0
+    assert pd.isna(result_batch["A"].iloc[1])  # None -> NaN
     null_encoder.transform_batch(nonnull_df)
 
 
@@ -1043,14 +1045,16 @@ def test_one_hot_encoder():
         null_encoder.fit(null_ds)
     null_encoder.fit(nonnull_ds)
 
-    # Verify transform fails for null values.
-    with pytest.raises((UserCodeException, ValueError)):
-        null_encoder.transform(null_ds).materialize()
+    # Verify transform handles null values silently (null -> all-zeros in output)
+    result_df = null_encoder.transform(null_ds).to_pandas()
+    assert result_df["A"].iloc[0] == [1]  # 1 -> [1]
+    assert result_df["A"].iloc[1] == [0]  # None -> [0] (all-zeros)
     null_encoder.transform(nonnull_ds)
 
-    # Verify transform_batch fails for null values.
-    with pytest.raises(ValueError):
-        null_encoder.transform_batch(null_df)
+    # Verify transform_batch handles null values silently (null -> all-zeros in output)
+    result_batch = null_encoder.transform_batch(null_df)
+    assert result_batch["A"].iloc[0] == [1]  # 1 -> [1]
+    assert result_batch["A"].iloc[1] == [0]  # None -> [0] (all-zeros)
     null_encoder.transform_batch(nonnull_df)
 
 

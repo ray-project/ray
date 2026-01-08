@@ -26,7 +26,10 @@ from ray.data.preprocessor import (
     PreprocessorNotFittedException,
     SerializablePreprocessorBase,
 )
-from ray.data.preprocessors.utils import make_post_processor
+from ray.data.preprocessors.utils import (
+    make_post_processor,
+    upsert_column_to_arrow_table,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -259,41 +262,31 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        # Validate no null values in target columns
-        null_columns = []
-        for col_name in self.columns:
-            column = table.column(col_name)
-            if pc.any(pc.is_null(column)).as_py():
-                null_columns.append(col_name)
-        if null_columns:
-            raise ValueError(
-                f"Unable to transform columns {null_columns} because they contain "
-                f"null values. Consider imputing missing values first."
-            )
-
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_vectorized(column, input_col)
 
-            # Upsert: replace if exists, otherwise append
-            col_idx = table.schema.get_field_index(output_col)
-            if col_idx == -1:
-                table = table.append_column(output_col, encoded_column)
-            else:
-                table = table.set_column(col_idx, output_col, encoded_column)
+            table = upsert_column_to_arrow_table(table, encoded_column, output_col)
 
         return table
 
     def _encode_column_vectorized(
         self, column: pa.ChunkedArray, input_col: str
     ) -> pa.Array:
-        """Encode column using PyArrow's vectorized pc.index_in."""
+        """Encode column using PyArrow's vectorized pc.index_in.
+
+        Null values and unseen categories are encoded as null in the output,
+        matching the pandas behavior where they become NaN.
+        """
         keys_array, values_array = self._get_arrow_arrays(input_col)
 
         if keys_array.type != column.type:
             keys_array = pc.cast(keys_array, column.type)
 
+        # pc.index_in returns null for values not found in keys_array
+        # (including null input values and unseen categories)
         indices = pc.index_in(column, keys_array)
+        # pc.take preserves nulls from indices, so null inputs -> null outputs
         return pc.take(values_array, indices)
 
     @classmethod
@@ -507,35 +500,22 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        # Validate no null values in target columns
-        null_columns = []
-        for col_name in self.columns:
-            column = table.column(col_name)
-            if pc.any(pc.is_null(column)).as_py():
-                null_columns.append(col_name)
-        if null_columns:
-            raise ValueError(
-                f"Unable to transform columns {null_columns} because they contain "
-                f"null values. Consider imputing missing values first."
-            )
-
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_one_hot(column, input_col)
 
-            # Upsert: replace if exists, otherwise append
-            col_idx = table.schema.get_field_index(output_col)
-            if col_idx == -1:
-                table = table.append_column(output_col, encoded_column)
-            else:
-                table = table.set_column(col_idx, output_col, encoded_column)
+            table = upsert_column_to_arrow_table(table, encoded_column, output_col)
 
         return table
 
     def _encode_column_one_hot(
         self, column: pa.ChunkedArray, input_col: str
     ) -> pa.FixedSizeListArray:
-        """Encode a column to one-hot vectors using cached Arrow arrays."""
+        """Encode a column to one-hot vectors using cached Arrow arrays.
+
+        Null values and unseen categories are encoded as all-zeros vectors,
+        matching the pandas behavior.
+        """
         keys_array, _ = self._get_arrow_arrays(input_col)
         num_categories = len(keys_array)
 
@@ -544,10 +524,10 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
             keys_array = pc.cast(keys_array, column.type)
 
         # Use pc.index_in to find position of each value in keys_array
-        # Returns null for values not found
+        # Returns null for null inputs and unseen categories (values not in keys_array)
         indices = pc.index_in(column, keys_array)
 
-        # Fill nulls with -1 before converting to numpy (nulls become NaN otherwise)
+        # Fill nulls with -1 so they can be filtered out below (resulting in all-zeros)
         indices_filled = pc.fill_null(indices, -1)
 
         # Create one-hot encoded matrix using vectorized NumPy operations
