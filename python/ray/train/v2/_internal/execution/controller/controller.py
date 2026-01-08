@@ -23,6 +23,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2._internal.execution.callback_manager import CallbackManager
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -153,6 +154,7 @@ class TrainController:
             self._scaling_policy,
             self._validation_manager,
         ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+        self._controller_callback_manager = CallbackManager(self._controller_callbacks)
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -179,13 +181,38 @@ class TrainController:
 
         self._start()
 
+    def _invoke_controller_callback_or_handle_failure(
+        self,
+        hook_name: str,
+        *args,
+        invoke_failure_decision_callbacks: bool = False,
+        **context,
+    ) -> Optional["TrainControllerLoopIterationResult"]:
+        optional_error = self._controller_callback_manager.invoke(
+            hook_name, *args, **context
+        )
+        if optional_error:
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=optional_error,
+            )
+            # Avoid re-entering controller callback hooks while handling a callback failure.
+            return self._execute_failure_decision(
+                failure_decision,
+                training_failed_error=optional_error,
+                invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
+            )
+        return None
+
     def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
         """Executes resize decisions."""
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_execute_resize_decision(decision)
+        optional_result = self._invoke_controller_callback_or_handle_failure(
+            "before_controller_execute_resize_decision", decision
+        )
+        if optional_result:
+            return optional_result
 
         if self._worker_group:
             self._shutdown_worker_group()
@@ -228,13 +255,20 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         training_failed_error: TrainingFailedError,
+        invoke_failure_decision_callbacks: bool = True,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_execute_failure_decision(failure_decision)
+        if invoke_failure_decision_callbacks:
+            optional_result = self._invoke_controller_callback_or_handle_failure(
+                "before_controller_execute_failure_decision",
+                failure_decision,
+                invoke_failure_decision_callbacks=False,
+            )
+            if optional_result:
+                return optional_result
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -384,8 +418,24 @@ class TrainController:
         previous_state = self._state
         self._state = state
 
-        for callback in self._controller_callbacks:
-            callback.after_controller_state_update(previous_state, state)
+        optional_result = self._invoke_controller_callback_or_handle_failure(
+            "after_controller_state_update", previous_state, state
+        )
+        if optional_result:
+            # If we're transitioning into a terminal state, or if we're already in the shutdown path to an errored terminal state
+            # (ShuttingDownState -> ErroredState), preserve the original failure as the
+            # surfaced error. A failure in a state-update callback should not overwrite
+            # the underlying root-cause error.
+            if state.is_terminal() or (
+                isinstance(state, ShuttingDownState)
+                and isinstance(state.next_state, ErroredState)
+            ):
+                return
+
+            # NOTE: We intentionally do *not* re-invoke `after_controller_state_update`
+            # for this transition to avoid re-entering callback hooks while handling
+            # a callback failure.
+            self._state = optional_result.next_state
 
     def _make_and_handle_scaling_decision_for_non_running_worker_group(
         self,

@@ -1,9 +1,15 @@
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from enum import Enum, auto
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeAlias
 
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.api.exceptions import (
+    ControllerError,
+    TrainingFailedError,
+    WorkerGroupError,
+)
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -20,6 +26,29 @@ if TYPE_CHECKING:
         WorkerGroupPollStatus,
     )
     from ray.train.v2.api.result import Result
+
+
+class CallbackErrorAction(Enum):
+    """What to do when a callback hook raises an exception.
+
+    This action is returned from `on_callback_hook_exception(...)`, which is invoked
+    by the callback manager *after* it has caught (and logged) the exception raised
+    from a callback hook.
+    """
+
+    # Swallow the exception and continue the training run / remaining callbacks.
+    # The exception will be logged by the callback manager.
+    SUPPRESS = auto()
+
+    # Surface the exception to the training control flow by returning a mapped
+    # `TrainingFailedError` (e.g., `ControllerError`, `WorkerGroupError`).
+    # The controller can then route it through its failure policy/decision logic.
+    RAISE = auto()
+
+
+CallbackHookExceptionHandlerResult: TypeAlias = tuple[
+    CallbackErrorAction, Optional[TrainingFailedError]
+]
 
 
 @DeveloperAPI
@@ -78,6 +107,21 @@ class WorkerGroupCallback(RayTrainCallback):
     def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is aborted."""
         pass
+
+    def on_callback_hook_exception(
+        self, hook_name: str, error: Exception, **context
+    ) -> CallbackHookExceptionHandlerResult:
+        """Called when a callback hook raises an exception.
+
+        This is invoked after the exception is caught by the callback manager.
+
+        Return:
+            A tuple of (action, error):
+            - (CallbackErrorAction.SUPPRESS, None) to continue.
+            - (CallbackErrorAction.SUPPRESS, TrainingFailedError) to log the exception and continue train.
+            - (CallbackErrorAction.RAISE, TrainingFailedError) to propagate the exception to the training control flow.
+        """
+        return (CallbackErrorAction.SUPPRESS, WorkerGroupError(error))
 
 
 @DeveloperAPI
@@ -143,6 +187,21 @@ class ControllerCallback(RayTrainCallback):
             result: The final training result containing metrics and checkpoint.
         """
         pass
+
+    def on_callback_hook_exception(
+        self, hook_name: str, error: Exception, **context
+    ) -> CallbackHookExceptionHandlerResult:
+        """Called when a callback hook raises an exception.
+
+        This is invoked after the exception is caught by the callback manager.
+
+        Return:
+            A tuple of (action, error):
+            - (CallbackErrorAction.SUPPRESS, None) to continue.
+            - (CallbackErrorAction.SUPPRESS, TrainingFailedError) to log the exception and continue train.
+            - (CallbackErrorAction.RAISE, TrainingFailedError) to propagate the exception to the training control flow.
+        """
+        return (CallbackErrorAction.SUPPRESS, ControllerError(error))
 
 
 # TODO: consider consolidating all metrics into one dict, possibly with UDF
