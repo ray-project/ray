@@ -160,4 +160,4 @@ examples:
     use_cases:
       - computer vision
     link: tutorials/video-analysis/README
-    related_technology: integrations
+    related_technology: ml applications
