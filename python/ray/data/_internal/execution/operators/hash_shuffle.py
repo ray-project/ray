@@ -142,12 +142,10 @@ class ShuffleAggregation:
         is perfectly fine to return provided partition shards as they are.
 
         Args:
-            partial_partition_shards: partial (incomplete) list of
-            partition shards
+            partial_partition_shards: Partial (incomplete) list of partition shards.
 
         Returns:
-            Potentially "compacted" list of partition shards (if it's advantageous
-            to do so)
+            Potentially "compacted" block (if it's advantageous to do so).
         """
         raise NotImplementedError()
 
