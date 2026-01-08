@@ -55,6 +55,19 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    files = glob(["tests/expressions/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
     files = glob(["tests/preprocessors/test_*.py"]),
     tags = [
         "exclusive",
@@ -1796,20 +1809,6 @@ py_test(
     name = "test_download_expression",
     size = "medium",
     srcs = ["tests/test_download_expression.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_namespace_expressions",
-    size = "medium",
-    srcs = ["tests/test_namespace_expressions.py"],
     tags = [
         "exclusive",
         "team:data",
