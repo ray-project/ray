@@ -158,7 +158,7 @@ def kill_queue_monitor_actor(
         return
 
     try:
-        actor.__ray_terminate__.remote()
+        ray.kill(actor, no_restart=True)
         logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
     except Exception as e:
         logger.error(f"Failed to delete QueueMonitor actor '{full_actor_name}': {e}")
