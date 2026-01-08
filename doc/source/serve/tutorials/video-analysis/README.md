@@ -2,7 +2,7 @@
 orphan: true
 ---
 
-# Video analysis pipeline with Ray Serve
+# Video analysis inferance pipeline with Ray Serve
 
 This notebook demonstrates how to build a production-grade video analysis pipeline with [Ray Serve](https://docs.ray.io/en/latest/serve/). The pipeline processes videos from S3 and extracts:
 
@@ -1057,6 +1057,11 @@ print("=" * 60)
     [36m(ServeReplica:video-analyzer:VideoEncoder pid=6736, ip=10.0.222.50)[0m INFO 2026-01-06 08:27:33,533 video-analyzer_VideoEncoder pxjowb4x 9326cc34-5b87-491c-8025-a7db9a2806f4 -- CALL __call__ OK 804.7ms
     [36m(ServeReplica:video-analyzer:VideoAnalyzer pid=67728, ip=10.0.239.104)[0m INFO 2026-01-06 08:27:33,541 video-analyzer_VideoAnalyzer ntukkwkd 9326cc34-5b87-491c-8025-a7db9a2806f4 -- POST /analyze 200 1217.9ms
 
+
+
+```python
+serve.shutdown()
+```
 
 ---
 
