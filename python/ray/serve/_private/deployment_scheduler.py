@@ -749,7 +749,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     ):
         """Attempts to schedule a single request on the best available node."""
 
-        strategies_to_try = self._get_strategies_to_try(scheduling_request)
+        placement_candidates = self._build_pack_placement_candidates(scheduling_request)
 
         target_node = None
         for required_resources, required_labels in placement_candidates:
