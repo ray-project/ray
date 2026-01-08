@@ -229,12 +229,22 @@ def test_async_actor_task_retry(head3, worker3, gcs_network):
     # first attempt finishes.
     network = gcs_network
 
-    driver = """
+    # Get head node IP for dashboard address since actors may run on worker
+    # nodes where 127.0.0.1:8265 doesn't reach the dashboard
+    head_ip = head3._container.attrs["NetworkSettings"]["Networks"][network.name][
+        "IPAddress"
+    ]
+    dashboard_address = f"http://{head_ip}:8265"
+
+    driver = f"""
 import asyncio
 import ray
 from ray.util.state import list_tasks
 
 ray.init(namespace="test")
+
+# Dashboard address must be explicit since actor runs on worker node
+DASHBOARD_ADDRESS = "{dashboard_address}"
 
 @ray.remote(num_cpus=0.1, name="counter", lifetime="detached")
 class Counter:
@@ -251,8 +261,9 @@ class Counter:
 
 @ray.remote(num_cpus=0.1, max_task_retries=-1)
 class AsyncActor:
-  def __init__(self, counter):
+  def __init__(self, counter, dashboard_addr):
     self.counter = counter
+    self.dashboard_addr = dashboard_addr
 
   async def run(self):
     count = await self.counter.get.remote()
@@ -260,6 +271,7 @@ class AsyncActor:
       # first attempt
       await self.counter.inc.remote()
       while len(list_tasks(
+            address=self.dashboard_addr,
             filters=[("name", "=", "AsyncActor.run")])) < 2:
         # wait for second attempt to be made
         await asyncio.sleep(1)
@@ -275,7 +287,7 @@ class AsyncActor:
       return "second"
 
 counter = Counter.remote()
-async_actor = AsyncActor.remote(counter)
+async_actor = AsyncActor.remote(counter, DASHBOARD_ADDRESS)
 assert ray.get(async_actor.run.remote()) == "second"
 """
 
