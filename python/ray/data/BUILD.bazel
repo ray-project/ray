@@ -1188,8 +1188,64 @@ py_test(
 
 py_test(
     name = "test_operators",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_operators.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_map_operator",
+    size = "medium",
+    srcs = ["tests/test_map_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_limit_operator",
+    size = "small",
+    srcs = ["tests/test_limit_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_block_ref_bundler",
+    size = "small",
+    srcs = ["tests/test_block_ref_bundler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_output_splitter",
+    size = "medium",
+    srcs = ["tests/test_output_splitter.py"],
     tags = [
         "exclusive",
         "team:data",
