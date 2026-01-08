@@ -82,7 +82,6 @@ class TrainStateManager:
         )
 
         scaling_config = ScalingConfigSchema(
-            trainer_resources=scaling_config.trainer_resources,
             num_workers=scaling_config.num_workers,
             use_gpu=scaling_config.use_gpu,
             resources_per_worker=scaling_config.resources_per_worker,
@@ -120,6 +119,7 @@ class TrainStateManager:
             status_detail=None,
             controller_actor_id=controller_actor_id,
             start_time_ns=current_time_ns(),
+            end_time_ns=None,
             controller_log_file_path=controller_log_file_path,
             framework_versions={"ray": ray.__version__},
             run_context=run_context,

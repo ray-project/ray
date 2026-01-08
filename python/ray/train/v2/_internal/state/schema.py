@@ -232,9 +232,6 @@ class DataConfig(BaseModel):
 class ScalingConfig(BaseModel):
     """Scaling config for a Train run."""
 
-    trainer_resources: Optional[Dict[str, float]] = Field(
-        description="Resources for the Train run's trainer"
-    )
     num_workers: Union[int, Dict[str, List]] = Field(
         description="The number of workers for the Train run."
     )
@@ -333,7 +330,7 @@ class RunContext(BaseModel):
     datasets: List[str] = Field(
         description="A list of dataset names for a Train run.",
     )
-    data_config: Optional[DataConfig] = Field(
+    data_config: DataConfig = Field(
         description="The data config for a Train run.",
     )
     runtime_config: RuntimeConfig = Field(

@@ -61,12 +61,10 @@ def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
             ds_name: execution_options_to_dict(options)
             for ds_name, options in exec_options.items()
         }
+    elif isinstance(exec_options, ExecutionOptions):
+        execution_options = execution_options_to_dict(exec_options)
     else:
-        execution_options = (
-            execution_options_to_dict(exec_options)
-            if exec_options is not None
-            else None
-        )
+        execution_options = None
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
