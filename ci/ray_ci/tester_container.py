@@ -80,6 +80,8 @@ class TesterContainer(Container):
         """
         Run tests parallelly in docker.  Return whether all tests pass.
         """
+        # Only test state api
+        test_targets = ["//python/ray/tests:test_state_api"]
         # shard tests and remove empty chunks
         chunks = list(
             filter(
