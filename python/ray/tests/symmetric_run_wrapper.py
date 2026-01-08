@@ -26,11 +26,13 @@ def _mocked_net_if_addrs():
     if not hide_ip:
         return real_addrs
 
-    return {
-        iface: [a for a in addrs if a.address != hide_ip]
-        for iface, addrs in real_addrs.items()
-        if any(a.address != hide_ip for a in addrs)
-    }
+    new_addrs = {}
+    for iface, addrs in real_addrs.items():
+        # Filter out the IP to be hidden from the list of addresses for this interface.
+        filtered_addrs = [addr for addr in addrs if addr.address != hide_ip]
+        if filtered_addrs:
+            new_addrs[iface] = filtered_addrs
+    return new_addrs
 
 
 if __name__ == "__main__":

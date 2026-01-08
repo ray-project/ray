@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import get_current_unused_port
 
 
@@ -33,7 +34,11 @@ def _kill_process_group(proc: subprocess.Popen) -> None:
         os.killpg(proc.pid, signal.SIGTERM)
         proc.wait(timeout=5)
     except (OSError, subprocess.TimeoutExpired):
-        os.killpg(proc.pid, signal.SIGKILL)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            # The process may have already died.
+            pass
 
 
 @contextmanager
@@ -268,8 +273,18 @@ def test_symmetric_run_three_node_cluster_simulated(cleanup_ray):
             start_new_session=True,
         )
 
-        # Give head time to start before starting workers.
-        time.sleep(5)
+        # Wait for head to start listening before starting workers.
+        def _check_head_ready() -> bool:
+            import socket
+
+            host, port_str = address.split(":")
+            try:
+                with socket.create_connection((host, int(port_str)), timeout=1):
+                    return True
+            except (socket.timeout, ConnectionRefusedError, OSError):
+                return False
+
+        wait_for_condition(_check_head_ready, timeout=30, retry_interval_ms=250)
 
         for cmd in worker_cmds:
             worker_procs.append(
