@@ -6,6 +6,7 @@ from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+import json
 
 import sphinx
 from docutils import nodes
@@ -13,6 +14,7 @@ from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
+from sphinx.util.matching import compile_matchers
 
 DEFAULT_API_GROUP = "Others"
 
@@ -608,6 +610,12 @@ def setup(app):
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+    
+    # Apply ipython3 lexer to avoid warnings and CI failures
+    app.add_config_value("ipython3_lexer_patterns", [], "env")
+    app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
+    app.connect('source-read', apply_ipython3_lexer)
+    app.connect('config-inited', _compile_pattern_matchers)
 
 
 redoc = [
@@ -750,3 +758,56 @@ assert (
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
+
+# apply ipython3 lexer to
+ipython3_lexer_patterns = [
+    "ray-overview/examples/**/content/**.ipynb",
+    "ray-core/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
+    "train/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
+]
+# Exclude patterns here
+ipython3_lexer_exclude_patterns = []
+
+def _compile_pattern_matchers(app, config):
+    """
+    Hook to compile and save pattern matchers for ipython3 lexer.
+    """
+    # lexer matchers
+    app.ipython3_lexer_patterns = compile_matchers(
+        config.ipython3_lexer_patterns or []
+    )
+    app.ipython3_lexer_exclude_patterns = compile_matchers(
+        config.ipython3_lexer_exclude_patterns or []
+    )
+
+def apply_ipython3_lexer(app, docname, source):
+    """
+    Apply ipython3 lexer to True to notebooks matching ipython3_lexer_patterns.
+    
+    This prevents lexing warnings for notebooks containing IPython magic commands
+    like !shell_command, %magic, or %%cell_magic.
+    
+    If you want to preserve a notebook's existing lexer, add it to ipython3_lexer_exclude_patterns.
+    """
+
+    # Skip non-.ipynb files
+    doc_source = app.env.doc2path(docname, base=False)
+    if not doc_source.endswith('.ipynb'):
+        return
+
+    # exclude patterns takes priority
+    if any(matcher(doc_source) for matcher in app.ipython3_lexer_exclude_patterns):
+        return
+    if any(matcher(doc_source) for matcher in app.ipython3_lexer_patterns):
+        try:
+            notebook = json.loads(source[0])
+            # Set ipython3 lexer
+            notebook.setdefault('metadata', {}) \
+                    .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
+            source[0] = json.dumps(notebook)
+        except Exception as e:
+            logger.warning(f"Failed to add ipython3 lexer to {docname}: {e}")
+            # don't fail the build for this
