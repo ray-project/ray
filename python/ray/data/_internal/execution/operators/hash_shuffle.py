@@ -608,9 +608,14 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
-            target_max_block_size=None
-            if disallow_block_splitting
-            else data_context.target_max_block_size,
+            target_max_block_size=(
+                None
+                if disallow_block_splitting
+                else data_context.target_max_block_size
+            ),
+            min_max_shards_compaction_thresholds=(
+                self._get_min_max_partition_shards_compaction_thresholds()
+            ),
         )
 
         # We track the running usage total because iterating
@@ -1234,6 +1239,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     def _gen_op_name(cls, num_partitions: int) -> str:
         raise NotImplementedError()
 
+    @classmethod
+    def _get_min_max_partition_shards_compaction_thresholds(cls) -> Optional[Tuple[int, int]]:
+        return None
+
 
 class HashShuffleOperator(HashShufflingOperatorBase):
     # Add 30% buffer to account for data skew
@@ -1346,6 +1355,7 @@ class AggregatorPool:
         aggregation_factory: ShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
         target_max_block_size: Optional[int],
+        min_max_shards_compaction_thresholds: Optional[Tuple[int, int]] = None,
     ):
         assert (
             num_partitions >= 1
@@ -1373,6 +1383,8 @@ class AggregatorPool:
             self._aggregator_partition_map,
         )
 
+        self._min_max_shards_compaction_thresholds = min_max_shards_compaction_thresholds
+
     def start(self):
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
@@ -1394,6 +1406,7 @@ class AggregatorPool:
                 target_partition_ids,
                 self._aggregation_factory_ref,
                 self._target_max_block_size,
+                self._min_max_shards_compaction_thresholds,
             )
 
             self._aggregators.append(aggregator)
@@ -1611,9 +1624,6 @@ class HashShuffleAggregator:
           assigned partitions), and is thread-safe via per-(sequence, partition) locks.
     """
 
-    _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
-    _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
-
     _DEBUG_DUMP_PERIOD_S = 10
 
     def __init__(
@@ -1622,20 +1632,20 @@ class HashShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: ShuffleAggregationFactory,
         target_max_block_size: Optional[int],
-        min_max_num_blocks_compaction_thresholds: Optional[Tuple[int, int]] = None,
+        min_max_shards_compaction_thresholds: Optional[Tuple[int, int]] = None,
     ):
         self._aggregator_id: int = aggregator_id
         self._target_partition_ids: List[int] = target_partition_ids
         self._target_max_block_size: int = target_max_block_size
 
         self._min_num_blocks_compaction_threshold = (
-            min_max_num_blocks_compaction_thresholds[0]
-            if min_max_num_blocks_compaction_thresholds is not None
+            min_max_shards_compaction_thresholds[0]
+            if min_max_shards_compaction_thresholds is not None
             else self._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD
         )
         self._max_num_blocks_compaction_threshold = (
-            min_max_num_blocks_compaction_thresholds[1]
-            if min_max_num_blocks_compaction_thresholds is not None
+            min_max_shards_compaction_thresholds[1]
+            if min_max_shards_compaction_thresholds is not None
             else self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD
         )
 

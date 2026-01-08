@@ -80,6 +80,10 @@ class ReducingAggregation(ShuffleAggregation):
 
 
 class HashAggregateOperator(HashShufflingOperatorBase):
+
+    _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
+    _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
+
     def __init__(
         self,
         data_context: DataContext,
@@ -165,6 +169,13 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         )
 
         return aggregator_total_memory_required
+
+    @classmethod
+    def _get_min_max_partition_shards_compaction_thresholds(cls) -> Optional[Tuple[int, int]]:
+        return (
+            cls._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD,
+            cls._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
+        )
 
 
 def _create_aggregating_transformer(
