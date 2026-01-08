@@ -35,6 +35,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    StaticPlacementConfig,
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
@@ -478,6 +479,7 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
+        static_placement_config: Optional[StaticPlacementConfig] = None,
     ):
         """Construct a ReplicaConfig with serialized properties.
 
@@ -504,6 +506,9 @@ class ReplicaConfig:
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        # Static placement configuration for external placement group control
+        self.static_placement_config = static_placement_config
+
         self._validate()
 
         # Create resource_dict. This contains info about the replica's resource
@@ -516,6 +521,7 @@ class ReplicaConfig:
         self._validate_ray_actor_options()
         self._validate_placement_group_options()
         self._validate_max_replicas_per_node()
+        self._validate_static_placement_config()
 
         if (
             self.max_replicas_per_node is not None
@@ -532,6 +538,7 @@ class ReplicaConfig:
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
+        static_placement_config: Optional[StaticPlacementConfig] = None,
     ):
         self.ray_actor_options = ray_actor_options
 
@@ -539,6 +546,7 @@ class ReplicaConfig:
         self.placement_group_strategy = placement_group_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
+        self.static_placement_config = static_placement_config
 
         self._validate()
 
@@ -555,6 +563,7 @@ class ReplicaConfig:
         placement_group_strategy: Optional[str] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
+        static_placement_config: Optional[StaticPlacementConfig] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -604,6 +613,7 @@ class ReplicaConfig:
             placement_group_bundles,
             placement_group_strategy,
             max_replicas_per_node,
+            static_placement_config=static_placement_config,
         )
 
         config._deployment_def = deployment_def
@@ -714,6 +724,46 @@ class ReplicaConfig:
                         f"for the actor is {actor_value}, but the bundle only "
                         f"has {bundle_value} `{actor_resource}` specified."
                     )
+
+    def _validate_static_placement_config(self) -> None:
+        """Validate static placement configuration.
+
+        Static placement is mutually exclusive with other placement options.
+        """
+        if self.static_placement_config is None:
+            return
+
+        # Static placement is mutually exclusive with placement_group_bundles
+        if self.placement_group_bundles is not None:
+            raise ValueError(
+                "static_placement_config cannot be used together with "
+                "placement_group_bundles. Use static_placement_config for "
+                "external placement group control."
+            )
+
+        # Static placement is mutually exclusive with placement_group_strategy
+        if self.placement_group_strategy is not None:
+            raise ValueError(
+                "static_placement_config cannot be used together with "
+                "placement_group_strategy. Use static_placement_config for "
+                "external placement group control."
+            )
+
+        # Static placement is mutually exclusive with max_replicas_per_node
+        if self.max_replicas_per_node is not None:
+            raise ValueError(
+                "static_placement_config cannot be used together with "
+                "max_replicas_per_node. Bundle placement is controlled by "
+                "static_placement_config.replica_bundle_mapping."
+            )
+
+        # Validate that the StaticPlacementConfig itself is valid
+        # (this should already be done in __post_init__, but defensive check)
+        if not isinstance(self.static_placement_config, StaticPlacementConfig):
+            raise TypeError(
+                f"static_placement_config must be a StaticPlacementConfig, "
+                f"got {type(self.static_placement_config)}"
+            )
 
     @property
     def deployment_def(self) -> Union[Callable, str]:

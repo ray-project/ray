@@ -259,6 +259,8 @@ class ActorReplicaWrapper:
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
+        # Bundle indices for static placement (populated in `on_scheduled`).
+        self._bundle_indices: Optional[List[int]] = None
 
         # Populated after replica is allocated.
         self._pid: int = None
@@ -458,6 +460,22 @@ class ActorReplicaWrapper:
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
+
+        # For static placement, we need to pre-assign the rank before scheduling
+        # so we know which bundle to use. Normally rank is assigned in check_ready()
+        # after the node_id is known, but for static placement the bundle determines
+        # the node, not vice versa.
+        static_placement_config = deployment_info.replica_config.static_placement_config
+        if static_placement_config is not None:
+            # Assign rank early for static placement
+            # Note: node_id will be None here, but that's okay for static placement
+            # since the placement group bundle determines the node
+            self._rank = self._assign_rank_callback(
+                self._replica_id.unique_id, None  # node_id not yet known
+            )
+            logger.info(
+                f"Pre-assigned rank {self._rank} to {self.replica_id} for static placement"
+            )
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -568,6 +586,10 @@ class ActorReplicaWrapper:
             max_replicas_per_node=(
                 deployment_info.replica_config.max_replicas_per_node
             ),
+            static_placement_config=(
+                deployment_info.replica_config.static_placement_config
+            ),
+            replica_rank=self._rank,
             on_scheduled=self.on_scheduled,
         )
 
@@ -575,9 +597,11 @@ class ActorReplicaWrapper:
         self,
         actor_handle: ActorHandle,
         placement_group: Optional[PlacementGroup] = None,
+        bundle_indices: Optional[List[int]] = None,
     ):
         self._actor_handle = actor_handle
         self._placement_group = placement_group
+        self._bundle_indices = bundle_indices
 
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
@@ -676,6 +700,40 @@ class ActorReplicaWrapper:
 
         return True
 
+    def set_bundle_indices_from_static_placement(
+        self,
+        static_placement_config: "StaticPlacementConfig",
+        replica_rank: int,
+    ) -> None:
+        """Set bundle indices for a recovered replica using static placement.
+
+        This is called during controller recovery to restore the bundle indices
+        that were assigned to this replica before the controller crashed.
+
+        Args:
+            static_placement_config: The static placement configuration.
+            replica_rank: The replica's rank (used to look up bundle indices).
+        """
+        from ray.serve.config import StaticPlacementConfig
+
+        if static_placement_config is None:
+            return
+
+        try:
+            self._bundle_indices = static_placement_config.get_bundle_indices_for_replica(
+                replica_rank
+            )
+            self._placement_group = static_placement_config.placement_group
+            logger.info(
+                f"Recovered bundle_indices={self._bundle_indices} for "
+                f"{self.replica_id} (rank={replica_rank}) from static placement config"
+            )
+        except KeyError as e:
+            logger.warning(
+                f"Failed to recover bundle indices for {self.replica_id} "
+                f"(rank={replica_rank}): {e}"
+            )
+
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
@@ -743,12 +801,16 @@ class ActorReplicaWrapper:
                 replica_ready_check_func = (
                     self._actor_handle.initialize_and_get_metadata
                 )
-                # this guarantees that node_id is set before rank is assigned
-                self._rank = self._assign_rank_callback(
-                    self._replica_id.unique_id, self._node_id
-                )
+                # For static placement, rank is pre-assigned in start() since we
+                # need it for bundle selection. For normal placement, assign here
+                # after node_id is known.
+                if self._rank is None:
+                    # this guarantees that node_id is set before rank is assigned
+                    self._rank = self._assign_rank_callback(
+                        self._replica_id.unique_id, self._node_id
+                    )
                 self._ready_obj_ref = replica_ready_check_func.remote(
-                    deployment_config, self._rank
+                    deployment_config, self._rank, self._bundle_indices
                 )
 
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
@@ -1701,12 +1763,13 @@ class DeploymentRankManager:
                 logger.error(f"Error executing function {func.__name__}: {e}")
                 return safe_default
 
-    def assign_rank(self, replica_id: str, node_id: str) -> ReplicaRank:
+    def assign_rank(self, replica_id: str, node_id: Optional[str]) -> ReplicaRank:
         """Assign a rank to a new replica.
 
         Args:
             replica_id: The unique ID of the replica
-            node_id: The unique ID of the node
+            node_id: The unique ID of the node. Can be None for static placement
+                where the node is determined by the placement group bundle.
 
         Returns:
             ReplicaRank object with the assigned rank
@@ -1721,11 +1784,19 @@ class DeploymentRankManager:
                     f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
                 )
 
-            # Track the replica-to-node mapping
-            self._replica_to_node[replica_id] = node_id
-
             # Assign global rank
             rank = self._replica_rank_manager.assign_rank(replica_id)
+
+            # For static placement, node_id may be None at rank assignment time
+            # since the node is determined by the placement group bundle.
+            # In this case, we skip local rank assignment and use placeholder values.
+            if node_id is None:
+                # Static placement: node_rank and local_rank are not meaningful
+                # since placement is determined by bundle indices, not node affinity
+                return ReplicaRank(rank=rank, node_rank=-1, local_rank=-1)
+
+            # Track the replica-to-node mapping
+            self._replica_to_node[replica_id] = node_id
 
             # Assign node rank if this node doesn't have one yet
             if node_id not in self._local_rank_managers:
@@ -1778,14 +1849,14 @@ class DeploymentRankManager:
     def recover_rank(
         self,
         replica_id: str,
-        node_id: str,
+        node_id: Optional[str],
         rank: ReplicaRank,
     ) -> None:
         """Recover rank for a replica (e.g., after controller restart).
 
         Args:
             replica_id: ID of the replica
-            node_id: ID of the node
+            node_id: ID of the node. Can be None for static placement.
             rank: The rank to recover
 
         Raises:
@@ -1800,6 +1871,11 @@ class DeploymentRankManager:
 
             # Recover global rank
             self._replica_rank_manager.recover_rank(replica_id, rank.rank)
+
+            # For static placement, node_id may be None and node_rank/local_rank
+            # are placeholder values (-1). Skip node-level rank recovery.
+            if node_id is None or rank.node_rank < 0:
+                return
 
             # Recover node rank only if this node doesn't already have one
             if not self._node_rank_manager.has_rank(node_id):
@@ -2793,6 +2869,14 @@ class DeploymentState:
                     self._rank_manager.recover_rank(
                         replica_id, replica.actor_node_id, replica.rank
                     )
+                    # For static placement, also recover bundle_indices based on rank
+                    static_placement_config = (
+                        self._target_state.info.replica_config.static_placement_config
+                    )
+                    if static_placement_config is not None and replica.rank is not None:
+                        replica._actor.set_bundle_indices_from_static_placement(
+                            static_placement_config, replica.rank.rank
+                        )
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)

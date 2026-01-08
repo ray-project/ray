@@ -44,6 +44,8 @@ class ReplicaContext:
         - servable_object: instance of the user class/function this replica is running.
         - rank: the rank of the replica.
         - world_size: the number of replicas in the deployment.
+        - bundle_indices: list of placement group bundle indices assigned to this
+            replica when using static placement. None if not using static placement.
     """
 
     replica_id: ReplicaID
@@ -52,6 +54,7 @@ class ReplicaContext:
     rank: ReplicaRank
     world_size: int
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
+    bundle_indices: Optional[List[int]] = None
 
     @property
     def app_name(self) -> str:
@@ -117,6 +120,7 @@ def _set_internal_replica_context(
     rank: ReplicaRank,
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
+    bundle_indices: Optional[List[int]] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -126,6 +130,7 @@ def _set_internal_replica_context(
         rank=rank,
         world_size=world_size,
         _handle_registration_callback=handle_registration_callback,
+        bundle_indices=bundle_indices,
     )
 
 
