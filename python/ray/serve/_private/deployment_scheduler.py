@@ -800,6 +800,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     scheduling_request.actor_options["label_selector"] or {}
                 ]
 
+        # If PG is defined on scheduling request, then `required_resources` represents the sum across all bundles.
         strategies_to_try.append(
             (scheduling_request.required_resources, primary_labels)
         )
