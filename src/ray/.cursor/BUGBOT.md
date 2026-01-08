@@ -27,7 +27,7 @@
 >   - Any relevant context for reviewers
 >
 > See this list of PRs as examples for PRs that have gone above and beyond:
-> - https://github.com/ray-project/ray/pull/59065
+> - https://github.com/ray-project/ray/pull/59613
 > - https://github.com/ray-project/ray/pull/57641
 > - https://github.com/ray-project/ray/pull/56474
 > - https://github.com/ray-project/ray/pull/59610
