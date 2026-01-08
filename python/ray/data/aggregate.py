@@ -19,8 +19,6 @@ from typing import (
 )
 
 import numpy as np
-import pandas as pd
-import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -29,9 +27,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockColumn,
     BlockColumnAccessor,
-    DataBatch,
     KeyType,
-    _apply_batch_format,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -170,6 +166,165 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     1. **Initialization**: For each group (if grouping) or for the entire dataset,
        an initial accumulator is created using `zero_factory`.
+    2. **Block Aggregation**: The `aggregate_block` method is applied to
+       each block independently, producing a partial aggregation result for that block.
+    3. **Combination**: The `combine` method is used to merge these partial
+       results (or an existing accumulated result with a new partial result)
+       into a single, combined accumulator.
+    4. **Finalization**: Optionally, the `finalize` method transforms the
+       final combined accumulator into the desired output format.
+
+    Args:
+        name: The name of the aggregation. This will be used as the column name
+            in the output, e.g., "sum(my_col)".
+        zero_factory: A callable that returns the initial "zero" value for the
+            accumulator. For example, for a sum, this would be `lambda: 0`; for
+            finding a minimum, `lambda: float("inf")`, for finding a maximum,
+            `lambda: float("-inf")`.
+        on: The name of the column to perform the aggregation on. If `None`,
+            the aggregation is performed over the entire row (e.g., for `Count()`).
+        ignore_nulls: Whether to ignore null values during aggregation.
+            If `True`, nulls are skipped.
+            If `False`, the presence of a null value might result in a null output,
+            depending on the aggregation logic.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        zero_factory: Callable[[], AccumulatorType],
+        *,
+        on: Optional[str],
+        ignore_nulls: bool,
+    ):
+        if not name:
+            raise ValueError(
+                f"Non-empty string has to be provided as name (got {name})"
+            )
+
+        self._target_col_name = on
+        self._ignore_nulls = ignore_nulls
+
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
+        else:
+            self._agg_name = name
+
+        _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
+        _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
+        _safe_finalize = _null_safe_finalize(self.finalize)
+
+        _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
+
+        super().__init__(
+            name=name,
+            init=_safe_zero_factory,
+            merge=_safe_combine,
+            accumulate_block=lambda _, block: _safe_aggregate(block),
+            finalize=_safe_finalize,
+        )
+
+    def get_target_column(self) -> Optional[str]:
+        return self._target_col_name
+
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._agg_name
+
+
+    @abc.abstractmethod
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
+        """Combines a new partial aggregation result with the current accumulator.
+
+        This method defines how two intermediate aggregation states are merged.
+        For example, if `aggregate_block` produces partial sums `s1` and `s2` from
+        two different blocks, `combine(s1, s2)` should return `s1 + s2`.
+
+        Args:
+            current_accumulator: The current accumulated state (e.g., the result of
+                previous `combine` calls or an initial value from `zero_factory`).
+            new: A new partially aggregated value, typically the output of
+                `aggregate_block` from a new block of data, or another accumulator
+                from a parallel task.
+
+        Returns:
+            The updated accumulator after combining it with the new value.
+        """
+        ...
+
+    @abc.abstractmethod
+    def aggregate_block(self, block: Block) -> AccumulatorType:
+        """Aggregates data within a single block.
+
+        This method processes all rows in a given `Block` and returns a partial
+        aggregation result for that block. For instance, if implementing a sum,
+        this method would sum all relevant values within the block.
+
+        Args:
+            block: A `Block` of data to be aggregated.
+
+        Returns:
+            A partial aggregation result for the input block. The type of this
+            result (`AggType`) should be consistent with the `current_accumulator`
+            and `new` arguments of the `combine` method, and the `accumulator`
+            argument of the `finalize` method.
+        """
+        ...
+
+    def finalize(self, accumulator: AccumulatorType) -> Optional[AggOutputType]:
+        """Transforms the final accumulated state into the desired output.
+
+        This method is called once per group after all blocks have been processed
+        and all partial results have been combined. It provides an opportunity
+        to perform a final transformation on the accumulated data.
+
+        For many aggregations (e.g., Sum, Count, Min, Max), the accumulated state
+        is already the final result, so this method can simply return the
+        accumulator as is (which is the default behavior).
+
+        For other aggregations, like Mean, this method is crucial.
+        A Mean aggregation might accumulate `[sum, count]`. The `finalize`
+        method would then compute `sum / count` to get the final mean.
+
+        Args:
+            accumulator: The final accumulated state for a group, after all
+                `aggregate_block` and `combine` operations.
+
+        Returns:
+            The final result of the aggregation for the group.
+        """
+        return accumulator
+
+    def _validate(self, schema: Optional["Schema"]) -> None:
+        if self._target_col_name:
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+            SortKey(self._target_col_name).validate_schema(schema)
+
+
+@PublicAPI(stability="alpha")
+class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType]):
+    """Provides an interface to implement efficient aggregations with batch format support.
+
+    `AggregateFunction` instances are passed to a Dataset's ``.aggregate(...)`` method to
+    perform distributed aggregations. To create a custom aggregation, you should subclass
+    `AggregateFunction` and implement the `aggregate_batch` and `combine` methods.
+    The `finalize` method can also be overridden if the final accumulated state
+    needs further transformation.
+
+    Aggregation follows these steps:
+
+    1. **Initialization**: For each group (if grouping) or for the entire dataset,
+       an initial accumulator is created using `zero_factory`.
     2. **Batch Aggregation**: The `aggregate_batch` method is applied to
        each batch independently, producing a partial aggregation result for that batch.
        Batches are provided in the format specified by `batch_format`.
@@ -208,6 +363,9 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         ignore_nulls: bool,
         batch_format: Optional[str] = "default",
     ):
+        # Import here to avoid circular imports since this module is imported early
+        from ray.data.block import DataBatch, _apply_batch_format
+        
         if not name:
             raise ValueError(
                 f"Non-empty string has to be provided as name (got {name})"
@@ -264,14 +422,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """Combines a new partial aggregation result with the current accumulator.
 
         This method defines how two intermediate aggregation states are merged.
-        For example, if `aggregate_block` produces partial sums `s1` and `s2` from
-        two different blocks, `combine(s1, s2)` should return `s1 + s2`.
+        For example, if `aggregate_batch` produces partial sums `s1` and `s2` from
+        two different batches, `combine(s1, s2)` should return `s1 + s2`.
 
         Args:
             current_accumulator: The current accumulated state (e.g., the result of
                 previous `combine` calls or an initial value from `zero_factory`).
             new: A new partially aggregated value, typically the output of
-                `aggregate_block` from a new block of data, or another accumulator
+                `aggregate_batch` from a new batch of data, or another accumulator
                 from a parallel task.
 
         Returns:
@@ -280,7 +438,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         ...
 
     @abc.abstractmethod
-    def aggregate_batch(self, batch: DataBatch) -> AccumulatorType:
+    def aggregate_batch(self, batch) -> AccumulatorType:
         """Aggregates data within a single batch.
 
         This method processes all rows in a given batch and returns a partial
@@ -317,7 +475,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
         Args:
             accumulator: The final accumulated state for a group, after all
-                `aggregate_block` and `combine` operations.
+                `aggregate_batch` and `combine` operations.
 
         Returns:
             The final result of the aggregation for the group.
@@ -332,7 +490,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
 
 @PublicAPI
-class Count(AggregateFnV2[int, int]):
+class Count(AggregateFunction[int, int]):
     """Defines count aggregation.
 
     Example:
@@ -403,7 +561,7 @@ class Count(AggregateFnV2[int, int]):
 
 
 @PublicAPI
-class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
+class Sum(AggregateFunction[Union[int, float], Union[int, float]]):
     """Defines sum aggregation.
 
     Example:
@@ -461,7 +619,7 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
 
 
 @PublicAPI
-class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class Min(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines min aggregation.
 
     Example:
@@ -505,13 +663,22 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            batch_format="numpy",
             zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
-        return BlockAccessor.for_block(block).min(
-            self._target_col_name, self._ignore_nulls
-        )
+    def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> SupportsRichComparisonType:
+        column_data = batch[self._target_col_name]
+        
+        if self._ignore_nulls:
+            # Remove null values using numpy
+            valid_mask = ~np.isnan(column_data.astype(float))
+            column_data = column_data[valid_mask]
+            
+        if len(column_data) == 0:
+            return self.zero_factory()
+            
+        return np.min(column_data)
 
     def combine(
         self,
@@ -522,7 +689,7 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
 
 @PublicAPI
-class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class Max(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines max aggregation.
 
     Example:
@@ -566,13 +733,22 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            batch_format="numpy",
             zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
-        return BlockAccessor.for_block(block).max(
-            self._target_col_name, self._ignore_nulls
-        )
+    def aggregate_batch(self, batch: Dict[str, np.ndarray]) -> SupportsRichComparisonType:
+        column_data = batch[self._target_col_name]
+        
+        if self._ignore_nulls:
+            # Remove null values using numpy
+            valid_mask = ~np.isnan(column_data.astype(float))
+            column_data = column_data[valid_mask]
+            
+        if len(column_data) == 0:
+            return self.zero_factory()
+            
+        return np.max(column_data)
 
     def combine(
         self,
@@ -583,7 +759,7 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
 
 @PublicAPI
-class Mean(AggregateFnV2[List[Union[int, float]], float]):
+class Mean(AggregateFunction[List[Union[int, float]], float]):
     """Defines mean (average) aggregation.
 
     Example:
@@ -667,7 +843,7 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
 
 @PublicAPI
-class Std(AggregateFnV2[List[Union[int, float]], float]):
+class Std(AggregateFunction[List[Union[int, float]], float]):
     """Defines standard deviation aggregation.
 
     Uses Welford's online algorithm for numerical stability. This method computes
@@ -774,7 +950,7 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
 
 @PublicAPI
-class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class AbsMax(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines absolute max aggregation.
 
     Example:
@@ -841,7 +1017,7 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
 
 
 @PublicAPI
-class Quantile(AggregateFnV2[List[Any], List[Any]]):
+class Quantile(AggregateFunction[List[Any], List[Any]]):
     """Defines Quantile aggregation.
 
     Example:
@@ -952,7 +1128,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
 
 
 @PublicAPI
-class Unique(AggregateFnV2[Set[Any], List[Any]]):
+class Unique(AggregateFunction[Set[Any], List[Any]]):
     """Defines unique aggregation.
 
     Example:
@@ -1071,7 +1247,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
 
 
 @PublicAPI
-class ValueCounter(AggregateFnV2):
+class ValueCounter(AggregateFunction):
     """Counts the number of times each value appears in a column.
 
     This aggregation computes value counts for a specified column, similar to pandas'
@@ -1277,7 +1453,7 @@ def _null_safe_combine(
 
 
 @PublicAPI(stability="alpha")
-class MissingValuePercentage(AggregateFnV2[List[int], float]):
+class MissingValuePercentage(AggregateFunction[List[int], float]):
     """Calculates the percentage of null values in a column.
 
     This aggregation computes the percentage of null (missing) values in a dataset column.
@@ -1358,7 +1534,7 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
 
 
 @PublicAPI(stability="alpha")
-class ZeroPercentage(AggregateFnV2[List[int], float]):
+class ZeroPercentage(AggregateFunction[List[int], float]):
     """Calculates the percentage of zero values in a numeric column.
 
     This aggregation computes the percentage of zero values in a numeric dataset column.
@@ -1456,7 +1632,7 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
 
 
 @PublicAPI(stability="alpha")
-class ApproximateQuantile(AggregateFnV2):
+class ApproximateQuantile(AggregateFunction):
     def _require_datasketches(self):
         try:
             from datasketches import kll_floats_sketch  # type: ignore[import]
@@ -1554,7 +1730,7 @@ class ApproximateQuantile(AggregateFnV2):
 
 
 @PublicAPI(stability="alpha")
-class ApproximateTopK(AggregateFnV2):
+class ApproximateTopK(AggregateFunction):
     def _require_datasketches(self):
         try:
             from datasketches import frequent_strings_sketch

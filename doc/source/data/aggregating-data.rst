@@ -32,7 +32,7 @@ These can be used directly on a Dataset or a GroupedData object, as shown below:
 
 The full list of built-in aggregation functions is available in the :ref:`Dataset API reference <dataset-api>`.
 
-Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in :meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>`.
+Each of the preceding methods also has a corresponding :ref:`AggregateFunction <aggregations_api_ref>` object. These objects can be used in :meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>`.
 
 Aggregation objects can be used directly with a Dataset like shown below:
 
@@ -85,7 +85,7 @@ Multiple aggregations can also be computed at once:
 Custom Aggregations
 --------------------
 
-You can create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface has three key methods to implement:
+You can create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFunction` interface. The AggregateFunction interface has three key methods to implement:
 
 1. `aggregate_batch`: Processes a single batch of data and returns a partial aggregation result
 2. `combine`: Merges two partial aggregation results into a single result
@@ -107,10 +107,10 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     import numpy as np
     import ray
-    from ray.data.aggregate import AggregateFnV2
+    from ray.data.aggregate import AggregateFunction
     from typing import Dict, Optional, Tuple
 
-    class CustomMean(AggregateFnV2[Tuple[float, int], float]):
+    class CustomMean(AggregateFunction[Tuple[float, int], float]):
         """Defines mean aggregation."""
 
         def __init__(
