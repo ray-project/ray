@@ -9,6 +9,7 @@ from typing import Optional
 import pytest
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     PrometheusTimeseries,
@@ -710,31 +711,29 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
 
 
 def _get_dashboard_agent_address(cluster_info):
-    """Get the dashboard agent HTTP address from a running cluster.
-
-    Returns None on any error, allowing wait_for_condition to retry.
-    """
+    """Get the dashboard agent HTTP address from a running cluster."""
     import json
 
-    import ray.dashboard.consts as dashboard_consts
-
-    try:
-        # Get agent address from internal KV
-        nodes = ray.nodes()
-        if not nodes:
-            return None
-        node_id = nodes[0]["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
-        agent_addr = ray.experimental.internal_kv._internal_kv_get(
-            key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
-        )
-        if agent_addr:
-            ip, http_port, grpc_port = json.loads(agent_addr)
-            return f"http://{ip}:{http_port}"
-    except Exception:
-        # Return None on any error to allow wait_for_condition to retry
-        pass
+    # Get agent address from internal KV
+    node_id = ray.nodes()[0]["NodeID"]
+    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
+    agent_addr = ray.experimental.internal_kv._internal_kv_get(
+        key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
+    )
+    if agent_addr:
+        ip, http_port, grpc_port = json.loads(agent_addr)
+        return f"http://{ip}:{http_port}"
     return None
+
+
+def _wait_and_get_dashboard_agent_address(cluster_info, timeout=30):
+    """Waits for the dashboard agent address to become available and returns it."""
+
+    def agent_address_is_available():
+        return _get_dashboard_agent_address(cluster_info) is not None
+
+    wait_for_condition(agent_address_is_available, timeout=timeout)
+    return _get_dashboard_agent_address(cluster_info)
 
 
 @pytest.mark.parametrize(
@@ -754,13 +753,7 @@ def test_dashboard_agent_auth(
 
     cluster_info = setup_cluster_with_token_auth
 
-    # Wait for agent address to be available
-    def get_agent_address():
-        addr = _get_dashboard_agent_address(cluster_info)
-        return addr is not None
-
-    wait_for_condition(get_agent_address, timeout=30)
-    agent_address = _get_dashboard_agent_address(cluster_info)
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
 
     # Build headers based on token type
     headers = {}
@@ -799,13 +792,7 @@ def test_dashboard_agent_health_check_public(endpoint, setup_cluster_with_token_
 
     cluster_info = setup_cluster_with_token_auth
 
-    # Wait for agent address to be available
-    def get_agent_address():
-        addr = _get_dashboard_agent_address(cluster_info)
-        return addr is not None
-
-    wait_for_condition(get_agent_address, timeout=30)
-    agent_address = _get_dashboard_agent_address(cluster_info)
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
 
     # Health check endpoints should be accessible without auth
     response = requests.get(f"{agent_address}{endpoint}", timeout=5)
