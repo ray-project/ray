@@ -768,7 +768,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             target_node_id=target_node,
         )
 
-    def _get_strategies_to_try(
+    def _build_pack_placement_candidates(
         self, scheduling_request: ReplicaSchedulingRequest
     ) -> List[Tuple[Resources, List[Dict[str, str]]]]:
         """Returns a list of (resources, labels) tuples to attempt for scheduling."""
