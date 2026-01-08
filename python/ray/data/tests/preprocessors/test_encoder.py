@@ -415,66 +415,6 @@ def test_ordinal_encoder_list_fallback_to_pandas():
     assert result_lists == expected
 
 
-# =============================================================================
-# Tests for OrdinalEncoder Arrow array caching
-# =============================================================================
-
-
-def test_ordinal_encoder_arrow_array_caching():
-    """Test that _get_arrow_arrays caches results correctly."""
-    encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b", "c"]})
-    encoder._fitted = True
-
-    # First call should create the cache
-    keys1, values1 = encoder._get_arrow_arrays("col")
-    assert hasattr(encoder, "_arrow_arrays_col")
-
-    # Second call should return cached values
-    keys2, values2 = encoder._get_arrow_arrays("col")
-
-    # Should be the same objects (cached)
-    assert keys1 is keys2
-    assert values1 is values2
-
-    assert keys1.to_pylist() == ["a", "b", "c"]
-    assert values1.to_pylist() == [0, 1, 2]
-
-
-def test_ordinal_encoder_cache_invalidation_on_refit():
-    """Test that Arrow array cache is invalidated when encoder is re-fitted."""
-    encoder = OrdinalEncoder(["col"])
-
-    # First fit: a=0, b=1
-    encoder.stats_ = {
-        "unique_values(col)": (pa.array(["a", "b"]), pa.array([0, 1], type=pa.int64()))
-    }
-    encoder._fitted = True
-
-    # Transform to populate cache
-    table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
-    result1 = encoder._transform_arrow(table1)
-    assert result1.column("col").to_pylist() == [0, 1]
-    assert hasattr(encoder, "_arrow_arrays_col")
-
-    # Simulate re-fit by calling _clear_arrow_cache (called by _fit)
-    encoder._clear_arrow_cache()
-    assert not hasattr(encoder, "_arrow_arrays_col")
-
-    # Update stats with completely different values: x=0, y=1, z=2
-    encoder.stats_ = {
-        "unique_values(col)": (
-            pa.array(["x", "y", "z"]),
-            pa.array([0, 1, 2], type=pa.int64()),
-        )
-    }
-
-    # Transform with new values should use fresh stats, not stale cache
-    table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
-    result2 = encoder._transform_arrow(table2)
-    assert result2.column("col").to_pylist() == [0, 1, 2]
-
-
 def test_ordinal_encoder():
     """Tests basic OrdinalEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
@@ -661,223 +601,6 @@ def test_ordinal_encoder_no_encode_list():
     ), "All values excluding last one must be unique and non-null"
 
 
-def _assert_one_hot_equal(actual_series, expected_values):
-    """Assert one-hot encoded columns are equal, handling both list and numpy array types."""
-    assert len(actual_series) == len(expected_values)
-    for actual, expected in zip(actual_series, expected_values):
-        assert list(actual) == list(expected)
-
-
-def _assert_list_column_equal(actual_series, expected_series):
-    """Assert list columns are equal, handling Arrow round-trip type changes."""
-    assert len(actual_series) == len(expected_series)
-    for actual, expected in zip(actual_series, expected_series):
-        assert list(actual) == list(expected)
-
-
-# =============================================================================
-# Tests for OneHotEncoder Arrow transform
-# =============================================================================
-
-
-def test_one_hot_encoder_arrow_transform():
-    """Test the OneHotEncoder _transform_arrow method."""
-    col_a = ["red", "green", "blue", "red"]
-    col_b = ["warm", "cold", "hot", "cold"]
-    col_c = [1, 10, 5, 10]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
-
-    encoder = OneHotEncoder(["B", "C"])
-
-    # Manually set stats in dict format (pandas-style)
-    # B: cold=0, hot=1, warm=2
-    # C: 1=0, 5=1, 10=2
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-        "unique_values(C)": {1: 0, 5: 1, 10: 2},
-    }
-    encoder._fitted = True
-
-    # Create Arrow table for transformation
-    table = pa.Table.from_pandas(in_df)
-
-    # Transform using Arrow
-    result_table = encoder._transform_arrow(table)
-
-    # Verify result is an Arrow table
-    assert isinstance(result_table, pa.Table)
-
-    # Convert to pandas for easier comparison
-    result_df = result_table.to_pandas()
-
-    # Expected one-hot encoding:
-    # B: warm=[0,0,1], cold=[1,0,0], hot=[0,1,0]
-    # C: 1=[1,0,0], 10=[0,0,1], 5=[0,1,0]
-    expected_col_b = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]]
-    expected_col_c = [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]]
-
-    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
-    _assert_one_hot_equal(result_df["B"], expected_col_b)
-    _assert_one_hot_equal(result_df["C"], expected_col_c)
-
-
-def test_one_hot_encoder_arrow_transform_append_mode():
-    """Test the OneHotEncoder _transform_arrow method in append mode."""
-    col_a = ["red", "green", "blue"]
-    col_b = ["warm", "cold", "hot"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-
-    encoder = OneHotEncoder(["B"], output_columns=["B_encoded"])
-
-    # Manually set stats
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-    }
-    encoder._fitted = True
-
-    table = pa.Table.from_pandas(in_df)
-    result_table = encoder._transform_arrow(table)
-    result_df = result_table.to_pandas()
-
-    # Original columns should be unchanged
-    assert result_df["A"].tolist() == col_a
-    assert result_df["B"].tolist() == col_b
-
-    # New column should have one-hot encoded values
-    expected_b_encoded = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
-    _assert_one_hot_equal(result_df["B_encoded"], expected_b_encoded)
-
-
-def test_one_hot_encoder_arrow_transform_unknown_values():
-    """Test the OneHotEncoder _transform_arrow method with unknown values."""
-    encoder = OneHotEncoder(["B"])
-
-    # Manually set stats with only "warm" and "cold"
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "warm": 1},
-    }
-    encoder._fitted = True
-
-    # Transform data with an unknown value
-    test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
-    table = pa.Table.from_pandas(test_df)
-    result_table = encoder._transform_arrow(table)
-    result_df = result_table.to_pandas()
-
-    # warm=[0,1], cold=[1,0], unknown=[0,0] (all zeros for unknown)
-    _assert_one_hot_equal(result_df["B"], [[0, 1], [1, 0], [0, 0]])
-
-
-def test_one_hot_encoder_list_fallback_to_pandas():
-    """Test that Arrow transform falls back to pandas for list columns."""
-    col_d = [["warm", "cold"], ["hot"], ["warm", "hot", "cold"]]
-    in_df = pd.DataFrame({"D": col_d})
-
-    encoder = OneHotEncoder(["D"])
-    # For list columns with fallback, we need pandas-format stats
-    encoder.stats_ = {"unique_values(D)": {"cold": 0, "hot": 1, "warm": 2}}
-    encoder._fitted = True
-
-    # Create Arrow table with list column
-    table = pa.Table.from_pandas(in_df)
-
-    # Verify column is detected as list type
-    assert pa.types.is_list(table.schema.field("D").type)
-
-    # Transform should fall back to pandas and work correctly
-    result_table = encoder._transform_arrow(table)
-    result_df = result_table.to_pandas()
-
-    # Verify one-hot encoding for list columns (handled by pandas fallback)
-    # Each list element maps to one-hot vector
-    assert len(result_df["D"]) == 3
-
-
-# =============================================================================
-# Tests for OneHotEncoder Arrow array caching
-# =============================================================================
-
-
-def test_one_hot_encoder_arrow_array_caching():
-    """Test that _get_arrow_arrays caches results correctly."""
-    encoder = OneHotEncoder(["col"])
-    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1, "c": 2}}
-    encoder._fitted = True
-
-    # First call should create the cache
-    keys1, values1 = encoder._get_arrow_arrays("col")
-    assert hasattr(encoder, "_arrow_arrays_col")
-
-    # Second call should return cached values
-    keys2, values2 = encoder._get_arrow_arrays("col")
-
-    # Should be the same objects (cached)
-    assert keys1 is keys2
-    assert values1 is values2
-
-    assert keys1.to_pylist() == ["a", "b", "c"]
-    assert values1.to_pylist() == [0, 1, 2]
-
-
-def test_one_hot_encoder_cache_invalidation_on_refit():
-    """Test that Arrow array cache is invalidated when encoder is re-fitted."""
-    encoder = OneHotEncoder(["col"])
-
-    # First fit: a=0, b=1
-    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1}}
-    encoder._fitted = True
-
-    # Transform to populate cache
-    table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
-    result1 = encoder._transform_arrow(table1)
-    assert hasattr(encoder, "_arrow_arrays_col")
-
-    # Verify first encoding
-    result_df1 = result1.to_pandas()
-    _assert_one_hot_equal(result_df1["col"], [[1, 0], [0, 1]])
-
-    # Simulate re-fit by calling _clear_arrow_cache (called by _fit)
-    encoder._clear_arrow_cache()
-    assert not hasattr(encoder, "_arrow_arrays_col")
-
-    # Update stats with completely different values: x=0, y=1, z=2
-    encoder.stats_ = {"unique_values(col)": {"x": 0, "y": 1, "z": 2}}
-
-    # Transform with new values should use fresh stats, not stale cache
-    table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
-    result2 = encoder._transform_arrow(table2)
-    result_df2 = result2.to_pandas()
-    _assert_one_hot_equal(result_df2["col"], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-
-
-@pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
-def test_one_hot_encoder_transform_scalars(batch_format):
-    """Test OneHotEncoder transformation for scalar values with both pandas and arrow."""
-    col_a = ["red", "green", "blue", "red"]
-    col_b = ["warm", "cold", "hot", "cold"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-
-    encoder = OneHotEncoder(["B"])
-
-    # Use dict stats format (works for both paths)
-    encoder.stats_ = {"unique_values(B)": {"cold": 0, "hot": 1, "warm": 2}}
-    encoder._fitted = True
-
-    # Transform using the appropriate method
-    if batch_format == "pandas":
-        result_df = encoder._transform_pandas(in_df.copy())
-    else:
-        table = pa.Table.from_pandas(in_df)
-        result_table = encoder._transform_arrow(table)
-        result_df = result_table.to_pandas()
-
-    # Expected one-hot encoding: cold=[1,0,0], hot=[0,1,0], warm=[0,0,1]
-    expected_col_b = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]]
-
-    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
-    _assert_one_hot_equal(result_df["B"], expected_col_b)
-
-
 def test_one_hot_encoder():
     """Tests basic OneHotEncoder functionality."""
     in_df = pd.DataFrame.from_dict(
@@ -913,9 +636,17 @@ def test_one_hot_encoder():
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A"].equals(in_df["A"])
-    _assert_one_hot_equal(out_df["B"], [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]])
-    _assert_one_hot_equal(out_df["C"], [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]])
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "A": in_df["A"],
+            "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
+            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
+        }
+    )
+
+    assert out_df["A"].equals(expected_df["A"])
+    assert out_df["B"].equals(expected_df["B"])
+    assert out_df["C"].equals(expected_df["C"])
     assert {tuple(row) for row in out_df["D"]} == {
         tuple(row)
         for row in pd.Series([[0, 0, 0, 1], [1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0]])
@@ -933,10 +664,18 @@ def test_one_hot_encoder():
 
     pred_out_df: pd.DataFrame = encoder.transform_batch(pred_in_df.copy())
 
-    assert pred_out_df["A"].equals(pred_in_df["A"])
-    _assert_one_hot_equal(pred_out_df["B"], [[1, 0, 0], [0, 0, 1], [0, 0, 0]])
-    _assert_one_hot_equal(pred_out_df["C"], [[0, 0, 1], [1, 0, 0], [0, 0, 0]])
-    assert list(pred_out_df["D"].iloc[-1]) == [0, 0, 0, 0]
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_in_df["A"],
+            "B": [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0, 0, 0]],
+            "C": [[0, 0, 1], [1, 0, 0], [0, 0, 0]],
+        }
+    )
+
+    assert pred_out_df["A"].equals(pred_expected_df["A"])
+    assert pred_out_df["B"].equals(pred_expected_df["B"])
+    assert pred_out_df["C"].equals(pred_expected_df["C"])
+    assert pred_out_df["D"].iloc[-1] == [0, 0, 0, 0]
     assert (
         len(
             {
@@ -962,17 +701,10 @@ def test_one_hot_encoder():
     assert pred_out_append_df["A"].equals(pred_in_df["A"])
     assert pred_out_append_df["B"].equals(pred_in_df["B"])
     assert pred_out_append_df["C"].equals(pred_in_df["C"])
-    # List column D may have type changes after Arrow round-trip
-    _assert_list_column_equal(pred_out_append_df["D"], pred_in_df["D"])
-    _assert_one_hot_equal(
-        pred_out_append_df["B_onehot_encoded"], pred_out_df["B"].tolist()
-    )
-    _assert_one_hot_equal(
-        pred_out_append_df["C_onehot_encoded"], pred_out_df["C"].tolist()
-    )
-    _assert_one_hot_equal(
-        pred_out_append_df["D_onehot_encoded"], pred_out_df["D"].tolist()
-    )
+    assert pred_out_append_df["D"].equals(pred_in_df["D"])
+    assert pred_out_append_df["B_onehot_encoded"].equals(pred_out_df["B"])
+    assert pred_out_append_df["C_onehot_encoded"].equals(pred_out_df["C"])
+    assert pred_out_append_df["D_onehot_encoded"].equals(pred_out_df["D"])
 
     # Test null behavior.
     null_col = [1, None]
@@ -1013,19 +745,19 @@ def test_one_hot_encoder_with_max_categories():
     df_out = ds_out.to_pandas()
     assert len(ds_out.to_pandas().columns) == 3
 
-    assert df_out["A"].tolist() == col_a
-    _assert_one_hot_equal(df_out["B"], [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]])
-    _assert_one_hot_equal(
-        df_out["C"], [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]]
+    expected_df = pd.DataFrame(
+        {
+            "A": col_a,
+            "B": [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
+            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
+        }
     )
+    pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
 def test_one_hot_encoder_mixed_data_types():
-    """Tests OneHotEncoder functionality with mixed data types (strings and lists).
+    """Tests OneHotEncoder functionality with mixed data types (strings and lists)."""
 
-    Note: Mixed types (strings and lists in same column) cannot be converted to Arrow,
-    so this test uses the pandas transform directly.
-    """
     test_inputs = {"category": ["1", [1]]}
     test_pd_df = pd.DataFrame(test_inputs)
     test_data_for_fitting = {"category": ["1", "[1]", "a", "[]", "True"]}
@@ -1036,8 +768,7 @@ def test_one_hot_encoder_mixed_data_types():
     encoder = OneHotEncoder(columns=["category"])
     encoder.fit(test_ray_dataset_for_fitting)
 
-    # Use pandas transform directly since mixed types can't convert to Arrow
-    pandas_output = encoder._transform_pandas(test_pd_df.copy())
+    pandas_output = encoder.transform_batch(test_pd_df)
     expected_output = pd.DataFrame({"category": [[1, 0, 0, 0, 0], [0, 0, 0, 0, 0]]})
 
     pd.testing.assert_frame_equal(pandas_output, expected_output)
