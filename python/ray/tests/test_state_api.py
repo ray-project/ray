@@ -3180,6 +3180,38 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
             list_objects(_explain=True)
         for warning in record:
             print(f"[Kunchd] Warning captured: {warning}")
+            # If it's a ResourceWarning about subprocess, try to get process details
+            if warning.category is ResourceWarning:
+                import re
+
+                import psutil
+
+                pid = None
+                # The warning.message might be the Popen object itself
+                if hasattr(warning.message, "pid"):
+                    pid = warning.message.pid
+                else:
+                    # Try to extract pid from message like "subprocess 12345 is still running"
+                    match = re.search(r"subprocess (\d+)", str(warning.message))
+                    if match:
+                        pid = int(match.group(1))
+                if pid:
+                    try:
+                        proc = psutil.Process(pid)
+                        print(f"[Kunchd] Process {pid} details:")
+                        print(f"[Kunchd]   Name: {proc.name()}")
+                        print(f"[Kunchd]   Cmdline: {proc.cmdline()}")
+                        print(f"[Kunchd]   Status: {proc.status()}")
+                        print(f"[Kunchd]   Parent PID: {proc.ppid()}")
+                        print(f"[Kunchd]   Create time: {proc.create_time()}")
+                    except psutil.NoSuchProcess:
+                        print(f"[Kunchd] Process {pid} no longer exists")
+                    except psutil.AccessDenied:
+                        print(f"[Kunchd] Access denied to process {pid}")
+                else:
+                    print(
+                        f"[Kunchd] Could not extract pid from warning: {warning.message!r}"
+                    )
         assert (
             len(record) == 0
         ), f"[Kunchd] Warnings captured: {[(w.category.__name__, str(w.message)) for w in record]}"

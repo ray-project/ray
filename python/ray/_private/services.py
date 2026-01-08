@@ -246,6 +246,18 @@ def propagate_jemalloc_env_var(
 
 
 class ConsolePopen(subprocess.Popen):
+    def __del__(self):
+        """Debug logging to track subprocess cleanup issues."""
+        if self.poll() is None:
+            print(
+                f"[kunchd] ConsolePopen.__del__ called but process {self.pid} is still running!"
+            )
+        else:
+            print(
+                f"[kunchd] ConsolePopen.__del__: process {self.pid} already exited with code {self.returncode}"
+            )
+        super().__del__()
+
     if sys.platform == "win32":
 
         def terminate(self):
