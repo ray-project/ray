@@ -24,7 +24,9 @@
 > - **Description**:
 >   - What problem does this solve?
 >   - How does this PR solve it?
->   - Any relevant context for reviewers
+>   - Any relevant context for reviewers such as:
+>      - Why is the problem important to solve?
+>      - Why was this approach chosen over others?
 >
 > See this list of PRs as examples for PRs that have gone above and beyond:
 > - https://github.com/ray-project/ray/pull/59613
