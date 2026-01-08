@@ -12,9 +12,9 @@ import os
 from unittest.mock import patch
 
 import ray  # noqa: F401 - must import ray first, psutil is vendored
-import psutil
-
 from ray.scripts.symmetric_run import symmetric_run
+
+import psutil
 
 _real_net_if_addrs = psutil.net_if_addrs
 
