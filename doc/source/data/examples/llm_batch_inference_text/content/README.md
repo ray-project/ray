@@ -183,7 +183,7 @@ processed_small = processed_small.materialize()
 
 print(f"\nProcessed {processed_small.count()} rows successfully.")
 # Display the first 3 entries to verify the output.
-sampled = processed_large.take(3)
+sampled = processed_small.take(3)
 print("\n==================GENERATED OUTPUT===============\n")
 pprint(sampled)
 ```

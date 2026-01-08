@@ -23,6 +23,8 @@ def convert_notebook(
             if lines:
                 # Detect any IPython '!' shell commands in code lines
                 has_bang = any(line.lstrip().startswith("!") for line in lines)
+                # Detect %pip magic commands
+                has_pip_magic = any(line.lstrip().startswith("%pip") for line in lines)
                 # Start with "serve run" "serve shutdown" "curl" or "anyscale service" commands
                 to_ignore_cmd = (
                     "serve run",
@@ -33,6 +35,9 @@ def convert_notebook(
                 has_ignored_start = any(
                     line.lstrip().startswith(to_ignore_cmd) for line in lines
                 )
+                # Skip %pip cells entirely
+                if has_pip_magic:
+                    continue
                 if has_bang or has_ignored_start:
                     if ignore_cmds:
                         continue
