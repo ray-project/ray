@@ -141,7 +141,7 @@ Vision-language models
 
 To process images with VLMs, enable the image preparation stage:
 
-.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
