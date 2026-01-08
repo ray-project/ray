@@ -1229,14 +1229,13 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
 async def test_reporter_dashboard_and_runtime_env_agent(
     ray_start_with_dashboard, tmp_path
 ):
+    node = ray._private.worker.global_worker.node
     dashboard_agent = MagicMock()
-    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.gcs_address = build_address(node.node_ip_address, 6379)
     dashboard_agent.session_dir = str(tmp_path)
     dashboard_agent.node_id = ray.NodeID.from_random().hex()
-    dashboard_agent.ip = "127.0.0.1"
-    dashboard_agent.node_manager_port = (
-        ray._private.worker.global_worker.node.node_manager_port
-    )
+    dashboard_agent.ip = node.node_ip_address
+    dashboard_agent.node_manager_port = node.node_manager_port
     agent = ReporterAgent(dashboard_agent)
     agent_pids = await agent._async_get_agent_pids_from_raylet()
     assert len(agent_pids) == 2
