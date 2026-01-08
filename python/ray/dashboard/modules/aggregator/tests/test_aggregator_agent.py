@@ -513,7 +513,7 @@ def test_aggregator_agent_profile_events_not_exposed(
         {
             "env_vars": generate_event_export_env_vars(
                 additional_env_vars={
-                    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "ALL",
+                    "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "ALL",
                 }
             )
         },
@@ -990,7 +990,7 @@ EVENT_TYPES_TO_TEST = [
     ("preserve_proto_field_name", "ray_start_cluster_head_with_env_vars"),
     build_export_env_vars_param_list(
         additional_env_vars={
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT",
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT",
         }
     ),
     indirect=["ray_start_cluster_head_with_env_vars"],
