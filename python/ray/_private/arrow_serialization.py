@@ -343,7 +343,9 @@ def _is_binary_view(type_: "pyarrow.DataType") -> bool:
     """Whether the provided Array type is a variable-sized binary view type."""
     import pyarrow as pa
 
-    return pa.types.is_string_view(type_) or pa.types.is_binary_view(type_)
+    return (hasattr(pa.types, "is_string_view") and pa.types.is_string_view(type_)) or (
+        hasattr(pa.types, "is_binary_view") and pa.types.is_binary_view(type_)
+    )
 
 
 def _null_array_to_array_payload(a: "pyarrow.NullArray") -> "PicklableArrayPayload":
@@ -489,6 +491,7 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
         )
 
     # Otherwise, compact the array
+    assert hasattr(pa.types, "is_string_view")
     if pa.types.is_string_view(a.type):
         compacted = pc.cast(a, pa.large_string())
         compacted_view = pc.cast(compacted, pa.string_view())
