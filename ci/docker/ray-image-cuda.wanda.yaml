@@ -1,0 +1,19 @@
+# Ray CUDA Image
+# Installs ray wheel into the CUDA base image
+#
+# This produces the final rayproject/ray image for GPU deployments.
+#
+name: "ray-py$PYTHON_VERSION-cu$CUDA_VERSION$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"  # CUDA base image
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                 # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - CUDA_VERSION
+  - ARCH_SUFFIX
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX
+  - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX

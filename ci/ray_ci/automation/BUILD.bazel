@@ -305,3 +305,29 @@ py_binary(
         ci_require("click"),
     ],
 )
+
+py_binary(
+    name = "push_ray_image",
+    srcs = ["push_ray_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_push_ray_image",
+    size = "small",
+    srcs = ["test_push_ray_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":push_ray_image",
+        ci_require("pytest"),
+    ],
+)
