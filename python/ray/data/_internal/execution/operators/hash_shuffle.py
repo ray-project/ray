@@ -1350,6 +1350,7 @@ class AggregatorHealthInfo:
 class AggregatorPool:
     def __init__(
         self,
+        num_input_seqs: int,
         num_partitions: int,
         num_aggregators: int,
         aggregation_factory: ShuffleAggregationFactory,
@@ -1362,6 +1363,7 @@ class AggregatorPool:
         ), f"Number of partitions has to be >= 1 (got {num_partitions})"
 
         self._target_max_block_size = target_max_block_size
+        self._num_input_seqs = num_input_seqs
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
         self._aggregator_partition_map: Dict[
@@ -1405,6 +1407,7 @@ class AggregatorPool:
                 **self._aggregator_ray_remote_args
             ).remote(
                 aggregator_id,
+                self._num_input_seqs,
                 target_partition_ids,
                 self._aggregation_factory_ref,
                 self._target_max_block_size,
@@ -1631,13 +1634,13 @@ class HashShuffleAggregator:
     def __init__(
         self,
         aggregator_id: int,
+        num_input_seqs: int,
         target_partition_ids: List[int],
         agg_factory: ShuffleAggregationFactory,
         target_max_block_size: Optional[int],
         min_max_shards_compaction_thresholds: Optional[Tuple[int, int]] = None,
     ):
         self._aggregator_id: int = aggregator_id
-        self._target_partition_ids: List[int] = target_partition_ids
         self._target_max_block_size: int = target_max_block_size
 
         self._min_num_blocks_compaction_threshold = (
@@ -1660,7 +1663,9 @@ class HashShuffleAggregator:
 
         # Per-sequence mapping of partition-id to `PartitionState` with individual
         # locks for thread-safe block accumulation
-        self._input_seq_partition_shards: Dict[int, Dict[int, PartitionBucket]] = {}
+        self._input_seq_partition_buckets: Dict[int, Dict[int, PartitionBucket]] = (
+            self._allocate_partition_buckets(num_input_seqs, target_partition_ids)
+        )
         self._partitions_lock = threading.Lock()  # For lazy state creation
 
         self._bg_thread = threading.Thread(
@@ -1669,27 +1674,6 @@ class HashShuffleAggregator:
             daemon=True,
         )
         self._bg_thread.start()
-
-    def _get_or_create_partition_bucket(
-        self, seq_id: int, partition_id: int
-    ) -> PartitionBucket:
-        """Gets or creates partition state for (seq_id, partition_id)."""
-
-        if (
-            seq_id not in self._input_seq_partition_shards
-            or partition_id not in self._input_seq_partition_shards[seq_id]
-        ):
-            with self._partitions_lock:
-                # Double-check after acquiring lock
-                if seq_id not in self._input_seq_partition_shards:
-                    self._input_seq_partition_shards[seq_id] = {}
-
-                if partition_id not in self._input_seq_partition_shards[seq_id]:
-                    self._input_seq_partition_shards[seq_id][
-                        partition_id
-                    ] = PartitionBucket.create()
-
-        return self._input_seq_partition_shards[seq_id][partition_id]
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         """Accepts a partition shard for accumulation.
@@ -1749,7 +1733,7 @@ class HashShuffleAggregator:
         partition_shards_map: Dict[int, List[Block]] = {}
 
         # Find all sequences that have data for this partition
-        for seq_id, partition_map in list(self._input_seq_partition_shards.items()):
+        for seq_id, partition_map in list(self._input_seq_partition_buckets.items()):
             if partition_id in partition_map:
                 partition_shards_map[seq_id] = partition_map[partition_id].drain_queue()
 
@@ -1780,7 +1764,7 @@ class HashShuffleAggregator:
 
             result = defaultdict(defaultdict)
 
-            for seq_id, partition_map in list(self._input_seq_partition_shards.items()):
+            for seq_id, partition_map in list(self._input_seq_partition_buckets.items()):
                 for partition_id, partition in list(partition_map.items()):
                     result[f"seq_{seq_id}"][f"partition_{partition_id}"] = {
                         # NOTE: qsize() is approximate but sufficient for debug logging
@@ -1793,6 +1777,19 @@ class HashShuffleAggregator:
             logger.debug(
                 f"Hash shuffle aggregator id={self._aggregator_id}, " f"state: {result}"
             )
+
+    @staticmethod
+    def _allocate_partition_buckets(
+        num_input_seqs: int,
+        target_partition_ids: List[int],
+    ):
+        partition_buckets = defaultdict(defaultdict)
+
+        for seq_id in range(num_input_seqs):
+            for part_id in target_partition_ids:
+                partition_buckets[seq_id][part_id] = PartitionBucket.create()
+
+        return partition_buckets
 
 
 def _shape_blocks(
