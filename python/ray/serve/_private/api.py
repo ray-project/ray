@@ -175,7 +175,7 @@ def serve_start(
 
             - host(str, None): Host for HTTP servers to listen on. Defaults to
               localhost. To expose Serve publicly, you probably want to set
-              this to the node IP address.
+              this to "0.0.0.0" for IPv4 or "::" for IPv6.
             - port(int): Port for HTTP server. Defaults to 8000.
             - root_path(str): Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed

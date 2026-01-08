@@ -5,8 +5,6 @@ import logging
 import os
 import sys
 
-from ray._common.network_utils import get_localhost_ip
-
 logger = logging.getLogger(__name__)
 
 
@@ -175,7 +173,6 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 # Timeout waiting for the dashboard to come alive during node startup.
 RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
 
-DEFAULT_DASHBOARD_IP = get_localhost_ip()
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
