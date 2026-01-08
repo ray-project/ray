@@ -161,3 +161,7 @@ examples:
       - computer vision
     link: tutorials/video-analysis/README
     related_technology: ml applications
+  - title: Integrate with MLflow Model Registry
+    skill_level: intermediate
+    link: mlflow-serving-intig
+    related_technology: integrations

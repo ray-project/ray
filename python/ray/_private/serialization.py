@@ -131,7 +131,7 @@ def _gpu_object_ref_deserializer(
         binary, call_site, owner_address, object_status, tensor_transport
     )
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_metadata(obj_ref, gpu_object_meta)
+    gpu_object_manager.set_gpu_object_metadata(obj_ref.hex(), gpu_object_meta)
 
     return obj_ref
 
@@ -229,7 +229,13 @@ class SerializationContext:
                 gpu_object_manager = (
                     ray._private.worker.global_worker.gpu_object_manager
                 )
-                gpu_object_meta = gpu_object_manager._get_gpu_object_metadata(obj)
+                gpu_object_meta = gpu_object_manager.get_gpu_object_metadata(obj.hex())
+                if gpu_object_meta.tensor_transport_meta is None:
+                    raise NotImplementedError(
+                        f"Tensor transport metadata is not available for object id: {obj.hex()} at the time of borrowing. "
+                        "This is likely because the object you're trying to borrow an object that was not created on the "
+                        "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
+                    )
                 return _gpu_object_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
@@ -709,7 +715,9 @@ class SerializationContext:
 
         return serialized_val, tensors
 
-    def store_gpu_objects(self, obj_id: str, tensors: List["torch.Tensor"]):
+    def store_gpu_objects(
+        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+    ) -> bytes:
         """
         Store GPU objects in the GPU object store.
 
@@ -717,6 +725,10 @@ class SerializationContext:
             obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
                 will be stored in the GPU object store with the key `obj_id`.
             tensors: The tensors to store in the GPU object store.
+            tensor_transport: The transport with which the RDT object will be transferred.
+
+        Returns:
+            The serialized tensor transport metadata
         """
         assert (
             obj_id is not None
@@ -726,7 +738,10 @@ class SerializationContext:
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.add_object_primary(obj_id, tensors)
+        tensor_transport_meta = gpu_object_manager.gpu_object_store.add_object_primary(
+            obj_id, tensors, tensor_transport
+        )
+        return pickle.dumps(tensor_transport_meta)
 
     def serialize(
         self, value: Any
