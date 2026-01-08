@@ -364,10 +364,7 @@ def _is_binary_view(type_: "pyarrow.DataType") -> bool:
     """Whether the provided Array type is a variable-sized binary view type."""
     import pyarrow as pa
 
-    return (
-        pa.types.is_string_view(type_)
-        or pa.types.is_binary_view(type_)
-    )
+    return pa.types.is_string_view(type_) or pa.types.is_binary_view(type_)
 
 
 def _null_array_to_array_payload(a: "pyarrow.NullArray") -> "PicklableArrayPayload":
@@ -457,7 +454,7 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
     # Buffer scheme: [bitmap, views, data0, data1, ..., dataN]
     #
     # NB: In the C API there is a trailing buffer containing buffer lengths as 64-bit integers. This
-    # is not exposed in the Python interface (the buffer lengths are accessible, for example, via:
+    # is not exposed in the Python interface. The buffer lengths are accessible, for example, via:
     #
     #     len(a.buffers()[1])
     #
@@ -475,17 +472,15 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
     # Views are defined in the spec as 16-bytes: https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
     view_buf = _copy_normal_buffer_if_needed(buffers[1], 16, a.offset, len(a))
 
-    # list[tuple[string_length, prefix, buffer_index, buffer_offset]]
-    views = [
-        struct.unpack("<iiii", view_buf[(index * 16):(index + 1)*16])
-        for index in range(len(a))
-    ]
-
     bytes_allocated = sum(len(b) for b in a.buffers()[2:])
 
     upper_bound_of_bytes_used = 0
     seen_view_slices: set[tuple[int, int, int]] = set()
-    for string_length, _, buffer_index, buffer_offset in views:
+    for index in range(len(a)):
+        view: tuple[int, int, int, int] = struct.unpack(
+            "<iiii", view_buf[(index * 16) : (index + 1) * 16]
+        )
+        string_length, _, buffer_index, buffer_offset = view
         if string_length <= 12:
             continue
 
