@@ -38,6 +38,8 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+from ray._common.network_utils import get_localhost_ip
+
 if TYPE_CHECKING:
     import torch
 
@@ -90,7 +92,13 @@ from ray._raylet import (
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
-from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.exceptions import (
+    ActorHandleNotFoundError,
+    ObjectStoreFullError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+)
 from ray.experimental import tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
@@ -1420,7 +1428,7 @@ def init(
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
     include_dashboard: Optional[bool] = None,
-    dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
+    dashboard_host: str = get_localhost_ip(),
     dashboard_port: Optional[int] = None,
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
@@ -1513,10 +1521,9 @@ def init(
             Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
             the relevant dependencies are present.
-        dashboard_host: The host to bind the dashboard server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
-            external machines.
+        dashboard_host: The host to bind the dashboard server to. Use localhost
+            (127.0.0.1/::1) for local access, the node IP for remote access, or
+            0.0.0.0/:: for all interfaces (not recommended). Defaults to localhost.
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
@@ -3289,7 +3296,20 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
             "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
             "Got: {}.".format(type(actor))
         )
-    worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+
+    try:
+        worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+    except ActorHandleNotFoundError as e:
+        actor_job_id = actor._ray_actor_id.job_id
+        current_job_id = worker.current_job_id
+        raise ActorHandleNotFoundError(
+            f"ActorHandle objects are not valid across Ray sessions. "
+            f"The actor handle was created in job {actor_job_id.hex()}, "
+            f"but the current job is {current_job_id.hex()}. "
+            f"This typically happens when you try to use an actor handle "
+            f"from a previous session after calling ray.shutdown() and ray.init(). "
+            f"Please create a new actor handle in the current session."
+        ) from e
 
 
 @PublicAPI
