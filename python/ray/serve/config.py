@@ -1,7 +1,7 @@
 import json
 import logging
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -18,7 +18,6 @@ from ray._common.pydantic_compat import (
     validator,
 )
 from ray._common.utils import import_attr, import_module_and_attr
-from ray.util.placement_group import PlacementGroup
 
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
@@ -36,6 +35,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

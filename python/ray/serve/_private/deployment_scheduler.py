@@ -16,13 +16,12 @@ from ray.serve._private.common import (
     ReplicaID,
 )
 from ray.serve._private.config import ReplicaConfig
-from ray.serve.config import StaticPlacementConfig
-from ray.util.placement_group import PlacementGroup
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import StaticPlacementConfig
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
@@ -586,8 +585,8 @@ class DeploymentScheduler(ABC):
                 bundle_indices = static_config.get_bundle_indices_for_replica(
                     replica_rank
                 )
-                primary_bundle_index = static_config.get_primary_bundle_index_for_replica(
-                    replica_rank
+                primary_bundle_index = (
+                    static_config.get_primary_bundle_index_for_replica(replica_rank)
                 )
             except KeyError as e:
                 logger.error(

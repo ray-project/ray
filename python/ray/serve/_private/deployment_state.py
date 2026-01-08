@@ -66,6 +66,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import StaticPlacementConfig
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -714,14 +715,13 @@ class ActorReplicaWrapper:
             static_placement_config: The static placement configuration.
             replica_rank: The replica's rank (used to look up bundle indices).
         """
-        from ray.serve.config import StaticPlacementConfig
 
         if static_placement_config is None:
             return
 
         try:
-            self._bundle_indices = static_placement_config.get_bundle_indices_for_replica(
-                replica_rank
+            self._bundle_indices = (
+                static_placement_config.get_bundle_indices_for_replica(replica_rank)
             )
             self._placement_group = static_placement_config.placement_group
             logger.info(
