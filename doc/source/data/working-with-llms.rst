@@ -3,7 +3,7 @@
 Working with LLMs
 =================
 
-The :ref:`ray.data.llm <llm-ref>` module integrates with LLM inference engines (vLLM, SGLang) to enable scalable batch inference on Ray Data datasets.
+The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray Data datasets. It supports two modes: running LLM inference engines directly (vLLM, SGLang) or querying hosted endpoints through :class:`~ray.data.llm.ServeDeploymentProcessorConfig`.
 
 **Getting started:**
 
@@ -17,6 +17,7 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with LLM inference engines (
 * :ref:`Embeddings <embedding_models>` - Generate text embeddings
 * :ref:`Vision-language models <vision_language_model>` - Process images with VLMs
 * :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
+* :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
 
 **Operations:**
 
@@ -311,6 +312,8 @@ Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for
     :language: python
     :start-after: __runai_config_example_start__
     :end-before: __runai_config_example_end__
+
+.. _serve_deployments:
 
 Serve deployments
 ~~~~~~~~~~~~~~~~~
