@@ -1,3 +1,11 @@
+"""
+Manual Intel GPU validation tests, not executed in automated runs.
+
+These tests are basic acceptance tests to validate Intel GPU support in Ray. They
+require a suitable Intel GPU environment with dpctl installed. They are intended to
+serve as an approved method to verify Intel GPU-based Ray deployments.
+"""
+
 import os
 import re
 from typing import Any, Dict, List
