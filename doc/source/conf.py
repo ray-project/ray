@@ -240,7 +240,7 @@ exclude_patterns = [
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
     "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
     "serve/tutorials/asynchronous-inference/content/README.md",
-    "serve/tutorials/video-analysis/**/*.ipynb",
+    "serve/tutorials/video-analysis/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

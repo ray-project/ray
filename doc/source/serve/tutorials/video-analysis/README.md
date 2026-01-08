@@ -157,7 +157,8 @@ from jobs.generate_text_embeddings import generate_embeddings_task
 S3_EMBEDDINGS_PREFIX = "anyscale-example/embeddings/"
 
 # Run the Ray task (uses TAGS and DESCRIPTIONS from textbanks module)
-ray.init(ignore_reinit_error=True)
+# Note: runtime_env ships local modules to worker nodes (job working_dir only applies to driver)
+ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 result = ray.get(generate_embeddings_task.remote(S3_BUCKET, S3_EMBEDDINGS_PREFIX))
 
 print(f"\nText embeddings ready:")
