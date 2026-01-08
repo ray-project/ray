@@ -1067,8 +1067,11 @@ int main(int argc, char *argv[]) {
     // -1 means metrics agent is not available (minimal install).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
     if (actual_metrics_agent_port > 0) {
-      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          ray::GetLocalhostIP(), actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client =
+          std::make_unique<ray::rpc::MetricsAgentClientImpl>(ray::GetLocalhostIP(),
+                                                             actual_metrics_agent_port,
+                                                             main_service,
+                                                             *client_call_manager);
       metrics_agent_client->WaitForServerReady(
           [actual_metrics_agent_port](const ray::Status &server_status) {
             if (server_status.ok()) {
