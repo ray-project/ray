@@ -108,8 +108,8 @@ ds_large_filtered = ds_large.filter(is_valid_image)
 processed_large = processor_large(ds_large_filtered)
 processed_large = processed_large.materialize()
 
-print(f"\nProcessed {processor_large.count()} rows successfully.")
+print(f"\nProcessed {processed_large.count()} rows successfully.")
 # Display the first 3 entries to verify the output.
-sampled = processor_large.take(3)
+sampled = processed_large.take(3)
 print("\n==================GENERATED OUTPUT===============\n")
 pprint(sampled)

@@ -17,7 +17,7 @@ ds = ray.data.read_csv(path)
 
 # Limit the dataset. If DATASET_LIMIT > dataset size, the entire dataset will be processed.
 print(f"Limiting dataset to {DATASET_LIMIT} images for initial processing.")
-ds_large = ds.limit(DATASET_LIMIT)
+ds_small = ds.limit(DATASET_LIMIT)
 
 # Repartition the dataset to enable parallelism across multiple workers (GPUs).
 # By default, streaming datasets might not be optimally partitioned. Repartitioning
