@@ -253,6 +253,9 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
         until runtime, so we fall back to pandas here if list columns are found.
         """
+        # Validate that columns don't contain null values (consistent with pandas path)
+        _validate_arrow(table, *self.columns)
+
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
             col_type = table.schema.field(col_name).type
@@ -275,8 +278,9 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
     ) -> pa.Array:
         """Encode column using PyArrow's vectorized pc.index_in.
 
-        Null values and unseen categories are encoded as null in the output,
-        matching the pandas behavior where they become NaN.
+        Unseen categories are encoded as null in the output, which becomes NaN
+        when converted to pandas. Null values should be validated before calling
+        this method via _validate_arrow.
         """
         keys_array, values_array = self._get_arrow_arrays(input_col)
 
@@ -491,6 +495,9 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
         until runtime, so we fall back to pandas here if list columns are found.
         """
+        # Validate that columns don't contain null values (consistent with pandas path)
+        _validate_arrow(table, *self.columns)
+
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
             col_type = table.schema.field(col_name).type
@@ -513,8 +520,9 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
     ) -> pa.FixedSizeListArray:
         """Encode a column to one-hot vectors using cached Arrow arrays.
 
-        Null values and unseen categories are encoded as all-zeros vectors,
-        matching the pandas behavior.
+        Unseen categories are encoded as all-zeros vectors, matching the pandas
+        behavior. Null values should be validated before calling this method
+        via _validate_arrow.
         """
         keys_array, _ = self._get_arrow_arrays(input_col)
         num_categories = len(keys_array)
@@ -1214,6 +1222,26 @@ def unique_post_fn(
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:
     null_columns = [column for column in columns if df[column].isnull().values.any()]
+    if null_columns:
+        raise ValueError(
+            f"Unable to transform columns {null_columns} because they contain "
+            f"null values. Consider imputing missing values first."
+        )
+
+
+def _validate_arrow(table: pa.Table, *columns: str) -> None:
+    """Validate that specified columns in an Arrow table do not contain null values.
+
+    Args:
+        table: The Arrow table to validate.
+        *columns: Column names to check for null values.
+
+    Raises:
+        ValueError: If any of the specified columns contain null values.
+    """
+    null_columns = [
+        column for column in columns if pc.any(pc.is_null(table.column(column))).as_py()
+    ]
     if null_columns:
         raise ValueError(
             f"Unable to transform columns {null_columns} because they contain "
