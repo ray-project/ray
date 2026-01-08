@@ -954,7 +954,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         return filtered_nodes
 
-    def _find_best_available_node(
+    def _find_best_fit_node_for_pack(
         self,
         required_resources: Resources,
         available_resources_per_node: Dict[str, Resources],
