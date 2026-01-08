@@ -74,7 +74,7 @@ def upload_working_dir_if_needed(
     default_excludes = ray_constants.get_runtime_env_default_excludes()
     user_excludes = runtime_env.get("excludes") or []
     excludes = default_excludes + list(user_excludes)
-    # TODO(ricardo): 2025-01-07 Remove these warnings in a few releases. Added in
+    # TODO(ricardo): 2026-01-07 Remove these warnings in a few releases. Added in
     # case users rely on these directories being uploaded with their working_dir
     # since this change would be difficult to debug.
     logger = logger or default_logger
