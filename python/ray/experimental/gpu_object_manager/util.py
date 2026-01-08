@@ -70,7 +70,8 @@ def register_tensor_transport(
         transport_manager_class, devices
     )
 
-    has_custom_transports = True
+    if transport_name not in DEFAULT_TRANSPORTS:
+        has_custom_transports = True
 
 
 DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL"]

@@ -354,14 +354,17 @@ to use the transport with, and actors only have access to transports registered 
 
 
 Note that there are currently some limitations with custom transports:
-- Actor restarts aren't supported. Your actor will not have access to the custom transport after the restart.
-- You must create your actor on the same process you registered the custom tensor transport on. For example, you can't
-  use your custom transport with an actor if you registered the custom transport on the driver and created the actor
-  inside a task.
+
+- Actor restarts aren't supported. Your actor doesn't have access to the custom
+  transport after the restart.
+- You must create your actor on the same process you registered the custom tensor
+  transport on. For example, you can't use your custom transport with an actor if
+  you registered the custom transport on the driver and created the actor inside
+  a task.
 - Actors only have access to custom transports registered before their creation.
-- If you have an out-of-order actor and the process where you submit the actor task is different from
-  where you created the actor, Ray can't guarantee it has registered your custom transport on the actor
-  at task submission time.
+- If you have an out-of-order actor and the process where you submit the actor
+  task is different from where you created the actor, Ray can't guarantee it has
+  registered your custom transport on the actor at task submission time.
 
 
 Advanced: RDT Internals
