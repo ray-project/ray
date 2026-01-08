@@ -107,11 +107,14 @@ class WorkerGroupStateBuilder:
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
     """Shuts down workers after allowing a maximum of patience_s seconds for shutdown hooks to run."""
+    if patience_s < 0:
+        raise ValueError("Invalid patience_s: must be non-negative")
+
     done_refs = [w.actor.shutdown.remote() for w in workers]
 
     logger.debug(f"Shutting down {len(workers)} workers.")
 
-    ray.wait(done_refs, num_returns=len(done_refs), timeout=max(0, patience_s))
+    ray.wait(done_refs, num_returns=len(done_refs), timeout=patience_s)
 
     for worker in workers:
         ray.kill(worker.actor)
