@@ -34,7 +34,6 @@ def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambd
                 len_lookback_buffer=0,
             )
         )
-    episode_lens = [len(e) for e in episodes]
     # Call AddOneTsToEpisodesAndTruncate
     pipe = LearnerConnectorPipeline(
         connectors=[
@@ -50,6 +49,7 @@ def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambd
         explore=False,
         shared_data={},
     )
+    episode_lens = [len(e) for e in episodes]
     # Add the last episode's terminated/truncated flags to `terminateds` and `truncateds`
     vfps = [v for vfpl in vfps for v in vfpl]
     # Compute the value targets
