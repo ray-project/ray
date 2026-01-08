@@ -146,10 +146,11 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 len_ + 1,
                 sa_episode,
             )
-            terminateds = (
-                [False for _ in range(len_)] # Avoid ignoring last-step rewards when lambda=0
-                + [bool(sa_episode.is_terminated)] # Use computed value for truncated eps.
-            ) # extra timestep
+            terminateds = [
+                False for _ in range(len_)
+            ] + [  # Avoid ignoring last-step rewards when lambda=0
+                bool(sa_episode.is_terminated)
+            ]  # Use computed value for truncated eps.  # extra timestep
             self.add_n_batch_items(
                 batch,
                 Columns.TERMINATEDS,
