@@ -782,7 +782,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if primary_bundles:
             # PG: Use PG bundle_label_selector
             if scheduling_request.placement_group_bundle_label_selector:
-                pg_strategy = scheduling_request.placement_group_strategy or "PACK"
+                pg_strategy = scheduling_request.placement_group_strategy or None
                 if pg_strategy == "STRICT_PACK":
                     # All bundle_label_selectors must be satisfied on same node.
                     primary_labels = (
