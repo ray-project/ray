@@ -122,7 +122,6 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized(/*quick_exit*/ false);
   core_worker_process->RunWorkerTaskExecutionLoop();
-  core_worker_process.reset();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
@@ -706,6 +705,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_);
+
+  core_worker->InitializeShutdownExecutor();
+
   return core_worker;
 }
 
@@ -976,7 +978,9 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   auto core_worker = GetCoreWorker();
   RAY_CHECK(core_worker != nullptr);
   core_worker->RunTaskExecutionLoop();
-  RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
+  RAY_LOG(INFO) << "Task execution loop terminated. Waiting for shutdown to complete...";
+  core_worker->WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get().reset();
@@ -991,6 +995,9 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
+  RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
+  global_worker->WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get().reset();
