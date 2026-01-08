@@ -907,6 +907,50 @@ def test_one_hot_encoder_cache_invalidation_on_refit():
     _assert_one_hot_equal(result_df2["col"], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
 
+def test_one_hot_encoder_multi_chunk_column():
+    """Test OneHotEncoder with multi-chunk ChunkedArray input.
+
+    This test ensures that _encode_column_one_hot correctly handles ChunkedArrays
+    with multiple chunks, which can occur with partitioned or concatenated data.
+    The implementation uses zero_copy_only=False when calling to_numpy() for
+    compatibility across PyArrow versions.
+    """
+    encoder = OneHotEncoder(["col"])
+    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1, "c": 2}}
+    encoder._fitted = True
+
+    # Create a table with a multi-chunk column (simulates partitioned/concatenated data)
+    chunk1 = pa.array(["a", "b", "c"])
+    chunk2 = pa.array(["b", "a", "c"])
+    chunk3 = pa.array(["c", "c", "a"])
+    multi_chunk_column = pa.chunked_array([chunk1, chunk2, chunk3])
+
+    # Verify we have multiple chunks in the input
+    assert multi_chunk_column.num_chunks == 3
+
+    # Create table with the multi-chunk column
+    table = pa.table({"col": multi_chunk_column})
+
+    # Transform using Arrow path - this exercises _encode_column_one_hot
+    result_table = encoder._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Verify correct one-hot encoding
+    # a=[1,0,0], b=[0,1,0], c=[0,0,1]
+    expected = [
+        [1, 0, 0],  # a
+        [0, 1, 0],  # b
+        [0, 0, 1],  # c
+        [0, 1, 0],  # b
+        [1, 0, 0],  # a
+        [0, 0, 1],  # c
+        [0, 0, 1],  # c
+        [0, 0, 1],  # c
+        [1, 0, 0],  # a
+    ]
+    _assert_one_hot_equal(result_df["col"], expected)
+
+
 @pytest.mark.parametrize("batch_format", ["pandas", "arrow"])
 def test_one_hot_encoder_transform_scalars(batch_format):
     """Test OneHotEncoder transformation for scalar values with both pandas and arrow."""
