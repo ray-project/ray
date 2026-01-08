@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 import math
+import queue
 import random
 import threading
 import time
@@ -80,10 +81,6 @@ logger = logging.getLogger(__name__)
 
 BlockTransformer = Callable[[Block], Block]
 
-StatefulShuffleAggregationFactory = Callable[
-    [int, List[int]], "StatefulShuffleAggregation"
-]
-
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY", 8
@@ -94,104 +91,134 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
 )
 
 
-class StatefulShuffleAggregation(abc.ABC):
-    """Interface for a stateful aggregation to be used by hash-based shuffling
-    operators (inheriting from `HashShufflingOperatorBase`) and subsequent
-    aggregation of the dataset.
+class ShuffleAggregation:
+    """Stateless implementation of shuffle "aggregation" operation, which for ex,
+    could be:
 
-    Any stateful aggregation has to adhere to the following protocol:
+        - Concatenation: concatenates received shuffled partitions into a
+        single block (for ``repartition`` for ex).
+        - Join: joins corresponding shuffled partitions.
+        - Group Aggregation: applies aggregation on grouped data (like ``sum``,
+        ``count``, ``unique``, etc).
 
-        - Individual input sequence(s) will be (hash-)partitioned into N
-        partitions each.
+    Each implementation is meant to be *stateless*, simply implementing
+    corresponding transformation on provided partition-shards. Accumulation and
+    state management is handled by the ``HashShuffleAggregator`` actor,
+    which invokes these methods as pure transformations.
 
-        - Accepting individual partition shards: for any given partition (identified
-        by partition-id) of the input sequence (identified by input-id) aggregation
-        will be receiving corresponding partition shards as the input sequence is
-        being shuffled.
+    Each implementation must implement following methods:
 
-        - Upon completion of the shuffling (ie once whole sequence is shuffled)
-        aggregation will receive a call to finalize the aggregation at which point
-        it's expected to produce and return resulting block.
+        - ``compact``: "compacts" an accumulated, *partial* list of partition shards.
+        Used extensively by reducing aggregating transformations like (``sum``,
+        ``count``, etc), to perform periodic aggregations during the shuffle stage
+         itself (for more details check out method's py-doc)
 
-        - After successful finalization aggregation's `clear` method will be invoked
-         to clear any accumulated state to release resources.
+        - ``finalize``: finalizes provided *complete* list of partition's shards
+        (per input sequence).
+
     """
 
-    def __init__(self, aggregator_id: int):
-        self._aggregator_id = aggregator_id
+    @classmethod
+    def is_compacting(cls):
+        """Returns whether this aggregation is capable of compacting partial
+        partition's shards list.
+        """
+        return False
 
-    def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
-        """Accepts corresponding partition shard for the partition identified by
-        - Input sequence id
-        - Partition id
+    def compact(self, partial_partition_shards: List[Block]) -> Block:
+        """Incrementally "compacts" provided partition shards of a *single*
+        partition from a single input blocks sequence.
+
+        This operation is meant to incrementally process provided *partial*
+        list of the partition's shards. This is particularly beneficial for
+        aggregating transformations such as ``sum``, ``count``, ``unique``, etc.,
+        which can effectively continuously incrementally aggregate partial partition
+        while shuffle is ongoing, therefore reducing amount of computation needed
+        during finalization.
+
+        This operation can be invoked multiple times during the shuffle stage.
+
+        For some transformation no meaningful compaction is possible, for which
+        is perfectly fine to return provided partition shards as they are.
+
+        Args:
+            partial_partition_shards: partial (incomplete) list of
+            partition shards
+
+        Returns:
+            Potentially "compacted" list of partition shards (if it's advantageous
+            to do so)
         """
         raise NotImplementedError()
 
-    def finalize(self, partition_id: int) -> Iterator[Block]:
-        """Finalizes aggregation of partitions (identified by partition-id)
-        from all input sequences returning resulting block.
+    def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
+        """Processes final, complete set of partition shards producing
+        output block of this aggregation.
+
+        Called once after all shards for a partition have been received.
+
+        Args:
+            partition_shards_map: map input sequence id into final, complete
+                list of corresponding partition's shards.
+
+                For single input-sequence operations, this will be tuple of 1 list.
+                For multi input-sequence operations (e.g., joins), this will
+                contain multiple lists corresponding to the same partition from
+                respective input-sequences (tuple[0] for first seq, etc).
+
+        Returns:
+            Iterator of incrementally yielded output blocks for this partition.
         """
-
-        raise NotImplementedError()
-
-    def clear(self, partition_id: int):
-        """Clears out any accumulated state for provided partition-id.
-
-        NOTE: This method is invoked after aggregation is finalized for the given
-              partition."""
         raise NotImplementedError()
 
 
-class Concat(StatefulShuffleAggregation):
-    """Trivial aggregation recombining dataset's individual partition
-    from the partition shards provided during shuffling stage. Returns
-    single combined `Block` (Pyarrow `Table`)
+# Factory type for creating stateless aggregation components
+ShuffleAggregationFactory = Callable[[], ShuffleAggregation]
+
+
+class ConcatAggregation(ShuffleAggregation):
+    """Simple concatenation aggregation for hash shuffle.
+
+    Concatenates all partition shards into a single block, optionally sorting
+    the result by key columns.
     """
 
     def __init__(
         self,
-        aggregator_id: int,
-        target_partition_ids: List[int],
         *,
-        should_sort: bool,
-        key_columns: Optional[Tuple[str]] = None,
+        should_sort: bool = False,
+        key_columns: Optional[Tuple[str, ...]] = None,
     ):
-        super().__init__(aggregator_id)
-
-        assert (
-            not should_sort or key_columns
-        ), f"Key columns have to be specified when `should_sort=True` (got {list(key_columns)})"
+        if should_sort and not key_columns:
+            raise ValueError("Key columns must be specified when should_sort=True")
 
         self._should_sort = should_sort
         self._key_columns = key_columns
 
-        # Block builders for individual partitions (identified by partition index)
-        self._partition_block_builders: Dict[int, ArrowBlockBuilder] = {
-            partition_id: ArrowBlockBuilder() for partition_id in target_partition_ids
-        }
+    def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
+        """Concatenates blocks and optionally sorts by key columns."""
 
-    def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
-        assert input_seq_id == 0, (
-            f"Concat is unary stateful aggregation, got sequence "
-            f"index of {input_seq_id}"
-        )
-        assert partition_id in self._partition_block_builders, (
-            f"Received shard from unexpected partition '{partition_id}' "
-            f"(expecting {self._partition_block_builders.keys()})"
-        )
+        assert (
+            len(partition_shards_map) == 1
+        ), f"Single input-sequence is expected (got {len(partition_shards_map)})"
 
-        self._partition_block_builders[partition_id].add_block(partition_shard)
+        blocks = partition_shards_map[0]
+        if not blocks:
+            return
 
-    def finalize(self, partition_id: int) -> Iterator[Block]:
-        block = self._partition_block_builders[partition_id].build()
+        result = _combine(blocks)
 
-        if self._should_sort and len(block) > 0:
-            block = block.sort_by([(k, "ascending") for k in self._key_columns])
+        if self._should_sort and result.num_rows > 0:
+            result = result.sort_by([(k, "ascending") for k in self._key_columns])
 
-        yield block
+        yield result
 
-    def clear(self, partition_id: int):
-        self._partition_block_builders.pop(partition_id)
+
+def _combine(partition_shards: List[Block]) -> Block:
+    builder = ArrowBlockBuilder()
+    for block in partition_shards:
+        builder.add_block(block)
+    return builder.build()
 
 
 @ray.remote
@@ -347,6 +374,37 @@ def _shuffle_block(
 
 
 @dataclass
+class PartitionState:
+    """Per-partition state for thread-safe block accumulation.
+
+    Each partition has its own lock and queue, eliminating cross-partition
+    contention during the accept (submit) path.
+
+    The queue is used for lock-free block accumulation (Queue.put is thread-safe).
+    The lock is only acquired during compaction to ensure at most one compaction
+    runs at a time per partition.
+    """
+
+    lock: threading.Lock
+    queue: queue.Queue  # Queue[Block]
+
+    def drain_queue(self) -> List[Block]:
+        blocks = []
+
+        try:
+            while True:
+                blocks.append(self.queue.get_nowait())
+        except queue.Empty:
+            pass
+
+        return blocks
+
+    @staticmethod
+    def create() -> "PartitionState":
+        return PartitionState(lock=threading.Lock(), queue=queue.Queue())
+
+
+@dataclass
 class _PartitionStats:
     num_rows: int
     byte_size: int
@@ -462,7 +520,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         data_context: DataContext,
         *,
         key_columns: List[Tuple[str]],
-        partition_aggregation_factory: StatefulShuffleAggregationFactory,
+        partition_aggregation_factory: ShuffleAggregationFactory,
         num_partitions: Optional[int] = None,
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
@@ -1191,6 +1249,13 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         should_sort: bool = False,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
+        # Use new stateless ConcatAggregation factory
+        def _create_concat_aggregation() -> ConcatAggregation:
+            return ConcatAggregation(
+                should_sort=should_sort,
+                key_columns=key_columns if key_columns else None,
+            )
+
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"Shuffle(key_columns={key_columns}, num_partitions={num_partitions})"
@@ -1200,14 +1265,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             key_columns=[key_columns],
             num_partitions=num_partitions,
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
-            partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: Concat(
-                    aggregator_id,
-                    target_partition_ids,
-                    should_sort=should_sort,
-                    key_columns=key_columns,
-                )
-            ),
+            partition_aggregation_factory=_create_concat_aggregation,
             shuffle_progress_bar_name="Shuffle",
             # NOTE: In cases like ``groupby`` blocks can't be split as this might violate an invariant that all rows
             #             with the same key are in the same group (block)
@@ -1285,7 +1343,7 @@ class AggregatorPool:
         self,
         num_partitions: int,
         num_aggregators: int,
-        aggregation_factory: StatefulShuffleAggregationFactory,
+        aggregation_factory: ShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
         target_max_block_size: Optional[int],
     ):
@@ -1304,9 +1362,9 @@ class AggregatorPool:
 
         self._aggregators: List[ray.actor.ActorHandle] = []
 
-        self._aggregation_factory_ref: ObjectRef[
-            StatefulShuffleAggregationFactory
-        ] = ray.put(aggregation_factory)
+        self._aggregation_factory_ref: ObjectRef[ShuffleAggregationFactory] = ray.put(
+            aggregation_factory
+        )
 
         self._aggregator_ray_remote_args: Dict[
             str, Any
@@ -1537,52 +1595,192 @@ class AggregatorPool:
     max_task_retries=-1
 )
 class HashShuffleAggregator:
-    """Actor handling of the assigned partitions during hash-shuffle operation
+    """Actor handling of the assigned partitions during hash-shuffle operation.
+
+    This actor uses per-(sequence, partition) locking to eliminate cross-partition
+    contention during the submit (accept) path. Each (sequence, partition) pair has
+    its own lock and block queue.
+
+    The aggregation logic is delegated to a stateless `ShuffleAggregation` component
+    that operates on batches of blocks without maintaining internal state.
+
+    For multi-sequence operations (e.g., joins), blocks from different input sequences
+    are stored separately and passed to finalize() as a dict keyed by sequence ID.
 
     NOTE: This actor might have ``max_concurrency`` > 1 (depending on the number of
-          assigned partitions, and has to be thread-safe!
+          assigned partitions), and is thread-safe via per-(sequence, partition) locks.
     """
+
+    _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
+    _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
+
+    _DEBUG_DUMP_PERIOD_S = 10
 
     def __init__(
         self,
         aggregator_id: int,
         target_partition_ids: List[int],
-        agg_factory: StatefulShuffleAggregationFactory,
+        agg_factory: ShuffleAggregationFactory,
         target_max_block_size: Optional[int],
+        min_max_num_blocks_compaction_thresholds: Optional[Tuple[int, int]] = None,
     ):
-        self._lock = threading.Lock()
-        self._agg: StatefulShuffleAggregation = agg_factory(
-            aggregator_id, target_partition_ids
+        self._aggregator_id: int = aggregator_id
+        self._target_partition_ids: List[int] = target_partition_ids
+        self._target_max_block_size: int = target_max_block_size
+
+        self._min_num_blocks_compaction_threshold = (
+            min_max_num_blocks_compaction_thresholds[0]
+            if min_max_num_blocks_compaction_thresholds is not None
+            else self._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD
         )
-        self._target_max_block_size = target_max_block_size
+        self._max_num_blocks_compaction_threshold = (
+            min_max_num_blocks_compaction_thresholds[1]
+            if min_max_num_blocks_compaction_thresholds is not None
+            else self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD
+        )
+
+        self._current_compaction_thresholds: Dict[int, int] = defaultdict(
+            lambda: self._min_num_blocks_compaction_threshold
+        )
+
+        # Create stateless aggregation component
+        self._aggregation: ShuffleAggregation = agg_factory()
+
+        # Per-sequence mapping of partition-id to `PartitionState` with individual
+        # locks for thread-safe block accumulation
+        self._input_seq_partition_shards: Dict[int, Dict[int, PartitionState]] = {}
+        self._partitions_lock = threading.Lock()  # For lazy state creation
+
+        self._bg_thread = threading.Thread(
+            target=self._debug_dump,
+            name="hash_shuffle_aggregator_debug_dump",
+            daemon=True,
+        )
+        self._bg_thread.start()
+
+    def _get_or_create_partition(
+        self, seq_id: int, partition_id: int
+    ) -> PartitionState:
+        """Gets or creates partition state for (seq_id, partition_id)."""
+
+        if (
+            seq_id not in self._input_seq_partition_shards
+            or partition_id not in self._input_seq_partition_shards[seq_id]
+        ):
+            with self._partitions_lock:
+                # Double-check after acquiring lock
+                if seq_id not in self._input_seq_partition_shards:
+                    self._input_seq_partition_shards[seq_id] = {}
+
+                if partition_id not in self._input_seq_partition_shards[seq_id]:
+                    self._input_seq_partition_shards[seq_id][
+                        partition_id
+                    ] = PartitionState.create()
+
+        return self._input_seq_partition_shards[seq_id][partition_id]
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
-        with self._lock:
-            self._agg.accept(input_seq_id, partition_id, partition_shard)
+        """Accepts a partition shard for accumulation.
+
+        Uses per-(sequence, partition) locking to avoid cross-partition contention.
+        Performs incremental compaction when the block count exceeds threshold.
+        """
+        partition = self._get_or_create_partition(input_seq_id, partition_id)
+
+        # Add partition shard into the queue
+        partition.queue.put(partition_shard)
+        # Check whether queue exceeded compaction threshold
+        if (
+            self._aggregation.is_compacting()
+            and partition.queue.qsize()
+            >= self._current_compaction_thresholds[partition_id]
+        ):
+            # NOTE: We're only taking partition lock during compaction, but not
+            #       accepting into the queue to simply guarantee that no more than
+            #       one compaction is running at any given moment in time
+            with partition.lock:
+                # Check queue size again to avoid running compaction
+                # again after previous just finished
+                if (
+                    partition.queue.qsize()
+                    < self._current_compaction_thresholds[partition_id]
+                ):
+                    return
+
+                blocks_to_compact = partition.drain_queue()
+                compacted = self._aggregation.compact(blocks_to_compact)
+                # Requeue compacted block back into the queue
+                partition.queue.put(compacted)
+
+                # NOTE: We revise compaction thresholds for partition after every
+                #       compaction to amortize the cost of compaction.
+                self._current_compaction_thresholds[partition_id] = min(
+                    self._current_compaction_thresholds[partition_id] * 2,
+                    self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
+                )
 
     def finalize(
         self, partition_id: int
     ) -> Generator[Union[Block, "BlockMetadataWithSchema"], None, None]:
+        """Finalizes aggregation for a partition and yields output blocks.
 
-        with self._lock:
+        NOTE: Finalize is expected to be called
+
+            - Only all `accept` calls are complete
+            - Only once per partition
+
+        And therefore as such doesn't require explicit concurrency control
+        """
+        exec_stats_builder = BlockExecStats.builder()
+
+        # Collect partition shards from all input sequences for this partition
+        partition_shards_map: Dict[int, List[Block]] = {}
+
+        # Find all sequences that have data for this partition
+        for seq_id, partition_map in list(self._input_seq_partition_shards.items()):
+            if partition_id in partition_map:
+                partition_shards_map[seq_id] = partition_map[partition_id].drain_queue()
+
+        # Accumulated partition shard lists could be empty in case of
+        # dataset being empty
+        if partition_shards_map:
+            # Finalization happens outside the lock (doesn't block other partitions)
+            # Convert dict to tuple ordered by sequence ID for finalize interface
+            blocks = self._aggregation.finalize(partition_shards_map)
+        else:
+            blocks = iter([])
+
+        if self._target_max_block_size is not None:
+            blocks = _shape_blocks(blocks, self._target_max_block_size)
+
+        for block in blocks:
+            # Collect execution stats (and reset)
+            exec_stats = exec_stats_builder.build()
             exec_stats_builder = BlockExecStats.builder()
 
-            # Finalize given partition id
-            blocks = self._agg.finalize(partition_id)
+            yield block
+            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
-            if self._target_max_block_size is not None:
-                blocks = _shape_blocks(blocks, self._target_max_block_size)
+    def _debug_dump(self):
+        """Periodically dumps the state of the HashShuffleAggregator for debugging."""
+        while True:
+            time.sleep(self._DEBUG_DUMP_PERIOD_S)
 
-            for block in blocks:
-                # Collect execution stats (and reset)
-                exec_stats = exec_stats_builder.build()
-                exec_stats_builder = BlockExecStats.builder()
+            result = defaultdict(defaultdict)
 
-                yield block
-                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+            for seq_id, partition_map in list(self._input_seq_partition_shards.items()):
+                for partition_id, partition in list(partition_map.items()):
+                    result[f"seq_{seq_id}"][f"partition_{partition_id}"] = {
+                        # NOTE: qsize() is approximate but sufficient for debug logging
+                        "num_blocks": partition.queue.qsize(),
+                        "compaction_threshold": self._current_compaction_thresholds[
+                            partition_id
+                        ],
+                    }
 
-            # Clear any remaining state (to release resources)
-            self._agg.clear(partition_id)
+            logger.debug(
+                f"Hash shuffle aggregator id={self._aggregator_id}, " f"state: {result}"
+            )
 
 
 def _shape_blocks(
