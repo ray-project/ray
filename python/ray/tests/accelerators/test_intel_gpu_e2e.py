@@ -164,6 +164,7 @@ def assert_valid_multi_gpu_binding(
     reason="Environment setup for scale-out, skipping single-node test.",
 )
 def test_gpu_task_binding(ray_gpu_session) -> None:
+    _require_min_gpus(1, "single GPU task binding test")
     ray_gpu_session(num_gpus=1)
 
     task_result = ray.get(gpu_task.remote())
