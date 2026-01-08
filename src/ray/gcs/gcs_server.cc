@@ -516,20 +516,16 @@ void GcsServer::InitGcsActorManager(
   };
 
   RAY_CHECK(gcs_resource_manager_ && cluster_lease_manager_);
-  scheduler = std::make_unique<GcsActorScheduler>(
-      io_context_provider_.GetDefaultIOContext(),
-      gcs_table_storage_->ActorTable(),
-      *gcs_node_manager_,
-      *cluster_lease_manager_,
-      schedule_failure_handler,
-      schedule_success_handler,
-      raylet_client_pool_,
-      worker_client_pool_,
-      metrics_.scheduler_placement_time_ms_histogram,
-      /*normal_task_resources_changed_callback=*/
-      [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-        gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
-      });
+  scheduler =
+      std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
+                                          gcs_table_storage_->ActorTable(),
+                                          *gcs_node_manager_,
+                                          *cluster_lease_manager_,
+                                          schedule_failure_handler,
+                                          schedule_success_handler,
+                                          raylet_client_pool_,
+                                          worker_client_pool_,
+                                          metrics_.scheduler_placement_time_ms_histogram);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
@@ -916,31 +912,6 @@ void GcsServer::InstallEventListeners() {
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
-
-  // Install scheduling event listeners.
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_resource_manager_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because resources have been changed, we need to try to schedule the
-            // pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_lease_manager_->ScheduleAndGrantLeases();
-          },
-          "GcsServer.SchedulePendingActors");
-    });
-
-    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because some placement group resources have been committed or deleted, we
-            // need to try to schedule the pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_lease_manager_->ScheduleAndGrantLeases();
-          },
-          "GcsServer.SchedulePendingPGActors");
-    });
-  }
 }
 
 void GcsServer::RecordMetrics() const {

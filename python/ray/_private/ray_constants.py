@@ -503,11 +503,6 @@ RAY_INTERNAL_FLAGS = [
     "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
 ]
 
-
-def gcs_actor_scheduling_enabled():
-    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
-
-
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 
 # Supported Python versions for runtime env's "conda" field. Ray downloads

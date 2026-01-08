@@ -150,12 +150,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
-        fake_scheduler_placement_time_ms_histogram_,
-        /*normal_task_resources_changed_callback=*/
-        [gcs_resource_manager](const NodeID &node_id,
-                               const rpc::ResourcesData &resources) {
-          gcs_resource_manager->UpdateNodeNormalTaskResources(node_id, resources);
-        });
+        fake_scheduler_placement_time_ms_histogram_);
   }
 
   void TearDown() override { io_context_->Stop(); }
@@ -242,7 +237,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
       create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with zero node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
 
   // The lease request should not be send and the scheduling of actor should fail as there
   // are no available nodes.
@@ -265,7 +260,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -303,7 +298,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -354,7 +349,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -398,7 +393,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
@@ -440,7 +435,7 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
@@ -477,7 +472,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -523,7 +518,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -565,7 +560,7 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
@@ -697,562 +692,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   auto request = GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(
       request.task_spec(), "", counter, fake_ray_event_recorder_, "");
-  gcs_actor_scheduler_->ScheduleByRaylet(actor);
-  ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
-  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
-
-  // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
-  // out the `RequestWorkerLease` request.
-  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
-  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
-  ASSERT_EQ(raylet_client_->num_workers_requested, 1);
-}
-
-/***********************************************************/
-/************* TESTS WITH GCS SCHEDULING BELOW *************/
-/***********************************************************/
-class GcsActorSchedulerTestWithGcsScheduling : public GcsActorSchedulerTest {
-  void SetUp() override {
-    RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");
-    GcsActorSchedulerTest::SetUp();
-  }
-};
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleFailedWithZeroNodeByGcs) {
-  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
-
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule with zero node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-
-  // The lease request should not be send and the scheduling of actor should fail as there
-  // are no available nodes.
-  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(1, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_TRUE(actor->GetNodeID().IsNil());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNotEnoughClusterResources) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  AddNewNode(node_resources);
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 128 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 128}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-
-  // The lease request should not be sent and the scheduling of actor should fail as there
-  // are not enough cluster resources.
-  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(1, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_TRUE(actor->GetNodeID().IsNil());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  scheduling::NodeID scheduling_node_id(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-  const auto &cluster_resource_manager =
-      cluster_lease_manager_->GetClusterResourceScheduler().GetClusterResourceManager();
-  auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
-  ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Grant a worker, then the actor creation request should be sent to the worker.
-  WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               worker_id,
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Reply the actor creation request, then the actor should be scheduled successfully.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-  ASSERT_EQ(1, success_actors_.size());
-  ASSERT_EQ(actor, success_actors_.front());
-  ASSERT_EQ(actor->GetNodeID(), node_id);
-  ASSERT_EQ(actor->GetWorkerID(), worker_id);
-
-  auto resource_view_after_scheduling = cluster_resource_manager.GetResourceView();
-  ASSERT_TRUE(resource_view_after_scheduling.contains(scheduling_node_id));
-  ASSERT_NE(resource_view_before_scheduling.at(scheduling_node_id).GetLocalView(),
-            resource_view_after_scheduling.at(scheduling_node_id).GetLocalView());
-
-  // When destroying an actor, its acquired resources have to be returned.
-  gcs_actor_scheduler_->OnActorDestruction(actor);
-  auto resource_view_after_destruction = cluster_resource_manager.GetResourceView();
-  ASSERT_TRUE(resource_view_after_destruction.contains(scheduling_node_id));
-  ASSERT_TRUE(resource_view_after_destruction.at(scheduling_node_id).GetLocalView() ==
-              resource_view_before_scheduling.at(scheduling_node_id).GetLocalView());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestBalancedSchedule) {
-  // Add two nodes, each with 10 memory units and 10 CPU.
-  for (int i = 0; i < 2; i++) {
-    std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 10},
-                                                              {kCPU_ResourceLabel, 10}};
-    AddNewNode(node_resources);
-  }
-
-  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
-
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 1}, {kCPU_ResourceLabel, 1}};
-  std::unordered_map<NodeID, int> sched_counts;
-
-  // Schedule 10 actors, each requiring 1 memory unit and 1 CPU.
-  for (int i = 0; i < 10; i++) {
-    auto actor = NewGcsActor(required_placement_resources);
-
-    gcs_actor_scheduler_->ScheduleByGcs(actor);
-
-    ASSERT_FALSE(actor->GetNodeID().IsNil());
-    sched_counts[actor->GetNodeID()]++;
-  }
-
-  // Make sure the 10 actors are balanced.
-  for (const auto &entry : sched_counts) {
-    ASSERT_EQ(5, entry.second);
-  }
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRejectedRequestWorkerLeaseReply) {
-  // Add two nodes, each with 32 memory units and 4 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 32},
-                                                            {kCPU_ResourceLabel, 4}};
-  auto node1 = AddNewNode(node_resources);
-  auto node2 = AddNewNode(node_resources);
-  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // In the hybrid_policy, nodes are sorted in increasing order of scheduling::NodeID. So
-  // we have to figure out which node is the first one in the sorted order.
-  auto first_node =
-      scheduling::NodeID(node1->node_id()) < scheduling::NodeID(node2->node_id()) ? node1
-                                                                                  : node2;
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor, and the lease request should be sent to the first node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(NodeID::FromBinary(first_node->node_id()), actor->GetNodeID());
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Mock a rejected reply, then the actor will be rescheduled.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(first_node->node_manager_address(),
-                                               first_node->node_manager_port(),
-                                               WorkerID::FromRandom(),
-                                               NodeID::FromBinary(first_node->node_id()),
-                                               NodeID::Nil(),
-                                               Status::OK(),
-                                               /*rejected=*/true));
-  ASSERT_EQ(2, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // The first node's resources have been preempted. The actor is rescheduled to the
-  // second one.
-  ASSERT_NE(NodeID::FromBinary(first_node->node_id()), actor->GetNodeID());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenLeasingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
-
-  // Mock a IOError reply, then the lease request will retry again.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               WorkerID::FromRandom(),
-                                               node_id,
-                                               NodeID::Nil(),
-                                               Status::IOError("")));
-  ASSERT_EQ(1, gcs_actor_scheduler_->num_retry_leasing_count_);
-  ASSERT_EQ(2, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Grant a worker, then the actor creation request should be sent to the worker.
-  WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               worker_id,
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Reply the actor creation request, then the actor should be scheduled successfully.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-  ASSERT_EQ(1, success_actors_.size());
-  ASSERT_EQ(actor, success_actors_.front());
-  ASSERT_EQ(actor->GetNodeID(), node_id);
-  ASSERT_EQ(actor->GetWorkerID(), worker_id);
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenCreatingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Grant a worker, then the actor creation request should be sent to the worker.
-  WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               worker_id,
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
-
-  // Reply a IOError, then the actor creation request will retry again.
-  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
-  ASSERT_EQ(1, gcs_actor_scheduler_->num_retry_creating_count_);
-  ASSERT_EQ(1, worker_client_->GetNumCallbacks());
-
-  // Reply the actor creation request, then the actor should be scheduled successfully.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-  ASSERT_EQ(1, success_actors_.size());
-  ASSERT_EQ(actor, success_actors_.front());
-  ASSERT_EQ(actor->GetNodeID(), node_id);
-  ASSERT_EQ(actor->GetWorkerID(), worker_id);
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-
-  // Remove the node and cancel the scheduling on this node, the scheduling should be
-  // interrupted.
-  rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
-  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
-  auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
-  ASSERT_EQ(1, actor_ids.size());
-  ASSERT_EQ(actor->GetActorID(), actor_ids.front());
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-
-  // Grant a worker, which will influence nothing.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               WorkerID::FromRandom(),
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
-
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestLeasingCancelledWhenLeasingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-
-  // Cancel the lease request.
-  gcs_actor_scheduler_->CancelOnLeasing(
-      node_id, actor->GetActorID(), actor->GetLeaseSpecification().LeaseId());
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-
-  // Grant a worker, which will influence nothing.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               WorkerID::FromRandom(),
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
-
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               WorkerID::FromRandom(),
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Remove the node and cancel the scheduling on this node, the scheduling should be
-  // interrupted.
-  rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
-  ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
-  auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
-  ASSERT_EQ(1, actor_ids.size());
-  ASSERT_EQ(actor->GetActorID(), actor_ids.front());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Reply the actor creation request, which will influence nothing.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
-
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // Schedule the actor with 1 available node, and the lease request should be sent to the
-  // node.
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
-  ASSERT_EQ(1, raylet_client_->num_workers_requested);
-  ASSERT_EQ(1, raylet_client_->callbacks.size());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // Grant a worker, then the actor creation request should be send to the worker.
-  auto worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
-                                               node->node_manager_port(),
-                                               worker_id,
-                                               node_id,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Cancel the scheduling on this node, the scheduling should be interrupted.
-  ASSERT_EQ(actor->GetActorID(),
-            gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
-  ASSERT_EQ(1, worker_client_->GetNumCallbacks());
-
-  // Reply the actor creation request, which will influence nothing.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
-
-  ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node1 = AddNewNode(node_resources);
-  auto node_id_1 = NodeID::FromBinary(node1->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-
-  // 1.Actor is already tied to a leased worker.
-  rpc::Address address;
-  WorkerID worker_id = WorkerID::FromRandom();
-  address.set_node_id(node_id_1.Binary());
-  address.set_worker_id(worker_id.Binary());
-  actor->UpdateAddress(address);
-
-  // Reschedule the actor with 1 available node, and the actor creation request should be
-  // send to the worker.
-  gcs_actor_scheduler_->Reschedule(actor);
-  ASSERT_EQ(0, raylet_client_->num_workers_requested);
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Reply the actor creation request, then the actor should be scheduled successfully.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  // 2.Actor is not tied to a leased worker.
-  actor->UpdateAddress(rpc::Address());
-  actor->GetMutableActorTableData()->clear_resource_mapping();
-
-  // Reschedule the actor with 1 available node.
-  gcs_actor_scheduler_->Reschedule(actor);
-
-  // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node1->node_manager_address(),
-                                               node1->node_manager_port(),
-                                               worker_id,
-                                               node_id_1,
-                                               NodeID::Nil()));
-  ASSERT_EQ(0, raylet_client_->callbacks.size());
-  WaitForCondition([&]() { return worker_client_->GetNumCallbacks() == 1; }, 1000);
-
-  // Reply the actor creation request, then the actor should be scheduled successfully.
-  ASSERT_TRUE(worker_client_->ReplyPushTask());
-  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
-
-  ASSERT_EQ(0, cluster_lease_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_lease_manager_->GetPendingQueueSize());
-  ASSERT_EQ(2, success_actors_.size());
-}
-
-TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGcs) {
-  // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
-  // if there is still a pending `ReleaseUnusedActorWorkers` request.
-
-  // Add a node to the cluster.
-  // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
-  auto node = AddNewNode(node_resources);
-  auto node_id = NodeID::FromBinary(node->node_id());
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  // Send a `ReleaseUnusedActorWorkers` request to the node.
-  absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
-  node_to_workers[node_id].push_back({WorkerID::FromRandom()});
-  gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
-  ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
-  ASSERT_EQ(1, raylet_client_->release_callbacks.size());
-
-  // Schedule an actor which is not tied to a worker, this should invoke the
-  // `LeaseWorkerFromNode` method.
-  // But since the `ReleaseUnusedActorWorkers` request hasn't finished,
-  // `GcsActorScheduler` won't send `RequestWorkerLease` request to node immediately. But
-  // instead, it will invoke the `RetryLeasingWorkerFromNode` to retry later. Schedule a
-  // actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
-      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
-  auto actor = NewGcsActor(required_placement_resources);
-  gcs_actor_scheduler_->ScheduleByGcs(actor);
+  gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
 

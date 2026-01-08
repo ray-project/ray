@@ -92,26 +92,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
-    bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
-                                  node_resource_usages_.contains(node_id);
     for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
-      // Because gcs scheduler does not directly update the available resources of
-      // `cluster_resource_manager_`, use the record from resource reports (stored in
-      // `node_resource_usages_`) instead.
-      if (using_resource_reports) {
-        auto resource_iter =
-            node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
-          resource.mutable_resources_available()->insert(
-              {resource_name, resource_iter->second});
-        }
-      } else {
-        const auto &resource_value = node_resources.available.Get(resource_id);
-        resource.mutable_resources_available()->insert(
-            {resource_name, resource_value.Double()});
-      }
+      const auto &resource_value = node_resources.available.Get(resource_id);
+      resource.mutable_resources_available()->insert(
+          {resource_name, resource_value.Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -151,17 +136,12 @@ void GcsResourceManager::UpdateFromResourceView(
   if (node_id == local_node_id_) {
     return;
   }
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    // TODO(jjyao) This is currently an no-op and is broken.
-    // UpdateNodeNormalTaskResources(node_id, data);
-  } else {
-    // We will only update the node's resources if it's from resource view reports.
-    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
-                                              resource_view_sync_message)) {
-      RAY_LOG(INFO)
-          << "[UpdateFromResourceView]: received resource usage from unknown node id "
-          << node_id;
-    }
+  // We will only update the node's resources if it's from resource view reports.
+  if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                            resource_view_sync_message)) {
+    RAY_LOG(INFO)
+        << "[UpdateFromResourceView]: received resource usage from unknown node id "
+        << node_id;
   }
   UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
