@@ -15,6 +15,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.test_utils import (
     check_call_subprocess,
+    get_auth_headers,
     wait_for_aggregator_agent_if_enabled,
 )
 from ray.util.state import (
