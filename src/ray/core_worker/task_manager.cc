@@ -61,6 +61,36 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
   return rpc::ErrorType::WORKER_DIED;
 }
 
+size_t CountTaskDependencies(const TaskSpecification &spec) {
+  size_t count = 0;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      count += 1;
+      continue;
+    }
+    count += spec.ArgInlinedRefs(i).size();
+  }
+  if (spec.IsActorTask()) {
+    count += 1;
+  }
+  return count;
+}
+
+size_t CountPlasmaDependencies(const TaskSpecification &spec) {
+  size_t count = 0;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i) || spec.ArgTensorTransport(i).has_value()) {
+      count += 1;
+      continue;
+    }
+    count += spec.ArgInlinedRefs(i).size();
+  }
+  if (spec.IsActorTask()) {
+    count += 1;
+  }
+  return count;
+}
+
 }  // namespace
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
@@ -247,7 +277,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
-  task_deps.reserve(spec.NumArgs());
+  task_deps.reserve(CountTaskDependencies(spec));
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -950,7 +980,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  direct_return_ids.reserve(reply.return_objects_size());
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     StatusOr<bool> direct_or = HandleTaskReturn(object_id,
@@ -1826,7 +1855,7 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
 
 std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   std::vector<ObjectID> plasma_dependencies;
-  plasma_dependencies.reserve(spec.NumArgs());
+  plasma_dependencies.reserve(CountPlasmaDependencies(spec));
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
