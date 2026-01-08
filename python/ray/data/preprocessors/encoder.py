@@ -48,7 +48,7 @@ class _ArrowEncoderCacheMixin:
 
     def _init_arrow_cache(self):
         """Initialize the Arrow array cache. Call this in __init__."""
-        self._cache = {}
+        self._cache: Dict[str, Tuple[pa.Array, pa.Array]] = {}
 
     def _clear_arrow_cache(self):
         """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
@@ -275,12 +275,12 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
             column = table.column(input_col)
             encoded_column = self._encode_column_vectorized(column, input_col)
 
-            # Add or replace the column in the table
-            if output_col in table.column_names:
-                col_idx = table.column_names.index(output_col)
-                table = table.set_column(col_idx, output_col, encoded_column)
-            else:
+            # Upsert: replace if exists, otherwise append
+            col_idx = table.schema.get_field_index(output_col)
+            if col_idx == -1:
                 table = table.append_column(output_col, encoded_column)
+            else:
+                table = table.set_column(col_idx, output_col, encoded_column)
 
         return table
 
@@ -523,12 +523,12 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
             column = table.column(input_col)
             encoded_column = self._encode_column_one_hot(column, input_col)
 
-            # Add or replace the column in the table
-            if output_col in table.column_names:
-                col_idx = table.column_names.index(output_col)
-                table = table.set_column(col_idx, output_col, encoded_column)
-            else:
+            # Upsert: replace if exists, otherwise append
+            col_idx = table.schema.get_field_index(output_col)
+            if col_idx == -1:
                 table = table.append_column(output_col, encoded_column)
+            else:
+                table = table.set_column(col_idx, output_col, encoded_column)
 
         return table
 
