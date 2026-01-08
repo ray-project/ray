@@ -92,7 +92,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
-           const rpc::TensorTransport &tensor_transport) -> Status {
+           const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
 
@@ -171,7 +171,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
-        "test_session");
+        "test_session",
+        NodeID::Nil());
 
     task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
@@ -191,7 +192,8 @@ class CoreWorkerTest : public ::testing::Test {
         mock_gcs_client_,
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
-        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -226,7 +228,7 @@ class CoreWorkerTest : public ::testing::Test {
         actor_creator_,
         JobID::Nil(),
         lease_request_rate_limiter,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         io_service_,
         fake_scheduler_placement_time_ms_histogram_);
 
@@ -238,7 +240,7 @@ class CoreWorkerTest : public ::testing::Test {
         *task_manager_,
         *actor_creator_,
         /*tensor_transport_getter=*/
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);

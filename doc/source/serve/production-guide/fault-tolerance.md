@@ -47,6 +47,24 @@ You shouldn't call ``check_health`` directly through a deployment handle (e.g., 
 In a composable deployment graph, each deployment is responsible for its own health, independent of the other deployments it's bound to. For example, in an application defined by ``app = ParentDeployment.bind(ChildDeployment.bind())``, ``ParentDeployment`` doesn't restart if ``ChildDeployment`` replicas fail their health checks. When the ``ChildDeployment`` replicas recover, the handle in ``ParentDeployment`` updates automatically to route requests to the healthy replicas.
 :::
 
+### Replica constructor retries
+
+When a replica's constructor (the `__init__` method) fails, Ray Serve automatically retries creating the replica. You can configure this behavior in two ways:
+
+- **Per-deployment**: Use the `max_constructor_retry_count` option in `@serve.deployment()` to set the maximum retries for that deployment. Default is `20`.
+- **Per-replica**: Use the `RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT` environment variable to limit retries per replica. Default is `3`.
+
+The total maximum constructor retries for a deployment is `min(num_replicas * RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)`.
+
+For example:
+
+```python
+# Set max constructor retries for this deployment
+@serve.deployment(max_constructor_retry_count=10)
+class MyDeployment:
+    ...
+```
+
 ### Worker node recovery
 
 :::{admonition} KubeRay Required

@@ -102,7 +102,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool is_reconstructable,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override
+      const std::optional<std::string> &tensor_transport = std::nullopt) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
@@ -256,8 +256,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void ReleaseAllLocalReferences() override;
 
-  std::optional<rpc::TensorTransport> GetTensorTransport(
-      const ObjectID &object_id) const override;
+  std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
 
  private:
   /// Contains information related to nested object refs only.
@@ -317,12 +316,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
               int64_t object_size,
               bool is_reconstructable,
               std::optional<NodeID> pinned_at_node_id,
-              rpc::TensorTransport tensor_transport)
+              std::optional<std::string> tensor_transport)
         : call_site_(std::move(call_site)),
           object_size_(object_size),
           owner_address_(std::move(owner_address)),
           pinned_at_node_id_(std::move(pinned_at_node_id)),
-          tensor_transport_(tensor_transport),
+          tensor_transport_(std::move(tensor_transport)),
           owned_by_us_(true),
           is_reconstructable_(is_reconstructable),
           pending_creation_(!pinned_at_node_id_.has_value()) {}
@@ -438,7 +437,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
     ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
+    std::optional<std::string> tensor_transport_;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
@@ -516,16 +515,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
-  bool AddOwnedObjectInternal(
-      const ObjectID &object_id,
-      const std::vector<ObjectID> &contained_ids,
-      const rpc::Address &owner_address,
-      const std::string &call_site,
-      const int64_t object_size,
-      bool is_reconstructable,
-      bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_node_id,
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+  bool AddOwnedObjectInternal(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site,
+                              const int64_t object_size,
+                              bool is_reconstructable,
+                              bool add_local_ref,
+                              const std::optional<NodeID> &pinned_at_node_id,
+                              const std::optional<std::string> &tensor_transport)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
