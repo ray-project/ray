@@ -292,44 +292,9 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        # Handle different Ax versions with different import paths
-        try:
-            from ax.adapter.registry import Generators as Models
-            from ax.generation_strategy.generation_node import (
-                GenerationStep,  # if present
-            )
-            from ax.generation_strategy.generation_strategy import GenerationStrategy
-        except ModuleNotFoundError:
-            # Newer versions of Ax reorganized the imports
-            from ax.modelbridge.generation_node import GenerationStep
-            from ax.modelbridge.generation_strategy import GenerationStrategy
-            from ax.modelbridge.registry import Models
-
-        # set generation strategy to sobol to ensure reproductibility
-        try:
-            # ax-platform>=0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_trials=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
-        except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_arms=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
-
-        client = AxClient(random_seed=4321, generation_strategy=gs)
+        # Use random_seed for reproducibility and disable sequential optimization
+        # to avoid complex generation strategy setup which varies across Ax versions
+        client = AxClient(random_seed=4321, enforce_sequential_optimization=False)
         # Support both old and new Ax API for create_experiment
         try:
             from ax.service.utils.instantiation import ObjectiveProperties

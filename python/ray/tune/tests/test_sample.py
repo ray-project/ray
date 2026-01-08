@@ -753,9 +753,13 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
             "randn",  # Unbounded normal distributions not supported
             "qrandn",  # Unbounded normal distributions not supported
+            "quniform",  # BOHB does not support quantization
+            "qloguniform",  # BOHB does not support quantization
+            "qrandint",  # BOHB does not support quantization
+            "qrandint_q3",  # BOHB does not support quantization
+            "qlograndint",  # BOHB does not support quantization
         ]
 
         config = self.config.copy()
