@@ -86,6 +86,7 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
+    WorkerID,
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
@@ -100,7 +101,7 @@ from ray.experimental.internal_kv import (
 )
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.runtime_env.runtime_env import _merge_runtime_env
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
@@ -571,6 +572,11 @@ class Worker:
     @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
+
+    @property
+    def current_temp_dir(self):
+        self.check_connected()
+        return self.node.temp_dir
 
     @property
     def task_depth(self):
@@ -1533,7 +1539,9 @@ def init(
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
-            be used as the object store fallback directory as well.
+            be used as the object store fallback directory as well. Defaults to the node's session dir.
+            If head node specifies an object spilling directory, and this node doesn't specify one,
+            use the head node's object spilling directory.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1569,7 +1577,8 @@ def init(
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
-            OS-specific conventional location, e.g., "/tmp/ray".
+            OS-specific conventional location, e.g., "/tmp/ray" for head node, and
+            head node's temp dir for worker node.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -2043,6 +2052,21 @@ def init(
             FutureWarning,
         )
 
+    # Check for Pydantic v1 and emit deprecation warning
+    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
+
+    if (
+        PYDANTIC_MAJOR_VERSION
+        and PYDANTIC_MAJOR_VERSION == 1
+        and log_once("pydantic_v1_deprecation")
+    ):
+        warnings.warn(
+            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
+            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
+            "See https://github.com/ray-project/ray/issues/58876 for more details.",
+            FutureWarning,
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2068,6 +2092,23 @@ def shutdown(_exiting_interpreter: bool = False):
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    .. note::
+
+        The behavior of ``ray.shutdown()`` differs depending on how the cluster
+        was initialized:
+
+        * If a new local Ray cluster was started by ``ray.init()`` (i.e., no
+          ``address`` argument was provided and no existing cluster was found,
+          or ``address="local"`` was explicitly used), ``ray.shutdown()`` will
+          terminate all the local Ray processes (raylet, object store, etc.)
+          that were spawned by ``ray.init()``.
+
+        * If you connected to an existing cluster (e.g., via
+          ``ray.init(address="auto")`` or ``ray.init(address="ray://<ip>:<port>")``),
+          ``ray.shutdown()`` will only disconnect the client from the cluster.
+          It will **not** shut down the remote cluster. The cluster will
+          continue running and can be connected to again.
 
     Args:
         _exiting_interpreter: True if this is called by the atexit hook
@@ -2445,7 +2486,7 @@ def connect(
     namespace: Optional[str] = None,
     job_config=None,
     runtime_env_hash: int = 0,
-    startup_token: int = 0,
+    worker_id: WorkerID = WorkerID.nil(),
     ray_debugger_external: bool = False,
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
@@ -2466,8 +2507,8 @@ def connect(
         namespace: Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash: The hash of the runtime env for this worker.
-        startup_token: The startup token of the process assigned to
-            it during startup as a command line argument.
+        worker_id: The worker ID assigned by raylet when starting the worker
+            process (hex string). Nil for drivers.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
@@ -2661,7 +2702,7 @@ def connect(
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
-        startup_token,
+        worker_id,
         session_name,
         node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
@@ -2781,34 +2822,6 @@ def _changeproctitle(title, next_title):
     finally:
         if _mode() is not LOCAL_MODE:
             ray._raylet.setproctitle(next_title)
-
-
-@DeveloperAPI
-def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
-    """Display message in dashboard.
-
-    Display message for the current task or actor in the dashboard.
-    For example, this can be used to display the status of a long-running
-    computation.
-
-    Args:
-        message: Message to be displayed.
-        key: The key name for the message. Multiple message under
-            different keys will be displayed at the same time. Messages
-            under the same key will be overridden.
-        dtype: The type of message for rendering. One of the
-            following: text, html.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, f"dtype accepts only: {acceptable_dtypes}"
-
-    message_wrapped = {"message": message, "dtype": dtype}
-    message_encoded = json.dumps(message_wrapped).encode()
-
-    worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
 # Global variable to make sure we only send out the warning once.
