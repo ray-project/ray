@@ -580,6 +580,87 @@ class TestReplicaConfig:
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
 
+    def test_placement_group_bundle_label_selector_validation(self):
+        class Class:
+            pass
+
+        # Label selector provided without bundles
+        with pytest.raises(
+            ValueError,
+            match="If `placement_group_bundle_label_selector` is provided, `placement_group_bundles` must also be provided.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundle_label_selector=[{"gpu": "T4"}],
+            )
+
+        # Valid config
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_bundle_label_selector=[{"gpu": "T4"}],
+        )
+        assert config.placement_group_bundle_label_selector == [{"gpu": "T4"}]
+
+    def test_placement_group_fallback_strategy_validation(self):
+        class Class:
+            pass
+
+        # Validate that fallback strategy provided without bundles raises error.
+        with pytest.raises(
+            ValueError,
+            match="If `placement_group_fallback_strategy` is provided, `placement_group_bundles` must also be provided.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+            )
+
+        # Validate that fallback strategy is a list
+        with pytest.raises(
+            TypeError,
+            match="placement_group_fallback_strategy must be a list of dictionaries.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy="not_a_list",
+            )
+
+        # Fallback strategy list contains non-dict items
+        with pytest.raises(
+            TypeError,
+            match="placement_group_fallback_strategy entry at index 1 must be a dictionary.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy=[
+                    {"bundles": [{"CPU": 1}]},
+                    "invalid_entry",
+                ],
+            )
+
+        # Valid config
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+        )
+        assert config.placement_group_fallback_strategy == [{"bundles": [{"CPU": 1}]}]
+
 
 class TestAutoscalingConfig:
     def test_target_ongoing_requests(self):
