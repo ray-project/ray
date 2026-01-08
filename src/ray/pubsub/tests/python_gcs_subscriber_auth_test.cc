@@ -25,6 +25,7 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/env.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -108,17 +109,17 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
         std::make_unique<MockInternalPubSubGcsService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
-    std::optional<rpc::AuthenticationToken> auth_token;
+    std::shared_ptr<rpc::AuthenticationToken> auth_token;
     if (!server_token.empty()) {
-      auth_token = rpc::AuthenticationToken(server_token);
+      auth_token = std::make_shared<rpc::AuthenticationToken>(server_token);
     } else {
       // Empty token means no auth required
-      auth_token = rpc::AuthenticationToken("");
+      auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
                                                 0,  // Random port
-                                                true,
+                                                GetLocalhostIP(),
                                                 1,
                                                 7200000,
                                                 auth_token);
