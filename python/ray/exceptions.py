@@ -13,6 +13,7 @@ from ray.core.generated.common_pb2 import (
     PYTHON,
     ActorDiedErrorContext,
     Address,
+    ErrorType,
     Language,
     NodeDeathInfo,
     RayException,
@@ -780,66 +781,85 @@ class OwnerDiedError(ObjectLostError):
 
 @PublicAPI
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed.
+    """Indicates that the object cannot be reconstructed."""
 
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
+    REASON_MESSAGES = {
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED: (
+            "The object cannot be reconstructed because the maximum number of "
+            "task retries has been exceeded. "
+            "Consider increasing the number of retries using `@ray.remote(max_retries=N)`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED: (
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_PUT: (
+            "The object cannot be reconstructed because it was created by "
+            "ray.put(), which has no task lineage. "
+            "To prevent this error, return the value from a task instead."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED: (
+            "The object cannot be reconstructed because the task was created "
+            "with max_retries=0. "
+            "Consider enabling retries using `@ray.remote(max_retries=N)`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED: (
+            "The object cannot be reconstructed because it crossed an ownership "
+            "boundary. Only the owner of an object can trigger reconstruction, "
+            "but this worker borrowed the object from another worker."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE: (
+            "The object cannot be reconstructed because Ray is running in "
+            "local mode. Local mode does not support object reconstruction."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
+            "The object cannot be reconstructed because its reference was "
+            "not found in the reference counter. "
+            "Please file an issue at https://github.com/ray-project/ray/issues."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED: (
+            "The object cannot be reconstructed because the task that would "
+            "produce it was cancelled."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED: (
+            "The object cannot be reconstructed because lineage reconstruction "
+            "is disabled system-wide (object_reconstruction_enabled=False)."
+        ),
+    }
 
-    def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed "
-                "because it was created by an actor, ray.put() call, or its "
-                "ObjectRef was created by a different worker."
-            )
+    def __init__(
+        self,
+        object_ref_hex: str,
+        reason: "ErrorType" = None,
+        reason_message: str = None,
+        owner_address: Optional[Address] = None,
+        call_site: str = "",
+    ):
+        """Initialize ObjectReconstructionFailedError.
+
+        Args:
+            object_ref_hex: Hex string of the object reference.
+            reason: ErrorType enum value indicating why reconstruction failed.
+            reason_message: Human-readable explanation of the failure.
+            owner_address: Address of the object's owner.
+            call_site: Call site where the object was created.
+        """
+        super().__init__(object_ref_hex, owner_address, call_site)
+        self.reason = reason
+        self.reason_message = reason_message or self.REASON_MESSAGES.get(
+            self.reason,
+            "Unknown error reason. This should not happen, please file an issue "
+            "at https://github.com/ray-project/ray/issues.",
         )
 
-
-@PublicAPI
-class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed because the maximum
-    number of task retries has been exceeded.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
-
     def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed "
-                "because the maximum number of task retries has been exceeded. "
-                "To prevent this error, set "
-                "`@ray.remote(max_retries=<num retries>)` (default 3)."
-            )
-        )
-
-
-@PublicAPI
-class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed because its lineage
-    was evicted due to memory pressure.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
-
-    def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed because its lineage has been "
-                "evicted to reduce memory pressure. "
-                "To prevent this error, set the environment variable "
-                "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
-            )
-        )
+        base = self._base_str()
+        if self.reason_message:
+            reason_name = ErrorType.Name(self.reason) if self.reason else "UNKNOWN"
+            return base + f"\n\n[{reason_name}] {self.reason_message}"
+        return base
 
 
 @PublicAPI
@@ -1043,8 +1063,6 @@ RAY_EXCEPTION_TYPES = [
     ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
-    ObjectReconstructionFailedMaxAttemptsExceededError,
-    ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
