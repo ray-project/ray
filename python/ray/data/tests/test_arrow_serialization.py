@@ -190,7 +190,10 @@ def string_array():
 
 @pytest.fixture
 def string_view_array():
-    return pa.array(["foo", "barbarbarbarbar", "bz", None, "quuxquuxquuxquux"] * 200, type=pa.string_view())
+    return pa.array(
+        ["foo", "barbarbarbarbar", "bz", None, "quuxquuxquuxquux"] * 200,
+        type=pa.string_view(),
+    )
 
 
 @pytest.fixture
@@ -205,7 +208,10 @@ def binary_array():
 
 @pytest.fixture
 def binary_view_array():
-    return pa.array([b"foo", b"barbarbarbarbar", b"bz", None, b"quuxquuxquuxquux"] * 200, type=pa.binary_view())
+    return pa.array(
+        [b"foo", b"barbarbarbarbar", b"bz", None, b"quuxquuxquuxquux"] * 200,
+        type=pa.binary_view(),
+    )
 
 
 @pytest.fixture
