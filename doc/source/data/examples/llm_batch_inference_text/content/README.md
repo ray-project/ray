@@ -115,9 +115,27 @@ The task is to infer the industry category from the `Company` field using an LLM
 
 Define a preprocess function to prepare `messages` and `sampling_params` for the vLLM engine, and a postprocess function to extract the `generated_text`.
 
+Ray Data LLM sends the output of your preprocessing function directly to a vLLM engine, so you can take advantage of vLLM features. 
+
+In this example, you use vLLM's structured output feature to restrict the LLM's responses to a predefined list of industry categories. This increases predictability and helps you reduce the cost of unnecessary output tokens.
+
 
 ```python
 from typing import Any
+
+from vllm.sampling_params import StructuredOutputsParams
+
+CHOICES = [
+    "Law Firm",
+    "Healthcare",
+    "Technology",
+    "Retail",
+    "Consulting",
+    "Manufacturing",
+    "Finance",
+    "Real Estate",
+    "Other",
+]
 
 # Preprocess function prepares `messages` and `sampling_params` for vLLM engine.
 # All other fields are ignored by the engine.
@@ -128,7 +146,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
                 "role": "system",
                 "content": "You are a helpful assistant that infers company industries. "
                            "Based on the company name provided, output only the industry category. "
-                           "Choose from: Law Firm, Healthcare, Technology, Retail, Consulting, Manufacturing, Finance, Real Estate, Other."
+                           f"Choose from: {', '.join(CHOICES)}."
             },
             {
                 "role": "user",
@@ -138,6 +156,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         sampling_params=dict(
             temperature=0,  # Use 0 for deterministic output
             max_tokens=16,  # Max output tokens. Industry names are short
+            structured_outputs=StructuredOutputsParams(choice=CHOICES)
         ),
     )
 

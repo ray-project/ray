@@ -1,7 +1,9 @@
 from typing import Any
 
+from pprint import pprint
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from vllm.sampling_params import StructuredOutputsParams
 
 DATASET_LIMIT = 10_000
 
@@ -38,6 +40,18 @@ processor_config = vLLMEngineProcessorConfig(
     concurrency=4,
 )
 
+CHOICES = [
+    "Law Firm",
+    "Healthcare",
+    "Technology",
+    "Retail",
+    "Consulting",
+    "Manufacturing",
+    "Finance",
+    "Real Estate",
+    "Other",
+]
+
 # Preprocess function prepares `messages` and `sampling_params` for vLLM engine.
 # All other fields are ignored by the engine.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +71,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         sampling_params=dict(
             temperature=0,  # Use 0 for deterministic output
             max_tokens=16,  # Max output tokens. Industry names are short
+            structured_outputs=StructuredOutputsParams(choice=CHOICES),
         ),
     )
 
@@ -74,8 +89,6 @@ processor = build_llm_processor(
     preprocess=preprocess,
     postprocess=postprocess,
 )
-
-from pprint import pprint
 
 # Run the processor on the small dataset.
 processed_small = processor(ds_small)
