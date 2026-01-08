@@ -742,7 +742,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     default_scheduling_strategy="SPREAD",
                 )
 
-    def _process_single_request(
+    def _pack_schedule_replica(
         self,
         scheduling_request: ReplicaSchedulingRequest,
         all_node_labels: Dict[str, Dict[str, str]],
