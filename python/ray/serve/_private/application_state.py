@@ -1711,6 +1711,10 @@ def override_deployment_info(
             "placement_group_bundle_label_selector",
             replica_config.placement_group_bundle_label_selector,
         )
+        override_fallback_strategy = options.pop(
+            "placement_group_fallback_strategy",
+            replica_config.placement_group_fallback_strategy,
+        )
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -1730,6 +1734,7 @@ def override_deployment_info(
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
             placement_group_bundle_label_selector=override_bundle_label_selector,
+            placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
 
