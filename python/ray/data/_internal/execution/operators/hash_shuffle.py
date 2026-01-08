@@ -727,13 +727,14 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             #   - Block is first hash-partitioned into N partitions
             #   - Individual partitions then are submitted to the corresponding
             #     aggregators
+            #
+            # TODO HSA needs to be idempotent for _shuffle_block to be retriable
+            #      https://anyscale1.atlassian.net/browse/DATA-1763
             input_block_partition_shards_metadata_tuple_ref: ObjectRef[
                 Tuple[BlockMetadata, Dict[int, _PartitionStats]]
             ] = _shuffle_block.options(
                 **shuffle_task_resource_bundle,
                 num_returns=1,
-                # Make sure tasks are retried indefinitely
-                max_retries=-1,
             ).remote(
                 block_ref,
                 input_index,
