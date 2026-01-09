@@ -196,8 +196,9 @@ include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
-    RayActorError,
+    ActorHandleNotFoundError,
     ActorDiedError,
+    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -953,10 +954,12 @@ cdef store_task_errors(
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
-    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    # MAX_APPLICATION_ERROR_LENGTH characters of the error message.
     if application_error != NULL:
-        application_error[0] = str(failure_object)[
-            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+        if ray_constants.MAX_APPLICATION_ERROR_LENGTH == 0:
+            application_error[0] = b""
+        else:
+            application_error[0] = str(failure_object)[-ray_constants.MAX_APPLICATION_ERROR_LENGTH:]
 
     errors = []
     for _ in range(returns[0].size()):
@@ -2142,7 +2145,14 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.free_object_primary_copy(object_id)
+        gpu_object_manager.queue_or_free_object_primary_copy(object_id)
+
+cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2682,7 +2692,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port,
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, cluster_id, entrypoint,
+                  WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
         self.is_local_mode = local_mode
 
@@ -2719,6 +2729,7 @@ cdef class CoreWorker:
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.free_actor_object_callback = free_actor_object_callback
+        options.set_direct_transport_metadata = set_direct_transport_metadata
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -2733,7 +2744,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.runtime_env_hash = runtime_env_hash
-        options.startup_token = startup_token
+        options.worker_id = worker_id.native()
         options.session_name = session_name
         options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
@@ -2902,9 +2913,6 @@ cdef class CoreWorker:
 
         return CCoreWorkerProcess.GetCoreWorker(
             ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
-
-    def set_webui_display(self, key, message):
-        CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
 
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
@@ -3789,10 +3797,16 @@ cdef class CoreWorker:
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
+            CRayStatus status = CRayStatus.OK()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_restart))
+            status = CCoreWorkerProcess.GetCoreWorker().KillActor(
+                c_actor_id, True, no_restart)
+
+        if status.IsNotFound():
+            raise ActorHandleNotFoundError(status.message().decode())
+
+        check_status(status)
 
     def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
                     c_bool recursive):
@@ -4122,6 +4136,7 @@ cdef class CoreWorker:
             int64_t num_returns = -1
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
+            c_string c_pickled_rdt_metadata
 
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
@@ -4160,6 +4175,9 @@ cdef class CoreWorker:
 
             return num_outputs_stored
 
+        tensor_transport = None
+        if c_tensor_transport.has_value():
+            tensor_transport = c_tensor_transport.value().decode("utf-8")
         task_output_inlined_bytes = 0
         i = -1
         for i, output in enumerate(outputs):
@@ -4194,14 +4212,17 @@ cdef class CoreWorker:
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure
             # GPU object-related logic does not affect the normal object serialization logic.
-            if c_tensor_transport.has_value():
+            if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
                 serialized_object, tensors = context.serialize_gpu_objects(output)
-                context.store_gpu_objects(return_id.Hex().decode("ascii"), tensors)
-
+                pickled_rdt_metadata = context.store_gpu_objects(
+                    return_id.Hex().decode("ascii"), tensors, tensor_transport)
+                # One copy from python bytes object to C++ string
+                c_pickled_rdt_metadata = pickled_rdt_metadata
             else:
                 serialized_object = context.serialize(output)
+
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:
@@ -4243,6 +4264,10 @@ cdef class CoreWorker:
                 time.sleep(base_backoff_s * (2 ** (attempt-1)))
                 attempt += 1
                 continue
+
+            if tensor_transport is not None:
+                return_ptr.get().SetDirectTransportMetadata(move(c_pickled_rdt_metadata))
+                c_pickled_rdt_metadata = c_string()
 
             num_outputs_stored += 1
 

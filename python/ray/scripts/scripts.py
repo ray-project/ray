@@ -21,7 +21,7 @@ import ray
 import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
@@ -492,10 +492,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    default=get_localhost_ip(),
+    help="the host to bind the dashboard server to. Use localhost "
+    "(127.0.0.1/::1) for local access, the node IP for remote access, or "
+    "0.0.0.0/:: for all interfaces (not recommended). Defaults to localhost.",
 )
 @click.option(
     "--dashboard-port",
@@ -558,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -771,14 +771,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -2061,11 +2053,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
