@@ -141,7 +141,7 @@ class BaseBundleQueue(_QueueMetricRecorder):
         ...
 
 
-class SupportsRemoval(_QueueMetricRecorder):
+class SupportsRemoval:
     """Base class for storing bundles AND supporting remove(bundle)
     and contains(bundle) operations."""
 
@@ -151,8 +151,4 @@ class SupportsRemoval(_QueueMetricRecorder):
 
     def remove(self, bundle: RefBundle) -> RefBundle:
         """Remove the specified bundle from the queue. If multiple instances exist, remove the first one."""
-        ...
-
-    def remove_last(self, bundle: RefBundle) -> RefBundle:
-        """Remove the specified bundle from the queue. If multiple instances exist, remove the last one."""
         ...
