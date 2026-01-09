@@ -24,7 +24,6 @@ _INLINE_OP_SYMBOLS = {
     Operation.SUB: "-",
     Operation.MUL: "*",
     Operation.DIV: "/",
-    Operation.MOD: "%",
     Operation.FLOORDIV: "//",
     Operation.GT: ">",
     Operation.LT: "<",
