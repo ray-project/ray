@@ -153,5 +153,5 @@ examples:
     skill_level: advanced
     use_cases:
       - generative ai
-    link: tutorials/asynchronous-inference/content/README
+    link: tutorials/asynchronous-inference/content/asynchronous-inference
     related_technology: integrations
