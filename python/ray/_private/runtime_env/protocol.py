@@ -262,27 +262,16 @@ class ProtocolsProvider:
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
 
-            tp = transport_params
-
         elif protocol == "https":
-            open_file, default_tp = cls._handle_https_protocol()
-            tp = cls._merge_transport_params(default_tp, transport_params)
+            open_file, tp = cls._handle_https_protocol()
         elif protocol == "s3":
-            open_file, default_tp = cls._handle_s3_protocol()
-            # Merge custom transport_params with defaults
-            tp = cls._merge_transport_params(default_tp, transport_params)
+            open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":
-            open_file, default_tp = cls._handle_gs_protocol()
-            # Merge custom transport_params with defaults
-            tp = cls._merge_transport_params(default_tp, transport_params)
+            open_file, tp = cls._handle_gs_protocol()
         elif protocol == "azure":
-            open_file, default_tp = cls._handle_azure_protocol()
-            # Merge custom transport_params with defaults
-            tp = cls._merge_transport_params(default_tp, transport_params)
+            open_file, tp = cls._handle_azure_protocol()
         elif protocol == "abfss":
-            open_file, default_tp = cls._handle_abfss_protocol()
-            # Merge custom transport_params with defaults
-            tp = cls._merge_transport_params(default_tp, transport_params)
+            open_file, tp = cls._handle_abfss_protocol()
         else:
             try:
                 from smart_open import open as open_file
@@ -292,7 +281,9 @@ class ProtocolsProvider:
                     f"to fetch {protocol.upper()} URIs. "
                     + cls._MISSING_DEPENDENCIES_WARNING
                 )
-            tp = transport_params
+
+        if transport_params:
+            tp = cls._merge_transport_params(tp, transport_params)
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
@@ -303,6 +294,7 @@ class ProtocolsProvider:
         """
         Merge custom transport parameters with default parameters.
         Custom parameters take precedence over default parameters.
+        Performs a deep merge for nested dictionaries.
         """
         if custom_params is None:
             return default_params
@@ -310,11 +302,13 @@ class ProtocolsProvider:
         if default_params is None:
             return custom_params
 
-        # Create a copy of default params to avoid modifying the original
         merged = default_params.copy()
 
-        # Update with custom params, which take precedence
-        merged.update(custom_params)
+        for key, value in custom_params.items():
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = cls._merge_transport_params(merged[key], value)
+            else:
+                merged[key] = value
 
         return merged
 
