@@ -199,13 +199,11 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// The listener receives (node_id, is_draining, draining_deadline_timestamp_ms).
   ///
   /// \param listener The handler which processes the draining state change.
-  /// \param io_context the context to post the listener function to
   void AddNodeDrainingListener(
-      std::function<void(const NodeID &, bool, int64_t)> listener,
-      instrumented_io_context &io_context) {
+      std::function<void(const NodeID &, bool, int64_t)> listener) {
     absl::MutexLock lock(&mutex_);
     RAY_CHECK(listener);
-    node_draining_listeners_.emplace_back(std::move(listener), io_context);
+    node_draining_listeners_.emplace_back(std::move(listener));
   }
 
   /// Initialize with the gcs tables data synchronously.
@@ -382,7 +380,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       node_removed_listeners_ ABSL_GUARDED_BY(mutex_);
 
   /// Listeners which monitors when nodes are set to draining.
-  std::vector<Postable<void(const NodeID &, bool, int64_t)>> node_draining_listeners_
+  /// Uses std::function (not Postable) for synchronous invocation to ensure
+  /// scheduler sees draining state before HandleDrainNode returns.
+  std::vector<std::function<void(const NodeID &, bool, int64_t)>> node_draining_listeners_
       ABSL_GUARDED_BY(mutex_);
 
   /// A publisher for publishing gcs messages.

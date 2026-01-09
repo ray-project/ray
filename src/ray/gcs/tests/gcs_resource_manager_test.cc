@@ -244,6 +244,12 @@ TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
 
   ASSERT_FALSE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
 
+  gcs_node_manager_->AddNodeDrainingListener(
+      [this](const NodeID &node_id, bool is_draining, int64_t deadline_timestamp_ms) {
+        cluster_resource_manager_.SetNodeDraining(
+            scheduling::NodeID(node_id.Binary()), is_draining, deadline_timestamp_ms);
+      });
+
   auto drain_request = std::make_shared<rpc::autoscaler::DrainNodeRequest>();
   drain_request->set_node_id(node_id.Binary());
   drain_request->set_reason(rpc::autoscaler::DRAIN_NODE_REASON_IDLE_TERMINATION);
@@ -252,7 +258,6 @@ TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
   gcs_node_manager_->AddNode(std::make_shared<rpc::GcsNodeInfo>(*node));
   drain_request->set_deadline_timestamp_ms(12345);
   gcs_node_manager_->SetNodeDraining(node_id, drain_request);
-  io_service_.poll();
 
   ASSERT_TRUE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
   const auto &node_resources =

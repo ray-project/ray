@@ -34,15 +34,7 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_lease_manager_(cluster_lease_manager) {
-  gcs_node_manager_.AddNodeDrainingListener(
-      [this](const NodeID &node_id, bool is_draining, int64_t deadline_timestamp_ms) {
-        scheduling::NodeID scheduling_node_id(node_id.Binary());
-        cluster_resource_manager_.SetNodeDraining(
-            scheduling_node_id, is_draining, deadline_timestamp_ms);
-      },
-      io_context_);
-}
+      cluster_lease_manager_(cluster_lease_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
@@ -301,6 +293,13 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
   num_alive_nodes_--;
+}
+
+void GcsResourceManager::SetNodeDraining(const NodeID &node_id,
+                                         bool is_draining,
+                                         int64_t draining_deadline_timestamp_ms) {
+  cluster_resource_manager_.SetNodeDraining(
+      scheduling::NodeID(node_id.Binary()), is_draining, draining_deadline_timestamp_ms);
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

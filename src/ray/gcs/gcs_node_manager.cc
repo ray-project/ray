@@ -606,10 +606,7 @@ void GcsNodeManager::SetNodeDraining(
   }
 
   for (auto &listener : node_draining_listeners_) {
-    listener.Post("NodeManager.SetNodeDrainingCallback",
-                  node_id,
-                  true,
-                  drain_request->deadline_timestamp_ms());
+    listener(node_id, true, drain_request->deadline_timestamp_ms());
   }
 }
 
