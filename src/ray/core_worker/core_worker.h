@@ -372,8 +372,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
-  void SetWebuiDisplay(const std::string &key, const std::string &message);
-
   /// Sets the actor's repr name.
   ///
   /// This is set explicitly rather than included as part of actor creation task spec
@@ -1868,9 +1866,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// thread than the thread executing the task, so we cannot get the cancellation status
   /// from the thread-local WorkerThreadContext.
   absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
-
-  /// Key value pairs to be displayed on Web UI.
-  absl::flat_hash_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
