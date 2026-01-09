@@ -120,6 +120,9 @@ ObjectManager::ObjectManager(
     // object. This is a no-op if the object is already sealed or evicted.
     buffer_pool_.AbortCreate(object_id);
   };
+  auto refresh_object_subscription = [this](const ObjectID &object_id) {
+    object_directory_->RefreshObjectLocationSubscription(object_id);
+  };
   auto get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   const int64_t available_memory = std::max<int64_t>(config.object_store_memory, 0);
   pull_manager_ = std::make_unique<PullManager>(self_node_id_,
@@ -127,6 +130,7 @@ ObjectManager::ObjectManager(
                                                 std::move(send_pull_request),
                                                 std::move(cancel_pull_request),
                                                 std::move(fail_pull_request),
+                                                std::move(refresh_object_subscription),
                                                 restore_spilled_object_,
                                                 std::move(get_time),
                                                 config.pull_timeout_ms,

@@ -434,6 +434,31 @@ void OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   }
 }
 
+void OwnershipBasedObjectDirectory::RefreshObjectLocationSubscription(
+    const ObjectID &object_id) {
+  auto it = listeners_.find(object_id);
+  if (it == listeners_.end()) {
+    return;
+  }
+
+  auto owner_address = it->second.owner_address;
+  auto callbacks = std::move(it->second.callbacks);
+  object_location_subscriber_->Unsubscribe(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+      owner_address,
+      object_id.Binary());
+  listeners_.erase(it);
+
+  // Resubscribe with the same callbacks. This forces the owner to
+  // re-publish current object state via PublishObjectLocationSnapshot.
+  for (const auto &[callback_id, callback] : callbacks) {
+    SubscribeObjectLocations(callback_id, object_id, owner_address, callback);
+  }
+
+  RAY_LOG(DEBUG).WithField(object_id)
+      << "Refreshed object location subscription to recover from potential stale state";
+}
+
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &[object_id, listener] : listeners_) {
     bool updated = listener.current_object_locations.erase(node_id) > 0;

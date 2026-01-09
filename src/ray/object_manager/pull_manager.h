@@ -68,6 +68,7 @@ class PullManager {
       std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       std::function<void(const ObjectID &)> cancel_pull_request,
       std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+      std::function<void(const ObjectID &)> refresh_object_subscription,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<double()> get_time_seconds,
       int pull_timeout_ms,
@@ -190,8 +191,10 @@ class PullManager {
     // The pull will timeout at this time if there are still no locations for
     // the object.
     double expiration_time_seconds = 0;
-    // When we started waiting for object location info (for subscription timeout).
+    // When we started waiting for object location info (for subscription refresh).
     double subscription_start_time_seconds;
+    // Number of times we've refreshed the subscription while waiting for location info.
+    uint8_t num_subscription_refreshes = 0;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries = 0;
@@ -434,6 +437,7 @@ class PullManager {
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
+  const std::function<void(const ObjectID &)> refresh_object_subscription_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
@@ -515,6 +519,7 @@ class PullManager {
   int64_t num_retries_total_ = 0;
   int64_t num_succeeded_pins_total_ = 0;
   int64_t num_failed_pins_total_ = 0;
+  int64_t num_subscription_refreshes_total_ = 0;
 
   mutable ray::stats::Gauge pull_manager_usage_bytes_gauge_{
       GetPullManagerUsageBytesGaugeMetric()};
@@ -526,6 +531,8 @@ class PullManager {
       GetPullManagerActiveBundlesGaugeMetric()};
   mutable ray::stats::Gauge pull_manager_retries_total_gauge_{
       GetPullManagerRetriesTotalGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_subscription_refreshes_total_gauge_{
+      GetPullManagerSubscriptionRefreshesTotalGaugeMetric()};
   mutable ray::stats::Gauge pull_manager_num_object_pins_gauge_{
       GetPullManagerNumObjectPinsGaugeMetric()};
   mutable ray::stats::Histogram pull_manager_object_request_time_ms_histogram_{

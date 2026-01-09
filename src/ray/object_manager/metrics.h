@@ -138,6 +138,15 @@ inline ray::stats::Gauge GetPullManagerRetriesTotalGaugeMetric() {
       /*tag_keys=*/{"Type"});
 }
 
+inline ray::stats::Gauge GetPullManagerSubscriptionRefreshesTotalGaugeMetric() {
+  return ray::stats::Gauge(
+      /*name=*/"pull_manager_subscription_refreshes_total",
+      /*description=*/
+      "Number of cumulative subscription refreshes for objects waiting for location "
+      "info.",
+      /*unit=*/"refreshes");
+}
+
 inline ray::stats::Gauge GetPullManagerNumObjectPinsGaugeMetric() {
   return ray::stats::Gauge(
       /*name=*/"pull_manager_num_object_pins",

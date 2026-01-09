@@ -57,6 +57,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   void UnsubscribeObjectLocations(const UniqueID &callback_id,
                                   const ObjectID &object_id) override;
 
+  void RefreshObjectLocationSubscription(const ObjectID &object_id) override;
+
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
   void ReportObjectAdded(const ObjectID &object_id,
