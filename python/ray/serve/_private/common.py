@@ -899,7 +899,7 @@ class ApplicationSnapshot(BaseModel):
         """Return True if scaling-related fields are equal.
 
         Used for autoscaling snapshot log deduplication. Compares only:
-        total_target_replicas, scaling_status, num_deployments
+        app, total_target_replicas, scaling_status, num_deployments
         """
         if not isinstance(other, ApplicationSnapshot):
             return False

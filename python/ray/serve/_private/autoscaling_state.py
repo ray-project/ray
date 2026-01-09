@@ -879,10 +879,7 @@ class ApplicationAutoscalingState:
 
         errors: List[str] = []
 
-        if self._policy is not None:
-            policy_name_str = f"{self._policy.__module__}.{self._policy.__name__}"
-        else:
-            policy_name_str = "unknown"
+        policy_name_str = f"{self._policy.__module__}.{self._policy.__name__}"
 
         return ApplicationSnapshot(
             timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
