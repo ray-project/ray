@@ -403,6 +403,6 @@ Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_
 
 ## Summary
 
-In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8&nbsp;B, and adding simple pre/post-processing to infer company industries. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
+In this example, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8&nbsp;B, and adding simple pre/post-processing to infer company industries. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
 
 See [Anyscale batch inference optimization](https://docs.anyscale.com/llm/batch-inference) for more information on using Ray Data with Anyscale and for more advanced use cases, see [Working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).
