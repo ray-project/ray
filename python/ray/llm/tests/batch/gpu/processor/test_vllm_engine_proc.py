@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
+from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
@@ -233,6 +234,54 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
                 detokenize=False,
             ),
         ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
+    tokenizer = AutoTokenizer.from_pretrained(model_opt_125m, trust_remote_code=True)
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    def preprocess(row):
+        prompt_text = f"Calculate {row['id']} ** 3"
+
+        return dict(
+            tokenized_prompt=tokenizer(prompt_text)["input_ids"],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=preprocess,
         postprocess=lambda row: {
             "resp": row["generated_text"],
         },
