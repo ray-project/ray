@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import logging
 import time
@@ -20,6 +22,9 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
+
+from typing_extensions import override
+
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -30,8 +35,12 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
-from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    QueueWithRemoval,
+    RebundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -47,7 +56,6 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     get_or_create_actor_location_tracker,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -89,7 +97,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -197,6 +205,16 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._block_ref_bundler, self._bundle_queue]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
+
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
@@ -228,18 +246,6 @@ class ActorPoolMapOperator(MapOperator):
             )
 
         return ray_actor_task_remote_args
-
-    def internal_input_queue_num_blocks(self) -> int:
-        # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
-        #   - Input blocks bundler, alas
-        #   - Own bundle's queue
-        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return (
-            self._bundle_queue.estimate_size_bytes()
-            + self._block_ref_bundler.size_bytes()
-        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -422,18 +428,6 @@ class ActorPoolMapOperator(MapOperator):
                 "You might be able to increase the number of concurrent tasks by "
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues for the actor-pool map operator.
-
-        In addition to clearing the base class' internal queues, this method clears
-        the local bundle queue used to stage input bundles for actors.
-        """
-        super().clear_internal_input_queue()
-
-        while self._bundle_queue.has_next():
-            bundle = self._bundle_queue.get_next()
-            self._metrics.on_input_dequeued(bundle)
 
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
@@ -705,7 +699,7 @@ class _ActorTaskSelector(abc.ABC):
 
     @abstractmethod
     def select_actors(
-        self, input_queue: BundleQueue, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Select actors for bundles in the input queue.
 
@@ -725,7 +719,7 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         super().__init__(actor_pool)
 
     def select_actors(
-        self, input_queue: BundleQueue, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Picks actors for task submission based on busyness and locality."""
         if not self._actor_pool.running_actors():

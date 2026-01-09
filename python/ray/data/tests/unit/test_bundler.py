@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data.block import BlockAccessor
 
 
@@ -74,22 +74,22 @@ def _make_ref_bundles_for_unit_test(raw_bundles: List[List[List[Any]]]) -> tuple
     ],
 )
 def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_counts):
-    """Test StreamingRepartitionRefBundler with various input patterns (unit test)."""
+    """Test RebundleQueue with various input patterns (unit test)."""
 
-    bundler = StreamingRepartitionRefBundler(target)
+    bundler = RebundleQueue(ExactMultipleSize(target))
     bundles, block_data_map = _make_ref_bundles_for_unit_test(in_bundles)
     out_bundles = []
 
     for bundle in bundles:
-        bundler.add_bundle(bundle)
-        while bundler.has_bundle():
-            _, out_bundle = bundler.get_next_bundle()
+        bundler.add(bundle)
+        while bundler.has_next():
+            out_bundle = bundler.get_next()
             out_bundles.append(out_bundle)
 
-    bundler.done_adding_bundles()
+    bundler.finalize()
 
-    while bundler.has_bundle():
-        _, out_bundle = bundler.get_next_bundle()
+    while bundler.has_next():
+        out_bundle = bundler.get_next()
         out_bundles.append(out_bundle)
 
     # Verify number of output bundles
@@ -107,6 +107,9 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
 
     # Verify all bundles have been ingested
     assert bundler.num_blocks() == 0
+    assert bundler.num_rows() == 0
+    assert len(bundler) == 0
+    assert bundler.estimate_size_bytes() == 0
 
     # Verify all output bundles except the last are exact multiples of target
     for i, out_bundle in enumerate(out_bundles[:-1]):

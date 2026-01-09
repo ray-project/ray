@@ -411,11 +411,13 @@ def test_dataset_repr(ray_start_regular_shared):
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
+        repr(ds1)
+        == f"MaterializedDataset(num_blocks={ds1.num_blocks()}, num_rows={ds1.count()}, "
         "schema={id: int64})"
     )
     assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
+        repr(ds2)
+        == f"MaterializedDataset(num_blocks={ds2.num_blocks()}, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
 
