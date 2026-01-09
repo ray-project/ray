@@ -801,9 +801,11 @@ def apply_ipython3_lexer(app, docname, source):
     # exclude patterns takes priority
     if any(matcher(doc_source) for matcher in app.ipython3_lexer_exclude_patterns):
         return
-    if any(matcher(doc_source) for matcher in app.ipython3_lexer_patterns):
-        notebook = json.loads(source[0])
-        # Set ipython3 lexer
-        notebook.setdefault('metadata', {}) \
-                .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
-        source[0] = json.dumps(notebook)
+    if not any(matcher(doc_source) for matcher in app.ipython3_lexer_patterns):
+        return
+    
+    notebook = json.loads(source[0])
+    # Set ipython3 lexer
+    notebook.setdefault('metadata', {}) \
+            .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
+    source[0] = json.dumps(notebook)
