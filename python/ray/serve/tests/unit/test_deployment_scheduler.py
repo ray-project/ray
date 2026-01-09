@@ -914,8 +914,8 @@ def test_schedule_passes_placement_group_options():
     assert pg_request.bundle_label_selector == test_labels
 
 
-def test_filter_nodes_by_labels():
-    """Test _filter_nodes_by_labels logic used by _find_best_available_node
+def test_filter_nodes_by_label_selector():
+    """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
     when bin-packing, such that label constraints are enforced for the preferred node."""
 
     class MockScheduler(default_impl.DefaultDeploymentScheduler):
@@ -936,46 +936,50 @@ def test_filter_nodes_by_labels():
     }
 
     # equals operator
-    filtered = scheduler._filter_nodes_by_labels(
+    filtered = scheduler._filter_nodes_by_label_selector(
         nodes, {"region": "us-west"}, node_labels
     )
     assert set(filtered.keys()) == {"n1"}
 
     # not equals operator
-    filtered = scheduler._filter_nodes_by_labels(
+    filtered = scheduler._filter_nodes_by_label_selector(
         nodes, {"region": "!us-west"}, node_labels
     )
     assert set(filtered.keys()) == {"n2", "n3"}
 
     # in operator
-    filtered = scheduler._filter_nodes_by_labels(
+    filtered = scheduler._filter_nodes_by_label_selector(
         nodes, {"region": "in(us-west, us-east)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1", "n2"}
 
     # !in operator
-    filtered = scheduler._filter_nodes_by_labels(
+    filtered = scheduler._filter_nodes_by_label_selector(
         nodes, {"env": "!in(dev, staging)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1"}
 
     # Missing labels treated as not a match for equality.
-    filtered = scheduler._filter_nodes_by_labels(nodes, {"gpu": "A100"}, node_labels)
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"gpu": "A100"}, node_labels
+    )
     assert set(filtered.keys()) == {"n2"}
 
     # Not equal should match node with missing labels.
-    filtered = scheduler._filter_nodes_by_labels(nodes, {"gpu": "!T4"}, node_labels)
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"gpu": "!T4"}, node_labels
+    )
     assert set(filtered.keys()) == {"n2", "n3"}
 
     # Validate we handle whitespace.
-    filtered = scheduler._filter_nodes_by_labels(
+    filtered = scheduler._filter_nodes_by_label_selector(
         nodes, {"region": "in(  us-west , us-east  )"}, node_labels
     )
     assert set(filtered.keys()) == {"n1", "n2"}
 
 
-def test_get_strategies_to_try():
-    """Test strategy generation logic in DefaultDeploymentScheduler._get_strategies_to_try,
+def test_build_pack_placement_candidates():
+    """Test strategy generation logic in DefaultDeploymentScheduler._build_pack_placement_candidates,
     verifying that the scheduler correctly generates a list of (resources, labels) tuples to
     attempt for scheduling."""
 
@@ -996,7 +1000,7 @@ def test_get_strategies_to_try():
         actor_init_args=(),
         on_scheduled=Mock(),
     )
-    strategies = scheduler._get_strategies_to_try(req_basic)
+    strategies = scheduler._build_pack_placement_candidates(req_basic)
     assert len(strategies) == 1
     assert strategies[0][0] == {"CPU": 1}
     assert strategies[0][1] == []
@@ -1013,7 +1017,7 @@ def test_get_strategies_to_try():
         actor_init_args=(),
         on_scheduled=Mock(),
     )
-    strategies = scheduler._get_strategies_to_try(req_fallback)
+    strategies = scheduler._build_pack_placement_candidates(req_fallback)
     assert len(strategies) == 2
 
     assert strategies[0][0] == {"CPU": 1}
@@ -1036,7 +1040,7 @@ def test_get_strategies_to_try():
             {"accelerator-type": "H100"},
         ],
     )
-    strategies = scheduler._get_strategies_to_try(req_pack)
+    strategies = scheduler._build_pack_placement_candidates(req_pack)
     assert len(strategies) == 1
 
     assert strategies[0][0] == {"CPU": 0.1}
@@ -1054,7 +1058,7 @@ def test_get_strategies_to_try():
         placement_group_strategy="STRICT_PACK",
         placement_group_bundle_label_selector=[{"accelerator-type": "A100"}],
     )
-    strategies = scheduler._get_strategies_to_try(req_pg)
+    strategies = scheduler._build_pack_placement_candidates(req_pg)
     assert len(strategies) == 1
 
     assert strategies[0][0] == {"CPU": 2}

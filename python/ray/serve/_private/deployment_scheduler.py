@@ -728,7 +728,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         }
 
         for scheduling_request in all_scheduling_requests:
-            self._process_single_request(scheduling_request, all_node_labels)
+            self._pack_schedule_replica(scheduling_request, all_node_labels)
 
     def _schedule_with_spread_strategy(self):
         """Tries to schedule pending replicas using the SPREAD strategy."""
@@ -753,10 +753,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         target_node = None
         for required_resources, required_labels in placement_candidates:
-            target_node = self._find_best_available_node(
-                res,
+            target_node = self._find_best_fit_node_for_pack(
+                required_resources,
                 self._get_available_resources_per_node(),
-                required_labels_list=labels,
+                required_labels_list=required_labels,
                 node_labels=all_node_labels,
             )
             if target_node:
@@ -775,7 +775,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         # Collect a list of required resources and labels to try to schedule to
         # support replica compaction when fallback strategies are provided.
-        strategies_to_try = []
+        placement_candidates = []
         primary_labels = []
         primary_bundles = scheduling_request.placement_group_bundles
 
@@ -801,7 +801,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 ]
 
         # If PG is defined on scheduling request, then `required_resources` represents the sum across all bundles.
-        strategies_to_try.append(
+        placement_candidates.append(
             (scheduling_request.required_resources, primary_labels)
         )
 
@@ -820,17 +820,17 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 )
 
                 fallback_labels = fallback.get("bundle_label_selector", [])
-                strategies_to_try.append((req_resources, fallback_labels))
+                placement_candidates.append((req_resources, fallback_labels))
 
         elif scheduling_request.actor_options.get("fallback_strategy"):
             # Fallback strategy provided for Ray Actor.
             for fallback in scheduling_request.actor_options["fallback_strategy"]:
                 fallback_labels = [fallback.get("label_selector", {}) or {}]
-                strategies_to_try.append(
+                placement_candidates.append(
                     (scheduling_request.required_resources, fallback_labels)
                 )
 
-        return strategies_to_try
+        return placement_candidates
 
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
@@ -977,7 +977,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # Filter feasible nodes by provided label selectors if provided.
         if required_labels_list and node_labels:
             for required_labels in required_labels_list:
-                available_resources_per_node = self._filter_nodes_by_labels(
+                available_resources_per_node = self._filter_nodes_by_label_selector(
                     available_resources_per_node, required_labels, node_labels
                 )
                 if not available_resources_per_node:
