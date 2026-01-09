@@ -4,7 +4,7 @@ Modify README.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 -->
 
-# LLM batch inference with Ray Data
+# LLM batch inference with Ray Data LLM
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/llm_batch_inference_text"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;

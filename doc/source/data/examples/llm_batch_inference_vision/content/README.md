@@ -4,7 +4,7 @@ Modify README.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 -->
 
-# Vision-language model batch inference with Ray Data
+Mulitmodal LLM batch inference with Ray Data LLM
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/llm_batch_inference_vision"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
