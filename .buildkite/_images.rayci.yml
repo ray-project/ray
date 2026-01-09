@@ -13,7 +13,7 @@ steps:
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
-      REQUIREMENTS_FILE: "python/deplocks/base_deps/$REQUIREMENTS_FILE"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
@@ -178,7 +178,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "release/ray_release/byod/ray_ml_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
     depends_on: ray-mlcudabase
 
   - name: ray-slimcpubase
