@@ -99,7 +99,7 @@ class BaseBundleQueue(_QueueMetricRecorder):
         they can override this method.
 
         Raises:
-            ValueError: If the queue is empty.
+            IndexError: If the queue is empty.
 
         Returns:
             A Refbundle if has_next() is True
