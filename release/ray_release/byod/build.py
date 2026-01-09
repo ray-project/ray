@@ -34,7 +34,7 @@ def build_anyscale_custom_byod_image(
             release_byod_dir = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 
     with tempfile.TemporaryDirectory() as build_dir:
-        fill_build_context_dir(build_context, build_dir, release_byod_dir)
+        fill_build_context_dir(build_context, release_byod_dir, build_dir)
 
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]

@@ -975,7 +975,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      rpc_address_,
                                      CurrentCallSite(),
                                      object.GetSize(),
-                                     /*is_reconstructable=*/false,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true,
                                      NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -1062,7 +1062,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        rpc_address_,
                                        CurrentCallSite(),
                                        data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
@@ -2574,12 +2574,16 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
         } else {
           std::stringstream stream;
           stream << "Failed to find a corresponding actor handle for " << actor_id;
-          cb(Status::Invalid(stream.str()));
+          cb(Status::NotFound(stream.str()));
         }
       },
       "CoreWorker.KillActor");
   const auto &status = f.get();
-  actor_manager_->OnActorKilled(actor_id);
+  // Only call OnActorKilled if the kill was successful (status is OK).
+  // If the actor handle doesn't exist, OnActorKilled would crash.
+  if (status.ok()) {
+    actor_manager_->OnActorKilled(actor_id);
+  }
   return status;
 }
 
@@ -3280,13 +3284,14 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   size_t num_returns = task_spec.NumReturns();
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
-      reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
-                                         /*contained_ids=*/{},
-                                         rpc_address_,
-                                         CurrentCallSite(),
-                                         -1,
-                                         /*is_reconstructable=*/false,
-                                         /*add_local_ref=*/true);
+      reference_counter_->AddOwnedObject(
+          task_spec.ReturnId(i),
+          /*contained_ids=*/{},
+          rpc_address_,
+          CurrentCallSite(),
+          -1,
+          LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE,
+          /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -4197,10 +4202,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     }
     (*used_resources_map)[resource_name] = allocations;
   }
-  google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
-                                                            webui_display_.end());
-  (*stats->mutable_webui_display()) = webui_map;
-
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_in_plasma(memory_store_stats.num_in_plasma);
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
@@ -4404,7 +4405,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       rpc_address_,
       call_site,
       request.object_size(),
-      /*is_reconstructable=*/false,
+      LineageReconstructionEligibility::INELIGIBLE_PUT,
       /*add_local_ref=*/false,
       /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
@@ -4519,11 +4520,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
-  absl::MutexLock lock(&mutex_);
-  webui_display_[key] = message;
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
