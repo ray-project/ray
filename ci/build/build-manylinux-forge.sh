@@ -74,8 +74,8 @@ chmod +x /tmp/bazelisk
 sudo mv /tmp/bazelisk /usr/local/bin/bazelisk
 sudo ln -sf /usr/local/bin/bazelisk /usr/local/bin/bazel
 
-# Use python3.9 as default python3
-sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+# Use python3.10 as default python3
+sudo ln -sf /usr/local/bin/python3.10 /usr/local/bin/python3
 
 {
   echo "build --config=ci"

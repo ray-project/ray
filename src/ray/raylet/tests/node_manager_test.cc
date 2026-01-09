@@ -48,6 +48,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/network_util.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -314,6 +315,7 @@ class NodeManagerTest : public ::testing::Test {
     })");
 
     NodeManagerConfig node_manager_config{};
+    node_manager_config.node_manager_address = GetLocalhostIP();
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
     node_manager_config.resource_config = ResourceSet(
@@ -544,11 +546,11 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
           });
 
   // Save the publish_worker_failure_callback for publishing a worker failure event later.
-  gcs::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
+  rpc::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
-      .WillOnce([&](const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
-                    const gcs::StatusCallback &done) {
+      .WillOnce([&](const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                    const rpc::StatusCallback &done) {
         publish_worker_failure_callback = subscribe;
         return Status::OK();
       });
@@ -624,9 +626,9 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+      .WillOnce([&](const rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
                         &subscribe,
-                    const gcs::StatusCallback &done) {
+                    const rpc::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
   node_manager_->RegisterGcs();
@@ -1348,13 +1350,13 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
   //    started
   const bool shutting_down_during_death_publish = GetParam();
 
-  gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+  rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+      .WillOnce([&](const rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
                         &subscribe,
-                    const gcs::StatusCallback &done) {
+                    const rpc::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
   node_manager_->RegisterGcs();
