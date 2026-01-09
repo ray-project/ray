@@ -84,7 +84,14 @@ def auto_setup_auth_token_if_enabled(monkeypatch):
         ):
             test_token = "ci_test_token_" + "0" * 48  # 64 char token
             monkeypatch.setenv("RAY_AUTH_TOKEN", test_token)
-            reset_auth_token_state()
+            # Only reset the token loader cache, not the entire config.
+            # Calling Config.initialize("") can interfere with running clusters.
+            try:
+                from ray._raylet import AuthenticationTokenLoader
+
+                AuthenticationTokenLoader.instance().reset_cache()
+            except ImportError:
+                pass  # Minimal install without _raylet
     yield
     # Cleanup handled by monkeypatch automatically
 

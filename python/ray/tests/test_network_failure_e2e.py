@@ -281,9 +281,12 @@ class AsyncActor:
       return "first"
     else:
       # second attempt
-      # make sure second attempt only runs
-      # after first attempt finishes
-      assert count == 2
+      # wait for first attempt to finish incrementing counter to 2
+      while True:
+        count = await self.counter.get.remote()
+        if count >= 2:
+          break
+        await asyncio.sleep(0.1)
       return "second"
 
 counter = Counter.remote()
