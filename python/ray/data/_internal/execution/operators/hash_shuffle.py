@@ -1693,29 +1693,30 @@ class HashShuffleAggregator:
             and bucket.queue.qsize()
             >= self._current_compaction_thresholds[partition_id]
         ):
-            # NOTE: We're only taking partition lock during compaction, but not
-            #       accepting into the queue to simply guarantee that no more than
-            #       one compaction is running at any given moment in time
+            # We're taking a lock to drain the queue to make sure that there's
+            # no concurrent compactions happening
             with bucket.lock:
-                # Check queue size again to avoid running compaction
-                # again after previous just finished
+                # Check queue size again to avoid running compaction after
+                # another one just drained the queue
                 if (
                     bucket.queue.qsize()
                     < self._current_compaction_thresholds[partition_id]
                 ):
                     return
 
-                blocks_to_compact = bucket.drain_queue()
-                compacted = self._aggregation.compact(blocks_to_compact)
-                # Requeue compacted block back into the queue
-                bucket.queue.put(compacted)
+                to_compact = bucket.drain_queue()
 
-                # NOTE: We revise compaction thresholds for partition after every
-                #       compaction to amortize the cost of compaction.
-                self._current_compaction_thresholds[partition_id] = min(
-                    self._current_compaction_thresholds[partition_id] * 2,
-                    self._max_num_blocks_compaction_threshold,
-                )
+            # For actual compaction we're releasing the lock
+            compacted = self._aggregation.compact(to_compact)
+            # Requeue compacted block back into the queue
+            bucket.queue.put(compacted)
+
+            # We revise compaction thresholds for partition after every
+            # compaction to amortize the cost of compaction.
+            self._current_compaction_thresholds[partition_id] = min(
+                self._current_compaction_thresholds[partition_id] * 2,
+                self._max_num_blocks_compaction_threshold,
+            )
 
     def finalize(
         self, partition_id: int
