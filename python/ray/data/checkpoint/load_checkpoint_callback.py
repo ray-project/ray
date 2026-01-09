@@ -1,12 +1,13 @@
 import logging
 from typing import Optional
 
+import numpy
+
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
     remove_execution_callback,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data.block import Block
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
 from ray.types import ObjectRef
@@ -22,7 +23,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         self._config = config
 
         self._ckpt_filter = self._create_checkpoint_filter(config)
-        self._checkpoint_ref: Optional[ObjectRef[Block]] = None
+        self._checkpoint_ref: Optional[ObjectRef[numpy.ndarray]] = None
 
     def _create_checkpoint_filter(
         self, config: CheckpointConfig
@@ -57,6 +58,6 @@ class LoadCheckpointCallback(ExecutionCallback):
         # Remove the callback from the DataContext.
         remove_execution_callback(self, executor._data_context)
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(self) -> ObjectRef[numpy.ndarray]:
         assert self._checkpoint_ref is not None
         return self._checkpoint_ref

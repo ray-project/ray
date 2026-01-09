@@ -12,6 +12,7 @@ from pyarrow.fs import FileSelector, LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -682,8 +683,16 @@ def test_filter_rows_for_block():
     chunk1 = pyarrow.table({ID_COL: [1, 2, 4]})
     chunk2 = pyarrow.table({ID_COL: [6, 8, 9, 11]})
     chunk3 = pyarrow.table({ID_COL: [12, 13]})
-    checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
-    assert len(checkpointed_ids[ID_COL].chunks) == 3
+    pyarrow_checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
+    assert len(pyarrow_checkpointed_ids[ID_COL].chunks) == 3
+
+    combined_ckpt_block = transform_pyarrow.combine_chunks(pyarrow_checkpointed_ids)
+
+    combine_ckpt_chunks = combined_ckpt_block[ID_COL].chunks
+    assert len(combine_ckpt_chunks) == 1
+    checkpoint_ids = transform_pyarrow.to_numpy(
+        combine_ckpt_chunks[0], zero_copy_only=False
+    )
 
     expected_block = pyarrow.table(
         {
@@ -695,7 +704,7 @@ def test_filter_rows_for_block():
     filter_instance = BatchBasedCheckpointFilter(config)
     filtered_block = filter_instance.filter_rows_for_block(
         block=block,
-        checkpointed_ids=checkpointed_ids,
+        checkpointed_ids=checkpoint_ids,
     )
 
     assert filtered_block.equals(expected_block)

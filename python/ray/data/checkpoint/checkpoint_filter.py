@@ -1,5 +1,6 @@
 import abc
 import logging
+import os
 import time
 from typing import List, Optional
 
@@ -14,6 +15,8 @@ from ray.data.checkpoint import CheckpointConfig
 from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -35,26 +38,43 @@ class CheckpointFilter(abc.ABC):
 
 
 @ray.remote(max_retries=-1)
-def _combine_chunks(ckpt_block: pyarrow.Table) -> pyarrow.Table:
+def _combine_chunks(ckpt_block: pyarrow.Table, id_column: str) -> numpy.ndarray:
     """Combine chunks for the checkpoint block.
 
     Args:
         ckpt_block: The checkpoint block to combine chunks for
+        id_column: The id column
 
     Returns:
-        The combined checkpoint block
+        The numpy.ndarray of combined checkpoint block
     """
-    from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunks
 
-    combined_ckpt_block = combine_chunks(ckpt_block)
+    # Combine chunks of ckpt_block
+    combined_ckpt_block = transform_pyarrow.combine_chunks(ckpt_block)
     logger.debug(
         "Checkpoint block stats for id column checkpoint: Combined block: type=%s, %d rows, %d bytes",
         combined_ckpt_block.schema.to_string(),
         combined_ckpt_block.num_rows,
         combined_ckpt_block.nbytes,
     )
+    if combined_ckpt_block.num_rows == 0:
+        return numpy.array([])
 
-    return combined_ckpt_block
+    # In some cases(e.g., the size of combined_ckpt_block[id_column] > 2GB), there may be multiple chunks.
+    combine_ckpt_chunks = combined_ckpt_block[id_column].chunks
+
+    logger.debug(
+        "Checkpoint stats for id column chunks: Num of chunks: %d",
+        len(combine_ckpt_chunks),
+    )
+
+    # Convert checkpoint chunk to numpy for fast search.
+    # Use internal helper function for consistency and robustness (handles null-typed arrays, etc.)
+    ckpt_arrays = []
+    for chunk in combine_ckpt_chunks:
+        ckpt_arrays.append(transform_pyarrow.to_numpy(chunk, zero_copy_only=False))
+    final_ckpt_array = numpy.concatenate(ckpt_arrays)
+    return final_ckpt_array
 
 
 class CheckpointLoader:
@@ -81,11 +101,11 @@ class CheckpointLoader:
         self.id_column = id_column
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(self) -> ObjectRef[numpy.ndarray]:
         """Loading checkpoint data.
 
         Returns:
-            ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
+            ObjectRef[numpy.ndarray]: ObjectRef to the checkpointed IDs array.
         """
         start_t = time.time()
 
@@ -118,20 +138,21 @@ class CheckpointLoader:
         metadata: BlockMetadata = ref_bundle.blocks[0][1]
 
         # Post-process the block
-        checkpoint_block_ref: ObjectRef[Block] = self._postprocess_block(block_ref)
+        checkpoint_ndarray_ref: ObjectRef[numpy.ndarray] = self._postprocess_block(
+            block_ref
+        )
 
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
         logger.info(
-            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
+            "Checkpoint loaded for %s in %.2f seconds. Arrow SizeBytes = %d, Schema = %s",
             type(self).__name__,
             time.time() - start_t,
             metadata.size_bytes,
             schema.to_string(),
         )
-
-        return checkpoint_block_ref
+        return checkpoint_ndarray_ref
 
     @abc.abstractmethod
     def _preprocess_data_pipeline(
@@ -140,9 +161,11 @@ class CheckpointLoader:
         """Pre-process the checkpoint dataset. To be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement this method")
 
-    def _postprocess_block(self, block_ref: ObjectRef[Block]) -> ObjectRef[Block]:
+    def _postprocess_block(
+        self, block_ref: ObjectRef[Block]
+    ) -> ObjectRef[numpy.ndarray]:
         """Combine the block so it has fewer chunks."""
-        return _combine_chunks.remote(block_ref)
+        return _combine_chunks.remote(block_ref, self.id_column)
 
     def _validate_loaded_checkpoint(
         self, schema: Schema, metadata: BlockMetadata
@@ -174,11 +197,11 @@ class IdColumnCheckpointLoader(CheckpointLoader):
 class BatchBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends."""
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(self) -> ObjectRef[numpy.ndarray]:
         """Load checkpointed ids as a sorted block.
 
         Returns:
-            ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
+            ObjectRef[numpy.ndarray]: ObjectRef to the checkpointed IDs array.
         """
         loader = IdColumnCheckpointLoader(
             checkpoint_path=self.checkpoint_path,
@@ -191,76 +214,79 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
     def delete_checkpoint(self) -> None:
         self.filesystem.delete_dir(self.checkpoint_path_unwrapped)
 
+    def _warn_on_insufficient_memory(self):
+        """When using checkpoints, each read process needs to maintain checkpointed_ids
+        to filter the input blocks. This will increase the memory usage of each process.
+        When there is a potential risk of OOM, this function warn the user.
+
+        """
+        process = psutil.Process(os.getpid())
+        process_memory_usage = process.memory_info().rss
+        node_memory = psutil.virtual_memory()
+        # This node can not accept more read task
+        if process_memory_usage > node_memory.available:
+            logger.warning(
+                "Memory usage of current node: %.1f%%, per read task costs at least %d bytes."
+                ' To prevent oom, set ray_remote_args={"memory": ${memory}} in ray.data.read_datasource()'
+                " and make sure ${memory} > %d",
+                node_memory.percent,
+                process_memory_usage,
+                process_memory_usage,
+            )
+
     def filter_rows_for_block(
         self,
         block: Block,
-        checkpointed_ids: Block,
+        checkpointed_ids: numpy.ndarray,
     ) -> Block:
         """For the given block, filter out rows that have already
         been checkpointed, and return the resulting block.
 
         Args:
             block: The input block to filter.
-            checkpointed_ids: A block containing IDs of all rows that have
+            checkpointed_ids: A numpy ndarray containing IDs of all rows that have
                 been checkpointed.
         Returns:
             A new block with rows that have not been checkpointed.
         """
 
-        if len(checkpointed_ids) == 0 or len(block) == 0:
+        if checkpointed_ids.shape[0] == 0 or len(block) == 0:
             return block
 
         assert isinstance(block, pyarrow.Table)
-        assert isinstance(checkpointed_ids, pyarrow.Table)
+        assert isinstance(checkpointed_ids, numpy.ndarray)
+        self._warn_on_insufficient_memory()
 
         # The checkpointed_ids block is sorted (see load_checkpoint).
         # We'll use binary search to filter out processed rows.
-        # And we process a single chunk at a time, otherwise `to_numpy` below
-        # will copy the data from shared memory to worker's heap memory.
 
-        import concurrent.futures
-
-        # Get all chunks of the checkpointed ID column.
-        ckpt_chunks = checkpointed_ids[self.id_column].chunks
         # Convert the block's ID column to a numpy array for fast processing.
         block_ids = block[self.id_column].to_numpy()
 
-        def filter_with_ckpt_chunk(ckpt_chunk: pyarrow.ChunkedArray) -> numpy.ndarray:
-            # Convert checkpoint chunk to numpy for fast search.
-            # Use internal helper function for consistency and robustness (handles null-typed arrays, etc.)
-            ckpt_ids = transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
+        def filter_with_ckpt() -> numpy.ndarray:
             # Start with a mask of all True (keep all rows).
             mask = numpy.ones(len(block_ids), dtype=bool)
             # Use binary search to find where block_ids would be in ckpt_ids.
-            sorted_indices = numpy.searchsorted(ckpt_ids, block_ids)
+            sorted_indices = numpy.searchsorted(checkpointed_ids, block_ids)
             # Only consider indices that are within bounds.
-            valid_indices = sorted_indices < len(ckpt_ids)
+            valid_indices = sorted_indices < len(checkpointed_ids)
             # For valid indices, check for exact matches.
             potential_matches = sorted_indices[valid_indices]
-            matched = ckpt_ids[potential_matches] == block_ids[valid_indices]
+            matched = checkpointed_ids[potential_matches] == block_ids[valid_indices]
             # Mark matched IDs as False (filter out these rows).
             mask[valid_indices] = ~matched
-            # Delete the chunk to free memory.
-            del ckpt_chunk
             return mask
 
-        # Use ThreadPoolExecutor to process each checkpoint chunk in parallel.
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.filter_num_threads or None
-        ) as executor:
-            masks = list(executor.map(filter_with_ckpt_chunk, ckpt_chunks))
-
-        # Combine all masks using logical AND (row must not be in any checkpoint chunk).
-        final_mask = numpy.logical_and.reduce(masks)
+        mask = filter_with_ckpt()
         # Convert the final mask to a PyArrow array and filter the block.
-        mask_array = pyarrow.array(final_mask)
+        mask_array = pyarrow.array(mask)
         filtered_block = block.filter(mask_array)
         return filtered_block
 
     def filter_rows_for_batch(
         self,
         batch: DataBatch,
-        checkpointed_ids: Block,
+        checkpointed_ids: numpy.ndarray,
     ) -> DataBatch:
         """For the given batch, filter out rows that have already
         been checkpointed, and return the resulting batch.
