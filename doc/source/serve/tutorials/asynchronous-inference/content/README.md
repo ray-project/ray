@@ -70,6 +70,11 @@ Redis serves as both the message broker (task queue) and result backend.
 - **Docker:** `docker run -d -p 6379:6379 redis:latest`
 - **Other platforms:** [Official Redis Installation Guide](https://redis.io/docs/getting-started/installation/)
 
+**Note:** If you're using a hosted Redis instance, ensure that your Ray Serve cluster can access it. For example, when using AWS ElastiCache for Redis:
+
+- Launch the ElastiCache instance in the same VPC that's attached to your Anyscale cloud.
+- Attach IAM roles with read/write access to ElastiCache to your cluster instances.
+
 ## Step 2: Install Dependencies
 
 
