@@ -35,7 +35,6 @@ class _QueueMetricRecorder:
         self._nbytes -= bundle.size_bytes()
         self._num_blocks -= len(bundle.block_refs)
         self._num_bundles -= 1
-        # Fix this for None count
         self._num_rows -= bundle.num_rows() or 0
 
     def estimate_size_bytes(self) -> int:
