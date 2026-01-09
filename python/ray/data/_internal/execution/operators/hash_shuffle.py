@@ -1703,9 +1703,7 @@ class HashShuffleAggregator:
             with bucket.lock:
                 # Check queue size again to avoid running compaction after
                 # another one just drained the queue
-                if (
-                    bucket.queue.qsize() < bucket.compaction_threshold
-                ):
+                if bucket.queue.qsize() < bucket.compaction_threshold:
                     return
 
                 # Drain the queue to perform compaction
@@ -1799,7 +1797,9 @@ class HashShuffleAggregator:
 
         for seq_id in range(num_input_seqs):
             for part_id in target_partition_ids:
-                partition_buckets[seq_id][part_id] = PartitionBucket.create(compaction_threshold)
+                partition_buckets[seq_id][part_id] = PartitionBucket.create(
+                    compaction_threshold
+                )
 
         return partition_buckets
 
