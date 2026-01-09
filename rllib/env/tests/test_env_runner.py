@@ -44,71 +44,34 @@ GYM_VECTORIZE_MODES = [
 ]
 
 
-def pytest_generate_tests(metafunc):
-    """Generate test parameter combinations for env_runner_config, avoiding redundant multi_agent vectorize modes."""
-    fixtures = metafunc.fixturenames
-
-    # Check if we need the full env_runner_config parameterization
-    if "env_runner_config" in fixtures or "env_runner" in fixtures:
-        params = []
-
-        # Single-agent: test all vectorize modes
-        for num_envs in NUM_ENVS_VALUES:
-            for vec_mode in GYM_VECTORIZE_MODES:
-                params.append(
-                    pytest.param(
-                        "single_agent",
-                        num_envs,
-                        vec_mode,
-                        id=f"single_agent-envs-{num_envs}-vec-mode-{vec_mode.value}",
-                    )
-                )
-
-        # Multi-agent: vectorize mode not applicable, only test num_envs
-        for num_envs in NUM_ENVS_VALUES:
-            params.append(
-                pytest.param(
-                    "multi_agent",
-                    num_envs,
-                    None,
-                    id=f"multi_agent-envs-{num_envs}",
-                )
-            )
-
-        metafunc.parametrize(
-            "runner_type,num_envs_per_env_runner,gym_env_vectorize_mode", params
-        )
-
-    # For fixtures that only need runner_type (not env_runner_config)
-    elif "runner_type" in fixtures:
-        metafunc.parametrize("runner_type", RUNNER_TYPES)
-
-        # Also handle num_envs_per_env_runner if present
-        if "num_envs_per_env_runner" in fixtures:
-            metafunc.parametrize("num_envs_per_env_runner", NUM_ENVS_VALUES)
-
-
-@pytest.fixture
+@pytest.fixture(params=RUNNER_TYPES)
 def runner_type(request):
-    """Fixture for runner type - value provided by pytest_generate_tests."""
+    """Fixture for runner type."""
     return request.param
 
 
-@pytest.fixture
+@pytest.fixture(params=NUM_ENVS_VALUES)
 def num_envs_per_env_runner(request):
-    """Fixture for number of environments per runner - value provided by pytest_generate_tests."""
+    """Fixture for number of environments per runner."""
     return request.param
 
 
-@pytest.fixture
+@pytest.fixture(params=GYM_VECTORIZE_MODES)
 def gym_env_vectorize_mode(request):
-    """Fixture for gym vectorize mode - value provided by pytest_generate_tests."""
+    """Fixture for gym vectorize mode."""
     return request.param
 
 
 @pytest.fixture
 def env_runner_config(runner_type, num_envs_per_env_runner, gym_env_vectorize_mode):
     """Build appropriate config for each runner type."""
+    # Skip invalid combinations
+    if (
+        runner_type == "multi_agent"
+        and gym_env_vectorize_mode is gymnasium.VectorizeMode.VECTOR_ENTRY_POINT
+    ):
+        pytest.skip("gym_env_vectorize_mode not applicable for multi_agent")
+
     if runner_type == "single_agent":
         return (
             AlgorithmConfig()
@@ -278,7 +241,7 @@ def env_runner_with_callback(runner_type, ray_init):
             .env_runners(num_envs_per_env_runner=1)
             .callbacks(CallbackTracker)
         )
-        return SingleAgentEnvRunner(config=config)
+        runner = SingleAgentEnvRunner(config=config)
     elif runner_type == "multi_agent":
         config = (
             PPOConfig()
@@ -290,39 +253,12 @@ def env_runner_with_callback(runner_type, ray_init):
             .env_runners(num_envs_per_env_runner=1)
             .callbacks(CallbackTracker)
         )
-        return MultiAgentEnvRunner(config=config)
+        runner = MultiAgentEnvRunner(config=config)
     else:
         raise ValueError(f"Unknown runner type: {runner_type}")
 
-
-class ConnectorTracker(ConnectorV2):
-    """Original connector tracker for episode end counting."""
-
-    def __init__(self, env, spaces, device):
-        super().__init__(env.observation_space, env.action_space)
-
-        self.episode_end_counter = 0
-        self.episodes_encountered_list = list()
-        self.episodes_encountered_set = set()
-
-    @override(ConnectorV2)
-    def __call__(
-        self,
-        *,
-        rl_module,
-        batch,
-        episodes: list[MultiAgentEpisode | SingleAgentEpisode],
-        explore,
-        shared_data,
-        metrics,
-        **kwargs,
-    ):
-        if all(e.is_done for e in episodes):
-            self.episode_end_counter += len(episodes)
-            for episode in episodes:
-                self.episodes_encountered_list.append(episode.id_)
-                self.episodes_encountered_set.add(episode.id_)
-        return batch
+    yield runner
+    runner.stop()
 
 
 class EnvToModuleConnectorTracker(ConnectorV2):
