@@ -756,7 +756,13 @@ def pip_run(build_ext):
 if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
-    from setuptools.command.bdist_wheel import bdist_wheel
+
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
+    try:
+        from setuptools.command.bdist_wheel import bdist_wheel
+    except ImportError:
+        from wheel.bdist_wheel import bdist_wheel
 
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
