@@ -767,4 +767,3 @@ def mark_documents_as_orphan(app, docname, _source):
         # (MyST-NB expects this to exist when it writes to it)
         app.env.metadata.setdefault(docname, {})
         app.env.metadata[docname]["orphan"] = True
-    
