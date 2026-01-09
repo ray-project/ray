@@ -381,7 +381,6 @@ PSUTIL_PROCESS_ATTRS = (
         "cpu_times",
         "cmdline",
         "memory_info",
-        # "memory_full_info", # remove it as an action item for pytorch 2.6 perf debug
     ]
     + ["num_fds"]
     if sys.platform != "win32"
@@ -1194,7 +1193,9 @@ class ReporterAgent(
                 total_rss += float(mem.rss) / 1.0e6
                 if hasattr(mem, "shared"):
                     total_shm += float(mem.shared)
-            mem_full_info = stat.get("memory_full_info")
+            mem_full_info = stat.get(
+                "memory_full_info"
+            )  # psutil.memory_full_info is too expensive. We currently disable collecting this metrics. https://github.com/ray-project/ray/issues/55117
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
