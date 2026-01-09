@@ -38,8 +38,6 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-from ray._common.network_utils import get_localhost_ip
-
 if TYPE_CHECKING:
     import torch
 
@@ -1428,7 +1426,7 @@ def init(
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
     include_dashboard: Optional[bool] = None,
-    dashboard_host: str = get_localhost_ip(),
+    dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
     dashboard_port: Optional[int] = None,
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
@@ -1521,9 +1519,10 @@ def init(
             Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
             the relevant dependencies are present.
-        dashboard_host: The host to bind the dashboard server to. Use localhost
-            (127.0.0.1/::1) for local access, the node IP for remote access, or
-            0.0.0.0/:: for all interfaces (not recommended). Defaults to localhost.
+        dashboard_host: The host to bind the dashboard server to. Can either be
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
+            external machines.
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
