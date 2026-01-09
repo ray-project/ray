@@ -1283,8 +1283,8 @@ def pregenerate_example_rsts(
                 "modify examples for this library."
             )
 
-        # Store `orphan_documents` to be used by mark_documents_as_orphan hook
-        app._example_orphan_documents = orphan_documents
+    # Store `orphan_documents` to be used by mark_documents_as_orphan hook
+    app._example_orphan_documents = orphan_documents
 
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
