@@ -3,6 +3,9 @@ import time
 from collections import deque
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from ray.data._internal.execution.bundle_queue import (
+    HashLinkedQueue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     NodeIdStr,
@@ -50,7 +53,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
-        self._buffer: List[RefBundle] = []
+        self._buffer: HashLinkedQueue = HashLinkedQueue()
         # The outputted bundles with output_split attribute set.
         self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
@@ -123,7 +126,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
-        self._buffer.append(bundle)
+        self._buffer.add(bundle)
         self._metrics.on_input_queued(bundle)
         self._dispatch_bundles()
 
@@ -136,7 +139,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         # Otherwise:
         # Need to finalize distribution of buffered data to output splits.
-        buffer_size = sum(b.num_rows() for b in self._buffer)
+        buffer_size = self._buffer.num_rows()
         max_n = max(self._num_output)
 
         # First calculate the min rows to add per output to equalize them.
@@ -156,7 +159,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 b.output_split_idx = i
                 self._output_queue.append(b)
                 self._metrics.on_output_queued(b)
-        self._buffer = []
+        self._buffer.clear()
 
     def internal_input_queue_num_blocks(self) -> int:
         return sum(len(b.block_refs) for b in self._buffer)
@@ -210,7 +213,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                         self._locality_misses += 1
             else:
                 # Put it back and abort.
-                self._buffer.insert(0, target_bundle)
+                self._buffer.add_to_front(target_bundle)
                 self._metrics.on_input_queued(target_bundle)
                 break
         self._output_splitter_overhead_time += time.perf_counter() - start_time
@@ -229,7 +232,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     self._metrics.on_input_dequeued(bundle)
                     return bundle
 
-        bundle = self._buffer.pop(0)
+        bundle = self._buffer.get_next()
         self._metrics.on_input_dequeued(bundle)
         return bundle
 
@@ -240,7 +243,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output_distribution = self._num_output.copy()
         output_distribution[target_index] += nrow
         buffer_requirement = self._calculate_buffer_requirement(output_distribution)
-        buffer_size = sum(b.num_rows() for b in self._buffer)
+        buffer_size = self._buffer.num_rows()
         return buffer_size >= buffer_requirement
 
     def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
@@ -253,7 +256,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output = []
         acc = 0
         while acc < nrow:
-            b = self._buffer.pop()
+            b = self._buffer.get_next()
             self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
@@ -262,7 +265,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.append(right)
+                self._buffer.add(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
