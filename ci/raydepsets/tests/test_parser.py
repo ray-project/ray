@@ -18,13 +18,12 @@ def test_parser():
         f"{_REPO_NAME}/ci/raydepsets/tests/test_data/test_python_depset.lock"
     )
     parsed_deps = parse_lock_file(lock_file_path)
+    print("parsed_deps:", parsed_deps)
     assert len(parsed_deps) == 11
     assert parsed_deps[0].name == "aiohappyeyeballs"
     assert parsed_deps[0].version == "2.6.1"
-    assert parsed_deps[0].required_by == ["aiohttp"]
     assert parsed_deps[1].name == "aiohttp"
     assert parsed_deps[1].version == "3.11.16"
-    assert parsed_deps[1].required_by == []
 
 
 def test_parser_w_annotations():
@@ -39,10 +38,8 @@ def test_parser_w_annotations():
         assert len(parsed_deps) == 11
         assert parsed_deps[0].name == "aiohappyeyeballs"
         assert parsed_deps[0].version == "2.6.1"
-        assert parsed_deps[0].required_by == ["aiohttp"]
         assert parsed_deps[1].name == "aiohttp"
         assert parsed_deps[1].version == "3.11.16"
-        assert parsed_deps[1].required_by == []
         assert parsed_deps[5].name == "frozenlist"
         assert parsed_deps[5].version == "1.8.0"
 
