@@ -231,15 +231,23 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
-    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
-    "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
-    "data/examples/**/content/README.md",
+    # Hide README.md used for display on the console (anyscale templates)
+    "serve/tutorials/**/content/**README.md",
+    "data/examples/**/content/**README.md",
+    "ray-overview/examples/**/content/**README.md",
+    "ray-core/examples/**/content/**README.md",
+    "train/examples/**/content/**README.md",
+    "tune/examples/**/content/**README.md",
+    # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
     "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
     "serve/tutorials/asynchronous-inference/content/README.md",
+    # Legacy/backward compatibility
+    "ray-overview/examples/**/README.md",
+    "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/**.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
