@@ -35,7 +35,6 @@ from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
-import moto
 import pytest
 from click.testing import CliRunner
 from moto import mock_aws
@@ -109,18 +108,21 @@ def configure_aws():
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = (
-        moto.ec2.models.ec2_backends["us-west-2"]["us-west-2"]
-        .describe_images(filters={"name": "Deep Learning AMI Ubuntu*"})[0]
-        .id
-    )
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
-    list_instances_mock = MagicMock(return_value=boto3_list)
-    with patch(
-        "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
-        list_instances_mock,
-    ):
-        yield
+    # Use mock_aws context manager and new moto 5.x backend API
+    from moto.backends import get_backend
+
+    with mock_aws():
+        ec2_backend = get_backend("ec2")["us-west-2"]
+        dlami = ec2_backend.describe_images(
+            filters={"name": "Deep Learning AMI Ubuntu*"}
+        )[0].id
+        aws_config.DEFAULT_AMI["us-west-2"] = dlami
+        list_instances_mock = MagicMock(return_value=boto3_list)
+        with patch(
+            "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
+            list_instances_mock,
+        ):
+            yield
 
 
 @pytest.fixture(scope="function")
