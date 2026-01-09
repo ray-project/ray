@@ -25,6 +25,7 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 from ray.rllib.utils.typing import ResultDict
 from ray.tune import CLIReporter
 from ray.tune.result import TRAINING_ITERATION
@@ -742,26 +743,14 @@ def run_rllib_example_script_experiment(
                 "time_taken": float(time_taken),
                 "trial_states": [trial.status],
                 "last_update": float(time.time()),
-                "stats": stats,
+                "stats": convert_numpy_to_python_primitives(stats),
                 "passed": [test_passed],
                 "not_passed": [not test_passed],
                 "failures": {str(trial): 1} if not test_passed else {},
             }
-            with open(
-                os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
-                "wt",
-            ) as f:
-                try:
-                    json.dump(json_summary, f)
-                # Something went wrong writing json. Try again w/ simplified stats.
-                except Exception:
-                    from ray.rllib.algorithms.algorithm import Algorithm
-
-                    simplified_stats = {
-                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
-                    }
-                    json_summary["stats"] = simplified_stats
-                    json.dump(json_summary, f)
+            filename = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")
+            with open(filename, "wt") as f:
+                json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(

@@ -118,7 +118,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jobject gcsClientOptions,
                                                       jstring logDir,
                                                       jbyteArray jobConfig,
-                                                      jint startupToken,
+                                                      jbyteArray workerId,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
       [](const rpc::Address &caller_address,
@@ -142,7 +142,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
-         const rpc::TensorTransport &tensor_transport) {
+         const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -304,7 +304,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
-  options.startup_token = startupToken;
+  options.worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
   options.runtime_env_hash = runtimeEnvHash;
   options.object_allocator =
       [](const ray::RayObject &object,

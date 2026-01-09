@@ -90,22 +90,23 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
+  /// \param[in] bind_address The IP address to bind to.
   ///
   GrpcServer(std::string name,
              const uint32_t port,
-             bool listen_to_localhost_only,
+             std::string bind_address,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::optional<AuthenticationToken> auth_token = std::nullopt)
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
-        listen_to_localhost_only_(listen_to_localhost_only),
+        bind_address_(std::move(bind_address)),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
     // Initialize auth token: use provided value or load from AuthenticationTokenLoader
-    if (auth_token.has_value()) {
-      auth_token_ = std::move(auth_token.value());
+    if (auth_token) {
+      auth_token_ = auth_token;
     } else {
       auth_token_ = AuthenticationTokenLoader::instance().GetToken();
     }
@@ -166,15 +167,14 @@ class GrpcServer {
   /// Port of this server.
   int port_;
 
-  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
-  /// interfaces (0.0.0.0)
-  const bool listen_to_localhost_only_;
+  /// The IP address to bind this server to.
+  const std::string bind_address_;
 
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
 
   /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
@@ -243,7 +243,7 @@ class GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) = 0;
+      std::shared_ptr<const AuthenticationToken> auth_token) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;
