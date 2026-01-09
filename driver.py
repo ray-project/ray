@@ -22,8 +22,6 @@ import ray.train.torch
 
 
 def train_func():
-    os.environ["TORCHFT_LIGHTHOUSE"] = "http://ip-10-0-50-13:29510"
-
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
