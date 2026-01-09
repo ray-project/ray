@@ -1250,5 +1250,430 @@ async def test_reporter_dashboard_and_runtime_env_agent(
         wait_for_condition(verify, timeout=5, retry_interval_ms=100)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_task_traceback_with_expected_task_id(shutdown_only):
+    """
+    Verify that task traceback works with expected_task_id parameter.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    task = long_running_task.remote()
+    task_id = task.task_id().hex()
+
+    params = {
+        "task_id": task_id,
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "expected_task_id": task_id,  # Correct task_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/task/traceback", params=params)
+        assert resp.status_code == 200
+        assert "Process" in resp.text
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_task_id
+    wrong_params = params.copy()
+    wrong_params["expected_task_id"] = "wrong_task_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/task/traceback", params=wrong_params)
+        assert resp.status_code == 500
+        assert "expected_task_id" in resp.text or "does not match" in resp.text
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_task_cpu_profile_with_expected_task_id(shutdown_only):
+    """
+    Verify that task CPU profiling works with expected_task_id parameter.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    task = long_running_task.remote()
+    task_id = task.task_id().hex()
+
+    params = {
+        "task_id": task_id,
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "duration": 2,
+        "expected_task_id": task_id,  # Correct task_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
+        assert resp.status_code == 200
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_task_id
+    wrong_params = params.copy()
+    wrong_params["expected_task_id"] = "wrong_task_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/task/cpu_profile", params=wrong_params)
+        assert resp.status_code == 500
+        assert "expected_task_id" in resp.text or "does not match" in resp.text
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_worker_traceback_with_expected_actor_id(shutdown_only):
+    """
+    Verify that worker traceback works with expected_actor_id parameter.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    class MyActor:
+        def get_pid(self):
+            return os.getpid()
+
+        def long_run(self):
+            print("Long-running actor method.")
+            time.sleep(1000)
+
+    actor = MyActor.remote()
+    actor_id = actor._actor_id.hex()
+    worker_pid = ray.get(actor.get_pid.remote())
+    node_id = ray.get_runtime_context().get_node_id()
+
+    # Start a long-running method
+    actor.long_run.remote()
+
+    params = {
+        "pid": worker_pid,
+        "node_id": node_id,
+        "expected_actor_id": actor_id,  # Correct actor_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/worker/traceback", params=params)
+        assert resp.status_code == 200
+        assert "Process" in resp.text
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_actor_id
+    wrong_params = params.copy()
+    wrong_params["expected_actor_id"] = "wrong_actor_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/worker/traceback", params=wrong_params)
+        assert resp.status_code == 500
+        assert (
+            "expected_actor_id" in resp.text
+            or "not associated" in resp.text
+            or "does not exist" in resp.text
+        )
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_worker_cpu_profile_with_expected_actor_id(shutdown_only):
+    """
+    Verify that worker CPU profiling works with expected_actor_id parameter.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    class MyActor:
+        def get_pid(self):
+            return os.getpid()
+
+        def long_run(self):
+            print("Long-running actor method.")
+            time.sleep(1000)
+
+    actor = MyActor.remote()
+    actor_id = actor._actor_id.hex()
+    worker_pid = ray.get(actor.get_pid.remote())
+    node_id = ray.get_runtime_context().get_node_id()
+
+    # Start a long-running method
+    actor.long_run.remote()
+
+    params = {
+        "pid": worker_pid,
+        "node_id": node_id,
+        "duration": 2,
+        "expected_actor_id": actor_id,  # Correct actor_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/worker/cpu_profile", params=params)
+        assert resp.status_code == 200
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_actor_id
+    wrong_params = params.copy()
+    wrong_params["expected_actor_id"] = "wrong_actor_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/worker/cpu_profile", params=wrong_params)
+        assert resp.status_code == 500
+        assert (
+            "expected_actor_id" in resp.text
+            or "not associated" in resp.text
+            or "does not exist" in resp.text
+        )
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_memory_profile_with_expected_task_id(shutdown_only):
+    """
+    Verify that memory profiling works with expected_task_id parameter for tasks.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    task = long_running_task.remote()
+    task_id = task.task_id().hex()
+
+    params = {
+        "task_id": task_id,
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "duration": 5,
+        "expected_task_id": task_id,  # Correct task_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        assert resp.status_code == 200
+        assert "memray" in resp.text
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_task_id
+    wrong_params = params.copy()
+    wrong_params["expected_task_id"] = "wrong_task_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/memory_profile", params=wrong_params)
+        assert resp.status_code == 500
+        assert "expected_task_id" in resp.text or "does not match" in resp.text
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_memory_profile_with_expected_actor_id(shutdown_only):
+    """
+    Verify that memory profiling works with expected_actor_id parameter for workers.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    class MyActor:
+        def get_pid(self):
+            return os.getpid()
+
+        def long_run(self):
+            print("Long-running actor method.")
+            time.sleep(1000)
+
+    actor = MyActor.remote()
+    actor_id = actor._actor_id.hex()
+    worker_pid = ray.get(actor.get_pid.remote())
+    node_id = ray.get_runtime_context().get_node_id()
+
+    # Start a long-running method
+    actor.long_run.remote()
+
+    params = {
+        "pid": worker_pid,
+        "node_id": node_id,
+        "duration": 5,
+        "expected_actor_id": actor_id,  # Correct actor_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        assert resp.status_code == 200
+        assert "memray" in resp.text
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_actor_id
+    wrong_params = params.copy()
+    wrong_params["expected_actor_id"] = "wrong_actor_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/memory_profile", params=wrong_params)
+        assert resp.status_code == 500
+        assert (
+            "expected_actor_id" in resp.text
+            or "not associated" in resp.text
+            or "does not exist" in resp.text
+        )
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_worker_cpu_profile_with_expected_task_id(shutdown_only):
+    """
+    Verify that worker CPU profiling works with expected_task_id parameter.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    task = long_running_task.remote()
+    task_id = task.task_id().hex()
+
+    # Get the worker PID for this task
+    def get_worker_pid():
+        from ray.util.state import get_task
+        task_info = get_task(task_id)
+        if task_info and task_info.worker_pid:
+            return task_info.worker_pid
+        return None
+
+    def verify_worker_pid():
+        pid = get_worker_pid()
+        return pid is not None
+
+    wait_for_condition(verify_worker_pid, timeout=10)
+    worker_pid = get_worker_pid()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    params = {
+        "pid": worker_pid,
+        "node_id": node_id,
+        "duration": 2,
+        "expected_task_id": task_id,  # Correct task_id
+    }
+
+    def verify_success():
+        resp = requests.get(f"{webui_url}/worker/cpu_profile", params=params)
+        assert resp.status_code == 200
+        return True
+
+    wait_for_condition(verify_success, timeout=20)
+
+    # Test with wrong expected_task_id
+    wrong_params = params.copy()
+    wrong_params["expected_task_id"] = "wrong_task_id_12345"
+
+    def verify_failure():
+        resp = requests.get(f"{webui_url}/worker/cpu_profile", params=wrong_params)
+        assert resp.status_code == 500
+        assert (
+            "expected_task_id" in resp.text
+            or "not running" in resp.text
+            or "does not match" in resp.text
+        )
+        return True
+
+    wait_for_condition(verify_failure, timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
