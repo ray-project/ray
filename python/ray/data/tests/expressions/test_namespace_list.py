@@ -108,7 +108,11 @@ def test_arr_to_list_fixed_size(ray_start_regular_shared):
     table = _make_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").arr.to_list().alias("features")).to_pandas()
+    result = (
+        ds.with_column("features", col("features").arr.to_list())
+        .select_columns(["features"])
+        .to_pandas()
+    )
     expected = pd.DataFrame(
         [
             {"features": [1, 2]},
