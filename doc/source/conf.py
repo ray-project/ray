@@ -754,7 +754,7 @@ os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
 
-def mark_documents_as_orphan(app, docname, source):
+def mark_documents_as_orphan(app, docname, _source):
     """
     Apply orphan metadata to documents referenced in examples.yml files.
     
