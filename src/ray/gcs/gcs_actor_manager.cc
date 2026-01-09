@@ -26,6 +26,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 
@@ -1960,7 +1961,7 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
     pending_actors_.erase(pending_it);
     return true;
   }
-  return gcs_actor_scheduler_->CancelInFlightActorScheduling(actor);
+  return false;
 }
 
 void GcsActorManager::RunAndClearActorCreationCallbacks(
@@ -1977,7 +1978,8 @@ void GcsActorManager::RunAndClearActorCreationCallbacks(
 }
 
 size_t GcsActorManager::GetPendingActorsCount() const {
-  return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
+  return pending_actors_.size();
+  // return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
 }
 
 std::string GcsActorManager::DebugString() const {

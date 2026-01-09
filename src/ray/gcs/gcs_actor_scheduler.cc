@@ -30,7 +30,6 @@ GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    ClusterLeaseManager &cluster_lease_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
@@ -39,7 +38,6 @@ GcsActorScheduler::GcsActorScheduler(
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      cluster_lease_manager_(cluster_lease_manager),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
@@ -614,27 +612,11 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
-    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
-  auto &cluster_resource_manager =
-      cluster_lease_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
-  cluster_resource_manager.AddNodeAvailableResources(
-      scheduling::NodeID(actor->GetNodeID().Binary()),
-      actor->GetAcquiredResources().GetResourceSet());
   actor->SetAcquiredResources(ResourceRequest());
-}
-
-size_t GcsActorScheduler::GetPendingActorsCount() const {
-  return cluster_lease_manager_.GetInfeasibleQueueSize() +
-         cluster_lease_manager_.GetPendingQueueSize();
-}
-
-bool GcsActorScheduler::CancelInFlightActorScheduling(
-    const std::shared_ptr<GcsActor> &actor) {
-  return cluster_lease_manager_.CancelLease(actor->GetLeaseSpecification().LeaseId());
 }
 
 }  // namespace gcs
