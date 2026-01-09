@@ -112,8 +112,7 @@ def train_func():
                     metrics,
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
-        if ray.train.get_context().get_world_rank() == 0:
-            print(metrics)
+        print(f"Rank {ray.train.get_context().get_world_rank()} metrics: {metrics}")
 
 
 # [4] Configure scaling and resource requirements.
