@@ -28,7 +28,6 @@
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
 

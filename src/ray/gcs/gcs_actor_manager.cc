@@ -1949,7 +1949,7 @@ const GcsActor *GcsActorManager::GetActor(const ActorID &actor_id) const {
 }
 
 bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
-  const auto &actor_id = actor->GetActorID();
+  const ActorID &actor_id = actor->GetActorID();
   auto pending_it = std::find_if(pending_actors_.begin(),
                                  pending_actors_.end(),
                                  [actor_id](const std::shared_ptr<GcsActor> &this_actor) {

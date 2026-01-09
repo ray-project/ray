@@ -162,9 +162,6 @@ class GcsServer {
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
 
-  /// Initialize cluster lease manager.
-  void InitClusterLeaseManager();
-
   /// Initialize gcs job manager.
   void InitGcsJobManager(
       const GcsInitData &gcs_init_data,
