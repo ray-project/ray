@@ -68,9 +68,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=250_000,
 )
 parser.set_defaults(
-    num_env_runners=5,
+    num_env_runners=4,
     num_envs_per_env_runner=8,
     num_agents=5,
+    num_learners=1
 )
 args = parser.parse_args()
 
@@ -81,7 +82,7 @@ config = (
         lr=0.0005 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=32,
         replay_buffer_config={
-            "type": "PrioritizedEpisodeReplayBuffer",
+            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 50_000,
             "alpha": 0.6,
             "beta": 0.4,

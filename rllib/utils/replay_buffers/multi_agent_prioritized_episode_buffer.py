@@ -818,8 +818,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         """Samples a single-agent episode list with independent transitions.
 
         Note, independent sampling means that each module samples its transitions
-        independently from the replay buffer. This is the default sampling mode.
-        In contrast, synchronized sampling samples transitions from the same
+        independently of the replay buffer. This is the default sampling mode.
+        In contrast, synchronized sampling transitions from the same
         environment step.
         """
 
