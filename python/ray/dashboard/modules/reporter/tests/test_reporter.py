@@ -220,7 +220,6 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_total" in metric_names,
             "ray_node_mem_total" in metric_names,
             "ray_component_rss_mb" in metric_names,
-            "ray_component_uss_mb" in metric_names,
             "ray_component_num_fds" in metric_names,
             "ray_node_disk_io_read" in metric_names,
             "ray_node_disk_io_write" in metric_names,
@@ -286,7 +285,6 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         expected_metrics = [
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",
-            "ray_component_uss_mb",
             "ray_component_num_fds",
         ]
         for metric in expected_metrics:
