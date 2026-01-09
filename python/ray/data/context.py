@@ -306,6 +306,22 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
+DEFAULT_CHECKPOINT_ACTOR_POOL_MIN_SIZE: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_POOL_MIN_SIZE", 1
+)
+
+DEFAULT_CHECKPOINT_ACTOR_POOL_MAX_SIZE: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_POOL_MAX_SIZE", 10
+)
+
+DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_MEMORY_BYTES", 1 * 1024**3
+)
+
+DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR", 10
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -632,6 +648,15 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
+        checkpoint_actor_pool_min_size: The minimum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_pool_max_size: The maximum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_memory_bytes: The amount of memory (in bytes) for each
+            checkpoint-actor. This value is used by ray_remote_args when creating the actor.
+        checkpoint_actor_max_tasks_in_flight_per_actor: The length of the task queue for
+            each checkpoint actor. When the task queues of every actor are full, the actor
+            pool will scale up.
     """
 
     # `None` means the block size is infinite.
@@ -799,6 +824,16 @@ class DataContext:
 
     custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
         default_factory=list
+    )
+
+    checkpoint_actor_pool_min_size: int = DEFAULT_CHECKPOINT_ACTOR_POOL_MIN_SIZE
+
+    checkpoint_actor_pool_max_size: int = DEFAULT_CHECKPOINT_ACTOR_POOL_MAX_SIZE
+
+    checkpoint_actor_memory_bytes: int = DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES
+
+    checkpoint_actor_max_tasks_in_flight_per_actor: int = (
+        DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR
     )
 
     def __post_init__(self):

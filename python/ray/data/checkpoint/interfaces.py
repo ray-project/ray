@@ -62,7 +62,6 @@ class CheckpointConfig:
             read/write checkpoint data. Use this when you want to use custom credentials.
         override_backend: Override the :class:`CheckpointBackend` object used to
             access the checkpoint backend storage.
-        filter_num_threads: Number of threads used to filter checkpointed rows.
         write_num_threads: Number of threads used to write checkpoint files for
             completed rows.
         checkpoint_path_partition_filter: Filter for checkpoint files to load during
@@ -80,7 +79,6 @@ class CheckpointConfig:
         delete_checkpoint_on_success: bool = True,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
-        filter_num_threads: int = 3,
         write_num_threads: int = 3,
         checkpoint_path_partition_filter: Optional["PathPartitionFilter"] = None,
     ):
@@ -110,7 +108,6 @@ class CheckpointConfig:
         self.filesystem: "pyarrow.fs.FileSystem" = inferred_fs
         self.backend: CheckpointBackend = inferred_backend
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
-        self.filter_num_threads: int = filter_num_threads
         self.write_num_threads: int = write_num_threads
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
 

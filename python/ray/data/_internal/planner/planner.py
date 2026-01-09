@@ -1,10 +1,11 @@
-import functools
 import warnings
+from functools import partial
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 if TYPE_CHECKING:
     import pyarrow.fs
 
+from ray.data._internal.execution.execution_callback import add_execution_callback
 from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -194,16 +195,16 @@ class Planner:
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
-                checkpoint_config, data_file_dir, data_file_fs
+                checkpoint_config,
             )
+            add_execution_callback(checkpoint_callback, logical_plan.context)
 
             callbacks.append(checkpoint_callback)
-            load_checkpoint = checkpoint_callback.load_checkpoint
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                load_checkpoint
+                data_file_dir, data_file_fs
             )
 
         elif checkpoint_config is not None:
@@ -282,8 +283,6 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
-        data_file_dir=None,
-        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
@@ -291,8 +290,6 @@ class Planner:
         """
         return LoadCheckpointCallback(
             checkpoint_config,
-            data_file_dir=data_file_dir,
-            data_file_filesystem=data_file_filesystem,
         )
 
     @staticmethod
@@ -311,12 +308,12 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
-        load_checkpoint: Callable[[], ObjectRef],
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
-            Read: functools.partial(
-                plan_read_op_with_checkpoint_filter,
-                load_checkpoint=load_checkpoint,
+            Read: partial(
+                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
             ),
             Write: plan_write_op_with_checkpoint_writer,
         }
