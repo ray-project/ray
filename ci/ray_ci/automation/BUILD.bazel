@@ -294,3 +294,14 @@ py_binary(
         ci_require("tqdm"),
     ],
 )
+
+py_binary(
+    name = "copy_wanda_image",
+    srcs = ["copy_wanda_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
+    ],
+)

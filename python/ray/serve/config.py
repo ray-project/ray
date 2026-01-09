@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
+from ray._common.network_utils import get_localhost_ip
 from ray._common.pydantic_compat import (
     BaseModel,
     Field,
@@ -23,7 +24,6 @@ from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
-    DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_REQUEST_ROUTER_PATH,
     DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
@@ -520,6 +520,22 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
+    @validator("look_back_period_s", always=True)
+    def look_back_period_s_valid(cls, v: PositiveFloat, values):
+        # Get metrics_interval_s from values, or use default if not set
+        metrics_interval_s = values.get(
+            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+        )
+        if v <= metrics_interval_s:
+            # Warns currently, will raise an exception in a future release
+            warnings.warn(
+                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
+                f"({metrics_interval_s}). This will raise an exception in a future "
+                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                FutureWarning,
+            )
+        return v
+
     @validator("aggregation_function", always=True)
     def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
         if isinstance(v, AggregationFunction):
@@ -621,8 +637,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      "127.0.0.1". To expose Serve publicly, you probably want to set
-      this to "0.0.0.0".
+      localhost. To expose Serve publicly, you probably want to set
+      this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed
@@ -651,7 +667,7 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: Optional[str] = get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly

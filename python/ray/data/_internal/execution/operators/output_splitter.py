@@ -282,9 +282,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         return preferred_locations.keys()
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
 
 def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []
