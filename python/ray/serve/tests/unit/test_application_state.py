@@ -1533,7 +1533,7 @@ class TestOverrideDeploymentInfo:
             replica_config=ReplicaConfig.create(
                 lambda x: x,
                 placement_group_bundles=[{"CPU": 1}],
-                placement_group_fallback_strategy=[{"bundles ": [{"CPU": 1}]}],
+                placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
             ),
             start_time_ms=0,
             deployer_job_id="",
@@ -1555,7 +1555,7 @@ class TestOverrideDeploymentInfo:
 
         assert updated_info.deployment_config.num_replicas == 5
         assert updated_info.replica_config.placement_group_fallback_strategy == [
-            {"placement_group_bundles": [{"CPU": 1}]}
+            {"bundles": [{"CPU": 1}]}
         ]
 
 
