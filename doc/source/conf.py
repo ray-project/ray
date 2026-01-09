@@ -763,7 +763,7 @@ def mark_documents_as_orphan(app, docname, _source):
     This prevents Sphinx from warning about documents not included in any toctree.
     """
     # Check if this document is in our collected list from examples.yml
-    if docname in app._example_orphan_documents:
+    if hasattr(app, "_example_orphan_documents") and docname in app._example_orphan_documents:
         # (MyST-NB expects this to exist when it writes to it)
         app.env.metadata.setdefault(docname, {})
         app.env.metadata[docname]["orphan"] = True
