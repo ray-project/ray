@@ -44,7 +44,9 @@ fi
 echo "Building ray-cpp wheel (Python-agnostic, platform: $PLAT_NAME)..."
 
 # Build wheel with py3-none tag (Python version-agnostic)
-PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 RAY_INSTALL_CPP=1 \
+# SKIP_BAZEL_BUILD=1 because artifacts are pre-built from wanda cache
+PATH="/opt/python/${PYTHON}/bin:$PATH" \
+SKIP_BAZEL_BUILD=1 RAY_INSTALL_JAVA=0 RAY_INSTALL_CPP=1 \
 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel \
   --python-tag py3 \
   --plat-name "$PLAT_NAME"
