@@ -214,9 +214,8 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
-      node_manager_server_("NodeManager",
-                           config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+      node_manager_server_(
+          "NodeManager", config.node_manager_port, config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -1713,7 +1712,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   auto const &type = message->type()->str();
   auto const &error_message = message->error_message()->str();
-  // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = JobID::FromBinary(message->job_id()->str());
   auto error_data = gcs::CreateErrorTableData(

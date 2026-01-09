@@ -83,16 +83,16 @@ def build_context_digest(ctx: BuildContext) -> str:
 
 def fill_build_context_dir(
     ctx: BuildContext,
-    build_dir: str,
     source_dir: str,
+    context_dir: str,
 ) -> None:
     """
     Generate Dockerfile and copy source files to the build directory.
 
     Args:
         ctx: The BuildContext specifying what to include.
-        build_dir: Target directory for the generated Dockerfile and copied files.
         source_dir: Source directory containing the original files.
+        context_dir: Target directory for the generated Dockerfile and copied files.
     """
     dockerfile: List[str] = ["# syntax=docker/dockerfile:1.3-labs"]
     dockerfile.append("ARG BASE_IMAGE")
@@ -106,11 +106,11 @@ def fill_build_context_dir(
     if "python_depset" in ctx:
         shutil.copy(
             os.path.join(source_dir, ctx["python_depset"]),
-            os.path.join(build_dir, "python_depset.lock"),
+            os.path.join(context_dir, "python_depset.lock"),
         )
         shutil.copy(
             os.path.join(source_dir, "install_python_deps.sh"),
-            os.path.join(build_dir, "install_python_deps.sh"),
+            os.path.join(context_dir, "install_python_deps.sh"),
         )
         dockerfile.append("COPY install_python_deps.sh /tmp/install_python_deps.sh")
         dockerfile.append("COPY python_depset.lock python_depset.lock")
@@ -119,12 +119,12 @@ def fill_build_context_dir(
     if "post_build_script" in ctx:
         shutil.copy(
             os.path.join(source_dir, ctx["post_build_script"]),
-            os.path.join(build_dir, "post_build_script.sh"),
+            os.path.join(context_dir, "post_build_script.sh"),
         )
         dockerfile.append("COPY post_build_script.sh /tmp/post_build_script.sh")
         dockerfile.append("RUN bash /tmp/post_build_script.sh")
 
-    dockerfile_path = os.path.join(build_dir, "Dockerfile")
+    dockerfile_path = os.path.join(context_dir, "Dockerfile")
     with open(dockerfile_path, "w") as f:
         f.write("\n".join(dockerfile) + "\n")
 

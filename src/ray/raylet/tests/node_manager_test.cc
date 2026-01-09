@@ -48,6 +48,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/network_util.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -314,6 +315,7 @@ class NodeManagerTest : public ::testing::Test {
     })");
 
     NodeManagerConfig node_manager_config{};
+    node_manager_config.node_manager_address = GetLocalhostIP();
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
     node_manager_config.resource_config = ResourceSet(
