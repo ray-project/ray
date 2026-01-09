@@ -27,6 +27,7 @@ from custom_directives import (  # noqa
     setup_context,
     pregenerate_example_rsts,
     generate_versions_json,
+    collect_example_orphans,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -551,8 +552,8 @@ def setup(app):
     if os.getenv("READTHEDOCS") == "True":
         generate_versions_json()
 
-    # Pregenerate example RST files and collect example links
-    example_orphan_documents = pregenerate_example_rsts(app)
+    # Pregenerate example RST files
+    pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
@@ -611,6 +612,7 @@ def setup(app):
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
     
     # Register hook to mark orphan documents
+    example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
         if docname in example_orphan_documents:
             app.env.metadata.setdefault(docname, {})

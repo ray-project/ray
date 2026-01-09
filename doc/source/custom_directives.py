@@ -40,6 +40,7 @@ __all__ = [
     "update_context",
     "LinkcheckSummarizer",
     "setup_context",
+    "collect_example_orphans",
 ]
 
 # Taken from https://github.com/edx/edx-documentation
@@ -1232,9 +1233,54 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
     return soup
 
 
+def collect_example_orphans(
+    confdir: os.PathLike,
+    srcdir: os.PathLike,
+    example_configs: Optional[List[str]] = None,
+) -> set:
+    """Collect document paths from examples.yml files to mark as orphans.
+
+    This function parses example configuration files and returns a set of
+    document paths that should be marked as orphan documents during the build.
+
+    Parameters
+    ----------
+    confdir : os.PathLike
+        Path to the Sphinx configuration directory (app.confdir)
+    srcdir : os.PathLike
+        Path to the Sphinx source directory (app.srcdir)
+    example_configs : Optional[List[str]]
+        Configuration files to parse. Defaults to EXAMPLE_GALLERY_CONFIGS.
+
+    Returns
+    -------
+    set
+        Set of document paths (without file extensions) to mark as orphans
+    """
+    if example_configs is None:
+        example_configs = EXAMPLE_GALLERY_CONFIGS
+
+    example_orphan_documents = set()
+
+    for config in example_configs:
+        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to(
+            "source"
+        )
+
+        example_config = ExampleConfig(config_path, srcdir)
+        for example in example_config:
+            if not example.link.startswith("http"):
+                # Normalize path and remove file extension to get docname
+                normalized = pathlib.PurePath(os.path.normpath(example.link))
+                docname = str(normalized.with_suffix(''))
+                example_orphan_documents.add(docname)
+
+    return example_orphan_documents
+
+
 def pregenerate_example_rsts(
     app: sphinx.application.Sphinx, *example_configs: Optional[List[str]]
-) -> set:
+):
     """Pregenerate RST files for the example page configuration files.
 
     This generates RST files for displaying example pages for Ray libraries.
@@ -1245,16 +1291,9 @@ def pregenerate_example_rsts(
     ----------
     *example_configs : Optional[List[str]]
         Configuration files for which example pages are to be generated
-
-    Returns
-    -------
-    set
-        Set of example links found in the config files.
     """
     if not example_configs:
         example_configs = EXAMPLE_GALLERY_CONFIGS
-
-    example_orphan_documents = set()
 
     for config in example_configs:
         # Depending on where the sphinx build command is run from, the path to the
@@ -1263,15 +1302,6 @@ def pregenerate_example_rsts(
         config_path = pathlib.Path(app.confdir) / pathlib.Path(config).relative_to(
             "source"
         )
-
-        # Collect links
-        example_config = ExampleConfig(config_path, app.srcdir)
-        for example in example_config:
-            if not example.link.startswith("http"):
-                # Normalize path and remove file extension to get docname
-                normalized = pathlib.PurePath(os.path.normpath(example.link))
-                docname = str(normalized.with_suffix(''))
-                example_orphan_documents.add(docname)
 
         # Generate the examples.rst file
         page_title = "Examples"
@@ -1282,8 +1312,6 @@ def pregenerate_example_rsts(
                 "  .. this file is pregenerated; please edit ./examples.yml to "
                 "modify examples for this library."
             )
-
-    return example_orphan_documents
 
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
