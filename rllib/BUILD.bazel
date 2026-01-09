@@ -175,7 +175,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -196,7 +195,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -217,7 +215,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -238,7 +235,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -259,7 +255,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -279,7 +274,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -299,7 +293,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -320,7 +313,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -342,7 +334,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -364,7 +355,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -385,7 +375,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -405,7 +394,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -426,7 +414,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -447,7 +434,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -468,7 +454,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -489,7 +474,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -510,7 +494,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -532,7 +515,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
     ],
@@ -553,7 +535,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
@@ -573,7 +554,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
     ],
 )
