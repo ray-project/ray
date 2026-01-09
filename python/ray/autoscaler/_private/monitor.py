@@ -14,7 +14,12 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_localhost,
+    parse_address,
+)
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -195,7 +200,9 @@ class Monitor:
                         AUTOSCALER_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
+                kwargs = (
+                    {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
+                )
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry,
@@ -267,6 +274,14 @@ class Monitor:
                 new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
+        waiting_bundles, infeasible_bundles = parse_resource_demands(
+            resources_batch_data.resource_load_by_shape
+        )
+
+        pending_placement_groups = list(
+            resources_batch_data.placement_group_load.placement_group_data
+        )
+
         mirror_node_types = {}
         for resource_message in cluster_resource_state.node_states:
             node_id = resource_message.node_id
@@ -284,14 +299,6 @@ class Monitor:
                 }
             total_resources = dict(resource_message.total_resources)
             available_resources = dict(resource_message.available_resources)
-
-            waiting_bundles, infeasible_bundles = parse_resource_demands(
-                resources_batch_data.resource_load_by_shape
-            )
-
-            pending_placement_groups = list(
-                resources_batch_data.placement_group_load.placement_group_data
-            )
 
             use_node_id_as_ip = self.autoscaler is not None and self.autoscaler.config[
                 "provider"

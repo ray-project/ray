@@ -2096,6 +2096,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# TQC
+py_test(
+    name = "test_tqc",
+    size = "large",
+    srcs = ["algorithms/tqc/tests/test_tqc.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Generic testing
 py_test(
     name = "algorithms/tests/test_custom_resource",
@@ -2845,6 +2857,21 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
         "offline/tests/data/cartpole/large.json",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_offline_rl_stateful",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_rl_stateful.py"],
+    # Include the offline data files.
+    data = [
+        "offline/tests/data/statelesscartpole",
     ],
     tags = [
         "offline",

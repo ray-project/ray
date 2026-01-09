@@ -4,9 +4,7 @@ ipywidgets
 grpcio
 grpcio-tools
 
-# Pinning jupyter_server_terminals==0.4.4 , the higher version will break the
-# webterminal when using an older version of terminado.
-jupyter_server_terminals==0.4.4
+jupyter_server_terminals
 
 # [backend] is for installing anyscale CLI for use in the anyscale cloud.
-anyscale[backend]
+anyscale[backend]>=0.26.74
