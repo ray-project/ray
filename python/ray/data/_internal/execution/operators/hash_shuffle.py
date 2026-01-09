@@ -1616,7 +1616,7 @@ def _try_estimate_output_bytes(
     ]
 
     # Return sum of input ops estimated output byte sizes,
-    # if all are well defined
+    # if all are well defined 
     if all(nbs is not None for nbs in inferred_op_output_bytes):
         return sum(inferred_op_output_bytes)
 
