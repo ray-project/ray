@@ -551,7 +551,8 @@ def setup(app):
     if os.getenv("READTHEDOCS") == "True":
         generate_versions_json()
 
-    pregenerate_example_rsts(app)
+    # Pregenerate example RST files and collect example links
+    example_orphan_documents = pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
     # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
@@ -608,9 +609,14 @@ def setup(app):
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+    
+    # Register hook to mark orphan documents
+    def mark_orphans(app, docname, _source):
+        if docname in example_orphan_documents:
+            app.env.metadata.setdefault(docname, {})
+            app.env.metadata[docname]["orphan"] = True
 
-    # Apply orphan metadata to documents from examples.yml files
-    app.connect('source-read', mark_documents_as_orphan)
+    app.connect('source-read', mark_orphans)
 
 
 redoc = [
@@ -753,17 +759,3 @@ assert (
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
-
-def mark_documents_as_orphan(app, docname, _source):
-    """
-    Apply orphan metadata to documents referenced in examples.yml files.
-    
-    This function marks documents as orphan if they appear in any of the
-    examples.yml files processed during pregenerate_example_rsts().
-    This prevents Sphinx from warning about documents not included in any toctree.
-    """
-    # Check if this document is in our collected list from examples.yml
-    if hasattr(app, "_example_orphan_documents") and docname in app._example_orphan_documents:
-        # (MyST-NB expects this to exist when it writes to it)
-        app.env.metadata.setdefault(docname, {})
-        app.env.metadata[docname]["orphan"] = True

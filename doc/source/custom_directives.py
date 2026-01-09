@@ -1234,26 +1234,27 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
 
 def pregenerate_example_rsts(
     app: sphinx.application.Sphinx, *example_configs: Optional[List[str]]
-):
+) -> set:
     """Pregenerate RST files for the example page configuration files.
 
     This generates RST files for displaying example pages for Ray libraries.
     See `add_custom_assets` for more information about the custom template
     that gets rendered from these configuration files.
 
-    Additionally, this function collects all example document paths from the
-    examples.yml files to mark them as orphan documents during the build.
-
     Parameters
     ----------
     *example_configs : Optional[List[str]]
         Configuration files for which example pages are to be generated
+
+    Returns
+    -------
+    set
+        Set of example links found in the config files.
     """
     if not example_configs:
         example_configs = EXAMPLE_GALLERY_CONFIGS
 
-    # Collect all example links to mark as orphan
-    orphan_documents = set()
+    example_orphan_documents = set()
 
     for config in example_configs:
         # Depending on where the sphinx build command is run from, the path to the
@@ -1263,15 +1264,14 @@ def pregenerate_example_rsts(
             "source"
         )
 
-        # Parse the examples.yml to extract links
+        # Collect links
         example_config = ExampleConfig(config_path, app.srcdir)
         for example in example_config:
             if not example.link.startswith("http"):
-                normalized_path = os.path.normpath(example.link) # (resolves . and ..)
-                normalized_path = pathlib.PurePosixPath(normalized_path)
-                if normalized_path.suffix:
-                    normalized_path = normalized_path.with_suffix('')
-                orphan_documents.add(str(normalized_path))
+                # Normalize path and remove file extension to get docname
+                normalized = pathlib.PurePath(os.path.normpath(example.link))
+                docname = str(normalized.with_suffix(''))
+                example_orphan_documents.add(docname)
 
         # Generate the examples.rst file
         page_title = "Examples"
@@ -1283,8 +1283,7 @@ def pregenerate_example_rsts(
                 "modify examples for this library."
             )
 
-    # Store `orphan_documents` to be used by mark_documents_as_orphan hook
-    app._example_orphan_documents = orphan_documents
+    return example_orphan_documents
 
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
