@@ -434,11 +434,6 @@ RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
-# Feature flag to always run a proxy on the head node even if it has no replicas.
-RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = get_env_bool(
-    "RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1"
-)
-
 # Default is 2GiB, the max for a signed int.
 RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
     "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1
