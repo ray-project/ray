@@ -1,5 +1,9 @@
+import ast
+import glob
 import json
+import os
 import time
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pytest
 
@@ -13,7 +17,9 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve.autoscaling_policy import default_autoscaling_policy
+from ray.serve.config import AutoscalingContext
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
@@ -291,6 +297,500 @@ def test_get_deployment_config(serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def _parse_snapshot_payload(message: Any) -> Optional[Dict[str, Any]]:
+    """Try to parse a snapshot payload from a log message."""
+    if not message:
+        return None
+
+    # If message is already a dict (e.g., from JSON parsing)
+    if isinstance(message, dict):
+        return message
+
+    # Try to parse as a string representation of a dict
+    try:
+        payload = ast.literal_eval(str(message))
+        if isinstance(payload, dict):
+            return payload
+    except (ValueError, SyntaxError):
+        pass
+
+    # Try JSON parsing
+    try:
+        payload = json.loads(str(message))
+        if isinstance(payload, dict):
+            return payload
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return None
+
+
+def _parse_batched_snapshots_from_log(
+    log_paths: Sequence[str],
+    snapshot_type: str = "deployment",
+    target_name: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Parse autoscaling snapshots from batched log format.
+
+    The new log format writes snapshots in batches:
+    {"snapshots": [snap1, snap2, ...]}
+
+    Args:
+        log_paths: List of log file paths to parse.
+        snapshot_type: "deployment" or "application"
+        target_name: If provided, filter by deployment name (for deployment type)
+                     or app name (for application type).
+
+    Returns:
+        List of individual snapshot dicts, sorted by timestamp.
+    """
+    snaps = []
+    for path in log_paths:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                # Try to parse the line as JSON first
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Get the message field
+                message = rec.get("message", "")
+                if not message:
+                    continue
+
+                # Parse the message payload
+                payload = _parse_snapshot_payload(message)
+                if not payload:
+                    continue
+
+                # Handle batched format: {"snapshots": [...]}
+                if "snapshots" in payload:
+                    for snap in payload.get("snapshots", []):
+                        if not isinstance(snap, dict):
+                            continue
+                        if snap.get("snapshot_type") != snapshot_type:
+                            continue
+
+                        # Filter by name based on snapshot type
+                        if target_name is not None:
+                            if snapshot_type == "deployment":
+                                if snap.get("deployment") != target_name:
+                                    continue
+                            elif snapshot_type == "application":
+                                if snap.get("app") != target_name:
+                                    continue
+
+                        snaps.append(snap)
+
+    return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
+
+
+# Application-level autoscaling policy for testing (must be importable)
+def simple_app_policy_for_test(
+    contexts: Dict[DeploymentID, AutoscalingContext],
+) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
+    """Simple app-level policy that maintains current replicas."""
+    decisions = {}
+    policy_state = {}
+
+    for deployment_id, ctx in contexts.items():
+        # Maintain current target replicas
+        decisions[deployment_id] = ctx.target_num_replicas
+        # Empty state for each deployment
+        policy_state[deployment_id] = {}
+
+    return decisions, policy_state
+
+
+def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
+    """Validate controller emits well-formed autoscaling snapshot structured logs.
+
+    Tests deterministic autoscaling: 1 -> 2 replicas.
+    """
+
+    DEPLOY_NAME = f"snap_app_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.2,
+            "look_back_period_s": 0.5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    async def snap_app():
+        return "ok"
+
+    handle = serve.run(snap_app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_snapshots():
+        """Read all snapshots for deployment from batched log format."""
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        return _parse_batched_snapshots_from_log(log_paths, "deployment", DEPLOY_NAME)
+
+    def wait_for_replicas(current, timeout=10):
+        """Wait for exact current replica count."""
+        wait_for_condition(
+            lambda: any(s.get("current_replicas") == current for s in get_snapshots()),
+            timeout=timeout,
+        )
+
+    # Wait for initial replica to be ready
+    wait_for_replicas(1, timeout=5)
+    initial = [s for s in get_snapshots() if s["current_replicas"] == 1][0]
+    assert initial["current_replicas"] == 1
+    assert initial["min_replicas"] == 1
+    assert initial["max_replicas"] == 2
+
+    reqs = [handle.remote() for _ in range(6)]
+    # Wait for scaling to 2 replicas.
+    wait_for_replicas(2, timeout=5)
+
+    all_snaps = get_snapshots()
+
+    snap_1 = next((s for s in all_snaps if s["current_replicas"] == 1), None)
+    snap_2 = next((s for s in all_snaps if s["current_replicas"] == 2), None)
+
+    assert snap_1 is not None
+    assert snap_2 is not None and snap_2["target_replicas"] == 2
+
+    seen_states = []
+    for snap in all_snaps:
+        current = snap["current_replicas"]
+        if current not in seen_states:
+            seen_states.append(current)
+
+    assert seen_states in [[0, 1, 2], [1, 2]]
+    assert 1 in seen_states and 2 in seen_states
+
+    for snap in [snap_1, snap_2]:
+        for key in [
+            "timestamp_str",
+            "app",
+            "deployment",
+            "current_replicas",
+            "target_replicas",
+            "min_replicas",
+            "max_replicas",
+            "policy_name",
+            "metrics_health",
+            "look_back_period_s",
+            "snapshot_type",
+        ]:
+            assert key in snap, f"Missing {key}"
+
+    for req in reqs:
+        assert req.result() == "ok"
+
+
+def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
+    """Ensure no deployment-type autoscaling snapshot logs are emitted without autoscaling_config."""
+
+    DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
+
+    @serve.deployment(name=DEPLOY_NAME)
+    def app():
+        return "no autoscale"
+
+    serve.run(app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+    candidate_paths = sorted(
+        glob.glob(os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log"))
+    )
+    assert (
+        candidate_paths
+    ), f"No autoscaling snapshot logs found; checked {serve_logs_dir}"
+
+    found = _parse_batched_snapshots_from_log(
+        candidate_paths, "deployment", DEPLOY_NAME
+    )
+
+    assert not found, (
+        f"Found deployment-type autoscaling snapshot logs for deployment {DEPLOY_NAME} "
+        f"even though no autoscaling_config was set: {found}"
+    )
+
+
+def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
+    """Ensure identical autoscaling snapshots are not written repeatedly."""
+
+    DEPLOY_NAME = f"snap_dedupe_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 1,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    def app():
+        return "ok"
+
+    serve.run(app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_snapshots():
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        return _parse_batched_snapshots_from_log(log_paths, "deployment", DEPLOY_NAME)
+
+    # Wait until the first stable snapshot shows up
+    def has_initial_snapshot():
+        snaps = get_snapshots()
+        return bool(snaps) and snaps[-1]["current_replicas"] == 1
+
+    wait_for_condition(has_initial_snapshot, timeout=10)
+
+    controller = _get_global_client()._controller
+
+    # ensure deployment is in autoscaling cache
+    ray.get(controller._refresh_autoscaling_cache.remote())
+
+    # Count current snapshots
+    initial_count = len(get_snapshots())
+
+    # Force multiple emits
+    for _ in range(5):
+        ray.get(controller._emit_autoscaling_snapshots.remote())
+
+    final_count = len(get_snapshots())
+
+    # No new snapshots should be added after the first stable write
+    assert final_count == initial_count
+
+
+def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):
+    """Ensure multiple deployments are batched in a single log write per loop."""
+
+    ts = int(time.time())
+    NUM_DEPLOYMENTS = 3
+    APP_NAME = f"batch_app_{ts}"
+
+    # Create multiple deployments in a SINGLE application
+    deployments = []
+    deployment_names = []
+
+    for i in range(NUM_DEPLOYMENTS):
+        dep_name = f"Dep{i}"
+        deployment_names.append(dep_name)
+
+        @serve.deployment(
+            name=dep_name,
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 1,
+                "initial_replicas": 1,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 0.2,
+            },
+        )
+        class Deployment:
+            def __call__(self):
+                return "ok"
+
+        deployments.append(Deployment.bind())
+
+    # Create ingress that references all deployments
+    @serve.deployment
+    class Ingress:
+        def __init__(self, *deps):
+            self.deps = deps
+
+        def __call__(self):
+            return "ok"
+
+    # Bind all deployments to ingress and run as single app
+    app = Ingress.bind(*deployments)
+    serve.run(app, name=APP_NAME, route_prefix=f"/{APP_NAME}")
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_batch_payloads():
+        """Return list of (deployment_names_set, batch_dict) for target deployments."""
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        batches = []
+        for path in log_paths:
+            if not os.path.exists(path):
+                continue
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    message = rec.get("message")
+                    if message is None:
+                        continue
+
+                    payload = _parse_snapshot_payload(message)
+                    if not payload or "snapshots" not in payload:
+                        continue
+
+                    names_in_batch = set()
+                    target_snaps = []
+                    for snap in payload.get("snapshots", []):
+                        if not isinstance(snap, dict):
+                            continue
+                        if snap.get("snapshot_type") != "deployment":
+                            continue
+                        dep_name = snap.get("deployment")
+                        if snap.get("app") == APP_NAME and dep_name in deployment_names:
+                            names_in_batch.add(dep_name)
+                            target_snaps.append(snap)
+
+                    if names_in_batch:
+                        batches.append((names_in_batch, {"snapshots": target_snaps}))
+        return batches
+
+    # Wait until a batch containing ALL deployments appears
+    def has_full_batch():
+        batches = get_batch_payloads()
+        for names, _ in batches:
+            if names == set(deployment_names):
+                return True
+        return False
+
+    wait_for_condition(has_full_batch, timeout=15)
+    batches = get_batch_payloads()
+
+    # Only verify batches that contain all deployments (full batches)
+    # Partial batches can occur due to individual deployment state changes
+    full_batches = [
+        (names, batch) for names, batch in batches if names == set(deployment_names)
+    ]
+
+    assert len(full_batches) >= 1, (
+        f"Expected at least one batch containing all {NUM_DEPLOYMENTS} deployments "
+        f"{sorted(deployment_names)}, but none found"
+    )
+
+    for names, batch in full_batches:
+        assert len(batch["snapshots"]) == NUM_DEPLOYMENTS, (
+            f"Expected {NUM_DEPLOYMENTS} snapshots in batch, "
+            f"but found {len(batch['snapshots'])}"
+        )
+
+
+def test_application_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
+    """Validate controller emits well-formed application-level autoscaling snapshot logs.
+
+    Tests app-level autoscaling policy with application snapshot.
+    Uses the same pattern as documented in Ray Serve application-level autoscaling.
+    """
+
+    APP_NAME = f"app_snap_{int(time.time())}"
+
+    config = {
+        "applications": [
+            {
+                "name": APP_NAME,
+                "route_prefix": f"/{APP_NAME}",
+                "import_path": "ray.serve.tests.test_config_files.app_level_autoscaling:app",
+                "autoscaling_policy": {
+                    "policy_function": "ray.serve.tests.test_controller:simple_app_policy_for_test",
+                },
+                "deployments": [
+                    {
+                        "name": "Preprocessor",
+                        "autoscaling_config": {
+                            "min_replicas": 1,
+                            "max_replicas": 2,
+                            "initial_replicas": 1,
+                            "metrics_interval_s": 0.2,
+                            "look_back_period_s": 0.5,
+                        },
+                    },
+                    {
+                        "name": "Model",
+                        "autoscaling_config": {
+                            "min_replicas": 1,
+                            "max_replicas": 2,
+                            "initial_replicas": 1,
+                            "metrics_interval_s": 0.2,
+                            "look_back_period_s": 0.5,
+                        },
+                    },
+                ],
+            }
+        ]
+    }
+
+    controller = _get_global_client()._controller
+    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+
+    # Wait for app to be running
+    def app_is_running():
+        status = serve.status().applications.get(APP_NAME)
+        return status is not None and status.status == ApplicationStatus.RUNNING
+
+    wait_for_condition(app_is_running, timeout=30)
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_app_snapshots():
+        """Read all application snapshots from batched log format."""
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        return _parse_batched_snapshots_from_log(log_paths, "application", APP_NAME)
+
+    # Wait for application snapshot to appear
+    wait_for_condition(lambda: len(get_app_snapshots()) > 0, timeout=15)
+
+    all_snaps = get_app_snapshots()
+    assert len(all_snaps) > 0, "Expected application snapshots"
+
+    snap = all_snaps[0]
+
+    # Validate required fields
+    for key in [
+        "snapshot_type",
+        "timestamp_str",
+        "app",
+        "num_deployments",
+        "total_current_replicas",
+        "total_target_replicas",
+        "scaling_status",
+        "policy_name",
+        "errors",
+    ]:
+        assert key in snap, f"Missing required key: {key}"
+
+    # Validate field values
+    assert snap["snapshot_type"] == "application"
+    assert snap["app"] == APP_NAME
+    # We have 2 deployments with autoscaling: Preprocessor and Model
+    assert snap["num_deployments"] == 2
+    assert isinstance(snap["total_current_replicas"], int)
+    assert isinstance(snap["total_target_replicas"], int)
+    assert snap["scaling_status"] in ["scaling up", "scaling down", "stable"]
+    assert "simple_app_policy_for_test" in snap["policy_name"]
 
 
 if __name__ == "__main__":
