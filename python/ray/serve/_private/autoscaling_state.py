@@ -864,7 +864,8 @@ class ApplicationAutoscalingState:
         app-level autoscaling decision.
         """
         total_current = sum(
-            ctx.current_num_replicas for ctx in autoscaling_contexts.values()
+            autoscaling_contexts[dep_id].current_num_replicas
+            for dep_id in autoscaling_contexts
         )
         total_target = sum(decisions.values())
 
