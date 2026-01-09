@@ -305,7 +305,11 @@ class ProtocolsProvider:
         merged = default_params.copy()
 
         for key, value in custom_params.items():
-            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
                 merged[key] = cls._merge_transport_params(merged[key], value)
             else:
                 merged[key] = value
