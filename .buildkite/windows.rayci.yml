@@ -119,24 +119,6 @@ steps:
         --test-env=USERPROFILE
     depends_on: windowsbuild
 
-  # TODO: Remove after verifying test_token_auth_integration fix
-  - label: ":windows: test_token_auth_integration verification"
-    tags:
-      - python
-      - windows
-    job_env: WINDOWS
-    instance_type: windows
-    commands:
-      - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --build-name windowsbuild
-        --operating-system windows
-        --bisect-run-test-target //python/ray/tests:test_token_auth_integration
-        --test-env=CI="1"
-        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
-    depends_on: windowsbuild
-
   - label: "flaky :windows: core tests"
     key: windows_core_flaky_tests
     tags:
