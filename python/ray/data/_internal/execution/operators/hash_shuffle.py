@@ -384,7 +384,9 @@ class PartitionBucket:
     """
 
     lock: threading.Lock
-    queue: queue.Queue  # Queue[Block]
+    queue: queue.Queue
+
+    compaction_threshold: Optional[int]
 
     def drain_queue(self) -> List[Block]:
         blocks = []
@@ -398,8 +400,12 @@ class PartitionBucket:
         return blocks
 
     @staticmethod
-    def create() -> "PartitionBucket":
-        return PartitionBucket(lock=threading.Lock(), queue=queue.Queue())
+    def create(compaction_threshold: Optional[int]) -> "PartitionBucket":
+        return PartitionBucket(
+            lock=threading.Lock(),
+            queue=queue.Queue(),
+            compaction_threshold=compaction_threshold,
+        )
 
 
 @dataclass
@@ -1645,30 +1651,30 @@ class HashShuffleAggregator:
         self._aggregator_id: int = aggregator_id
         self._target_max_block_size: int = target_max_block_size
 
-        self._min_num_blocks_compaction_threshold = (
-            min_max_shards_compaction_thresholds[0]
-            if min_max_shards_compaction_thresholds is not None
-            else None
-        )
         self._max_num_blocks_compaction_threshold = (
             min_max_shards_compaction_thresholds[1]
             if min_max_shards_compaction_thresholds is not None
             else None
         )
 
-        self._current_compaction_thresholds: Dict[int, int] = defaultdict(
-            lambda: self._min_num_blocks_compaction_threshold
-        )
-
         # Create stateless aggregation component
         self._aggregation: ShuffleAggregation = agg_factory()
+
+        min_num_blocks_compaction_threshold = (
+            min_max_shards_compaction_thresholds[0]
+            if min_max_shards_compaction_thresholds is not None
+            else None
+        )
 
         # Per-sequence mapping of partition-id to `PartitionState` with individual
         # locks for thread-safe block accumulation
         self._input_seq_partition_buckets: Dict[
             int, Dict[int, PartitionBucket]
-        ] = self._allocate_partition_buckets(num_input_seqs, target_partition_ids)
-        self._partitions_lock = threading.Lock()  # For lazy state creation
+        ] = self._allocate_partition_buckets(
+            num_input_seqs,
+            target_partition_ids,
+            min_num_blocks_compaction_threshold,
+        )
 
         self._bg_thread = threading.Thread(
             target=self._debug_dump,
@@ -1690,8 +1696,7 @@ class HashShuffleAggregator:
         # Check whether queue exceeded compaction threshold
         if (
             self._aggregation.is_compacting()
-            and bucket.queue.qsize()
-            >= self._current_compaction_thresholds[partition_id]
+            and bucket.queue.qsize() >= bucket.compaction_threshold
         ):
             # We're taking a lock to drain the queue to make sure that there's
             # no concurrent compactions happening
@@ -1699,24 +1704,23 @@ class HashShuffleAggregator:
                 # Check queue size again to avoid running compaction after
                 # another one just drained the queue
                 if (
-                    bucket.queue.qsize()
-                    < self._current_compaction_thresholds[partition_id]
+                    bucket.queue.qsize() < bucket.compaction_threshold
                 ):
                     return
 
+                # Drain the queue to perform compaction
                 to_compact = bucket.drain_queue()
+                # We revise up compaction thresholds for partition after every
+                # compaction to amortize the cost of compaction.
+                bucket.compaction_threshold = min(
+                    bucket.compaction_threshold * 2,
+                    self._max_num_blocks_compaction_threshold,
+                )
 
             # For actual compaction we're releasing the lock
             compacted = self._aggregation.compact(to_compact)
             # Requeue compacted block back into the queue
             bucket.queue.put(compacted)
-
-            # We revise compaction thresholds for partition after every
-            # compaction to amortize the cost of compaction.
-            self._current_compaction_thresholds[partition_id] = min(
-                self._current_compaction_thresholds[partition_id] * 2,
-                self._max_num_blocks_compaction_threshold,
-            )
 
     def finalize(
         self, partition_id: int
@@ -1787,12 +1791,13 @@ class HashShuffleAggregator:
     def _allocate_partition_buckets(
         num_input_seqs: int,
         target_partition_ids: List[int],
+        compaction_threshold: Optional[int],
     ):
         partition_buckets = defaultdict(defaultdict)
 
         for seq_id in range(num_input_seqs):
             for part_id in target_partition_ids:
-                partition_buckets[seq_id][part_id] = PartitionBucket.create()
+                partition_buckets[seq_id][part_id] = PartitionBucket.create(compaction_threshold)
 
         return partition_buckets
 
