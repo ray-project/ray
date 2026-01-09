@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import shutil
 from typing import List, Union
 
 import pandas as pd
@@ -662,7 +663,7 @@ def test_filter_rows_for_block():
     """Test BatchBasedCheckpointFilter.filter_rows_for_block."""
 
     # Common test setup
-    checkpoint_path = "/mock/path"
+    checkpoint_path = "/tmp/path"
 
     # Test with simple ID column
     config = CheckpointConfig(
@@ -684,6 +685,12 @@ def test_filter_rows_for_block():
     checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
     assert len(checkpointed_ids[ID_COL].chunks) == 3
 
+    # Write to checkpoint_path
+    os.makedirs(checkpoint_path, exist_ok=True)
+    pq.write_table(
+        checkpointed_ids, os.path.join(checkpoint_path, "checkpointed_ids.parquet")
+    )
+
     expected_block = pyarrow.table(
         {
             ID_COL: [0, 3, 5, 7],
@@ -691,13 +698,15 @@ def test_filter_rows_for_block():
         }
     )
 
-    filter_instance = BatchBasedCheckpointFilter(config)
-    filtered_block = filter_instance.filter_rows_for_block(
-        block=block,
-        checkpointed_ids=checkpointed_ids,
+    filter_instance = BatchBasedCheckpointFilter.remote(config)
+    filtered_block = ray.get(
+        filter_instance.filter_rows_for_block.remote(
+            block=block,
+        )
     )
 
     assert filtered_block.equals(expected_block)
+    shutil.rmtree(checkpoint_path)
 
 
 def test_checkpoint_restore_after_full_execution(
