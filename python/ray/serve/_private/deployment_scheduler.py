@@ -10,6 +10,7 @@ from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray._private.label_utils import match_label_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
@@ -905,60 +906,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         required_labels: Dict[str, str],
         node_labels: Dict[str, Dict[str, str]],
     ) -> Dict[str, Resources]:
-        """Filters available nodes based on label selector constraints.
-
-        Supports Ray's label syntax where values are strings:
-        - Equality: {"key": "value"}
-        - Not Equal: {"key": "!value"}
-        - In: {"key": "in(v1, v2, ...)"}
-        - Not In: {"key": "!in(v1, v2, ...)"}
-        """
-        filtered_nodes = {}
-        for node_id, resources in available_nodes.items():
-            labels = node_labels.get(node_id, {})
-            is_match = True
-
-            for key, req_val in required_labels.items():
-                node_val = labels.get(key)
-
-                # We only support string labels.
-                if not isinstance(req_val, str):
-                    is_match = False
-                    break
-
-                # !in operator
-                if req_val.startswith("!in(") and req_val.endswith(")"):
-                    content = req_val[4:-1]
-                    values = [v.strip() for v in content.split(",")]
-                    if node_val is not None and node_val in values:
-                        is_match = False
-                        break
-
-                # in operator
-                elif req_val.startswith("in(") and req_val.endswith(")"):
-                    content = req_val[3:-1]
-                    values = [v.strip() for v in content.split(",")]
-                    if node_val not in values:
-                        is_match = False
-                        break
-
-                # not equal operator
-                elif req_val.startswith("!"):
-                    target_val = req_val[1:]
-                    if node_val == target_val:
-                        is_match = False
-                        break
-
-                # equals operator
-                else:
-                    if node_val != req_val:
-                        is_match = False
-                        break
-
-            if is_match:
-                filtered_nodes[node_id] = resources
-
-        return filtered_nodes
+        """Filters available nodes based on label selector constraints."""
+        return {
+            node_id: resources
+            for node_id, resources in available_nodes.items()
+            if match_label_selector(node_labels.get(node_id, {}), required_labels)
+        }
 
     def _find_best_fit_node_for_pack(
         self,

@@ -8,6 +8,8 @@ from typing import ContextManager, Dict, Optional, Union
 import pytest
 
 from ray._private.label_utils import (
+    match_label_selector,
+    match_label_selector_value,
     parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
@@ -366,6 +368,65 @@ def test_validate_fallback_strategy(fallback_strategy, expected_error):
         assert expected_error in result
     else:
         assert result is None
+
+
+@pytest.mark.parametrize(
+    "node_value, selector_value, expected",
+    [
+        # Equals operator
+        ("us-west", "us-west", True),
+        ("us-east", "us-west", False),
+        (None, "us-west", False),
+        # Not equals (!) operator
+        ("us-west", "!us-east", True),
+        ("us-east", "!us-east", False),
+        (None, "!us-east", True),
+        # In operator
+        ("A100", "in(A100, H100)", True),
+        ("T4", "in(A100, H100)", False),
+        (None, "in(A100, H100)", False),
+        ("value", "in(value)", True),
+        # Not in operator
+        ("T4", "!in(A100, H100)", True),
+        ("A100", "!in(A100, H100)", False),
+        (None, "!in(A100, H100)", True),
+        # Invalid types
+        ("A100", None, False),
+        ("A100", 123, False),
+    ],
+)
+def test_match_label_selector_value(node_value, selector_value, expected):
+    assert match_label_selector_value(node_value, selector_value) == expected
+
+
+@pytest.mark.parametrize(
+    "node_labels, selector, expected",
+    [
+        # Match all
+        (
+            {"region": "us-west", "gpu": "A100"},
+            {"region": "us-west", "gpu": "A100"},
+            True,
+        ),
+        # Partial match
+        (
+            {"region": "us-west", "gpu": "T4"},
+            {"region": "us-west", "gpu": "A100"},
+            False,
+        ),
+        # Multiple operators
+        (
+            {"region": "us-west", "env": "prod"},
+            {"region": "in(us-west, us-east)", "env": "!dev"},
+            True,
+        ),
+        # Missing keys in node labels
+        ({"region": "us-west"}, {"gpu": "!in(H100)"}, True),
+        ({"region": "us-west"}, {"gpu": "in(H100)"}, False),
+    ],
+)
+def test_match_label_selector(node_labels, selector, expected):
+    assert match_label_selector(node_labels, selector) == expected
 
 
 if __name__ == "__main__":
