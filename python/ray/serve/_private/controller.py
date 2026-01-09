@@ -42,7 +42,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -54,6 +53,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    configure_autoscaling_snapshot_logger,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -148,6 +148,9 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
+
+        # Autoscaling snapshot logger
+        self._autoscaling_logger: Optional[logging.Logger] = None
 
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
@@ -269,6 +272,11 @@ class ServeController:
             logging_config=global_logging_config,
         )
 
+        self._autoscaling_logger = configure_autoscaling_snapshot_logger(
+            component_id=str(os.getpid()),
+            logging_config=global_logging_config,
+        )
+
         logger.info(
             f"Controller starting (version='{ray.__version__}').",
             extra={"log_to_stderr": False},
@@ -290,6 +298,15 @@ class ServeController:
     ):
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.replica_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": replica_metric_report.replica_id.deployment_id.name,
+                "application": replica_metric_report.replica_id.deployment_id.app_name,
+                "replica": replica_metric_report.replica_id.unique_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
@@ -306,6 +323,15 @@ class ServeController:
     ):
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.handle_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": handle_metric_report.deployment_id.name,
+                "application": handle_metric_report.deployment_id.app_name,
+                "handle": handle_metric_report.handle_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
@@ -642,6 +668,24 @@ class ServeController:
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
+        # Autoscaling metrics delay gauges
+        self.replica_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_replica_metrics_delay_ms",
+            description=(
+                "Time taken for the replica metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.handle_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_handle_metrics_delay_ms",
+            description=(
+                "Time taken for the handle metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "handle"),
+        )
+
     def _recover_state_from_checkpoint(self):
         (
             deployment_time,
@@ -764,16 +808,13 @@ class ServeController:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                # HTTP is disabled
-                if http_config.host is None:
-                    return ""
-                return (
-                    f"http://{build_address(http_config.host, http_config.port)}"
-                    f"{http_config.root_path}"
-                )
+            # HTTP is disabled
+            if http_config.host is None:
+                return ""
+            return (
+                f"http://{build_address(http_config.host, http_config.port)}"
+                f"{http_config.root_path}"
+            )
         return http_config.root_url
 
     def config_checkpoint_deleted(self) -> bool:

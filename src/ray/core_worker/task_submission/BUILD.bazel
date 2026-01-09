@@ -54,6 +54,17 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "task_submission_util",
+    hdrs = ["task_submission_util.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/gcs_rpc_client:gcs_client",
+    ],
+)
+
+ray_cc_library(
     name = "actor_task_submitter",
     srcs = ["actor_task_submitter.cc"],
     hdrs = ["actor_task_submitter.h"],
@@ -66,12 +77,16 @@ ray_cc_library(
         ":dependency_resolver",
         ":out_of_order_actor_submit_queue",
         ":sequential_actor_submit_queue",
+        ":task_submission_util",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:reference_counter_interface",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
@@ -90,6 +105,7 @@ ray_cc_library(
     ],
     deps = [
         ":dependency_resolver",
+        ":task_submission_util",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:protobuf_utils",
@@ -97,7 +113,9 @@ ray_cc_library(
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager_interface",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
     ],
