@@ -122,20 +122,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "process_fd",
-    srcs = ["process_fd.cc"],
-    hdrs = ["process_fd.h"],
-    deps = [
-        ":cmd_line_utils",
-        ":filesystem",
-        ":logging",
-        ":macros",
-        ":process_interface",
-        ":process_utils",
-    ],
-)
-
-ray_cc_library(
     name = "process",
     srcs = [
         "process.cc",
@@ -151,7 +137,6 @@ ray_cc_library(
         ":filesystem",
         ":logging",
         ":macros",
-        ":process_fd",
         ":process_interface",
         ":process_utils",
         "//src/ray/common:status",

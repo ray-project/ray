@@ -16,7 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <filesystem>
-#include <fstream>  // std::ifstream
+#include <fstream>
 #include <tuple>
 
 #include "absl/strings/str_format.h"

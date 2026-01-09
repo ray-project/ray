@@ -64,10 +64,6 @@ class ProcessInterface {
   /// \return The process ID, or -1 for a null/dummy process.
   virtual pid_t GetId() const = 0;
 
-  /// Returns an opaque pointer or handle to the underlying process object.
-  /// Implementation detail, used only for identity testing. Do not dereference.
-  virtual const void *Get() const = 0;
-
   /// Returns true if this is a null process object.
   virtual bool IsNull() const = 0;
 

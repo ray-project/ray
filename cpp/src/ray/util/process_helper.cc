@@ -50,7 +50,7 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true);
+      Process::Spawn(cmdargs, true) << "Failed to spawn process to start ray node";
   RAY_CHECK(spawn_result.ok());
   spawn_result.value()->Wait();
   return;
@@ -60,7 +60,7 @@ void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true);
+      Process::Spawn(cmdargs, true) << "Failed to spawn process to stop ray node";
   RAY_CHECK(spawn_result.ok());
   spawn_result.value()->Wait();
   return;

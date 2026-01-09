@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/common/status_or.h"
+#include "ray/util/compat.h"
 #include "ray/util/logging.h"
 #include "ray/util/process_interface.h"
 
@@ -30,10 +31,10 @@ using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 namespace ray {
 
-class ProcessFD;
-
 class Process : public ProcessInterface {
  public:
+  ~Process();
+
   /// Creates a null process object. Two null process objects are assumed equal.
   Process();
 
@@ -71,6 +72,11 @@ class Process : public ProcessInterface {
   /// \return A unique pointer to the process object.
   explicit Process(pid_t pid);
 
+  Process(Process &&other);
+  Process &operator=(Process &&other);
+  Process(const Process &other) = delete;
+  Process &operator=(const Process &other) = delete;
+
   /// Convenience function to run the given command line and wait for it to finish.
   /// \param[in] args The command-line arguments.
   /// \param[in] env Additional environment variables.
@@ -100,10 +106,6 @@ class Process : public ProcessInterface {
 
   pid_t GetId() const override;
 
-  /// Returns an opaque pointer or handle to the underlying process object.
-  /// Implementation detail, used only for identity testing. Do not dereference.
-  const void *Get() const override;
-
   bool IsNull() const override;
 
   bool IsValid() const override;
@@ -119,7 +121,29 @@ class Process : public ProcessInterface {
   int Wait() const override;
 
  private:
-  std::shared_ptr<ProcessFD> p_;
+  pid_t pid_;
+
+  // The pipe's fd to track the child process's lifetime.
+  intptr_t fd_;
+
+  /**
+   * @brief Spawns a new process with the given arguments and environment,
+   *        and tracks it within this Process.
+   * @details This function updates the process's PID and FD.
+   * @param[in] argv The command-line arguments to spawn the process with.
+   * @param[out] ec The error code to return.
+   * @param[in] decouple Whether to decouple the parent and child processes.
+   * @param[in] env The environment variables to set for the process.
+   * @param[in] pipe_to_stdin Whether to pipe the child's stdin to the parent.
+   * @param[in] add_to_cgroup A function to add the child to a cgroup.
+   * @param[in] new_process_group Whether to create a new process group.
+   */
+  StatusOr<std::pair<pid_t, intptr_t>> spawnvpe(const char *argv[],
+                                                bool decouple,
+                                                const ProcessEnvironment &env,
+                                                bool pipe_to_stdin,
+                                                AddProcessToCgroupHook add_to_cgroup,
+                                                bool new_process_group) const;
 };
 
 }  // namespace ray

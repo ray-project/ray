@@ -14,50 +14,33 @@
 
 #pragma once
 
-#include <atomic>
-#include <memory>
-
 #include "ray/util/process_interface.h"
 
 namespace ray {
 
-/// \class FakeProcess
-///
-/// A fake process implementation providing
-/// barebone mocked functionality for testing.
+/**
+ * @class FakeProcess
+ * @brief A fake process implementation providing barebone mocked functionality for
+ * testing.
+ */
 class FakeProcess : public ProcessInterface {
  public:
-  /// Creates a fake process with default settings.
-  /// By default: pid=-1, is_alive=false, exit_code=0, is_null=false
+  /**
+   * @brief Creates a fake process with default settings.
+   * @details By default: pid=-1, is_alive=true, exit_code=0, is_null=false
+   */
   FakeProcess() : FakeProcess(-1) {}
 
-  /// Creates a fake process with a specific PID.
-  /// \param pid The process ID to use.
-  explicit FakeProcess(pid_t pid)
-      : pid_(pid), is_alive_(false), exit_code_(0), is_null_(false), killed_(false) {}
-
   /**
-   * Creates a null fake process.
-   */
-  static std::shared_ptr<FakeProcess> CreateNull() {
-    auto proc = std::make_shared<FakeProcess>();
-    proc->SetNull(true);
-    return proc;
-  }
-
-  /**
-   * Creates a fake process that simulates being alive.
+   * @brief Creates a fake process with a specific PID.
+   * @details The process is set to alive by default.
+   *          The fake process state can be configured using setters.
    * @param pid The process ID to use.
    */
-  static std::shared_ptr<FakeProcess> CreateAlive(pid_t pid = 12345) {
-    auto proc = std::make_shared<FakeProcess>(pid);
-    proc->SetAlive(true);
-    return proc;
-  }
+  explicit FakeProcess(pid_t pid)
+      : pid_(pid), is_alive_(true), exit_code_(0), is_null_(false), killed_(false) {}
 
   pid_t GetId() const override { return is_null_ ? -1 : pid_; }
-
-  const void *Get() const override { return is_null_ ? nullptr : this; }
 
   bool IsNull() const override { return is_null_; }
 
@@ -68,7 +51,7 @@ class FakeProcess : public ProcessInterface {
     is_alive_ = false;
   }
 
-  bool IsAlive() const override { return is_alive_.load(); }
+  bool IsAlive() const override { return is_alive_; }
 
   int Wait() const override {
     if (is_null_) {
@@ -77,7 +60,7 @@ class FakeProcess : public ProcessInterface {
     return exit_code_;
   }
 
-  // Test control methods
+  // Setters for mocking process with custom states.
 
   void SetPid(pid_t pid) { pid_ = pid; }
 
@@ -93,7 +76,7 @@ class FakeProcess : public ProcessInterface {
 
  private:
   pid_t pid_;
-  std::atomic<bool> is_alive_;
+  bool is_alive_;
   int exit_code_;
   bool is_null_;
   bool killed_;
