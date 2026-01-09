@@ -56,7 +56,6 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-    @override
     def add_to_front(self, bundle: RefBundle):
         """Add a bundle to the front(head) of the queue"""
         self._on_enqueue(bundle)

@@ -265,7 +265,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.add(right)
+                self._buffer.add_to_front(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 

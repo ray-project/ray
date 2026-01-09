@@ -95,14 +95,14 @@ class BaseBundleQueue(_QueueMetricRecorder):
 
     def get_next(self) -> RefBundle:
         """Remove and return the head of the queue. Base classes should override
-        the `_add_inner` method for simple use cases. For more complex metrics tracking,
+        the `_get_next_inner` method for simple use cases. For more complex metrics tracking,
         they can override this method.
 
         Raises:
             IndexError: If the queue is empty.
 
         Returns:
-            A Refbundle if has_next() is True
+            The `RefBundle` at the head of the queue.
         """
         bundle = self._get_next_inner()
         self._on_dequeue(bundle)
@@ -114,7 +114,7 @@ class BaseBundleQueue(_QueueMetricRecorder):
     @abc.abstractmethod
     def peek_next(self) -> Optional[RefBundle]:
         """Return the head of the queue. The only invariant is
-        that the # of blocks, rows, and bytes must be in remain unchanged
+        that the # of blocks, rows, and bytes must remain unchanged
         before and after this method call.
 
         If queue.has_next() == False, return `None`.
