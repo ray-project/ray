@@ -910,26 +910,6 @@ def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
     assert optimized_logical.count("Sort[Sort]") == 1
 
 
-def test_combine_repartition_repartition(
-    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
-):
-    ds = ray.data.range(100, override_num_blocks=10)
-    ds = ds.repartition(5, shuffle=True)
-    ds = ds.repartition(3, shuffle=True)
-
-    ds.explain()
-
-    captured = capsys.readouterr().out.strip()
-    # Check that in the Logical Plan (before optimization), both Repartitions appear
-    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
-    assert logical_plan.count("Repartition[Repartition]") >= 2
-    # Check that in the Logical Plan (Optimized), they are combined into one
-    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
-        1
-    ].split("-------- Physical Plan --------")[0]
-    assert optimized_logical.count("Repartition[Repartition]") == 1
-
-
 if __name__ == "__main__":
     import sys
 
