@@ -1711,7 +1711,9 @@ class HashShuffleAggregator:
                 # Drain the queue to perform compaction
                 to_compact = bucket.drain_queue()
                 # We revise up compaction thresholds for partition after every
-                # compaction to amortize the cost of compaction.
+                # compaction so that for "non-compacting" aggregations (like
+                # `Unique`) we amortize the cost of compaction processing the same
+                # elements multiple times.
                 bucket.compaction_threshold = min(
                     bucket.compaction_threshold * 2,
                     self._max_num_blocks_compaction_threshold,
