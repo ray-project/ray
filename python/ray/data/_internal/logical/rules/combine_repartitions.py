@@ -1,16 +1,22 @@
+import copy as cp
+
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
     Plan,
     Rule,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import Repartition
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    Aggregate,
+    Repartition,
+    Sort,
+)
 from ray.data._internal.logical.operators.map_operator import StreamingRepartition
 
 
-class CombineRepartitions(Rule):
-    """This logical rule combines chained ``Repartition`` and
-    ``StreamingRepartition`` ops fusing them into a single one.
+class CombineShuffles(Rule):
+    """This logical rule combines chained shuffles together. For example,
+    ``Repartition`` and ``StreamingRepartition`` ops fusing them into a single one.
     """
 
     def apply(self, plan: Plan) -> Plan:
@@ -23,7 +29,7 @@ class CombineRepartitions(Rule):
 
             input_op = op.input_dependencies[0]
 
-            if isinstance(op, Repartition) and isinstance(input_op, Repartition):
+            if isinstance(input_op, Repartition) and isinstance(op, Repartition):
                 shuffle = input_op._shuffle or op._shuffle
                 return Repartition(
                     input_op.input_dependencies[0],
@@ -32,13 +38,21 @@ class CombineRepartitions(Rule):
                     keys=op._keys,
                     sort=op._sort,
                 )
-            elif isinstance(op, StreamingRepartition) and isinstance(
-                input_op, StreamingRepartition
+            elif isinstance(input_op, StreamingRepartition) and isinstance(
+                op, StreamingRepartition
             ):
                 return StreamingRepartition(
                     input_op.input_dependencies[0],
                     target_num_rows_per_block=op.target_num_rows_per_block,
                 )
+            elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
+                return cp.copy(op)
+            elif isinstance(input_op, StreamingRepartition) and isinstance(
+                op, Repartition
+            ):
+                return cp.copy(op)
+            elif isinstance(input_op, Sort) and isinstance(op, Sort):
+                return cp.copy(op)
 
             return op
 
