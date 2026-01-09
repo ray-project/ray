@@ -123,6 +123,7 @@ In this example, you use vLLM's structured output feature to restrict the LLM's 
 ```python
 from typing import Any
 
+# For better output token control, restrain generation to these choices
 CHOICES = [
     "Law Firm",
     "Healthcare",
@@ -154,7 +155,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         sampling_params=dict(
             temperature=0,  # Use 0 for deterministic output
             max_tokens=16,  # Max output tokens. Industry names are short
-            structured_outputs=dict(choice=CHOICES),  # Pass as dict, not StructuredOutputsParams
+            structured_outputs=dict(choice=CHOICES), # Constraint generation
         ),
     )
 

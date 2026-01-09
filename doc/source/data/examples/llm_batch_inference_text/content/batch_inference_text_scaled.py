@@ -34,6 +34,7 @@ processor_config_large = vLLMEngineProcessorConfig(
     concurrency=10,  # Deploy 10 workers across 10 GPUs to maximize throughput
 )
 
+# For better output token control, restrain generation to these choices
 CHOICES = [
     "Law Firm",
     "Healthcare",
@@ -65,7 +66,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         sampling_params=dict(
             temperature=0,  # Use 0 for deterministic output
             max_tokens=16,  # Max output tokens. Industry names are short
-            structured_outputs=StructuredOutputsParams(choice=CHOICES),
+            structured_outputs=dict(choice=CHOICES), # Constraint generation
         ),
     )
 
