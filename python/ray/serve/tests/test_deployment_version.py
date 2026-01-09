@@ -72,7 +72,7 @@ def test_placement_group_options_trigger_restart():
         ray_actor_options={},
         placement_group_bundles=[{"CPU": 1}],
         placement_group_strategy="PACK",
-        placement_group_fallback_strategy=[{"placement_group_bundles": [{"CPU": 1}]}],
+        placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
     )
 
     # Validate actor restart occurs due to differing hash.

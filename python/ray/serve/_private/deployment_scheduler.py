@@ -790,10 +790,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                         scheduling_request.placement_group_bundle_label_selector
                     )
                 else:
-                    # Only the first bundle (where the replica actor lives) must be satisfied.
-                    primary_labels = [
-                        scheduling_request.placement_group_bundle_label_selector[0]
-                    ]
+                    # TODO(ryanaoleary@): Support PACK strategy with bundle label selectors.
+                    raise NotImplementedError(
+                        "Placement Group strategy 'PACK' with bundle_label_selector "
+                        "is not yet supported in the Serve scheduler."
+                    )
         else:
             # Actor: Use Actor label selector
             if "label_selector" in scheduling_request.actor_options:
@@ -807,21 +808,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         )
 
         if scheduling_request.placement_group_fallback_strategy:
-            # Fallback strategy provided for placement group.
-            for fallback in scheduling_request.placement_group_fallback_strategy:
-                fallback_bundles = fallback.get("bundles")
-                if fallback_bundles is None:
-                    fallback_bundles = primary_bundles
-
-                if fallback_bundles is None:
-                    fallback_bundles = []
-
-                req_resources = sum(
-                    [Resources(b) for b in fallback_bundles], Resources()
-                )
-
-                fallback_labels = fallback.get("bundle_label_selector", [])
-                placement_candidates.append((req_resources, fallback_labels))
+            # TODO(ryanaoleary@): Add support for placement group fallback_strategy when it's added to options.
+            raise NotImplementedError(
+                "Placement Group fallback strategies are not yet supported in the Serve scheduler."
+            )
 
         elif scheduling_request.actor_options.get("fallback_strategy"):
             # Fallback strategy provided for Ray Actor.

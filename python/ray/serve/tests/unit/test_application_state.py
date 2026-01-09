@@ -1533,9 +1533,7 @@ class TestOverrideDeploymentInfo:
             replica_config=ReplicaConfig.create(
                 lambda x: x,
                 placement_group_bundles=[{"CPU": 1}],
-                placement_group_fallback_strategy=[
-                    {"placement_group_bundles": [{"CPU": 1}]}
-                ],
+                placement_group_fallback_strategy=[{"bundles ": [{"CPU": 1}]}],
             ),
             start_time_ms=0,
             deployer_job_id="",

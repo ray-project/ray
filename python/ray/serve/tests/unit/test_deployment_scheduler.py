@@ -902,6 +902,7 @@ def test_schedule_passes_placement_group_options():
         on_scheduled=lambda *args, **kwargs: None,
         placement_group_bundles=[{"CPU": 1}],
         placement_group_bundle_label_selector=test_labels,
+        placement_group_strategy="STRICT_PACK",
     )
 
     scheduler.schedule(upscales={dep_id: [req]}, downscales={})
@@ -1040,11 +1041,9 @@ def test_build_pack_placement_candidates():
             {"accelerator-type": "H100"},
         ],
     )
-    strategies = scheduler._build_pack_placement_candidates(req_pack)
-    assert len(strategies) == 1
 
-    assert strategies[0][0] == {"CPU": 0.1}
-    assert strategies[0][1] == [{"accelerator-type": "H100"}]
+    with pytest.raises(NotImplementedError):
+        scheduler._build_pack_placement_candidates(req_pack)
 
     # Scheduling replica with placement group STRICT_PACK strategy and bundle_label_selector
     req_pg = ReplicaSchedulingRequest(
