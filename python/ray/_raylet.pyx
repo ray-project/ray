@@ -2081,7 +2081,7 @@ cdef execute_task_with_cancellation_handler(
                 # Reset the OMP_NUM_THREADS environ if it was set.
                 try:
                     os.environ.pop("OMP_NUM_THREADS", None)
-                except KeyError: 
+                except KeyError:
                     # os.environ is not thread-safe. A race condition can occur if multiple
                     # threads attempt to modify it simultaneously. Specifically, if two
                     # threads call pop() on the same key at the same time, one may
