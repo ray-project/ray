@@ -84,7 +84,7 @@ The `bundle_per_worker` option inside `placement_group_config` lets you specify 
 :::{tab-item} Python
 :sync: python
 
-```{literalinclude} ../../doc_code/cross_node_parallelism_example.py
+```{literalinclude} ../../../llm/doc_code/serve/multi_gpu/bundle_per_worker_example.py
 :language: python
 :start-after: __bundle_per_worker_example_start__
 :end-before: __bundle_per_worker_example_end__

@@ -97,40 +97,6 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 # __cross_node_tp_pp_example_end__
 
-# __bundle_per_worker_example_start__
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-
-# Configure a model with bundle_per_worker for simple resource specification
-# Ray automatically replicates this bundle based on tp * pp (4 bundles total)
-llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="llama-3.1-8b",
-        model_source="meta-llama/Llama-3.1-8B-Instruct",
-    ),
-    deployment_config=dict(
-        autoscaling_config=dict(
-            min_replicas=1,
-            max_replicas=1,
-        )
-    ),
-    accelerator_type="L4",
-    engine_kwargs=dict(
-        tensor_parallel_size=2,
-        pipeline_parallel_size=2,
-        max_model_len=8192,
-    ),
-    # Simple: specify resources per worker, auto-replicated by tp*pp
-    placement_group_config=dict(
-        bundle_per_worker={"GPU": 1, "CPU": 2},
-    ),
-)
-
-# Deploy the application
-app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app, blocking=True)
-# __bundle_per_worker_example_end__
-
 # __custom_placement_group_pack_example_start__
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app

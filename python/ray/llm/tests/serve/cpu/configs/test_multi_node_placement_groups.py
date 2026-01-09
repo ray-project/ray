@@ -324,7 +324,7 @@ def test_bundle_per_worker_expands_correctly(tp_size, pp_size):
 def test_bundle_per_worker_conflict_with_bundles():
     """Test that specifying both bundle_per_worker and bundles raises error."""
     with pytest.raises(ValueError, match="Cannot specify both"):
-        LLMConfig(
+        llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
                 model_id="test_model",
                 model_source="facebook/opt-125m",
@@ -334,6 +334,8 @@ def test_bundle_per_worker_conflict_with_bundles():
                 "bundles": [{"GPU": 1}],
             },
         )
+        # Validation happens when VLLMEngineConfig is created
+        VLLMEngineConfig.from_llm_config(llm_config)
 
 
 def test_bundle_per_worker_uses_pack_strategy():
@@ -346,6 +348,62 @@ def test_bundle_per_worker_uses_pack_strategy():
 
     serve_options = LLMServer.get_deployment_options(llm_config)
     assert serve_options["placement_group_strategy"] == "PACK"
+
+
+def test_bundle_per_worker_injects_accelerator_type():
+    """Test that bundle_per_worker bundles get accelerator type hint injected."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+            distributed_executor_backend="ray",
+        ),
+        accelerator_type="L4",
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 2}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    # All bundles should have accelerator type hint injected
+    for bundle in serve_options["placement_group_bundles"]:
+        assert "accelerator_type:L4" in bundle
+        assert bundle["accelerator_type:L4"] == 0.001
+
+
+def test_bundle_per_worker_fractional_gpu_env_var():
+    """Test that fractional GPU in bundle_per_worker injects VLLM_RAY_PER_WORKER_GPUS."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 0.5, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.5"
+
+
+def test_bundle_per_worker_non_fractional_gpu_no_env_var():
+    """Test that non-fractional GPU in bundle_per_worker does not inject env var."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert "VLLM_RAY_PER_WORKER_GPUS" not in runtime_env.get("env_vars", {})
 
 
 if __name__ == "__main__":

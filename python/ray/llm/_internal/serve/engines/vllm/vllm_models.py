@@ -392,6 +392,15 @@ class VLLMEngineConfig(BaseModelExtended):
         if not placement_group_config:
             return None
 
+        # Check bundle_per_worker first
+        bundle_per_worker = placement_group_config.get("bundle_per_worker")
+        if bundle_per_worker:
+            gpu_value = bundle_per_worker.get("GPU", 0)
+            if 0 < gpu_value < 1:
+                return gpu_value
+            return None
+
+        # Fall back to bundles list
         bundles = placement_group_config.get("bundles") or []
 
         for bundle in bundles:
