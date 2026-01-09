@@ -122,6 +122,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
   /// \param worker_client_pool Pool to manage connections to core worker clients.
+  /// \param scheduler_placement_time_ms_histogram Histogram of the time it took to
+  /// schedule an Actor Creation Task on a worker.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
