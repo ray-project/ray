@@ -178,7 +178,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "release/ray_release/byod/ray_ml_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: ray-mlcudabase
 
   - name: ray-slimcpubase
