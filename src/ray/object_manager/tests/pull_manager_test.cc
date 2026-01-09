@@ -1279,8 +1279,14 @@ TEST_P(PullManagerTest, TestRefreshSubscriptionWhenLocationNeverReceived) {
   pull_manager_.Tick();
   ASSERT_FALSE(refreshed_objects_.count(oids[0]));
   ASSERT_TRUE(timed_out_objects_.count(oids[0]));
-
   timed_out_objects_.clear();
+
+  // Subsequent ticks should NOT trigger repeated failures.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_FALSE(refreshed_objects_.count(oids[0]));
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+
   RAY_UNUSED(pull_manager_.CancelPull(req_id));
 
   AssertNoLeaks();

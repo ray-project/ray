@@ -597,7 +597,7 @@ void PullManager::Tick() {
     for (auto &pair : object_pull_requests_) {
       const auto &object_id = pair.first;
       auto &request = pair.second;
-      if (!request.object_size_set) {
+      if (!request.object_size_set && !request.subscription_timed_out) {
         double wait_time_seconds =
             current_time_seconds - request.subscription_start_time_seconds;
         if (wait_time_seconds > timeout_seconds) {
@@ -606,6 +606,7 @@ void PullManager::Tick() {
                              << " timed out waiting for location info after "
                              << request.num_subscription_refreshes
                              << " subscription refreshes";
+            request.subscription_timed_out = true;
             objects_to_fail.push_back(object_id);
           } else {
             RAY_LOG(DEBUG) << "Object " << object_id << " waited " << wait_time_seconds

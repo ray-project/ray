@@ -195,6 +195,8 @@ class PullManager {
     double subscription_start_time_seconds;
     // Number of times we've refreshed the subscription while waiting for location info.
     uint8_t num_subscription_refreshes = 0;
+    // Whether we've already fired a failure callback for this subscription timeout.
+    bool subscription_timed_out = false;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries = 0;
