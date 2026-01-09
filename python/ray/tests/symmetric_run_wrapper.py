@@ -41,4 +41,3 @@ if __name__ == "__main__":
         patch("psutil.net_if_addrs", side_effect=_mocked_net_if_addrs),
     ):
         symmetric_run()
-
