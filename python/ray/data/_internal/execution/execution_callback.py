@@ -34,6 +34,18 @@ class ExecutionCallback:
 
 def _initialize_env_callbacks(context: DataContext) -> None:
     """Initialize callbacks from environment variable and add them to the context."""
+
+    # firstly add the callbacks that should always be executed
+    from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
+        ExecutionIdxUpdateCallback,
+    )
+    from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+        IssueDetectionExecutionCallback,
+    )
+
+    add_execution_callback(ExecutionIdxUpdateCallback(), context)
+    add_execution_callback(IssueDetectionExecutionCallback(), context)
+
     callbacks_str = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
     if not callbacks_str:
         return
@@ -59,14 +71,7 @@ def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
     if not context.get_config(ENV_CALLBACKS_INITIALIZED_KEY, False):
         _initialize_env_callbacks(context)
         context.set_config(ENV_CALLBACKS_INITIALIZED_KEY, True)
-
-    from ray.data._internal.execution.callbacks.insert_issue_detectors import (
-        IssueDetectionExecutionCallback,
-    )
-
-    return context.get_config(
-        EXECUTION_CALLBACKS_CONFIG_KEY, [IssueDetectionExecutionCallback()]
-    )
+    return context.get_config(EXECUTION_CALLBACKS_CONFIG_KEY, [])
 
 
 def add_execution_callback(callback: ExecutionCallback, context: DataContext):
