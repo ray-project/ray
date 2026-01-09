@@ -482,7 +482,10 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
 
     upper_bound_of_bytes_used = 0
     seen_view_slices: set[tuple[int, int, int]] = set()
-    for index in range(len(a)):
+    for index, is_valid in zip(range(len(a)), a.is_valid()):
+        if not is_valid:
+            continue
+
         view: tuple[int, int, int, int] = struct.unpack(
             "<iiii",
             view_buf[
