@@ -201,37 +201,3 @@ Datasink API
    datasource.FileBasedDatasource
    datasource.WriteResult
    datasource.WriteReturnType
-
-Partitioning API
-----------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.Partitioning
-   datasource.PartitionStyle
-   datasource.PathPartitionParser
-   datasource.PathPartitionFilter
-
-.. _metadata_provider:
-
-MetadataProvider API
---------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.FileMetadataProvider
-   datasource.BaseFileMetadataProvider
-   datasource.DefaultFileMetadataProvider
-
-Shuffling API
--------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   FileShuffleConfig
