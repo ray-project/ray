@@ -15,7 +15,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
-      CONSTRAINTS_FILE: "python/requirements_compiled_py{{matrix}}.txt"
+      CONSTRAINTS_FILE: "requirements_compiled_py{{matrix}}.txt"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
@@ -60,6 +60,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
+      CONSTRAINTS_FILE: "requirements_compiled_py{{matrix}}.txt"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
