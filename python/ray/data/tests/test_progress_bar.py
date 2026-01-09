@@ -119,20 +119,29 @@ def test_progress_bar_truncates_chained_operators(
             ), caplog.records
 
 
-def test_progress_bar_non_interactive_terminal():
-    """Test that progress bars are disabled in non-interactive terminals."""
+def test_progress_bar_non_interactive_terminal(enable_tqdm_ray):
+    """Test progress bar behavior in non-interactive terminals."""
     total = 100
 
     # Mock non-interactive terminal
     with patch("sys.stdout.isatty", return_value=False):
         # Even with enabled=True, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit", enabled=True)
-        assert pb._bar is None
+        if enable_tqdm_ray:
+            # tqdm_ray works in non-interactive contexts (actors)
+            assert pb._bar is not None
+            assert pb._use_logging is False
+        else:
+            # Without tqdm_ray, falls back to logging
+            assert pb._bar is None
 
     with patch("sys.stdout.isatty", return_value=False):
         # Even with enabled=None, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit")
-        assert pb._bar is None
+        if enable_tqdm_ray:
+            assert pb._bar is not None
+        else:
+            assert pb._bar is None
 
     # Mock interactive terminal
     with patch("sys.stdout.isatty", return_value=True):
@@ -142,7 +151,9 @@ def test_progress_bar_non_interactive_terminal():
 
 
 @patch("ray.data._internal.progress.progress_bar.logger")
-def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger):
+def test_progress_bar_logging_in_non_interactive_terminal_with_total(
+    mock_logger, enable_tqdm_ray
+):
     """Test that progress is logged in non-interactive terminals with known total."""
     total = 10
 
@@ -151,22 +162,30 @@ def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger
         "ray.data._internal.progress.progress_bar.time.time", side_effect=[0, 10]
     ), patch("sys.stdout.isatty", return_value=False):
         pb = ProgressBar("test", total, "unit")
-        assert pb._bar is None
-        assert pb._use_logging is True
+        if enable_tqdm_ray:
+            # tqdm_ray works in non-interactive contexts
+            assert pb._bar is not None
+            assert pb._use_logging is False
+        else:
+            # Without tqdm_ray, falls back to logging
+            assert pb._bar is None
+            assert pb._use_logging is True
 
-        # Reset mock to clear the "progress bar disabled" log call
-        mock_logger.info.reset_mock()
+            # Reset mock to clear the "progress bar disabled" log call
+            mock_logger.info.reset_mock()
 
-        # Update progress - should log
-        pb.update(5)
-        # Verify logger.info was called exactly twice with expected messages
-        assert mock_logger.info.call_count == 2
-        mock_logger.info.assert_any_call("=== Ray Data Progress {test} ===")
-        mock_logger.info.assert_any_call("test: Progress Completed 5 / 10")
+            # Update progress - should log
+            pb.update(5)
+            # Verify logger.info was called exactly twice with expected messages
+            assert mock_logger.info.call_count == 2
+            mock_logger.info.assert_any_call("=== Ray Data Progress {test} ===")
+            mock_logger.info.assert_any_call("test: Progress Completed 5 / 10")
 
 
 @patch("ray.data._internal.progress.progress_bar.logger")
-def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_logger):
+def test_progress_bar_logging_in_non_interactive_terminal_without_total(
+    mock_logger, enable_tqdm_ray
+):
     """Test that progress is logged in non-interactive terminals with unknown total."""
 
     # Mock time to ensure logging occurs
@@ -174,19 +193,25 @@ def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_log
         "ray.data._internal.progress.progress_bar.time.time", side_effect=[0, 10]
     ), patch("sys.stdout.isatty", return_value=False):
         pb = ProgressBar("test2", None, "unit")
-        assert pb._bar is None
-        assert pb._use_logging is True
+        if enable_tqdm_ray:
+            # tqdm_ray works in non-interactive contexts
+            assert pb._bar is not None
+            assert pb._use_logging is False
+        else:
+            # Without tqdm_ray, falls back to logging
+            assert pb._bar is None
+            assert pb._use_logging is True
 
-        # Reset mock to clear the "progress bar disabled" log call
-        mock_logger.info.reset_mock()
+            # Reset mock to clear the "progress bar disabled" log call
+            mock_logger.info.reset_mock()
 
-        # Update progress - should log
-        pb.update(3)
+            # Update progress - should log
+            pb.update(3)
 
-        # Verify logger.info was called exactly twice with expected messages
-        assert mock_logger.info.call_count == 2
-        mock_logger.info.assert_any_call("=== Ray Data Progress {test2} ===")
-        mock_logger.info.assert_any_call("test2: Progress Completed 3 / ?")
+            # Verify logger.info was called exactly twice with expected messages
+            assert mock_logger.info.call_count == 2
+            mock_logger.info.assert_any_call("=== Ray Data Progress {test2} ===")
+            mock_logger.info.assert_any_call("test2: Progress Completed 3 / ?")
 
 
 if __name__ == "__main__":

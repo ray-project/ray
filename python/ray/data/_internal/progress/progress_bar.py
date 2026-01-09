@@ -47,15 +47,19 @@ class ProgressBar(BaseProgressBar):
 
         self._use_logging = False
 
+        from ray.data.context import DataContext
+
         if enabled is None:
             # When enabled is None (not explicitly set by the user),
             # check DataContext setting
-            from ray.data.context import DataContext
-
             enabled = DataContext.get_current().enable_progress_bars
 
-        # If enabled, and in non-interactive terminal, use logging instead of tqdm
-        if enabled and not sys.stdout.isatty():
+        use_ray_tqdm = DataContext.get_current().use_ray_tqdm
+
+        # If enabled, and in non-interactive terminal, use logging instead of tqdm.
+        # Exception: tqdm_ray is designed to work in non-interactive contexts
+        # (workers/actors) by sending JSON progress updates to the driver.
+        if enabled and not sys.stdout.isatty() and not use_ray_tqdm:
             self._use_logging = True
             enabled = False
             if log_once("progress_bar_disabled"):
@@ -66,10 +70,8 @@ class ProgressBar(BaseProgressBar):
         if not enabled:
             self._bar = None
         elif tqdm:
-            from ray.data.context import DataContext
-
             # TODO (kyuds): rename to use_tqdm_in_worker for clarity.
-            if DataContext.get_current().use_ray_tqdm:
+            if use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
