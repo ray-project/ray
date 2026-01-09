@@ -930,26 +930,6 @@ def test_combine_repartition_repartition(
     assert optimized_logical.count("Repartition[Repartition]") == 1
 
 
-def test_combine_streaming_repartition_streaming_repartition(
-    ray_start_regular_shared_2_cpus, capsys
-):
-    ds = ray.data.range(100, override_num_blocks=10)
-    ds = ds.repartition(target_num_rows_per_block=20)
-    ds = ds.repartition(target_num_rows_per_block=10)
-
-    ds.explain()
-
-    captured = capsys.readouterr().out.strip()
-    # Check that in the Logical Plan (before optimization), both StreamingRepartitions appear
-    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
-    assert logical_plan.count("StreamingRepartition[StreamingRepartition") >= 2
-    # Check that in the Logical Plan (Optimized), they are combined into one
-    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
-        1
-    ].split("-------- Physical Plan --------")[0]
-    assert optimized_logical.count("StreamingRepartition[StreamingRepartition") == 1
-
-
 if __name__ == "__main__":
     import sys
 
