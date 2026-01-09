@@ -653,6 +653,43 @@ class WorkerGroup(BaseWorkerGroup):
             f"Replacing {len(workers_to_replace)} workers at world ranks: {world_ranks_to_replace}"
         )
 
+        # Get distributed env vars from a surviving worker before killing old ones.
+        # These are set by TorchBackend.on_start (MASTER_ADDR, MASTER_PORT) and
+        # TorchBackend.on_training_start (RANK, LOCAL_RANK, WORLD_SIZE, etc.)
+        # during initial worker group creation, but we need to propagate them to new workers.
+        surviving_workers = [
+            w
+            for w in workers
+            if w.distributed_context.world_rank not in world_ranks_to_replace
+        ]
+        distributed_env_vars = {}
+        if surviving_workers:
+            try:
+
+                def get_distributed_env_vars():
+                    import os
+
+                    # Capture all distributed training env vars
+                    env_var_names = [
+                        "MASTER_ADDR",
+                        "MASTER_PORT",
+                        "WORLD_SIZE",
+                        "LOCAL_WORLD_SIZE",
+                        "NODE_RANK",
+                    ]
+                    return {k: os.environ.get(k, "") for k in env_var_names}
+
+                distributed_env_vars = ray.get(
+                    surviving_workers[0].actor.execute.remote(get_distributed_env_vars)
+                )
+                logger.info(
+                    f"Retrieved distributed env vars from surviving worker: {distributed_env_vars}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get distributed env vars from surviving worker: {e}"
+                )
+
         # Kill the old actors
         for worker in workers_to_replace:
             ray.kill(worker.actor)
@@ -695,6 +732,42 @@ class WorkerGroup(BaseWorkerGroup):
                 distributed_context=old_worker.distributed_context,
             )
             new_workers.append(new_worker)
+
+        # Set distributed env vars on new workers.
+        # Shared vars (MASTER_ADDR, MASTER_PORT, WORLD_SIZE, etc.) come from surviving workers.
+        # Worker-specific vars (RANK, LOCAL_RANK) are set based on the worker's distributed context.
+        if distributed_env_vars:
+
+            def set_distributed_env_vars(shared_env_vars, rank, local_rank):
+                import os
+
+                for k, v in shared_env_vars.items():
+                    if v:  # Only set non-empty values
+                        os.environ[k] = v
+                # Set worker-specific env vars
+                os.environ["RANK"] = str(rank)
+                os.environ["LOCAL_RANK"] = str(local_rank)
+
+            try:
+                ray_get_safe(
+                    [
+                        w.actor.execute.remote(
+                            set_distributed_env_vars,
+                            distributed_env_vars,
+                            w.distributed_context.world_rank,
+                            w.distributed_context.local_rank,
+                        )
+                        for w in new_workers
+                    ]
+                )
+                logger.info(
+                    f"Set distributed env vars on new workers: {distributed_env_vars} "
+                    f"(plus worker-specific RANK and LOCAL_RANK)"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to set distributed env vars on new workers: {e}"
+                )
 
         # Get train context args from callbacks
         train_context_args = {}

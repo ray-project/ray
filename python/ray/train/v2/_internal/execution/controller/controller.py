@@ -464,7 +464,9 @@ class TrainController:
             )
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
-            return self._execute_resize_decision(controller_state.scaling_decision)
+            return await self._execute_resize_decision(
+                controller_state.scaling_decision
+            )
         elif isinstance(controller_state, RunningState):
             try:
                 worker_group_status: WorkerGroupPollStatus = await self._poll_workers()

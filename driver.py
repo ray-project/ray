@@ -88,7 +88,7 @@ def train_func():
     )
 
     # Training
-    for epoch in range(10):
+    for epoch in range(2):
         if ray.train.get_context().get_world_size() > 1:
             train_loader.sampler.set_epoch(epoch)
 
@@ -102,14 +102,16 @@ def train_func():
 
         # [3] Report metrics and checkpoint.
         metrics = {"loss": loss.item(), "epoch": epoch}
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            torch.save(
-                model.module.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
-            )
-            ray.train.report(
-                metrics,
-                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-            )
+        if False:
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                torch.save(
+                    model.module.state_dict(),
+                    os.path.join(temp_checkpoint_dir, "model.pt"),
+                )
+                ray.train.report(
+                    metrics,
+                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+                )
         if ray.train.get_context().get_world_rank() == 0:
             print(metrics)
 
@@ -125,16 +127,9 @@ trainer = ray.train.torch.TorchTrainer(
     # should configure the run's persistent storage that is accessible
     # across all worker nodes.
     run_config=ray.train.RunConfig(
-        storage_path="/mnt/cluster_storage", name="my_run_name"
+        storage_path="/mnt/cluster_storage",
+        name="my_run_name",
+        failure_config=ray.train.FailureConfig(max_failures=3),
     ),
 )
 result = trainer.fit()
-
-# [6] Load the trained model.
-with result.checkpoint.as_directory() as checkpoint_dir:
-    model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
-    model = resnet18(num_classes=10)
-    model.conv1 = torch.nn.Conv2d(
-        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
-    )
-    model.load_state_dict(model_state_dict)
