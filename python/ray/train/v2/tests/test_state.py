@@ -104,6 +104,7 @@ def mock_worker():
         actor=actor,
         metadata=metadata,
         resources={"CPU": 1},
+        bundle_index=0,
         distributed_context=distributed_context,
         log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
     )
@@ -479,6 +480,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
                 node_id="node_1", node_ip="127.0.0.1", pid=1000 + i, gpu_ids=[]
             ),
             resources={"CPU": 1},
+            bundle_index=i,
             distributed_context=MagicMock(world_rank=i, local_rank=i, node_rank=0),
             log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
         )

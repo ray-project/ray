@@ -177,7 +177,7 @@ class TrainController:
 
         self._start()
 
-    def _execute_resize_decision(
+    async def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
         """Executes resize decisions."""
@@ -185,13 +185,20 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.before_controller_execute_resize_decision(decision)
 
-        if self._worker_group:
-            self._shutdown_worker_group()
+        optional_controller_error = None
 
-        optional_controller_error = self._start_worker_group(
-            num_workers=decision.num_workers,
-            resources_per_worker=decision.resources_per_worker,
-        )
+        if self._worker_group:
+            # Replace bad workers in the existing worker group
+            # TODO: propagate poll_status rather than recalculating it
+            try:
+                self._replace_bad_workers(await self._poll_workers())
+            except Exception as e:
+                optional_controller_error = ControllerError(e)
+        else:
+            optional_controller_error = self._start_worker_group(
+                num_workers=decision.num_workers,
+                resources_per_worker=decision.resources_per_worker,
+            )
 
         if optional_controller_error:
             failure_decision = self._failure_policy.make_decision(
@@ -355,6 +362,36 @@ class TrainController:
 
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
+
+    def _replace_bad_workers(self, worker_group_status: WorkerGroupPollStatus):
+        """Replace workers that have errors or are not running.
+
+        This method identifies workers with errors or that have stopped running
+        and replaces them with new workers at the same ranks in the placement group.
+
+        Args:
+            worker_group_status: The poll status containing worker statuses.
+        Returns:
+            None
+        """
+        # Get world ranks of workers that have errors or are not running
+        world_ranks_to_replace = [
+            world_rank
+            for world_rank, status in worker_group_status.worker_statuses.items()
+            if status.error is not None or not status.running
+        ]
+
+        if not world_ranks_to_replace:
+            logger.debug("No bad workers to replace.")
+            return
+
+        logger.info(
+            f"Detected {len(world_ranks_to_replace)} bad/non-running workers. "
+            f"Replacing workers at world ranks: {world_ranks_to_replace}"
+        )
+
+        # Replace the bad workers
+        self._worker_group.replace_workers(world_ranks_to_replace)
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""

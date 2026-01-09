@@ -337,8 +337,9 @@ def test_group_workers_by_ip():
                     pid=0,
                 ),
                 resources={"CPU": 1},
+                bundle_index=i,
             )
-            for node_id in node_ids
+            for i, node_id in enumerate(node_ids)
         ]
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
@@ -374,8 +375,9 @@ def test_local_rank_assignment():
                     pid=pid,
                 ),
                 resources={"CPU": 1},
+                bundle_index=i,
             )
-            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
+            for i, (pid, node_id, gpu_id) in enumerate(zip(pids, node_ids, gpu_ids))
         ]
 
     def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):

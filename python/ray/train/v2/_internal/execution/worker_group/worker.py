@@ -85,6 +85,7 @@ class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
     resources: Dict[str, float]
+    bundle_index: int
     distributed_context: Optional[DistributedContext] = None
     log_file_path: Optional[str] = None
 

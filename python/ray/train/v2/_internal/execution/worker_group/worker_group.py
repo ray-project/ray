@@ -409,8 +409,8 @@ class WorkerGroup(BaseWorkerGroup):
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
         workers = [
-            Worker(actor, meta, resources_per_worker)
-            for actor, meta in zip(actors, actor_metadatas)
+            Worker(actor, meta, resources_per_worker, bundle_index=i)
+            for i, (actor, meta) in enumerate(zip(actors, actor_metadatas))
         ]
         return WorkerGroup._assign_worker_ranks(workers)
 
@@ -614,6 +614,153 @@ class WorkerGroup(BaseWorkerGroup):
             else:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
+
+    #####################################################################################
+    # Replace Workers
+    #####################################################################################
+
+    def replace_workers(self, world_ranks_to_replace: List[int]) -> None:
+        """Replace workers at the specified world ranks.
+
+        This method kills the old workers at the specified ranks and creates new
+        workers at the same bundle indices in the placement group. The new workers
+        are initialized with the same distributed context (same ranks) as before.
+
+        Args:
+            world_ranks_to_replace: List of world ranks of workers to replace.
+        """
+        if not world_ranks_to_replace:
+            return
+
+        self._assert_active()
+
+        workers = self.get_workers()
+        placement_group = self._worker_group_state.placement_group
+        sync_actor = self._worker_group_state.sync_actor
+        resources_per_worker = self._worker_group_context.resources_per_worker
+
+        # Build a mapping of world rank to worker
+        world_rank_to_worker = {w.distributed_context.world_rank: w for w in workers}
+
+        # Identify workers to replace and their bundle indices
+        workers_to_replace = []
+        for world_rank in world_ranks_to_replace:
+            if world_rank not in world_rank_to_worker:
+                raise ValueError(f"No worker found with world rank {world_rank}")
+            workers_to_replace.append(world_rank_to_worker[world_rank])
+
+        logger.info(
+            f"Replacing {len(workers_to_replace)} workers at world ranks: {world_ranks_to_replace}"
+        )
+
+        # Kill the old actors
+        for worker in workers_to_replace:
+            ray.kill(worker.actor)
+
+        # Clear ongoing poll tasks for the replaced workers
+        for world_rank in world_ranks_to_replace:
+            self._world_rank_to_ongoing_poll.pop(world_rank, None)
+
+        # Create new actors at the same bundle indices
+        runtime_env = self._get_worker_runtime_env(
+            custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
+        )
+        worker_actor_cls = ray.remote(
+            runtime_env=runtime_env,
+            **bundle_to_remote_args(resources_per_worker),
+        )(self._worker_cls)
+
+        new_workers = []
+        for old_worker in workers_to_replace:
+            bundle_index = old_worker.bundle_index
+            new_actor = worker_actor_cls.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group,
+                    placement_group_bundle_index=bundle_index,
+                ),
+            ).remote()
+
+            try:
+                new_metadata = ray_get_safe([new_actor.get_metadata.remote()])[0]
+            except RayActorError as actor_error:
+                ray.kill(new_actor)
+                error_msg = f"Replacement worker at bundle index {bundle_index} failed to initialize."
+                raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+            new_worker = Worker(
+                actor=new_actor,
+                metadata=new_metadata,
+                resources=resources_per_worker,
+                bundle_index=bundle_index,
+                distributed_context=old_worker.distributed_context,
+            )
+            new_workers.append(new_worker)
+
+        # Get train context args from callbacks
+        train_context_args = {}
+        for callback in self._callbacks:
+            args = callback.before_init_train_context(new_workers)
+            for arg, arg_values in args.items():
+                assert len(arg_values) == len(new_workers), (
+                    f"Callback {callback} returned {arg} with "
+                    f"{len(arg_values)} values, expected {len(new_workers)}."
+                )
+                assert (
+                    arg not in train_context_args
+                ), f"Callback {callback} returned {arg} which is already set."
+                train_context_args[arg] = arg_values
+
+        # Initialize train context on new workers
+        try:
+            self._init_train_context_on_workers(
+                new_workers, sync_actor, train_context_args
+            )
+        except RayActorError as actor_error:
+            for worker in new_workers:
+                ray.kill(worker.actor)
+            error_msg = (
+                "Replacement workers failed during train context initialization."
+            )
+            raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+        # Launch training function on new workers
+        ray_get_safe(
+            [
+                worker.actor.run_train_fn.remote(
+                    self._worker_group_context.train_fn_ref
+                )
+                for worker in new_workers
+            ]
+        )
+
+        # Update the worker list - replace old workers with new ones
+        new_workers_by_rank = {w.distributed_context.world_rank: w for w in new_workers}
+        updated_workers = [
+            new_workers_by_rank.get(w.distributed_context.world_rank, w)
+            for w in workers
+        ]
+
+        # Update worker group state with the new workers list
+        self._worker_group_state = WorkerGroupState(
+            start_time=self._worker_group_state.start_time,
+            placement_group=placement_group,
+            workers=updated_workers,
+            sync_actor=sync_actor,
+        )
+
+        # Decorate log file paths for new workers
+        self._decorate_worker_log_file_paths(new_workers)
+
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={w.distributed_context.world_rank}, "
+                f"local_rank={w.distributed_context.local_rank}, "
+                f"node_rank={w.distributed_context.node_rank}"
+                for w in new_workers
+            ]
+        )
+        logger.info(f"Successfully replaced workers:\n{workers_info}")
 
     #####################################################################################
     # Execution Methods
