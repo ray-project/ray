@@ -965,6 +965,9 @@ class ReporterAgent(
 
                     # Get basic process info
                     worker_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                    # Ensure memory_full_info key exists for Pydantic validation
+                    if "memory_full_info" not in worker_info:
+                        worker_info["memory_full_info"] = None
 
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
@@ -1020,6 +1023,9 @@ class ReporterAgent(
                 self._gcs_proc = psutil.Process(self._gcs_pid)
             if self._gcs_proc:
                 dictionary = self._gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                # Ensure memory_full_info key exists for Pydantic validation
+                if "memory_full_info" not in dictionary:
+                    dictionary["memory_full_info"] = None
                 return dictionary
         return {}
 
@@ -1028,13 +1034,21 @@ class ReporterAgent(
         if raylet_proc is None:
             return None
         else:
-            return raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+            raylet_info = raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+            # Ensure memory_full_info key exists for Pydantic validation
+            if "memory_full_info" not in raylet_info:
+                raylet_info["memory_full_info"] = None
+            return raylet_info
 
     def _get_agent(self):
         # Current proc == agent proc
         if not self._agent_proc:
             self._agent_proc = psutil.Process()
-        return self._agent_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        agent_info = self._agent_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        # Ensure memory_full_info key exists for Pydantic validation
+        if "memory_full_info" not in agent_info:
+            agent_info["memory_full_info"] = None
+        return agent_info
 
     def _get_load_avg(self):
         if sys.platform == "win32":
