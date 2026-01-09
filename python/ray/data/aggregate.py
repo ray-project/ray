@@ -406,6 +406,7 @@ class AsList(AggregateFnV2[List, List]):
 
         .. testcode::
             :skipif: True
+
             # Skip testing b/c this example require proper ordering of the output
             # to be robust and not flaky
 
