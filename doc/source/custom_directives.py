@@ -1302,8 +1302,6 @@ def pregenerate_example_rsts(
         config_path = pathlib.Path(app.confdir) / pathlib.Path(config).relative_to(
             "source"
         )
-
-        # Generate the examples.rst file
         page_title = "Examples"
         title_decoration = "=" * len(page_title)
         with open(config_path.with_suffix(".rst"), "w") as f:
@@ -1312,6 +1310,7 @@ def pregenerate_example_rsts(
                 "  .. this file is pregenerated; please edit ./examples.yml to "
                 "modify examples for this library."
             )
+
 
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"

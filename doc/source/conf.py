@@ -552,7 +552,6 @@ def setup(app):
     if os.getenv("READTHEDOCS") == "True":
         generate_versions_json()
 
-    # Pregenerate example RST files
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
