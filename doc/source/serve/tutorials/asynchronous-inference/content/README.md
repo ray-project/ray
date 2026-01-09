@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Asynchronous Inference with Ray Serve
 
 **⏱️ Time to complete:** 30 minutes
