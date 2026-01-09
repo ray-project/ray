@@ -690,6 +690,8 @@ class ProxyStateManager:
         if proxy_nodes is None:
             proxy_nodes = set()
 
+        proxy_nodes.add(self._head_node_id)
+
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _, _ in target_nodes}
 
