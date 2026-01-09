@@ -21,6 +21,7 @@ import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
+
 class SymmetricRunCommand(click.Command):
     def parse_args(self, ctx, args):
         ctx.meta["raw_args"] = list(args)

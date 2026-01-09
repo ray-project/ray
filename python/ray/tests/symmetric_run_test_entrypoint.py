@@ -22,4 +22,3 @@ for _ in range(TIMEOUT_SECONDS):
 
 print(f"ENTRYPOINT_FAILED: cluster_size={len(ray.nodes())}")
 sys.exit(1)
-
