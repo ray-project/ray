@@ -1,5 +1,3 @@
-import copy as cp
-
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -22,7 +20,7 @@ class CombineShuffles(Rule):
     def apply(self, plan: Plan) -> Plan:
         assert isinstance(plan, LogicalPlan)
 
-        def _combine_repartitions(op: LogicalOperator) -> LogicalOperator:
+        def _combine_(op: LogicalOperator) -> LogicalOperator:
             # Repartitions should have exactly 1 input
             if len(op.input_dependencies) != 1:
                 return op
@@ -46,18 +44,34 @@ class CombineShuffles(Rule):
                     target_num_rows_per_block=op.target_num_rows_per_block,
                 )
             elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
-                return cp.copy(op)
+                return Aggregate(
+                    input_op=input_op.input_dependencies[0],
+                    key=op._key,
+                    aggs=op._aggs,
+                    num_partitions=op._num_partitions,
+                    batch_format=op._batch_format,
+                )
             elif isinstance(input_op, StreamingRepartition) and isinstance(
                 op, Repartition
             ):
-                return cp.copy(op)
+                return Repartition(
+                    input_op.input_dependencies[0],
+                    num_outputs=op._num_outputs,
+                    shuffle=op._shuffle,
+                    keys=op._keys,
+                    sort=op._sort,
+                )
             elif isinstance(input_op, Sort) and isinstance(op, Sort):
-                return cp.copy(op)
+                return Sort(
+                    input_op.input_dependencies[0],
+                    sort_key=op._sort_key,
+                    batch_format=op._batch_format,
+                )
 
             return op
 
         original_dag = plan.dag
-        transformed_dag = original_dag._apply_transform(_combine_repartitions)
+        transformed_dag = original_dag._apply_transform(_combine_)
 
         if transformed_dag is original_dag:
             return plan

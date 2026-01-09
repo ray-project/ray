@@ -8,7 +8,7 @@ from ray.data._internal.logical.interfaces import (
     Plan,
     Rule,
 )
-from ray.data._internal.logical.rules.combine_repartitions import CombineShuffles
+from ray.data._internal.logical.rules.combine_shuffles import CombineShuffles
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )

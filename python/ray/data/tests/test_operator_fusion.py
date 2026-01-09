@@ -841,6 +841,115 @@ def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, cap
     assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
 
 
+def test_combine_repartition_aggregate(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100)
+    # Apply repartition with shuffle
+    ds = ds.repartition(5, shuffle=True)
+    # Apply groupby aggregate (creates Aggregate operator)
+    ds = ds.groupby("id").count()
+
+    ds.explain()
+
+    captured = capsys.readouterr().out.strip()
+    # Check that in the Logical Plan (before optimization), both Repartition and Aggregate appear
+    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
+    assert "Repartition[Repartition]" in logical_plan
+    assert "Aggregate[Aggregate]" in logical_plan
+    # Check that in the Logical Plan (Optimized), Repartition is removed (combined)
+    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
+        1
+    ].split("-------- Physical Plan --------")[0]
+    assert "Repartition[Repartition]" not in optimized_logical
+    assert "Aggregate[Aggregate]" in optimized_logical
+
+
+def test_combine_streaming_repartition_to_shuffle_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    # Apply StreamingRepartition (local repartition)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    # Apply shuffle Repartition (global repartition)
+    ds = ds.repartition(num_blocks=3, shuffle=True)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out.strip()
+    # Check that in the Logical Plan (before optimization), both operators appear
+    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
+    assert "StreamingRepartition[StreamingRepartition" in logical_plan
+    assert "Repartition[Repartition]" in logical_plan
+    # Check that in the Logical Plan (Optimized), StreamingRepartition is removed
+    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
+        1
+    ].split("-------- Physical Plan --------")[0]
+    assert "StreamingRepartition[StreamingRepartition" not in optimized_logical
+    assert "Repartition[Repartition]" in optimized_logical
+
+
+def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
+    data = [{"a": i, "b": 100 - i} for i in range(50)]
+    ds = ray.data.from_items(data)
+    # Apply first sort on column 'a'
+    ds = ds.sort("a")
+    # Apply second sort on column 'b'
+    ds = ds.sort("b")
+
+    ds.explain()
+
+    captured = capsys.readouterr().out.strip()
+    # Check that in the Logical Plan (before optimization), both Sorts appear
+    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
+    assert logical_plan.count("Sort[Sort]") >= 2
+    # Check that in the Logical Plan (Optimized), only one Sort remains
+    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
+        1
+    ].split("-------- Physical Plan --------")[0]
+    assert optimized_logical.count("Sort[Sort]") == 1
+
+
+def test_combine_repartition_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    ds = ds.repartition(5, shuffle=True)
+    ds = ds.repartition(3, shuffle=True)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out.strip()
+    # Check that in the Logical Plan (before optimization), both Repartitions appear
+    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
+    assert logical_plan.count("Repartition[Repartition]") >= 2
+    # Check that in the Logical Plan (Optimized), they are combined into one
+    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
+        1
+    ].split("-------- Physical Plan --------")[0]
+    assert optimized_logical.count("Repartition[Repartition]") == 1
+
+
+def test_combine_streaming_repartition_streaming_repartition(
+    ray_start_regular_shared_2_cpus, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    ds = ds.repartition(target_num_rows_per_block=10)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out.strip()
+    # Check that in the Logical Plan (before optimization), both StreamingRepartitions appear
+    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
+    assert logical_plan.count("StreamingRepartition[StreamingRepartition") >= 2
+    # Check that in the Logical Plan (Optimized), they are combined into one
+    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
+        1
+    ].split("-------- Physical Plan --------")[0]
+    assert optimized_logical.count("StreamingRepartition[StreamingRepartition") == 1
+
+
 if __name__ == "__main__":
     import sys
 
