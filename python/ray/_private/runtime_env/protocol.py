@@ -261,7 +261,7 @@ class ProtocolsProvider:
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
-        
+
             tp = transport_params
 
         elif protocol == "https":
