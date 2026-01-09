@@ -802,6 +802,7 @@ py_test_module_list(
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
         "test_cli_logger.py",
+        "test_client_gc_deadlock.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
         "test_coordinator_server.py",
