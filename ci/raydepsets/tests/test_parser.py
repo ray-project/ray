@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ci.raydepsets.parser import Parser
+from ci.raydepsets.parser import parse_lock_file
 from ci.raydepsets.tests.utils import (
     _REPO_NAME,
     _runfiles,
@@ -17,8 +17,7 @@ def test_parser():
     lock_file_path = _runfiles.Rlocation(
         f"{_REPO_NAME}/ci/raydepsets/tests/test_data/test_python_depset.lock"
     )
-    parser = Parser(lock_file_path)
-    parsed_deps = parser.parse()
+    parsed_deps = parse_lock_file(lock_file_path)
     assert len(parsed_deps) == 11
     assert parsed_deps[0].name == "aiohappyeyeballs"
     assert parsed_deps[0].version == "2.6.1"
@@ -36,8 +35,7 @@ def test_parser_w_annotations():
             "frozenlist==1.8.0 \\\n",
             'frozenlist==1.8.0 ; python_version >= "3.11" \\\n',
         )
-        parser = Parser(Path(tmpdir) / "test_python_depset.lock")
-        parsed_deps = parser.parse()
+        parsed_deps = parse_lock_file(Path(tmpdir) / "test_python_depset.lock")
         assert len(parsed_deps) == 11
         assert parsed_deps[0].name == "aiohappyeyeballs"
         assert parsed_deps[0].version == "2.6.1"
@@ -54,8 +52,7 @@ def test_parser_empty_file():
         filepath = Path(tmpdir) / "empty.lock"
         with open(filepath, "w") as f:
             f.write("")
-        parser = Parser(filepath)
-        parsed_deps = parser.parse()
+        parsed_deps = parse_lock_file(filepath)
         assert len(parsed_deps) == 0
 
 
@@ -64,8 +61,7 @@ def test_parser_package_with_dots():
         lock_file = Path(tmpdir) / "test.lock"
         with open(lock_file, "w") as f:
             f.write("zope.interface==5.4.0\n")
-        parser = Parser(lock_file)
-        parsed_deps = parser.parse()
+        parsed_deps = parse_lock_file(lock_file)
         assert len(parsed_deps) == 1
         assert parsed_deps[0].name == "zope.interface"
         assert parsed_deps[0].version == "5.4.0"
