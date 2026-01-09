@@ -232,8 +232,8 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
     assert len(manager.best_checkpoint_results) == 2
     assert (
         len(
-            manager._flat_metrics_pre_computed.keys()
-            - {manager.latest_checkpoint_result}
+            set(manager._flat_metrics_pre_computed.keys())
+            - {manager.latest_checkpoint_result.checkpoint}
         )
         == 2
     )
@@ -264,8 +264,8 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
     assert len(manager.best_checkpoint_results) == 2
     assert (
         len(
-            manager._flat_metrics_pre_computed.keys()
-            - {manager.latest_checkpoint_result}
+            set(manager._flat_metrics_pre_computed.keys())
+            - {manager.latest_checkpoint_result.checkpoint}
         )
         == 2
     )

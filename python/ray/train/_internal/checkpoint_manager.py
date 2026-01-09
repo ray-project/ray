@@ -70,10 +70,9 @@ class _CheckpointManager:
         self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
         # Cache of flattened metrics per training result.
-        # Stores the output of flatten_dict() for each _TrainingResult to avoid
+        # Stores the output of flatten_dict() for each Checkpoint to avoid
         # recomputing it on every iteration when sorting checkpoints.
-
-        self._flat_metrics_pre_computed: Dict[_TrainingResult, Dict[str, Any]] = {}
+        self._flat_metrics_pre_computed: Dict[Checkpoint, Dict[str, Any]] = {}
 
         if (
             self._checkpoint_config.num_to_keep is not None
@@ -122,9 +121,9 @@ class _CheckpointManager:
                 checkpoint=checkpoint_result.checkpoint,
                 metrics=metrics,
             )
-            self._flat_metrics_pre_computed[checkpoint_result] = metrics
+            self._flat_metrics_pre_computed[checkpoint_result.checkpoint] = metrics
         else:
-            self._flat_metrics_pre_computed[checkpoint_result] = flat_metrics
+            self._flat_metrics_pre_computed[checkpoint_result.checkpoint] = flat_metrics
 
         if score_attr is not None and score_attr in flat_metrics:
             # If we're ordering by a score, insert the checkpoint
@@ -133,7 +132,7 @@ class _CheckpointManager:
                 self._checkpoint_results,
                 checkpoint_result,
                 key=lambda c: self._get_checkpoint_score(
-                    c, self._flat_metrics_pre_computed.get(c, None)
+                    c, self._flat_metrics_pre_computed.get(c.checkpoint, None)
                 ),
             )
         else:
@@ -159,12 +158,12 @@ class _CheckpointManager:
                 checkpoint = checkpoint_result.checkpoint
                 logger.debug("Deleting checkpoint: ", checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
-                self._flat_metrics_pre_computed.pop(checkpoint_result, None)
+                self._flat_metrics_pre_computed.pop(checkpoint_result.checkpoint, None)
 
     def _get_checkpoint_score(
         self,
         checkpoint: _TrainingResult,
-        flattened_metrics: Optional[Dict[str, Any]] = None,
+        score: Optional[Any] = None,
     ) -> Tuple[bool, numbers.Number]:
         """Get the score for a checkpoint, according to checkpoint config.
 
@@ -173,7 +172,7 @@ class _CheckpointManager:
 
         Args:
             checkpoint: The checkpoint to get the score for.
-            flattened_metrics: Optionally, the flattened metrics dict for the checkpoint.
+            score: Optionally, the precomputed score for the checkpoint.
 
         Returns:
             Tuple: A tuple of (not_is_nan: bool, score: numbers.Number).
@@ -181,15 +180,12 @@ class _CheckpointManager:
         """
         checkpoint_score_attribute = self._checkpoint_config.checkpoint_score_attribute
         if checkpoint_score_attribute:
-            flat_metrics = (
-                flattened_metrics
-                if flattened_metrics is not None
-                else flatten_dict(checkpoint.metrics)
-            )
             try:
-                checkpoint_result = flat_metrics[checkpoint_score_attribute]
+                checkpoint_result = (
+                    score if score is not None else flatten_dict(checkpoint.metrics)
+                )[checkpoint_score_attribute]
             except KeyError:
-                valid_keys = list(flat_metrics.keys())
+                valid_keys = list(flatten_dict(checkpoint.metrics).keys())
                 logger.error(
                     f"Result dict has no key: {checkpoint_score_attribute}. "
                     f"checkpoint_score_attr must be set to a key in the "
