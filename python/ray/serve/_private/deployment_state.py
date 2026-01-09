@@ -209,7 +209,9 @@ class DeploymentTargetState:
 
         # TODO(zcin): version can be None, this is from an outdated codepath.
         # We should remove outdated code, so version can never be None.
-        version_match = self.version == other_target_state.version
+        version_match = (
+            self.version is not None and self.version == other_target_state.version
+        )
 
         return all(
             [
