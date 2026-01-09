@@ -169,7 +169,7 @@ py_test(
         "--as-test",
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -189,7 +189,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -209,7 +209,7 @@ py_test(
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
-        "--num-aggregator-actors=0",
+        "--num-aggregator-actors-per-learner=0",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -229,7 +229,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=2",
         "--num-gpus-per-learner=2",
-        "--num-aggregator-actors=0",
+        "--num-aggregator-actors-per-learner=0",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -249,7 +249,7 @@ py_test(
         "--num-env-runners=10",
         "--evaluation-num-env-runners=3",
         "--num-learners=3",
-        "--num-aggregator-actors=1",
+        "--num-aggregator-actors-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -268,7 +268,7 @@ py_test(
         "--num-env-runners=12",
         "--evaluation-num-env-runners=4",
         "--num-learners=4",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -287,7 +287,7 @@ py_test(
         "--num-env-runners=30",
         "--evaluation-num-env-runners=5",
         "--num-learners=1",
-        "--num-aggregator-actors=3",
+        "--num-aggregator-actors-per-learner=3",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -307,7 +307,7 @@ py_test(
         "--evaluation-num-env-runners=4",
         "--num-learners=3",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -328,7 +328,7 @@ py_test(
         "--evaluation-num-env-runners=5",
         "--num-learners=4",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=3",
+        "--num-aggregator-actors-per-learner=3",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -349,7 +349,7 @@ py_test(
         "--evaluation-num-env-runners=4",
         "--num-learners=3",
         "--num-gpus-per-learner=2",
-        "--num-aggregator-actors=1",
+        "--num-aggregator-actors-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -369,7 +369,7 @@ py_test(
         "--num-env-runners=15",
         "--evaluation-num-env-runners=3",
         "--num-learners=1",
-        "--num-aggregator-actors=4",
+        "--num-aggregator-actors-per-learner=4",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -388,7 +388,7 @@ py_test(
         "--num-env-runners=18",
         "--evaluation-num-env-runners=4",
         "--num-learners=2",
-        "--num-aggregator-actors=4",
+        "--num-aggregator-actors-per-learner=4",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -408,7 +408,7 @@ py_test(
         "--evaluation-num-env-runners=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=4",
+        "--num-aggregator-actors-per-learner=4",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -428,7 +428,7 @@ py_test(
         "--num-env-runners=8",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
-        "--num-aggregator-actors=1",
+        "--num-aggregator-actors-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -448,7 +448,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=1",
+        "--num-aggregator-actors-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -468,7 +468,7 @@ py_test(
         "--num-env-runners=12",
         "--evaluation-num-env-runners=3",
         "--num-learners=3",
-        "--num-aggregator-actors=3",
+        "--num-aggregator-actors-per-learner=3",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -488,7 +488,7 @@ py_test(
         "--evaluation-num-env-runners=4",
         "--num-learners=3",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors=3",
+        "--num-aggregator-actors-per-learner=3",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -509,7 +509,7 @@ py_test(
         "--evaluation-num-env-runners=5",
         "--num-learners=4",
         "--num-gpus-per-learner=2",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -529,7 +529,7 @@ py_test(
         "--num-env-runners=4",
         "--evaluation-num-env-runners=1",
         "--num-learners=1",
-        "--num-aggregator-actors=1",
+        "--num-aggregator-actors-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
@@ -548,7 +548,7 @@ py_test(
         "--num-env-runners=10",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
-        "--num-aggregator-actors=2",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
