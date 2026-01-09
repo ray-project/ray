@@ -802,12 +802,8 @@ def apply_ipython3_lexer(app, docname, source):
     if any(matcher(doc_source) for matcher in app.ipython3_lexer_exclude_patterns):
         return
     if any(matcher(doc_source) for matcher in app.ipython3_lexer_patterns):
-        try:
-            notebook = json.loads(source[0])
-            # Set ipython3 lexer
-            notebook.setdefault('metadata', {}) \
-                    .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
-            source[0] = json.dumps(notebook)
-        except Exception as e:
-            logger.warning(f"Failed to add ipython3 lexer to {docname}: {e}")
-            # don't fail the build for this
+        notebook = json.loads(source[0])
+        # Set ipython3 lexer
+        notebook.setdefault('metadata', {}) \
+                .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
+        source[0] = json.dumps(notebook)
