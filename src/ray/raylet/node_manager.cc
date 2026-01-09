@@ -214,9 +214,8 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
-      node_manager_server_("NodeManager",
-                           config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+      node_manager_server_(
+          "NodeManager", config.node_manager_port, config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -1192,7 +1191,6 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = WorkerID::FromBinary(message->worker_id()->str());
   pid_t pid = message->worker_pid();
-  StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = message->ip_address()->str();
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
@@ -1211,8 +1209,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                worker_type,
                                worker_ip_address,
                                client,
-                               client_call_manager_,
-                               worker_startup_token));
+                               client_call_manager_));
 
   std::function<void(Status, int)> send_reply_callback;
   send_reply_callback = [this, client](Status status, int assigned_port) {
@@ -1243,8 +1240,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
-    return RegisterForNewWorker(
-        worker, pid, worker_startup_token, std::move(send_reply_callback));
+    return RegisterForNewWorker(worker, pid, std::move(send_reply_callback));
   }
   return RegisterForNewDriver(
       worker, pid, job_id, message, std::move(send_reply_callback));
@@ -1253,10 +1249,8 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
 Status NodeManager::RegisterForNewWorker(
     std::shared_ptr<WorkerInterface> worker,
     pid_t pid,
-    const StartupToken &worker_startup_token,
     std::function<void(Status, int)> send_reply_callback) {
-  Status status =
-      worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
+  Status status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
   if (!status.ok()) {
     // If the worker failed to register to Raylet, trigger lease granting here to
     // allow new worker processes to be started (if capped by
@@ -1718,7 +1712,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   auto const &type = message->type()->str();
   auto const &error_message = message->error_message()->str();
-  // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = JobID::FromBinary(message->job_id()->str());
   auto error_data = gcs::CreateErrorTableData(
@@ -1907,9 +1900,8 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                 const std::string &runtime_env_setup_error_message) {
         // This callback does not use the worker.
         RAY_LOG(DEBUG).WithField(worker->WorkerId())
-            << "Prestart worker started! token " << worker->GetStartupToken()
-            << ", status " << status << ", runtime_env_setup_error_message "
-            << runtime_env_setup_error_message;
+            << "Prestart worker started! status " << status
+            << ", runtime_env_setup_error_message " << runtime_env_setup_error_message;
         return false;
       });
 
@@ -2945,6 +2937,18 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
                      std::make_move_iterator(drivers.end()));
   for (const auto &worker : all_workers) {
     reply->add_pids(worker->GetProcess().GetId());
+  }
+  send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
+}
+
+void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                                     rpc::GetAgentPIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  if (dashboard_agent_manager_) {
+    reply->set_dashboard_agent_pid(dashboard_agent_manager_->GetPid());
+  }
+  if (runtime_env_agent_manager_) {
+    reply->set_runtime_env_agent_pid(runtime_env_agent_manager_->GetPid());
   }
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }

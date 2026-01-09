@@ -68,7 +68,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1",
+                  config.node_ip_address,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -139,7 +139,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
-          metrics_.event_recorder_dropped_events_counter)),
+          metrics_.event_recorder_dropped_events_counter,
+          config.node_id.empty() ? NodeID::Nil() : NodeID::FromHex(config.node_id))),
+      gcs_node_id_(config.node_id.empty() ? NodeID::Nil()
+                                          : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -149,6 +152,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  RAY_LOG(INFO).WithField(gcs_node_id_) << "GCS node ID initialized from config";
+
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
@@ -846,8 +851,8 @@ void GcsServer::InstallEventListeners() {
           if (actual_port > 0) {
             InitMetricsExporter(actual_port);
           } else {
-            RAY_LOG(WARNING) << "Metrics agent may not be started or configured. "
-                             << "metrics_agent_port=" << actual_port;
+            RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install "
+                             "Ray with dashboard support: `pip install 'ray[default]'`.";
           }
         }
         auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
@@ -986,7 +991,7 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
   event_aggregator_client_->Connect(metrics_agent_port);
 
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
+      GetLocalhostIP(),
       metrics_agent_port,
       io_context_provider_.GetDefaultIOContext(),
       client_call_manager_);
