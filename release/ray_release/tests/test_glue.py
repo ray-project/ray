@@ -149,8 +149,11 @@ class GlueTest(unittest.TestCase):
                 artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
-                    cluster_manager, FakeFileManager(cluster_manager), this_tempdir,
+                    cluster_manager,
+                    FakeFileManager(cluster_manager),
+                    this_tempdir,
                     sdk=this_sdk,
+                    artifact_path=artifact_path,
                 )
                 self.return_dict = this_command_runner_return
 

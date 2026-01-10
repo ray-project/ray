@@ -69,6 +69,7 @@ class Operation(Enum):
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    MOD = "mod"
     FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
@@ -299,7 +300,10 @@ class Expr(ABC):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
-    # arithmetic
+    #
+    # Arithmetic ops
+    #
+
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
         return self._bin(other, Operation.ADD)
@@ -323,6 +327,14 @@ class Expr(ABC):
     def __rmul__(self, other: Any) -> "Expr":
         """Reverse multiplication operator (for literal * expr)."""
         return LiteralExpr(other)._bin(self, Operation.MUL)
+
+    def __mod__(self, other: Any):
+        """Modulation operator (%)."""
+        return self._bin(other, Operation.MOD)
+
+    def __rmod__(self, other: Any):
+        """Modulation operator (%)."""
+        return LiteralExpr(other)._bin(self, Operation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
@@ -459,6 +471,43 @@ class Expr(ABC):
     def exp(self) -> "UDFExpr":
         """Compute the natural exponential of the expression."""
         return _create_pyarrow_compute_udf(pc.exp, return_dtype=DataType.float64())(
+            self
+        )
+
+    # trigonometric helpers
+    def sin(self) -> "UDFExpr":
+        """Compute the sine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.sin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def cos(self) -> "UDFExpr":
+        """Compute the cosine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.cos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def tan(self) -> "UDFExpr":
+        """Compute the tangent of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.tan, return_dtype=DataType.float64())(
+            self
+        )
+
+    def asin(self) -> "UDFExpr":
+        """Compute the arcsine (inverse sine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.asin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def acos(self) -> "UDFExpr":
+        """Compute the arccosine (inverse cosine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.acos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def atan(self) -> "UDFExpr":
+        """Compute the arctangent (inverse tangent) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.atan, return_dtype=DataType.float64())(
             self
         )
 
