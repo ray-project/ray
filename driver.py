@@ -22,6 +22,49 @@ import ray.train.torch
 
 
 def train_func():
+    # Model, Loss, Optimizer
+    model = resnet18(num_classes=10)
+    model.conv1 = torch.nn.Conv2d(
+        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    )
+    model.to("cuda")
+    criterion = CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=0.001)
+
+    # Wrap model and optimizer with torchft primitives
+    def load_state_dict(state_dict):
+        model.load_state_dict(state_dict["model"])
+        optimizer.load_state_dict(state_dict["optim"])
+
+    def state_dict():
+        return {
+            "model": model.state_dict(),
+            "optim": optimizer.state_dict(),
+        }
+
+    pg = ProcessGroupNCCL(timeout=timedelta(seconds=30))
+    transport = PGTransport(
+        pg,
+        timeout=timedelta(seconds=10),
+        device="cuda",
+    )
+    manager = Manager(
+        pg=pg,
+        min_replica_size=1,
+        load_state_dict=load_state_dict,
+        state_dict=state_dict,
+        # This is replica group world size. torchft example doesn't set this.
+        world_size=1,
+        # Always rank 0 per replica group.
+        rank=0,
+        # example does REPLICA_GROUP_ID, but we will do N replica groups and 1 worker per replica group
+        replica_id=f"train_ddp_{ray.train.get_context().get_world_rank()}",
+        timeout=timedelta(seconds=30),
+        checkpoint_transport=transport,
+    )
+    model = DistributedDataParallel(manager, model)
+    optimizer = Optimizer(manager, optimizer)
+
     # Data
     transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
     data_dir = os.path.join(tempfile.gettempdir(), "data")
@@ -48,53 +91,8 @@ def train_func():
         train_data, batch_size=64, num_workers=2, sampler=sampler
     )
 
-    # Model, Loss, Optimizer
-    model = resnet18(num_classes=10)
-    model.conv1 = torch.nn.Conv2d(
-        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
-    )
-    model.to("cuda")
-    criterion = CrossEntropyLoss()
-    optimizer = Adam(model.parameters(), lr=0.001)
-
-    # Wrap model and optimizer with torchft primitives
-    def load_state_dict(state_dict):
-        model.load_state_dict(state_dict["model"])
-        optimizer.load_state_dict(state_dict["optim"])
-        train_loader.load_state_dict(state_dict["dataloader"])
-
-    def state_dict():
-        return {
-            "model": model.state_dict(),
-            "optim": optimizer.state_dict(),
-            "dataloader": train_loader.state_dict(),
-        }
-
-    pg = ProcessGroupNCCL(timeout=timedelta(seconds=30))
-    transport = PGTransport(
-        pg,
-        timeout=timedelta(seconds=10),
-        device="cuda",
-    )
-    manager = Manager(
-        pg=pg,
-        min_replica_size=1,
-        load_state_dict=load_state_dict,
-        state_dict=state_dict,
-        # This is replica group world size. torchft example doesn't set this.
-        world_size=1,
-        # Always rank 0 per replica group.
-        rank=0,
-        # example does REPLICA_GROUP_ID, but we will do N replica groups and 1 worker per replica group
-        replica_id=f"train_ddp_{ray.train.get_context().get_world_rank()}",
-        timeout=timedelta(seconds=30),
-        checkpoint_transport=transport,
-    )
-    model = DistributedDataParallel(manager, model)
-    optimizer = Optimizer(manager, optimizer)
-
     # Training
-    for epoch in range(1):
+    for epoch in range(2):
         if ray.train.get_context().get_world_size() > 1:
             train_loader.sampler.set_epoch(epoch)
 
