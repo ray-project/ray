@@ -60,8 +60,8 @@ def eval_random(
         if reseed_after_execution:
             from ray.data.context import DataContext
 
-            data_context = DataContext.get_current()
-            execution_idx = data_context._execution_idx if data_context else 0
+            data_context = DataContext.get_current()  # get or create DataContext, never None
+            execution_idx = data_context._execution_idx
         else:
             execution_idx = 0
 

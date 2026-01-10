@@ -1,6 +1,7 @@
+import contextlib
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Generator, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
@@ -73,3 +74,37 @@ class TaskContext:
 
         if hasattr(_thread_local, "task_context"):
             delattr(_thread_local, "task_context")
+
+
+@contextlib.contextmanager
+def create_temporary_task_context(
+    task_idx: int, op_name: str, **kwargs
+) -> Generator[TaskContext, None, None]:
+    """
+    Create a temporary TaskContext for the current thread.
+    The TaskContext is created and set for the current thread, and is reset after the context is exited.
+
+    Args:
+        task_idx: The task index.
+        op_name: The operator name.
+        **kwargs: Additional keyword arguments to pass to TaskContext.
+
+    Yields:
+        TaskContext: The created TaskContext instance.
+
+    Examples:
+        >>> with create_temporary_task_context(task_idx=100, op_name="test"):
+        ...     ctx = TaskContext.get_current()
+        ...     ctx.task_idx
+        100
+    """
+    ctx = TaskContext(
+        task_idx=task_idx,
+        op_name=op_name,
+        **kwargs,
+    )
+    TaskContext.set_current(ctx)
+    try:
+        yield ctx
+    finally:
+        TaskContext.reset_current()
