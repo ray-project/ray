@@ -68,6 +68,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 num_outputs = max(num_outputs, input_num_outputs)
         return num_outputs
 
+    def num_output_rows_total(self) -> Optional[int]:
+        num_rows = None
+        for input_op in self.input_dependencies:
+            input_num_rows = input_op.num_output_rows_total()
+            if input_num_rows is None:
+                continue
+            if num_rows is None:
+                num_rows = input_num_rows
+            else:
+                num_rows = max(num_rows, input_num_rows)
+        return num_rows
+
     def internal_input_queue_num_blocks(self) -> int:
         return sum(
             len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
@@ -94,18 +106,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         while self._output_buffer:
             bundle = self._output_buffer.popleft()
             self._metrics.on_output_dequeued(bundle)
-
-    def num_output_rows_total(self) -> Optional[int]:
-        num_rows = None
-        for input_op in self.input_dependencies:
-            input_num_rows = input_op.num_output_rows_total()
-            if input_num_rows is None:
-                continue
-            if num_rows is None:
-                num_rows = input_num_rows
-            else:
-                num_rows = max(num_rows, input_num_rows)
-        return num_rows
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
