@@ -222,7 +222,7 @@ NodeManager::NodeManager(
       runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+                           IsLocalhost(config.node_manager_address)),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),

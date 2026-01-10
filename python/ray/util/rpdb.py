@@ -18,7 +18,12 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
-from ray._common.network_utils import build_address, is_ipv6
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_ipv6,
+)
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -230,9 +235,9 @@ def _connect_ray_pdb(
     """
     if debugger_external:
         assert not host, "Cannot specify both host and debugger_external"
-        host = "0.0.0.0"
+        host = get_all_interfaces_ip()
     elif host is None:
-        host = os.environ.get("REMOTE_PDB_HOST", "127.0.0.1")
+        host = os.environ.get("REMOTE_PDB_HOST") or get_localhost_ip()
     if port is None:
         port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
     if quiet is None:

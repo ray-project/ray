@@ -83,7 +83,8 @@ class GrpcClient {
         stub_(GrpcService::NewStub(channel_)),
         skip_testing_intra_node_rpc_failure_(
             ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
-            IsLocalHost(server_address, call_manager.GetLocalAddress())) {}
+            (IsLocalhost(server_address) ||
+             server_address == call_manager.GetLocalAddress())) {}
 
   GrpcClient(const std::string &address,
              const int port,
@@ -94,7 +95,7 @@ class GrpcClient {
         stub_(GrpcService::NewStub(channel_)),
         skip_testing_intra_node_rpc_failure_(
             ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
-            IsLocalHost(address, call_manager.GetLocalAddress())) {}
+            (IsLocalhost(address) || address == call_manager.GetLocalAddress())) {}
 
   /// Create a new `ClientCall` and send request.
   ///

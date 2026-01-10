@@ -23,6 +23,7 @@ from ray._common.network_utils import (
     build_address,
     get_localhost_ip,
     is_ipv6,
+    is_localhost,
     node_ip_address_from_perspective,
     parse_address,
 )
@@ -747,7 +748,7 @@ def resolve_ip_for_localhost(host: str):
     """
     if not host:
         raise ValueError(f"Malformed host: {host}")
-    if host == "127.0.0.1" or host == "::1" or host == "localhost":
+    if is_localhost(host):
         # Make sure localhost isn't resolved to the loopback ip
         return get_node_ip_address()
     else:

@@ -6,7 +6,7 @@ from typing import List, Optional
 from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
 from ray._common.utils import get_or_create_event_loop
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
@@ -60,7 +60,7 @@ class HttpServerAgent:
                 if not is_localhost(self.ip):
                     local_site = aiohttp.web.TCPSite(
                         self.runner,
-                        "127.0.0.1",
+                        get_localhost_ip(),
                         self.listen_port,
                     )
                     await local_site.start()

@@ -38,7 +38,11 @@ from .utils import (
     is_in_databricks_runtime,
     is_port_in_use,
 )
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    parse_address,
+)
 from ray._common.utils import load_class
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -551,7 +555,7 @@ def _setup_ray_cluster(
         port_exclude_list.append(ray_dashboard_agent_port)
 
         dashboard_options = [
-            "--dashboard-host=0.0.0.0",
+            f"--dashboard-host={get_all_interfaces_ip()}",
             f"--dashboard-port={ray_dashboard_port}",
             f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
         ]

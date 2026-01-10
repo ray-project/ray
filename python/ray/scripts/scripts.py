@@ -21,7 +21,7 @@ import ray
 import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
@@ -492,10 +492,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    default=get_localhost_ip(),
+    help="the host to bind the dashboard server to. Use localhost "
+    "(127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all "
+    "interfaces. Defaults to localhost.",
 )
 @click.option(
     "--dashboard-port",
