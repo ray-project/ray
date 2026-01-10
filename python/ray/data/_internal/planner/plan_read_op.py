@@ -127,6 +127,10 @@ def plan_read_op(
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=data_context.target_max_block_size,
                 ),
+                # NOTE: With active splitting we proactively disable block-shaping
+                #       to respect user-provided configuration overriding target
+                #       number of blocks for example.
+                disable_block_shaping=should_split,
             ),
         ]
     )
