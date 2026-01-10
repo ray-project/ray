@@ -2,11 +2,9 @@ import collections
 import itertools
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from typing_extensions import override
-
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
