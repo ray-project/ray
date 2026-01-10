@@ -851,8 +851,8 @@ void GcsServer::InstallEventListeners() {
           if (actual_port > 0) {
             InitMetricsExporter(actual_port);
           } else {
-            RAY_LOG(WARNING) << "Metrics agent may not be started or configured. "
-                             << "metrics_agent_port=" << actual_port;
+            RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install "
+                             "Ray with dashboard support: `pip install 'ray[default]'`.";
           }
         }
         auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
