@@ -108,14 +108,15 @@ def configure_aws():
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
-    # Use mock_aws context manager and new moto 5.x backend API
-    from moto.backends import get_backend
+    # Use mock_aws context manager and boto3 to find the AMI
+    import boto3
 
     with mock_aws():
-        ec2_backend = get_backend("ec2")["us-west-2"]
-        dlami = ec2_backend.describe_images(
-            filters={"name": "Deep Learning AMI Ubuntu*"}
-        )[0].id
+        ec2_client = boto3.client("ec2", region_name="us-west-2")
+        images = ec2_client.describe_images(
+            Filters=[{"Name": "name", "Values": ["Deep Learning AMI Ubuntu*"]}]
+        )["Images"]
+        dlami = images[0]["ImageId"]
         aws_config.DEFAULT_AMI["us-west-2"] = dlami
         list_instances_mock = MagicMock(return_value=boto3_list)
         with patch(
