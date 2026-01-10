@@ -49,12 +49,9 @@ T = TypeVar("T")
 
 # todo: remove for the '3.0.0' release.
 _wrong_names_white_list = {
-    "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    "MAX_PER_REPLICA_RETRY_COUNT",
     "REQUEST_LATENCY_BUCKETS_MS",
     "MODEL_LOAD_LATENCY_BUCKETS_MS",
     "MAX_CACHED_HANDLES",
-    "CONTROLLER_MAX_CONCURRENCY",
     "SERVE_REQUEST_PROCESSING_TIMEOUT_S",
 }
 
@@ -259,6 +256,12 @@ def get_env_bool(name: str, default: str) -> bool:
     return env_value_str == "1"
 
 
+# Environment variables that are fully deprecated and will be ignored.
+_fully_deprecated_env_vars = {
+    "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "http_options.keep_alive_timeout_s",
+}
+
+
 def _deprecation_warning(name: str) -> None:
     """Log replacement warning for wrong or legacy environment variables.
 
@@ -288,4 +291,19 @@ def _deprecation_warning(name: str) -> None:
             f"`{name}` will be deprecated. Please use `{new_name}` instead.",
             FutureWarning,
             stacklevel=4,
+        )
+
+
+def warn_if_deprecated_env_var_set(name: str) -> None:
+    """Warn if a fully deprecated environment variable is set.
+
+    :param name: environment variable name
+    """
+    if name in _fully_deprecated_env_vars and os.environ.get(name):
+        config_option = _fully_deprecated_env_vars[name]
+        warnings.warn(
+            f"`{name}` environment variable will be deprecated in the future. "
+            f"Use `{config_option}` in the Serve config instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )

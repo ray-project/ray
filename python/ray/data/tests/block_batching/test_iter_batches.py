@@ -18,7 +18,9 @@ from ray.data._internal.block_batching.iter_batches import (
     prefetch_batches_locally,
     restore_original_order,
 )
+from ray.data._internal.block_batching.util import WaitBlockPrefetcher
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -221,6 +223,112 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
 
     assert len(batches) == 20
     assert all(len(batch) == 2 for batch in batches)
+
+
+def _ref_bundles_with_size(
+    num_blocks: int, num_rows: int, size_bytes_per_block: int
+) -> Iterator[RefBundle]:
+    """Create ref bundles with explicit size_bytes for testing."""
+    for i in range(num_blocks):
+        block = pa.table({"foo": [i] * num_rows})
+        metadata = BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=size_bytes_per_block,
+            input_files=[],
+            exec_stats=None,
+        )
+        schema = block.schema
+        yield RefBundle(
+            blocks=((ray.put(block), metadata),),
+            owns_blocks=True,
+            schema=schema,
+        )
+
+
+@pytest.mark.parametrize(
+    "num_batches_to_prefetch,expected_bytes_sequence",
+    [
+        # No prefetching: all 5 blocks report 0 prefetched bytes
+        (0, [0, 0, 0, 0, 0]),
+        # prefetch 2 blocks: with 5 blocks of 100 bytes each
+        # After yield block 0: window has 1,2 -> 200 (added block 2)
+        # After yield block 1: window has 2,3 -> 200 (added block 3)
+        # After yield block 2: window has 3,4 -> 200 (added block 4)
+        # After yield block 3: window has 4 -> 100 (no more to add)
+        # After yield block 4: window empty -> 0
+        (2, [200, 200, 200, 100, 0]),
+    ],
+)
+def test_prefetch_bytes_tracking(
+    ray_start_regular_shared, num_batches_to_prefetch, expected_bytes_sequence
+):
+    """Test iter_prefetched_bytes is set correctly during prefetching.
+
+    Tests prefetch_batches_locally directly to verify exact values,
+    bypassing async BatchIterator which has non-deterministic timing.
+    """
+    stats = DatasetStats(metadata={}, parent=None)
+
+    # Create 5 ref bundles, each with size_bytes=100
+    num_blocks = 5
+    ref_bundles = list(
+        _ref_bundles_with_size(num_blocks, num_rows=2, size_bytes_per_block=100)
+    )
+
+    prefetcher = WaitBlockPrefetcher()
+    block_iter = prefetch_batches_locally(
+        iter(ref_bundles),
+        prefetcher=prefetcher,
+        num_batches_to_prefetch=num_batches_to_prefetch,
+        batch_size=None,
+        stats=stats,
+    )
+
+    # Track iter_prefetched_bytes after each block is yielded
+    recorded_bytes = []
+    for _ in block_iter:
+        recorded_bytes.append(stats.iter_prefetched_bytes)
+
+    assert recorded_bytes == expected_bytes_sequence, f"Got {recorded_bytes}"
+
+
+@pytest.mark.parametrize("prefetch_batches", [0, 2])
+def test_prefetch_bytes_callback(ray_start_regular_shared, prefetch_batches):
+    """Test prefetch_bytes_callback is invoked correctly by BatchIterator."""
+    reported_bytes = []
+
+    def prefetch_callback(num_bytes: int):
+        reported_bytes.append(num_bytes)
+
+    stats = DatasetStats(metadata={}, parent=None)
+
+    # Create 5 ref bundles
+    num_blocks = 5
+    ref_bundles = list(
+        _ref_bundles_with_size(num_blocks, num_rows=2, size_bytes_per_block=100)
+    )
+
+    output_batches = BatchIterator(
+        iter(ref_bundles),
+        stats=stats,
+        batch_size=None,
+        prefetch_batches=prefetch_batches,
+        prefetch_bytes_callback=prefetch_callback,
+    )
+
+    # Consume all batches
+    batches = list(output_batches)
+
+    assert len(batches) == 5
+
+    # Callback is called 5 times (per batch) + 1 time at epoch end
+    assert len(reported_bytes) == 6, f"Expected 6, got {len(reported_bytes)}"
+
+    # All values should be non-negative
+    assert all(b >= 0 for b in reported_bytes), f"Negative: {reported_bytes}"
+
+    # Last value should be 0 (after_epoch_end)
+    assert reported_bytes[-1] == 0, f"Last should be 0: {reported_bytes}"
 
 
 if __name__ == "__main__":

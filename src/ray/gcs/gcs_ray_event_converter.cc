@@ -17,6 +17,7 @@
 #include <google/protobuf/map.h>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 
@@ -74,31 +75,12 @@ void PopulateTaskRuntimeAndFunctionInfo(
   task_info->set_language(language);
   task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
       std::move(serialized_runtime_env));
-  switch (language) {
-  case rpc::Language::CPP:
-    if (function_descriptor.has_cpp_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_cpp_function_descriptor()
-                         ->mutable_function_name()));
-    }
-    break;
-  case rpc::Language::PYTHON:
-    if (function_descriptor.has_python_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_python_function_descriptor()
-                         ->mutable_function_name()));
-    }
-    break;
-  case rpc::Language::JAVA:
-    if (function_descriptor.has_java_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_java_function_descriptor()
-                         ->mutable_function_name()));
-    }
-    break;
-  default:
-    RAY_CHECK(false) << "Unsupported language: " << language;
-  }
+
+  // Use CallString() to get the short function name (e.g., "foo" instead of "module.foo")
+  // This ensures consistency with the default (non-aggregator) code path.
+  auto func_descriptor = FunctionDescriptorBuilder::FromProto(function_descriptor);
+  task_info->set_func_or_class_name(func_descriptor->CallString());
+
   task_info->mutable_required_resources()->swap(required_resources);
 }
 
@@ -118,8 +100,18 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   task_info->set_task_id(event.task_id());
   task_info->set_job_id(event.job_id());
   task_info->set_parent_task_id(event.parent_task_id());
+  if (event.task_type() == rpc::TaskType::ACTOR_CREATION_TASK) {
+    const auto actor_id = TaskID::FromBinary(event.task_id()).ActorId();
+    task_info->set_actor_id(actor_id.Binary());
+  }
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
+  }
+  if (event.has_call_site()) {
+    task_info->set_call_site(event.call_site());
+  }
+  if (!event.label_selector().empty()) {
+    task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
   }
 
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
@@ -154,6 +146,12 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_ray_error_info()) {
     *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
   }
+  if (event.has_is_debugger_paused()) {
+    task_state_update->set_is_debugger_paused(event.is_debugger_paused());
+  }
+  if (event.has_actor_repr_name()) {
+    task_state_update->set_actor_repr_name(event.actor_repr_name());
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
@@ -183,6 +181,12 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   }
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
+  }
+  if (event.has_call_site()) {
+    task_info->set_call_site(event.call_site());
+  }
+  if (!event.label_selector().empty()) {
+    task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
   }
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),

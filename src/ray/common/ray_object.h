@@ -43,8 +43,8 @@ class RayObject {
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             bool copy_data = false,
-            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
-    Init(data, metadata, nested_refs, copy_data, tensor_transport);
+            std::optional<std::string> tensor_transport = std::nullopt) {
+    Init(data, metadata, nested_refs, copy_data, std::move(tensor_transport));
   }
 
   /// This constructor creates a ray object instance whose data will be generated
@@ -127,19 +127,29 @@ class RayObject {
   int64_t CreationTimeNanos() const { return creation_time_nanos_; }
 
   /// Return the tensor transport to use for transferring this object.
-  rpc::TensorTransport GetTensorTransport() const { return tensor_transport_; }
+  const std::optional<std::string> &GetTensorTransport() const {
+    return tensor_transport_;
+  }
+
+  void SetDirectTransportMetadata(std::string direct_transport_metadata) {
+    direct_transport_metadata_.emplace(std::move(direct_transport_metadata));
+  }
+
+  const std::optional<std::string> &GetDirectTransportMetadata() const {
+    return direct_transport_metadata_;
+  }
 
  private:
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             bool copy_data = false,
-            rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
+            std::optional<std::string> tensor_transport = std::nullopt) {
     data_ = data;
     metadata_ = metadata;
     nested_refs_ = nested_refs;
     has_data_copy_ = copy_data;
-    tensor_transport_ = tensor_transport;
+    tensor_transport_ = std::move(tensor_transport);
     creation_time_nanos_ = absl::GetCurrentTimeNanos();
 
     if (has_data_copy_) {
@@ -173,7 +183,10 @@ class RayObject {
   /// The timestamp at which this object was created locally.
   int64_t creation_time_nanos_;
   /// The tensor transport to use for transferring this object.
-  rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
+  std::optional<std::string> tensor_transport_;
+  /// The direct transport metadata for the object if the object is a direct transport
+  /// object.
+  std::optional<std::string> direct_transport_metadata_;
 };
 
 }  // namespace ray

@@ -62,7 +62,7 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 
 ### Core routing parameters
 
-- **`imbalanced_threshold`** (default: 10): Queue length difference threshold for considering load balanced. Lower values prioritize load balancing over cache locality.
+- **`imbalanced_threshold`** (default: infinity): Queue length difference threshold for considering load balanced. Lower values prioritize load balancing over cache locality.
 
 - **`match_rate_threshold`** (default: 0.1): Minimum prefix match rate (0.0-1.0) required to use prefix cache-aware routing. Higher values require stronger prefix matches before routing for cache locality.
 

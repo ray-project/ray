@@ -1,8 +1,5 @@
 release_byod:
   ray_ecr: rayproject
-  ray_cr_repo: ray
-  ray_ml_cr_repo: ray-ml
-  ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   byod_ecr_region: us-west-2
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com

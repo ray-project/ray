@@ -77,6 +77,10 @@ Notice that the "Hello from config" message is printed from within the deploymen
 (typed-app-builders)=
 ### Typing arguments with Pydantic
 
+:::{warning}
+**Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
+:::
+
 To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated).
 Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
 

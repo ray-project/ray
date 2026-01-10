@@ -176,7 +176,6 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                         pid_t pid,
-                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override {
     RAY_CHECK(false) << "Not used.";
     return Status::Invalid("Not used.");

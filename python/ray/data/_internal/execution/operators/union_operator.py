@@ -99,7 +99,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
         if not self._preserve_order:
@@ -134,6 +134,3 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
-
-    def implements_accurate_memory_accounting(self):
-        return True

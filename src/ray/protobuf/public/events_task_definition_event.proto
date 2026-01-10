@@ -43,4 +43,8 @@ message TaskDefinitionEvent {
   bytes placement_group_id = 11;
   map<string, bytes> ref_ids = 12;
   string serialized_runtime_env = 13;
+  // Human readable stacktrace of the task invocation, or actor creation.
+  optional string call_site = 14;
+  // The key-value label constraints of the node to schedule this task on.
+  map<string, string> label_selector = 15;
 }

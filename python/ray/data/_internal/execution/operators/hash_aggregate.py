@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -69,11 +69,13 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
             # TODO make aggregation async
             self._combine_aggregated_blocks(should_finalize=False)
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
         if len(self._aggregated_blocks) == 0:
-            return ArrowBlockAccessor._empty_table()
+            block = ArrowBlockAccessor._empty_table()
+        else:
+            block = self._combine_aggregated_blocks(should_finalize=True)
 
-        return self._combine_aggregated_blocks(should_finalize=True)
+        yield block
 
     def clear(self, partition_id: int):
         self._aggregated_blocks: List[Block] = []

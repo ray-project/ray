@@ -211,6 +211,29 @@ class LLMEngine(abc.ABC):
         """
         return False
 
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        raise NotImplementedError("collective_rpc is not implemented for this engine")
+
     async def pause(self, **kwargs: Any) -> None:
         """Pause the engine.
 

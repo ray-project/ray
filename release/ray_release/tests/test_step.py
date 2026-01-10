@@ -1,3 +1,4 @@
+import shlex
 import sys
 from unittest.mock import patch
 
@@ -17,7 +18,7 @@ def _stub_test(val: dict) -> Test:
     """
     test = Test(
         {
-            "name": "test",
+            "name": "test with spaces",
             "cluster": {
                 "byod": {},
             },
@@ -36,8 +37,14 @@ def _stub_test(val: dict) -> Test:
 def test_get_step(mock):
     with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
         step = get_step(_stub_test({}), run_id=2)
-    assert step["label"] == "test (None) (2)"
+    assert step["label"] == "test with spaces (None) (2)"
     assert step["retry"]["automatic"][0]["limit"] == 3
+    assert "commands" in step
+    first_command = shlex.split(step["commands"][0])
+    assert first_command[0] == "./release/run_release_test.sh"
+    assert first_command[1] == "test with spaces"
+    assert first_command[2] == "--log-streaming-limit"
+    assert first_command[3] == "100"
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)

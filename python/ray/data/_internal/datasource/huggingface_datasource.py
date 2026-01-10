@@ -1,7 +1,7 @@
 import sys
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset

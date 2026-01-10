@@ -24,7 +24,6 @@ from ray_release.buildkite.settings import (
     update_settings_from_environment,
 )
 from ray_release.buildkite.step import (
-    DOCKER_PLUGIN_KEY,
     RELEASE_QUEUE_CLIENT,
     RELEASE_QUEUE_DEFAULT,
     get_step,
@@ -650,14 +649,12 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
             step = get_step(test, smoke_test=False)
-            self.assertNotIn(
-                "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
-            )
+            joined_commands = "\n".join(step["commands"])
+            self.assertNotIn("--smoke-test", joined_commands)
 
             step = get_step(test, smoke_test=True)
-            self.assertIn(
-                "--smoke-test", step["plugins"][0][DOCKER_PLUGIN_KEY]["command"]
-            )
+            joined_commands = "\n".join(step["commands"])
+            self.assertIn("--smoke-test", joined_commands)
 
             step = get_step(test, priority_val=20)
             self.assertEqual(step["priority"], 20)

@@ -82,6 +82,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
         /* timestamp */ absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/spec.IsActorTask(),
         "test-session-name",
+        GetNodeID(),
         include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
         std::move(state_update)));
     return true;
@@ -90,6 +91,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string GetSessionName() const override { return "test-session-name"; }
 
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
+
+  NodeID GetNodeID() const override { return NodeID::Nil(); }
 };
 
 TEST(ActorSchedulingQueueTest, TestTaskEvents) {

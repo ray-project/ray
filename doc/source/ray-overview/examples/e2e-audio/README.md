@@ -226,7 +226,7 @@ processor = build_processor(
             {"role": "user", "content": row["transcription"]},
         ],
         sampling_params=dict(
-            guided_decoding={"choice": ["1", "2", "3", "4", "5"]},
+            structured_outputs={"choice": ["1", "2", "3", "4", "5"]},
         ),
     ),
     postprocess=lambda row: dict(

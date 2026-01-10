@@ -995,11 +995,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     ),
                     len_lookback_buffer=lookback,
                 )
-            # Record a has for the episode ID and timestep inside of the episode.
-            sampled_env_step_idxs.add(
-                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
-            )
-            # Record a has for the episode ID and timestep inside of the episode.
+            # Record a hash for the episode ID and timestep inside of the episode.
             sampled_env_step_idxs.add(
                 hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
             )

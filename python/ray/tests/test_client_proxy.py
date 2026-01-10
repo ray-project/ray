@@ -23,14 +23,14 @@ from ray.job_config import JobConfig
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    runtime_env_agent_address = (
-        ray._private.worker.global_worker.node.runtime_env_agent_address
-    )
+    node = ray._private.worker.global_worker.node
+    runtime_env_agent_address = node.runtime_env_agent_address
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
         redis_password=REDIS_DEFAULT_PASSWORD,
         runtime_env_agent_address=runtime_env_agent_address,
+        node_id=node.node_id,
     )
     free_ports = random.choices(pm._free_ports, k=n_ports)
     assert len(free_ports) == n_ports

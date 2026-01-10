@@ -302,7 +302,7 @@ def check_num_replicas_eq(
     target: int,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_controller: bool = False,
-) -> int:
+) -> bool:
     """Check if num replicas is == target."""
 
     if use_controller:

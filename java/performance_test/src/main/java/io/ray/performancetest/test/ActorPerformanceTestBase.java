@@ -24,7 +24,6 @@ public class ActorPerformanceTestBase {
       boolean ignoreReturn,
       int argSize,
       boolean useDirectByteBuffer) {
-    System.setProperty("ray.raylet.startup-token", "0");
     Ray.init();
     try {
       // TODO: Support more layers.

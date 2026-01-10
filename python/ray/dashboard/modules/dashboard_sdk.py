@@ -249,6 +249,8 @@ class SubmissionClient:
             else:
                 self._ssl_context = None
 
+        self._server_ray_version: Optional[str] = None
+
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
@@ -274,6 +276,7 @@ class SubmissionClient:
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
+            self._server_ray_version = running_ray_version
             if packaging.version.parse(running_ray_version) < packaging.version.parse(
                 min_version
             ):

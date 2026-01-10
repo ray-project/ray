@@ -27,16 +27,16 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = "127.0.0.1"
 
 #: HTTP Port
-DEFAULT_HTTP_PORT = get_env_int("RAY_SERVE_DEFAULT_HTTP_PORT", 8000)
+DEFAULT_HTTP_PORT = 8000
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
-DEFAULT_GRPC_PORT = get_env_int("RAY_SERVE_DEFAULT_GRPC_PORT", 9000)
+DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -52,23 +52,9 @@ CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
-#: Max retry count for allowing failures in replica constructor.
-#: If no replicas at target version is running by the time we're at
-#: max constructor retry count, deploy() is considered failed.
-#: By default we set threshold as min(num_replicas * 3, this value)
-#: This constant is deprecated and will be removed in the future.
-#: Please use 'max_constructor_retry_count' instead in configurations.
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
-)
-
 # Max retry on deployment constructor is
-# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
-MAX_PER_REPLICA_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT",
-    get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3),
-)
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
 
 # If you are wondering why we are using histogram buckets, please refer to
@@ -207,19 +193,14 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = get_env_int_positive(
-    "RAY_SERVE_MAX_CACHED_HANDLES", get_env_int_positive("MAX_CACHED_HANDLES", 100)
-)
+MAX_CACHED_HANDLES = get_env_int_positive("RAY_SERVE_MAX_CACHED_HANDLES", 100)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
-    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
-    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
@@ -285,11 +266,8 @@ MIGRATION_MESSAGE = (
 )
 
 # Environment variable name for to specify the encoding of the log messages
-RAY_SERVE_LOG_ENCODING = get_env_str("RAY_SERVE_LOG_ENCODING", "TEXT")
+RAY_SERVE_LOG_ENCODING = "TEXT"
 
-# Jsonify the log messages. This constant is deprecated and will be removed in the
-# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
-RAY_SERVE_ENABLE_JSON_LOGGING = get_env_bool("RAY_SERVE_ENABLE_JSON_LOGGING", "0")
 
 # Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
 # Also, redirect them to serve's log files.
@@ -330,13 +308,7 @@ RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
 )
 
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float_non_negative(
-        "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
-        get_env_float_non_negative("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
-    )
-    or None
-)
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
@@ -463,11 +435,6 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
 
 RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
-)
-
-# Feature flag to always run a proxy on the head node even if it has no replicas.
-RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = get_env_bool(
-    "RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1"
 )
 
 # Default is 2GiB, the max for a signed int.

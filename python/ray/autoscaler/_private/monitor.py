@@ -267,6 +267,14 @@ class Monitor:
                 new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
+        waiting_bundles, infeasible_bundles = parse_resource_demands(
+            resources_batch_data.resource_load_by_shape
+        )
+
+        pending_placement_groups = list(
+            resources_batch_data.placement_group_load.placement_group_data
+        )
+
         mirror_node_types = {}
         for resource_message in cluster_resource_state.node_states:
             node_id = resource_message.node_id
@@ -284,14 +292,6 @@ class Monitor:
                 }
             total_resources = dict(resource_message.total_resources)
             available_resources = dict(resource_message.available_resources)
-
-            waiting_bundles, infeasible_bundles = parse_resource_demands(
-                resources_batch_data.resource_load_by_shape
-            )
-
-            pending_placement_groups = list(
-                resources_batch_data.placement_group_load.placement_group_data
-            )
 
             use_node_id_as_ip = self.autoscaler is not None and self.autoscaler.config[
                 "provider"

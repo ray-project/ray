@@ -94,6 +94,3 @@ class InputDataBuffer(PhysicalOperator):
         self._stats = {
             "input": block_metadata,
         }
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True

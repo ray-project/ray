@@ -140,7 +140,7 @@ For example:
 
 The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the result of an RDT object. However, :func:`ray.get <ray.get>` will by default use the same tensor transport as the one specified in the :func:`@ray.method <ray.method>` decorator. For collective-based transports, this will not work if the caller is not part of the collective group.
 
-Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_tensor_transport`` in :func:`ray.get <ray.get>`.
+Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_use_object_store`` in :func:`ray.get <ray.get>`.
 
 .. literalinclude:: doc_code/direct_transport_gloo.py
    :language: python

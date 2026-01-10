@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -961,6 +962,28 @@ class TestRuntimeEnv:
 
         await async_wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+    async def test_entrypoint_label_selector(self, job_manager):
+        label_selector = {"fragile_node": "!1"}
+
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            job_id = await job_manager.submit_job(
+                entrypoint="echo hello",
+                entrypoint_label_selector=label_selector,
+            )
+
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+
+        assert any(
+            call.kwargs.get("label_selector") == label_selector
+            for call in mocked_options.call_args_list
         )
 
 

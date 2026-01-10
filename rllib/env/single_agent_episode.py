@@ -598,7 +598,7 @@ class SingleAgentEpisode:
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos at the concatenation boundaries. Also, `self.is_done` must
         not be True, meaning `self.is_terminated` and `self.is_truncated` are both
         False.
@@ -615,7 +615,7 @@ class SingleAgentEpisode:
         # able to concatenate.
         assert not self.is_done
         # Make sure the timesteps match.
-        assert self.t == other.t_started
+        assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
         # Validate `other`.
         other.validate()
 

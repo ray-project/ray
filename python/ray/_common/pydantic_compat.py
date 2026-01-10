@@ -1,4 +1,5 @@
 # ruff: noqa
+from typing import Optional
 import packaging.version
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
@@ -10,6 +11,13 @@ try:
 except ImportError:
     pydantic = None
     PYDANTIC_INSTALLED = False
+
+
+PYDANTIC_MAJOR_VERSION: Optional[int] = (
+    packaging.version.parse(pydantic.__version__).major
+    if PYDANTIC_INSTALLED and hasattr(pydantic, "__version__")
+    else None
+)
 
 
 if not PYDANTIC_INSTALLED:

@@ -710,16 +710,21 @@ doctest(
 # Discover the Anyscale Jobs compute configs .yaml for release tests in CI
 # --------------------------------------------------------------------
 
+# Comprehensive filegroup that aggregates all CI compute configs from across the docs.
+# This includes a general glob pattern + references to filegroups in existing child BUILD.bazel
+# Following the standard structure: doc/source/<path>/my_example/ci/{aws,gce}.yaml
 filegroup(
-    name = "example_configs",
+    name = "all_examples_ci_configs",
     srcs = glob([
-        "source/ray-overview/examples/**/*.yaml"
-    ]),
-    visibility = ["//release:__pkg__"],
-)
-
-filegroup(
-    name = "deployment_serve_llm_example_configs",
-    srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*.yaml"]),
+        "source/ray-overview/examples/**/ci/aws.yaml",
+        "source/ray-overview/examples/**/ci/gce.yaml",
+        "source/serve/tutorials/**/ci/aws.yaml",
+        "source/serve/tutorials/**/ci/gce.yaml",
+    ]) + [
+        "//doc/source/data/examples:data_examples_ci_configs",
+        "//doc/source/tune/examples:tune_examples_ci_configs",
+        "//doc/source/ray-core/examples:core_examples_ci_configs",
+        "//doc/source/train/examples:train_examples_ci_configs",
+    ],
     visibility = ["//release:__pkg__"],
 )
