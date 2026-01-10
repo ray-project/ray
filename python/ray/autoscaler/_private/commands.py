@@ -1212,7 +1212,6 @@ def exec_cluster(
             cli_logger.print("Attaching to node with IP: {}", cf.bold(ip))
         except ValueError as e:
             cli_logger.abort("Could not find node with IP {}. {}", cf.bold(ip), str(e))
-            raise
 
         is_head_node = (
             provider.node_tags(target_node)[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
@@ -1224,6 +1223,7 @@ def exec_cluster(
             config_file,
             override_cluster_name,
             create_if_needed=start,
+            _provider=provider,
             _allow_uninitialized_state=_allow_uninitialized_state,
         )
         is_head_node = True
