@@ -22,6 +22,12 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
+from python.ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+)
+from python.ray.data._internal.execution.bundle_queue.ordered import OrderedBundleQueue
+
 import ray
 from ray import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -209,7 +215,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: Optional[_OutputQueue] = None
+        self._output_queue: Optional["BaseBundleQueue"] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -300,7 +306,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return self._output_queue.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.size_bytes()
+        return self._output_queue.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
@@ -441,9 +447,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         super().start(options)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
-            self._output_queue = _OrderedOutputQueue()
+            self._output_queue = OrderedBundleQueue()
         else:
-            self._output_queue = _UnorderedOutputQueue()
+            self._output_queue = FIFOBundleQueue()
 
         if options.locality_with_output:
             if isinstance(options.locality_with_output, list):
@@ -593,10 +599,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            self._metrics.on_task_output_generated(task_index, output)
+            self._output_queue.add(output, key=task_index)
 
             # Notify output queue that the task has produced an new output.
-            self._output_queue.notify_task_output_ready(task_index, output)
+            self._output_queue.add(task_index, output)
             self._metrics.on_output_queued(output)
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
@@ -614,7 +620,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
-            self._output_queue.notify_task_completed(task_index)
+            self._output_queue.finalize(key=task_index)
             if task_done_callback:
                 task_done_callback()
 

@@ -1,7 +1,6 @@
-import collections
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, HashLinkedQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -37,7 +36,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
         self._input_buffers: List["BaseBundleQueue"] = [
-            HashLinkedQueue() for _ in range(len(input_ops))
+            FIFOBundleQueue() for _ in range(len(input_ops))
         ]
 
         # The index of the input dependency that is currently the source of
@@ -45,7 +44,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         # directly to the output buffer. Only used when `self._preserve_order` is True.
         self._input_idx_to_output = 0
 
-        self._output_buffer: collections.deque[RefBundle] = collections.deque()
+        self._output_buffer = FIFOBundleQueue()
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
 
@@ -103,7 +102,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
         if not self._preserve_order:
-            self._output_buffer.append(refs)
+            self._output_buffer.add(refs)
             self._metrics.on_output_queued(refs)
         else:
             self._input_buffers[input_index].add(refs)
@@ -117,10 +116,10 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         assert len(self._output_buffer) == 0, len(self._output_buffer)
         for input_buffer in self._input_buffers:
-            while input_buffer:
+            while input_buffer.has_next():
                 refs = input_buffer.get_next()
                 self._metrics.on_input_dequeued(refs)
-                self._output_buffer.append(refs)
+                self._output_buffer.add(refs)
                 self._metrics.on_output_queued(refs)
 
     def has_next(self) -> bool:
@@ -128,7 +127,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        refs = self._output_buffer.popleft()
+        refs = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(refs)
         return refs
 

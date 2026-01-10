@@ -4,7 +4,9 @@ from .base import (
     BaseBundleQueue,
     SupportsRemoval,
 )
+from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
+from .ordered import OrderedBundleQueue
 
 
 class QueueWithRemoval(BaseBundleQueue, SupportsRemoval):
@@ -20,5 +22,7 @@ __all__ = [
     "create_bundle_queue",
     "SupportsRemoval",
     "HashLinkedQueue",
+    "OrderedBundleQueue",
+    "FIFOBundleQueue",
     "QueueWithRemoval",
 ]
