@@ -10,7 +10,7 @@ from ray.rllib.utils.spaces.space_utils import batch as batch_func
 
 
 class RandomRLModule(RLModule):
-    framework = 'torch'
+    framework = "torch"
 
     @override(RLModule)
     def _forward(self, batch, **kwargs):

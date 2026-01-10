@@ -180,7 +180,6 @@ class TicTacToe(MultiAgentEnv):
         return "\n" + f"\n{separator}\n".join(rows) + "\n"
 
 
-
 # if __name__ == "__main__":
 #     from ray.rllib.algorithms import PPOConfig
 #     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
