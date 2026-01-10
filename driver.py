@@ -92,15 +92,16 @@ def train_func():
     )
 
     # Training
-    for epoch in range(2):
+    for epoch in range(1):
         if ray.train.get_context().get_world_size() > 1:
             train_loader.sampler.set_epoch(epoch)
 
         for images, labels in train_loader:
             images, labels = images.to("cuda"), labels.to("cuda")
+            # Do zero_grad first to start quorum early as done in torchft train_ddp example
+            optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
