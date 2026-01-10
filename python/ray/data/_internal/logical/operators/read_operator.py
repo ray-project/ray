@@ -49,6 +49,7 @@ class Read(
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
         self._detected_parallelism = None
+        self._additional_split_factor = None
 
     def output_data(self):
         return None
@@ -65,6 +66,19 @@ class Read(
         Get the true parallelism that should be used during execution.
         """
         return self._detected_parallelism
+
+    def set_additional_split_factor(self, k: int):
+        """
+        Set the additional split factor for this read operator.
+        When set, each read task output will be split into k smaller blocks.
+        """
+        self._additional_split_factor = k
+
+    def get_additional_split_factor(self) -> Optional[int]:
+        """
+        Get the additional split factor for this read operator.
+        """
+        return self._additional_split_factor
 
     def estimated_num_outputs(self) -> Optional[int]:
         return self._num_outputs or self._estimate_num_outputs()

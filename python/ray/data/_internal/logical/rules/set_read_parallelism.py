@@ -3,9 +3,7 @@ import math
 from typing import Optional, Tuple, Union
 
 from ray import available_resources as ray_available_resources
-from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
@@ -92,22 +90,23 @@ class SetReadParallelismRule(Rule):
     operator will have the desired parallelism.
     """
 
-    def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
-        ops = [plan.dag]
-
-        while len(ops) > 0:
-            op = ops.pop(0)
-            if isinstance(op, InputDataBuffer):
-                continue
-            logical_op = plan.op_map[op]
-            if isinstance(logical_op, Read):
-                self._apply(op, logical_op)
-            ops += op.input_dependencies
-
+    def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        self._apply_to_dag(plan.dag)
         return plan
 
-    def _apply(self, op: PhysicalOperator, logical_op: Read):
+    def _apply_to_dag(self, op):
+        """Recursively apply the rule to the DAG."""
+        if isinstance(op, Read):
+            self._apply(op)
+
+        # Process input dependencies
+        for input_op in op._input_dependencies:
+            self._apply_to_dag(input_op)
+
+    def _apply(self, logical_op: Read):
+        ctx = DataContext.get_current()
         estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
+        target_max_block_size = ctx.target_max_block_size
 
         (
             detected_parallelism,
@@ -118,8 +117,8 @@ class SetReadParallelismRule(Rule):
             logical_op._datasource_or_legacy_reader,
             logical_op._parallelism,
             estimated_in_mem_bytes,
-            op.target_max_block_size_override or op.data_context.target_max_block_size,
-            op._additional_split_factor,
+            target_max_block_size,
+            logical_op.get_additional_split_factor(),
         )
 
         if logical_op._parallelism == -1:
@@ -135,8 +134,6 @@ class SetReadParallelismRule(Rule):
                 f"To satisfy the requested parallelism of {detected_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )
-
-        if k is not None:
-            op.set_additional_split_factor(k)
+            logical_op.set_additional_split_factor(k)
 
         logger.debug(f"Estimated num output blocks {estimated_num_blocks}")
