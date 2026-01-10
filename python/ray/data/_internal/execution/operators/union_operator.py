@@ -37,7 +37,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
         self._input_buffers: List["BaseBundleQueue"] = [
-            [HashLinkedQueue()] for _ in range(len(input_ops))
+            HashLinkedQueue() for _ in range(len(input_ops))
         ]
 
         # The index of the input dependency that is currently the source of
