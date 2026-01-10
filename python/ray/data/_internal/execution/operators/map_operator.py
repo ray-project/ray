@@ -221,11 +221,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
 
-        # If set, then all output blocks will be split into
-        # this many sub-blocks. This is to avoid having
-        # too-large blocks, which may reduce parallelism for
-        # the subsequent operator.
-        self._additional_split_factor = None
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
@@ -282,14 +277,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             kwargs.update(fn())
         return kwargs
 
-    def get_additional_split_factor(self) -> int:
-        if self._additional_split_factor is None:
-            return 1
-        return self._additional_split_factor
-
-    def set_additional_split_factor(self, k: int):
-        self._additional_split_factor = k
-
     def internal_input_queue_num_blocks(self) -> int:
         return self._block_ref_bundler.num_blocks()
 
@@ -315,13 +302,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         while self._output_queue.has_next():
             bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
-
-    @property
-    def name(self) -> str:
-        name = super().name
-        if self._additional_split_factor is not None:
-            name += f"->SplitBlocks({self._additional_split_factor})"
-        return name
 
     @classmethod
     def create(
@@ -468,25 +448,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     return args
 
             self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
-
-        map_transformer = self._map_transformer
-        # Apply additional block split if needed.
-        if self.get_additional_split_factor() > 1:
-            split_factor = self.get_additional_split_factor()
-            split_transformer = MapTransformer(
-                [
-                    BlockMapTransformFn(
-                        lambda blocks, ctx: _split_blocks(blocks, split_factor),
-                        # NOTE: Disable block-shaping to avoid it overriding
-                        #       splitting
-                        disable_block_shaping=True,
-                    )
-                ]
-            )
-            map_transformer = map_transformer.fuse(split_transformer)
-
-        # Store the potentially modified map_transformer for later use
-        self._map_transformer = map_transformer
 
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""
