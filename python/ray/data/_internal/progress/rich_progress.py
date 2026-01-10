@@ -292,6 +292,8 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     _update_with_conditional_rate(progress, tid, metrics)
             self._total.update(self._total_task_id, description=desc, **kwargs)
             self.refresh()
+            # need this sleep delay to ensure that changes are rendered to screen
+            # before rich Live module is stopped.
             time.sleep(0.02)
             self._live.stop()
 
