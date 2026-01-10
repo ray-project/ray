@@ -48,7 +48,6 @@ from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress.utils import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
-from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
@@ -647,21 +646,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-    def _use_rich_progress(self):
-        rich_enabled = self._data_context.enable_rich_progress_bars
-        use_ray_tqdm = self._data_context.use_ray_tqdm
-
-        if not rich_enabled or use_ray_tqdm:
-            if log_once("ray_data_rich_progress_disabled"):
-                logger.info(
-                    "[dataset]: A new progress UI is available. To enable, "
-                    "set `ray.data.DataContext.get_current()."
-                    "enable_rich_progress_bars = True` and `ray.data."
-                    "DataContext.get_current().use_ray_tqdm = False`."
-                )
-            return False
-        return True
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
