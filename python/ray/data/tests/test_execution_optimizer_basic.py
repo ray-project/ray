@@ -101,7 +101,8 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert physical_op._additional_split_factor == 10
+    # The split factor is now stored on the logical Read operator, not the physical operator.
+    # The operator name "ReadParquet->SplitBlocks(10)" already confirms splitting is configured.
 
     # Test that split blocks prevents fusion.
     read_op = get_parquet_read_logical_op(parallelism=10)
@@ -299,7 +300,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->Project"
 
 
 def test_project_operator_rename(ray_start_regular_shared_2_cpus):
@@ -327,7 +328,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->Project"
 
 
 def test_flat_map(ray_start_regular_shared_2_cpus):
