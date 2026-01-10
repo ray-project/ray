@@ -138,8 +138,12 @@ def plan_read_op(
         name=(
             # Build operator name with split suffix if applicable
             f"{op.name}->SplitBlocks({split_factor})"
-            if should_split else op_name
+            if should_split
+            else op.name
         ),
         compute_strategy=op._compute,
         ray_remote_args=op._ray_remote_args,
+        # Disable fusion when splitting to ensure downstream operators
+        # receive the split blocks as separate tasks
+        supports_fusion=not should_split,
     )
