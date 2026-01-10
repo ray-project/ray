@@ -56,22 +56,6 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-    def add_to_front(self, bundle: RefBundle):
-        """Add a bundle to the front(head) of the queue"""
-        self._on_enqueue(bundle)
-        new_node = _Node(value=bundle, next=self._head, prev=None)
-        # Case 1: The queue is empty.
-        if self._head is None:
-            assert self._tail is None
-            self._head = new_node
-            self._tail = new_node
-        # Case 2: The queue has at least one element.
-        else:
-            self._head.prev = new_node  # Link old head back to new node
-            self._head = new_node  # Update head pointer
-
-        self._bundle_to_nodes[bundle].appendleft(new_node)
-
     @override
     def get_next(self) -> RefBundle:
         # Case 1: The queue is empty.
