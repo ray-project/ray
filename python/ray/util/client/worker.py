@@ -69,7 +69,6 @@ MAX_BLOCKING_OPERATION_TIME_S: float = env_float(
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
 MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
-CLIENT_RELEASE_SERVER_OBJECT_BATCH = 1
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -165,9 +164,8 @@ class Worker:
         self._req_id_lock = threading.Lock()
         self._req_id = 0
 
-        # Used to call ReleaseObject outside ClientObjectRef.__del__ to avoid
-        # holding lock which can cause deadlock.
-        # See https://github.com/ray-project/ray/issues/59643 for more details.
+        # ReleaseObject grabs a lock, so it should not be called directly from
+        # __del__ methods that may be executed at any time on the Python main thread.
         self._release_queue = queue.SimpleQueue()
         self._release_thread = threading.Thread(
             target=self._release_server_worker, daemon=True
@@ -659,44 +657,33 @@ class Worker:
             self._release_queue.put(id)
 
     def _release_server_worker(self):
-        batch = []
+        """Background thread to release objects from the server.
+
+        Runs forever until a sentinel is received.
+        """
         while not self.closed:
             try:
-                id = self._release_queue.get(timeout=0.1)
+                id = self._release_queue.get(timeout=1)
                 if id is None:  # Sentinel value for shutdown
+                    logger.debug("Received sentinel, will stop release thread.")
                     break
-                batch.append(id)
 
-                if (
-                    self.data_client is not None
-                    and len(batch) >= CLIENT_RELEASE_SERVER_OBJECT_BATCH
-                ):
-                    logger.debug(f"Releasing {[id.hex() for id in batch]}")
+                if self.data_client is not None:
+                    logger.debug(f"Releasing {id.hex()}")
                     try:
                         self.data_client.ReleaseObject(
-                            ray_client_pb2.ReleaseRequest(ids=batch)
+                            ray_client_pb2.ReleaseRequest(ids=[id])
                         )
                     except Exception as e:
                         # Log the error but continue processing
                         # This prevents the release thread from crashing
-                        logger.info(
-                            f"Failed to release {len(batch)} objects: {e}. "
+                        logger.warning(
+                            f"Failed to release object {id.hex()}: {e}. "
                             "This is expected if the connection is closed."
                         )
-                    batch = []
             except queue.Empty:
                 continue
-
-        # Process any remaining items in the batch after exiting the loop
-        if batch and self.data_client is not None:
-            logger.debug(f"Releasing remaining {len(batch)} objects on shutdown")
-            try:
-                self.data_client.ReleaseObject(ray_client_pb2.ReleaseRequest(ids=batch))
-            except Exception as e:
-                logger.info(
-                    f"Failed to release remaining objects on shutdown: {e}. "
-                    "This is expected if the connection is already closed."
-                )
+        logger.debug("Release thread finished.")
 
     def call_retain(self, id: bytes) -> None:
         logger.debug(f"Retaining {id.hex()}")
@@ -708,6 +695,8 @@ class Worker:
         self._release_queue.put(None)  # Sentinel
         timeout = 5
         self._release_thread.join(timeout=timeout)
+        if self._release_thread.is_alive():
+            logger.warning(f"The release thread failed to join in {timeout}s.")
 
         self.closed = True
         self.data_client.close()
