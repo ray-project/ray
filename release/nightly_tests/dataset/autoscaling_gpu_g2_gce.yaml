@@ -1,0 +1,19 @@
+# GCE autoscaling GPU compute config for multi-stage batch inference.
+# Uses G2-STANDARD-8 instances (8 vCPUs, 32GB RAM, 1 NVIDIA L4 GPU).
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-central1
+allowed_azs:
+    - us-central1-a
+
+head_node_type:
+    name: head-node
+    instance_type: n2-standard-8
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: worker-node
+      instance_type: g2-standard-8
+      min_workers: 0
+      max_workers: 300
+      use_spot: true
