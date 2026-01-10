@@ -92,6 +92,16 @@ void ObjectRecoveryManager::PinOrReconstructObject(const ObjectID &object_id,
                                                    std::vector<rpc::Address> locations) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "Lost object has " << locations.size() << " locations";
+
+  // Check if object is marked as reconstruct-only. If so, skip copying attempts
+  // and go straight to reconstruction.
+  if (reference_counter_.IsReconstructOnly(object_id)) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Object is reconstruct-only, skipping copy attempts";
+    ReconstructObject(object_id);
+    return;
+  }
+
   // The object to recovery has secondary copies, pin one copy to promote it to primary
   // one.
   if (!locations.empty()) {

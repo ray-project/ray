@@ -572,5 +572,79 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
             ray.get(obj)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
+def test_reconstruct_only_skips_copy(config, ray_start_cluster):
+    """Test that reconstruct_only=True causes objects to be reconstructed
+    rather than copied from secondary locations."""
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+    import pdb; pdb.set_trace();
+
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
+    )
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    # Actor to track execution counts.
+    @ray.remote
+    class ExecutionCounter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+            return self.count
+
+        def get_count(self):
+            return self.count
+
+    counter = ExecutionCounter.remote()
+
+    # Task with reconstruct_only=True - should be re-executed rather than copied.
+    @ray.remote(max_retries=2)
+    def tracked_large_object(counter):
+        ray.get(counter.increment.remote())
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return len(x)
+
+    # Create object on node1 with reconstruct_only=True.
+    obj = tracked_large_object.options(
+        resources={"node1": 1}, reconstruct_only=True
+    ).remote(counter)
+    # Fetch it on node2 to create a secondary copy.
+    result = ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+    assert result == 10**7
+
+    # Verify task was executed once so far.
+    assert ray.get(counter.get_count.remote()) == 1
+
+    # Kill node1 - the primary copy is lost.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    wait_for_condition(
+        lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10
+    )
+
+    # Access the object again - this should trigger reconstruction.
+    # Even though node2 might have a secondary copy, reconstruct_only=True
+    # means we should re-execute the task instead of copying.
+    result = ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+    assert result == 10**7
+
+    # Verify task was re-executed (count should be 2).
+    assert ray.get(counter.get_count.remote()) == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

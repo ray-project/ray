@@ -374,6 +374,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::optional<std::string> TensorTransport() const;
 
+  /// Returns true if task outputs should only be reconstructed, never copied.
+  bool ReconstructOnly() const;
+
  private:
   void ComputeResources();
 

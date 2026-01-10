@@ -141,6 +141,8 @@ class ReferenceCounterInterface {
   /// \param[in] pinned_at_node_id The primary location for the object, if it
   /// is already known. This is only used for ray.put calls.
   /// \param[in] tensor_transport The transport used for the object.
+  /// \param[in] reconstruct_only If true, object should only be reconstructed,
+  /// never copied between nodes.
   virtual void AddOwnedObject(
       const ObjectID &object_id,
       const std::vector<ObjectID> &contained_ids,
@@ -150,7 +152,8 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      bool reconstruct_only = false) = 0;
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -523,6 +526,12 @@ class ReferenceCounterInterface {
 
   virtual bool IsObjectReconstructable(const ObjectID &object_id,
                                        bool *lineage_evicted) const = 0;
+
+  /// Check if an object should only be reconstructed, never copied.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return True if the object should only be reconstructed.
+  virtual bool IsReconstructOnly(const ObjectID &object_id) const = 0;
 
   /// Evict lineage of objects that are still in scope. This evicts lineage in
   /// FIFO order, based on when the ObjectRef was created.

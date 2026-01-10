@@ -451,6 +451,42 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
   ASSERT_TRUE(in_plasma);
 }
 
+TEST_F(ObjectRecoveryManagerTest, TestReconstructOnlySkipsCopy) {
+  // Test that reconstruct-only objects skip copy attempts and go straight
+  // to reconstruction, even when locations are available.
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               true,
+                               /*add_local_ref=*/true,
+                               /*pinned_at_node_id=*/std::nullopt,
+                               /*tensor_transport=*/std::nullopt,
+                               /*reconstruct_only=*/true);
+  task_manager_->AddTask(object_id.TaskId(), {});
+
+  // Set up locations that would normally trigger copy attempts.
+  rpc::Address address1;
+  address1.set_node_id(NodeID::FromRandom().Binary());
+  rpc::Address address2;
+  address2.set_node_id(NodeID::FromRandom().Binary());
+  object_directory_->SetLocations(object_id, {address1, address2});
+
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  // Object directory is still queried to get locations.
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
+
+  // No raylet client calls should be made (no PinObjectIDs) because
+  // reconstruct-only objects skip copy attempts even when locations exist.
+  ASSERT_EQ(raylet_client_->Flush(), 0);
+  // The task should be resubmitted for reconstruction.
+  ASSERT_TRUE(failed_reconstructions_.empty());
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+}
+
 }  // namespace core
 }  // namespace ray
 

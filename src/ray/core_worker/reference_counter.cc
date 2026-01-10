@@ -235,7 +235,8 @@ void ReferenceCounter::AddOwnedObject(
     bool is_reconstructable,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    bool reconstruct_only) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -245,7 +246,8 @@ void ReferenceCounter::AddOwnedObject(
                                    is_reconstructable,
                                    add_local_ref,
                                    pinned_at_node_id,
-                                   tensor_transport))
+                                   tensor_transport,
+                                   reconstruct_only))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -361,7 +363,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool is_reconstructable,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    bool reconstruct_only) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -385,6 +388,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    pinned_at_node_id,
                                    tensor_transport))
                 .first;
+  // Set reconstruct_only flag after construction.
+  it->second.reconstruct_only_ = reconstruct_only;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -1449,6 +1454,13 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
 
 void ReferenceCounter::AddObjectLocationInternal(ReferenceTable::iterator it,
                                                  const NodeID &node_id) {
+  // Don't publish location for reconstruct-only objects. These objects should
+  // only be reconstructed via lineage, never copied between nodes.
+  if (it->second.reconstruct_only_) {
+    RAY_LOG(DEBUG).WithField(node_id).WithField(it->first)
+        << "Skipping location publish for reconstruct-only object";
+    return;
+  }
   RAY_LOG(DEBUG).WithField(node_id).WithField(it->first) << "Adding location for object";
   if (it->second.locations.emplace(node_id).second) {
     // Only push to subscribers if we added a new location. We eagerly add the pinned
@@ -1651,6 +1663,15 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   }
   *lineage_evicted = it->second.lineage_evicted;
   return it->second.is_reconstructable_;
+}
+
+bool ReferenceCounter::IsReconstructOnly(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.reconstruct_only_;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,

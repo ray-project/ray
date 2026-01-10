@@ -828,6 +828,67 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   rc->RemoveLocalReference(object_id3, nullptr);
 }
 
+// Tests that IsReconstructOnly returns correct values and that location
+// information is not tracked for reconstruct-only objects.
+TEST_F(ReferenceCountTest, TestReconstructOnly) {
+  rpc::Address address;
+  address.set_ip_address("1234");
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+
+  // Test regular object (not reconstruct-only).
+  auto regular_obj = ObjectID::FromRandom();
+  rc->AddOwnedObject(regular_obj,
+                     {},
+                     address,
+                     "file.py:1",
+                     100,
+                     false,
+                     /*add_local_ref=*/true,
+                     std::optional<NodeID>(node1),
+                     /*tensor_transport=*/std::nullopt,
+                     /*reconstruct_only=*/false);
+  ASSERT_FALSE(rc->IsReconstructOnly(regular_obj));
+
+  // Location should be tracked for regular object.
+  rc->AddObjectLocation(regular_obj, node2);
+  auto locality_data = rc->GetLocalityData(regular_obj);
+  ASSERT_TRUE(locality_data.has_value());
+  ASSERT_EQ(locality_data->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1, node2}));
+
+  // Test reconstruct-only object.
+  auto reconstruct_only_obj = ObjectID::FromRandom();
+  rc->AddOwnedObject(reconstruct_only_obj,
+                     {},
+                     address,
+                     "file.py:2",
+                     100,
+                     false,
+                     /*add_local_ref=*/true,
+                     std::optional<NodeID>(node1),
+                     /*tensor_transport=*/std::nullopt,
+                     /*reconstruct_only=*/true);
+  ASSERT_TRUE(rc->IsReconstructOnly(reconstruct_only_obj));
+
+  // For reconstruct-only objects, AddObjectLocation should NOT add locations.
+  // Only the initial pinned_at location (node1) should be present.
+  rc->AddObjectLocation(reconstruct_only_obj, node2);
+  locality_data = rc->GetLocalityData(reconstruct_only_obj);
+  ASSERT_TRUE(locality_data.has_value());
+  // Only the pinned location (node1) should be present, NOT node2.
+  // AddObjectLocation is a no-op for reconstruct-only objects.
+  ASSERT_EQ(locality_data->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1}));
+
+  // Test IsReconstructOnly for unknown object.
+  auto unknown_obj = ObjectID::FromRandom();
+  ASSERT_FALSE(rc->IsReconstructOnly(unknown_obj));
+
+  rc->RemoveLocalReference(regular_obj, nullptr);
+  rc->RemoveLocalReference(reconstruct_only_obj, nullptr);
+}
+
 // Tests that the ref counts are properly integrated into the local
 // object memory store.
 TEST(MemoryStoreIntegrationTest, TestSimple) {

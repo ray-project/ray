@@ -221,6 +221,10 @@ _task_only_options = {
             "whenever `next` is called). Use -1 to disable this feature. "
         ),
     ),
+    "reconstruct_only": Option(
+        bool,
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {

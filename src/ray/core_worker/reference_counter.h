@@ -102,8 +102,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool is_reconstructable,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      bool reconstruct_only = false) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -246,6 +246,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id,
                                bool *lineage_evicted) const override;
+
+  bool IsReconstructOnly(const ObjectID &object_id) const override;
 
   int64_t EvictLineage(int64_t min_bytes_to_evict) override;
 
@@ -448,6 +450,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
     bool is_reconstructable_ = false;
+    // If true, this object should only be reconstructed via lineage, never copied
+    // between nodes. The object's location will not be published to other nodes.
+    bool reconstruct_only_ = false;
     /// Whether the lineage of this object was evicted due to memory pressure.
     bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
@@ -523,7 +528,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               bool is_reconstructable,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
-                              const std::optional<std::string> &tensor_transport)
+                              const std::optional<std::string> &tensor_transport,
+                              bool reconstruct_only = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
