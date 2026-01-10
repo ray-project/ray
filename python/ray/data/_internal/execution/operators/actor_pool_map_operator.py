@@ -30,7 +30,10 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue, QueueWithRemoval
+from ray.data._internal.execution.bundle_queue import (
+    QueueWithRemoval,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,

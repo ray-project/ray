@@ -1,7 +1,7 @@
 import collections
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, BundleQueue, FIFOBundleQueue, HashLinkedQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
