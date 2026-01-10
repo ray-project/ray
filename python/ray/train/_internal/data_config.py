@@ -14,7 +14,7 @@ class DataConfig:
     """Class responsible for configuring Train dataset preprocessing.
 
     For advanced use cases, this class can be subclassed and the `configure()` method
-    overriden for custom data preprocessing.
+    overridden for custom data preprocessing.
     """
 
     def __init__(
@@ -117,7 +117,7 @@ class DataConfig:
             execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overriden by the user,
+                # If "resource_limits" is not overridden by the user,
                 # add training-reserved resources to Data's exclude_resources.
                 execution_options.exclude_resources = (
                     execution_options.exclude_resources.add(

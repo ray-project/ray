@@ -845,7 +845,7 @@ def _format_metrics_table(metrics_dict: dict) -> str:
     return tabulate(
         table_data,
         headers=["category", "metric", "value"],
-        tablefmt="simple_outline",
+        tablefmt="plain",
     )
 
 
