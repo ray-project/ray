@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
@@ -718,12 +719,13 @@ class ServeApplicationSchema(BaseModel):
         ),
     )
     host: str = Field(
-        default="0.0.0.0",
+        default_factory=get_all_interfaces_ip,
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "your Serve application has started running. The Serve application "
-            "must be shut down and restarted with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once your Serve application "
+            "has started running. The Serve application must be shut down and "
+            "restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -909,12 +911,12 @@ class HTTPOptionsSchema(BaseModel):
     """
 
     host: str = Field(
-        default="0.0.0.0",
+        default_factory=get_all_interfaces_ip,
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "Serve has started running. Serve must be shut down and restarted "
-            "with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once Serve has started running. "
+            "Serve must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(

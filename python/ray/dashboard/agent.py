@@ -10,7 +10,12 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
@@ -150,7 +155,9 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        grpc_ip = "127.0.0.1" if is_localhost(self.ip) else "0.0.0.0"
+        grpc_ip = (
+            get_localhost_ip() if is_localhost(self.ip) else get_all_interfaces_ip()
+        )
         self.grpc_port = add_port_to_grpc_server(
             self.server, build_address(grpc_ip, self.grpc_port)
         )
