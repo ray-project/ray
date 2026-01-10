@@ -670,12 +670,14 @@ class WorkerGroup(BaseWorkerGroup):
                     import os
 
                     # Capture all distributed training env vars
+                    # TODO: might not all be needed and have different usages in torchft Manager.
+                    # TODO: maybe even set these inside TorchConfig.on_start?
                     env_var_names = [
                         "MASTER_ADDR",
                         "MASTER_PORT",
-                        "WORLD_SIZE",
-                        "LOCAL_WORLD_SIZE",
-                        "NODE_RANK",
+                        # "WORLD_SIZE",
+                        # "LOCAL_WORLD_SIZE",
+                        # "NODE_RANK",
                     ]
                     return {k: os.environ.get(k, "") for k in env_var_names}
 
@@ -745,6 +747,7 @@ class WorkerGroup(BaseWorkerGroup):
                     if v:  # Only set non-empty values
                         os.environ[k] = v
                 # Set worker-specific env vars
+                # TODO: I don't think this is needed.
                 os.environ["RANK"] = str(rank)
                 os.environ["LOCAL_RANK"] = str(local_rank)
 

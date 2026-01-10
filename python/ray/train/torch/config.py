@@ -132,7 +132,8 @@ def _shutdown_torch(destroy_process_group=False):
     from ray.air._internal.torch_utils import get_devices
 
     devices = get_devices()
-    if destroy_process_group:
+    # Check dist.is_initialized() because torchft might already destroy process group.
+    if destroy_process_group and dist.is_initialized():
         dist.destroy_process_group()
     if torch.cuda.is_available():
         for device in devices:

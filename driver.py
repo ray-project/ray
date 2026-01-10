@@ -53,6 +53,10 @@ def train_func():
         min_replica_size=1,
         load_state_dict=load_state_dict,
         state_dict=state_dict,
+        # This is replica group world size. torchft example doesn't set this.
+        world_size=1,
+        # Always rank 0 per replica group.
+        rank=0,
         # example does REPLICA_GROUP_ID, but we will do N replica groups and 1 worker per replica group
         replica_id=f"train_ddp_{ray.train.get_context().get_world_rank()}",
         timeout=timedelta(seconds=30),
