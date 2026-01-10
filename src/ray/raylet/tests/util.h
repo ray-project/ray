@@ -97,7 +97,6 @@ class MockWorker : public WorkerInterface {
   bool IsBlocked() const override { return blocked_; }
 
   const std::unique_ptr<ProcessInterface> &GetProcess() const override { return proc_; }
-  StartupToken GetStartupToken() const override { return 0; }
   void SetProcess(std::unique_ptr<ProcessInterface> proc) override {
     proc_ = std::move(proc);
   }
@@ -178,11 +177,6 @@ class MockWorker : public WorkerInterface {
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;
   }
-
- protected:
-  void SetStartupToken(StartupToken startup_token) override {
-    RAY_CHECK(false) << "Method unused";
-  };
 
  private:
   WorkerID worker_id_;

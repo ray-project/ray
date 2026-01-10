@@ -6,6 +6,7 @@ import math
 import random
 import threading
 import time
+import typing
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -15,6 +16,7 @@ from typing import (
     Deque,
     Dict,
     Generator,
+    Iterator,
     List,
     Optional,
     Set,
@@ -70,6 +72,9 @@ from ray.data.context import (
     DataContext,
 )
 
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,7 +127,7 @@ class StatefulShuffleAggregation(abc.ABC):
         """
         raise NotImplementedError()
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
         """Finalizes aggregation of partitions (identified by partition-id)
         from all input sequences returning resulting block.
         """
@@ -177,13 +182,13 @@ class Concat(StatefulShuffleAggregation):
 
         self._partition_block_builders[partition_id].add_block(partition_shard)
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
         block = self._partition_block_builders[partition_id].build()
 
         if self._should_sort and len(block) > 0:
             block = block.sort_by([(k, "ascending") for k in self._key_columns])
 
-        return block
+        yield block
 
     def clear(self, partition_id: int):
         self._partition_block_builders.pop(partition_id)
@@ -396,9 +401,7 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
 
         return [self.shuffle_name, self.reduce_name]
 
-    def set_sub_progress_bar(self, name, pg):
-        # No type-hints due to circular imports. `name` should be a `str`
-        # and `pg` should be a `SubProgressBar`
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self.shuffle_name is not None and self.shuffle_name == name:
             self.shuffle_bar = pg
         elif self.reduce_name is not None and self.reduce_name == name:
@@ -998,12 +1001,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             gpu=0,
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
-        return self._is_finalized() and super().completed()
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
+        return self._is_finalized() and super().has_completed()
 
     def _is_finalized(self):
         return len(self._pending_finalization_partition_ids) == 0
@@ -1566,31 +1566,46 @@ class HashShuffleAggregator:
 
         with self._lock:
             exec_stats_builder = BlockExecStats.builder()
+
             # Finalize given partition id
-            block = self._agg.finalize(partition_id)
-            exec_stats = exec_stats_builder.build()
+            blocks = self._agg.finalize(partition_id)
+
+            if self._target_max_block_size is not None:
+                blocks = _shape_blocks(blocks, self._target_max_block_size)
+
+            for block in blocks:
+                # Collect execution stats (and reset)
+                exec_stats = exec_stats_builder.build()
+                exec_stats_builder = BlockExecStats.builder()
+
+                yield block
+                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
-        if self._target_max_block_size is None:
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
-        else:
-            # Creating a block output buffer per partition finalize task because
-            # retrying finalize tasks cause stateful output_bufer to be
-            # fragmented (ie, adding duplicated blocks, calling finalize 2x)
-            output_buffer = BlockOutputBuffer(
-                output_block_size_option=OutputBlockSizeOption(
-                    target_max_block_size=self._target_max_block_size
-                )
-            )
 
-            output_buffer.add_block(block)
-            output_buffer.finalize()
-            while output_buffer.has_next():
-                block = output_buffer.next()
-                yield block
-                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+def _shape_blocks(
+    blocks: Iterator[Block], target_max_block_size: int
+) -> Iterator[Block]:
+    output_buffer = BlockOutputBuffer(
+        output_block_size_option=OutputBlockSizeOption(
+            target_max_block_size=target_max_block_size
+        )
+    )
+
+    for block in blocks:
+        output_buffer.add_block(block)
+
+        while output_buffer.has_next():
+            block = output_buffer.next()
+            yield block
+
+    output_buffer.finalize()
+
+    while output_buffer.has_next():
+        block = output_buffer.next()
+        yield block
 
 
 def _get_total_cluster_resources() -> ExecutionResources:

@@ -14,6 +14,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -434,7 +437,10 @@ class StateDataSourceClient:
         url = f"http://{build_address(node_ip, runtime_env_agent_port)}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
-        async with self._client_session.post(url, data=data, timeout=timeout) as resp:
+        headers = get_auth_headers_if_auth_enabled({})
+        async with self._client_session.post(
+            url, data=data, timeout=timeout, headers=headers
+        ) as resp:
             if resp.status >= 200 and resp.status < 300:
                 response_data = await resp.read()
                 reply = GetRuntimeEnvsInfoReply()

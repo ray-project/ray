@@ -36,10 +36,8 @@ Worker::Worker(const JobID &job_id,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager,
-               StartupToken startup_token)
+               rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
-      startup_token_(startup_token),
       language_(language),
       worker_type_(worker_type),
       ip_address_(ip_address),
@@ -110,16 +108,10 @@ WorkerID Worker::WorkerId() const { return worker_id_; }
 
 const std::unique_ptr<ProcessInterface> &Worker::GetProcess() const { return proc_; }
 
-StartupToken Worker::GetStartupToken() const { return startup_token_; }
-
 void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
   RAY_CHECK(proc_ == nullptr ||
             proc_->IsNull());  // this procedure should not be called multiple times
   proc_ = std::move(proc);
-}
-
-void Worker::SetStartupToken(StartupToken startup_token) {
-  startup_token_ = startup_token;
 }
 
 rpc::Language Worker::GetLanguage() const { return language_; }

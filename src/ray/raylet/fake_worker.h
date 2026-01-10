@@ -73,7 +73,6 @@ class FakeWorker : public WorkerInterface {
   void MarkUnblocked() override {}
   bool IsBlocked() const override { return false; }
   const std::unique_ptr<ProcessInterface> &GetProcess() const override { return proc_; }
-  StartupToken GetStartupToken() const override { return 0; }
   void SetProcess(std::unique_ptr<ProcessInterface> proc) override {}
   Language GetLanguage() const override { return Language::PYTHON; }
   void Connect(int port) override {}
@@ -106,9 +105,6 @@ class FakeWorker : public WorkerInterface {
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;
   }
-
- protected:
-  void SetStartupToken(StartupToken startup_token) override {}
 
  private:
   WorkerID worker_id_;
