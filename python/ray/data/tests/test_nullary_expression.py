@@ -231,38 +231,6 @@ def test_random_validation_errors(
         random(*args, **kwargs)
 
 
-def test_random_with_column_then_random_shuffle(ray_start_regular_shared):
-    """Test that random() works correctly when used with with_column followed by random_shuffle.
-
-    This test verifies the fix for the issue where random() expressions would fail
-    with "TaskContext is not available" when used in a pipeline that gets fused
-    with random_shuffle().
-    """
-    from ray.data.expressions import random
-
-    # Test with seed - this was the failing case
-    ds = ray.data.range(100).with_column("rand", random(seed=123))
-    ds = ds.random_shuffle()
-    results = ds.take_all()
-
-    # Verify we got results without errors
-    assert len(results) == 100
-    for result in results:
-        assert "rand" in result
-        assert "id" in result
-        assert 0.0 <= result["rand"] < 1.0
-
-    # Test without seed
-    ds2 = ray.data.range(50).with_column("rand", random())
-    ds2 = ds2.random_shuffle()
-    results2 = ds2.take_all()
-
-    assert len(results2) == 50
-    for result in results2:
-        assert "rand" in result
-        assert 0.0 <= result["rand"] < 1.0
-
-
 def test_random_with_column_then_random_shuffle_deterministic(ray_start_regular_shared):
     """Test that random() with seed produces deterministic results even after random_shuffle."""
     from ray.data.expressions import random
@@ -282,6 +250,57 @@ def test_random_with_column_then_random_shuffle_deterministic(ray_start_regular_
     # Same random values for same id
     for r1, r2 in zip(results1, results2):
         assert r1["rand"] == r2["rand"]
+
+
+@pytest.mark.parametrize(
+    "all_to_all_op,op_kwargs",
+    [
+        ("random_shuffle", {"seed": 100}),
+        ("repartition", {"num_blocks": 5, "shuffle": True}),
+        ("sort", {"key": "id"}),
+        ("randomize_block_order", {"seed": 100}),
+    ],
+)
+def test_random_reseed_after_execution_with_all_to_all_ops(
+    ray_start_regular_shared, all_to_all_op, op_kwargs
+):
+    """Test that reseed_after_execution works correctly when fused with all-to-all ops.
+
+    This test verifies the fix for the issue where random() expressions with
+    reseed_after_execution=True would not properly reseed across epochs when
+    fused with all-to-all operations (shuffle, repartition, sort, etc.). The issue
+    was that DataContext was not propagated to all-to-all tasks, causing
+    execution_idx to always be 0.
+    """
+    from ray.data.expressions import random
+
+    # Create a dataset with random column
+    ds = ray.data.range(10, override_num_blocks=1).with_column(
+        "rand", random(seed=42, reseed_after_execution=True)
+    )
+
+    # Apply the all-to-all operation
+    ds_transformed = getattr(ds, all_to_all_op)(**op_kwargs)
+
+    # First execution
+    first_results = sorted(ds_transformed.take_all(), key=lambda x: x["id"])
+
+    # Second execution - should have different random values
+    second_results = sorted(ds_transformed.take_all(), key=lambda x: x["id"])
+
+    # Verify random values are different across executions
+    first_rand_values = [r["rand"] for r in first_results]
+    second_rand_values = [r["rand"] for r in second_results]
+
+    assert first_rand_values != second_rand_values, (
+        f"Random values should differ across executions when "
+        f"reseed_after_execution=True, even with {all_to_all_op} fusion"
+    )
+
+    # Verify the row ids are the same (just checking we have the same data)
+    first_ids = [r["id"] for r in first_results]
+    second_ids = [r["id"] for r in second_results]
+    assert first_ids == second_ids == list(range(10))
 
 
 def test_uuid_expression_creation():
