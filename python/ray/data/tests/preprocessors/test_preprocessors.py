@@ -9,6 +9,7 @@ import pyarrow
 import pytest
 
 import ray
+from ray.data.aggregate import Mean
 from ray.data.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
@@ -173,7 +174,6 @@ def test_fit_twice_clears_stale_stats():
     calling fit() again on a different dataset should not retain stale stats from
     the previous fit. This ensures that fit(A).fit(B) is equivalent to fit(B).
     """
-    from ray.data.aggregate import Mean
 
     class DataDependentPreprocessor(Preprocessor):
         """A preprocessor whose stat keys depend on the data columns present."""
