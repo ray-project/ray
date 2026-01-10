@@ -2,8 +2,6 @@ import hashlib
 from collections import deque
 from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
 
-import pyarrow as pa
-
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.aggregate import AggregateFnV2
@@ -26,16 +24,6 @@ def simple_hash(value: object, num_features: int) -> int:
     hashed_value = hashlib.sha1(encoded_value)
     hashed_value_int = int(hashed_value.hexdigest(), 16)
     return hashed_value_int % num_features
-
-
-def upsert_column_to_arrow_table(
-    table: pa.Table, column: pa.ChunkedArray, output_col: str
-) -> pa.Table:
-    column_idx = table.schema.get_field_index(output_col)
-    if column_idx == -1:
-        return table.append_column(output_col, column)
-    else:
-        return table.set_column(column_idx, output_col, column)
 
 
 class BaseStatSpec:

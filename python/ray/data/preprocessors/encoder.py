@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
+from ray.data.block import BlockAccessor
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -28,7 +29,6 @@ from ray.data.preprocessor import (
 )
 from ray.data.preprocessors.utils import (
     make_post_processor,
-    upsert_column_to_arrow_table,
 )
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
@@ -269,7 +269,9 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
             column = table.column(input_col)
             encoded_column = self._encode_column_vectorized(column, input_col)
 
-            table = upsert_column_to_arrow_table(table, encoded_column, output_col)
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, encoded_column
+            )
 
         return table
 
@@ -511,7 +513,9 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
             column = table.column(input_col)
             encoded_column = self._encode_column_one_hot(column, input_col)
 
-            table = upsert_column_to_arrow_table(table, encoded_column, output_col)
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, encoded_column
+            )
 
         return table
 
