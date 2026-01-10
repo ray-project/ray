@@ -27,6 +27,7 @@ from custom_directives import (  # noqa
     setup_context,
     pregenerate_example_rsts,
     generate_versions_json,
+    collect_example_orphans,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -616,6 +617,15 @@ def setup(app):
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+    
+    # Register hook to mark orphan documents
+    example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
+    def mark_orphans(app, docname, _source):
+        if docname in example_orphan_documents:
+            app.env.metadata.setdefault(docname, {})
+            app.env.metadata[docname]["orphan"] = True
+
+    app.connect('source-read', mark_orphans)
 
 
 redoc = [
