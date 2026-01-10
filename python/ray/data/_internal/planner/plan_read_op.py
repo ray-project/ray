@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Iterable, List
+from typing import Iterable, Iterator, List
 
 import ray
 from ray import ObjectRef
@@ -17,9 +17,9 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _warn_on_high_parallelism
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.experimental.locations import get_local_object_locations
@@ -106,37 +106,39 @@ def plan_read_op(
 
     inputs = InputDataBuffer(data_context, input_data_factory=get_input_data)
 
-    split_factor = op.get_additional_split_factor()
-    should_split = split_factor is not None and split_factor > 1
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
-            blocks = read_task()
+            yield from read_task()
 
-            if should_split:
-                blocks = _split_blocks(blocks, split_factor)
-
-            yield from blocks
-
-    # Create a MapTransformer for a read operator
-    map_transformer = MapTransformer(
-        [
-            BlockMapTransformFn(
-                do_read,
-                is_udf=False,
-                output_block_size_option=OutputBlockSizeOption.of(
-                    target_max_block_size=data_context.target_max_block_size,
-                ),
-                # NOTE: With active splitting we proactively disable block-shaping
-                #       to respect user-provided configuration overriding target
-                #       number of blocks for example.
-                disable_block_shaping=should_split,
+    transform_fns = [
+        BlockMapTransformFn(
+            do_read,
+            is_udf=False,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=data_context.target_max_block_size,
             ),
-        ]
-    )
+        ),
+    ]
+
+    split_factor = op.get_additional_split_factor()
+    should_split = split_factor is not None and split_factor > 1
+
+    # TODO elaborate why block-splitting is applied after block shaping
+    if should_split:
+        def do_split(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+            yield from _split_blocks(blocks, split_factor)
+
+        transform_fns.append(
+            BlockMapTransformFn(
+                do_split,
+                is_udf=False,
+                disable_block_shaping=True,
+            )
+        )
 
     return MapOperator.create(
-        map_transformer,
+        MapTransformer(transform_fns),
         inputs,
         data_context,
         name=(
