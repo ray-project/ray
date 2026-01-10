@@ -45,7 +45,7 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress.utils import get_progress_manager
+from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
