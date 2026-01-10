@@ -2,9 +2,11 @@ import collections
 import itertools
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from typing_extensions import override
+
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -56,6 +58,16 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             *input_ops,
         )
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return self._input_buffers
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
+
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
         for input_op in self.input_dependencies:
@@ -79,33 +91,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             else:
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(
-            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
-        )
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues."""
-        for input_buffer in self._input_buffers:
-            while input_buffer:
-                bundle = input_buffer.popleft()
-                self._metrics.on_input_dequeued(bundle)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.popleft()
-            self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()

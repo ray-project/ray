@@ -1,9 +1,11 @@
 import math
 import time
-from collections import deque
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from typing_extensions import override
+
 from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
     FIFOBundleQueue,
     HashLinkedQueue,
 )
@@ -79,6 +81,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._min_buffer_size = 0
         self._locality_hits = 0
         self._locality_misses = 0
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._buffer]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
@@ -162,30 +174,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 self._metrics.on_output_queued(b)
         self._buffer.clear()
 
-    def internal_input_queue_num_blocks(self) -> int:
-        return self._buffer.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return self._buffer.estimate_size_bytes()
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_queue.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue."""
-        while self._buffer:
-            bundle = self._buffer.get_next()
-            self._metrics.on_input_dequeued(bundle)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_queue.has_next():
-            bundle = self._output_queue.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     def progress_str(self) -> str:
         if self._locality_hints:
             return locality_string(self._locality_hits, self._locality_misses)
@@ -257,7 +245,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output = []
         acc = 0
         while acc < nrow:
-            b = self._buffer.get_next()
+            b = self._buffer.get_last()
             self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
@@ -266,7 +254,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.add_to_front(right)
+                self._buffer.add(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 

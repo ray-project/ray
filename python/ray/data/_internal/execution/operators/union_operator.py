@@ -1,5 +1,7 @@
 from typing import List, Optional
 
+from typing_extensions import override
+
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -48,6 +50,16 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return self._input_buffers
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
+
     def start(self, options: ExecutionOptions):
         # Whether to preserve the order of the input data (both the
         # order of the input operators and the order of the blocks within).
@@ -71,31 +83,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
                 return None
             total_rows += input_num_rows
         return total_rows
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(q.num_blocks() for q in self._input_buffers)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(q.estimate_size_bytes() for q in self._input_buffers)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(q.blocks) for q in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(q.size_bytes() for q in self._output_buffer)
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues."""
-        for input_buffer in self._input_buffers:
-            while input_buffer:
-                bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.popleft()
-            self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
