@@ -418,6 +418,11 @@ def read_datasource(
         ...     datasource,
         ...     compute=ActorPoolStrategy(size=4)  # Use 4 actors
         ... )
+
+    .. note::
+        The use of `ActorPoolStrategy` is currently experimental and comes with caveats, such
+        as additional overhead due to limited operator fusion opportunities.
+
     """  # noqa: E501
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
