@@ -682,7 +682,6 @@ std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
   const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
   std::unique_ptr<ProcessInterface> child =
       std::make_unique<Process>(argv.data(),
-                                io_service_,
                                 ec,
                                 /*decouple=*/false,
                                 env,

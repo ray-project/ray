@@ -64,7 +64,6 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
   // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
   process_ = std::make_unique<Process>(
       argv.data(),
-      nullptr,
       ec,
       /*decouple=*/false,
       env,

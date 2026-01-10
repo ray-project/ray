@@ -29,9 +29,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
+
+#include "absl/strings/str_format.h"
 
 #if defined(__linux__)
 #include <filesystem>
@@ -47,10 +51,19 @@ void SetFdCloseOnExec(int fd) {
     return;
   }
   int flags = fcntl(fd, F_GETFD, 0);
-  RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  RAY_CHECK_NE(flags, -1) << absl::StrFormat(
+      "Failed to setup close on exec for %d: "
+      "fctnl error: errno = %s. "
+      "Was the fd open?",
+      fd,
+      strerror(errno));
   const int ret = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-  RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
-  RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
+  RAY_CHECK_NE(ret, -1) << absl::StrFormat(
+      "Failed to setup close on exec for %d: "
+      "fcntl error: errno = %s. "
+      "Was the fd open?",
+      fd,
+      strerror(errno));
 }
 #endif
 

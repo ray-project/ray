@@ -23,18 +23,24 @@
 namespace ray {
 
 #if !defined(_WIN32)
-/// Sets the FD_CLOEXEC flag on a file descriptor.
-/// This means when the process is forked, this fd would be closed in the child process
-/// side.
-///
-/// Idempotent.
-/// Not thread safe.
-/// See https://github.com/ray-project/ray/issues/40813
+/**
+ * @brief Sets the FD_CLOEXEC flag on a file descriptor.
+ * @details This means when the process is forked, this fd would be
+ *          closed in the child process side.
+ *
+ *          Idempotent.
+ *          Not thread safe.
+ *          See https://github.com/ray-project/ray/issues/40813
+ * @param fd The file descriptor to set the FD_CLOEXEC flag on.
+ */
 void SetFdCloseOnExec(int fd);
 #endif
 
-// Get the Process ID of the parent process. If the parent process exits, the PID
-// will be 1 (this simulates POSIX getppid()).
+/**
+ * @brief Get the Process ID of the parent process.
+ * @details If the parent process exits, the PID will be 1 (this simulates POSIX
+ * getppid()).
+ */
 pid_t GetParentPID();
 
 pid_t GetPID();
@@ -45,23 +51,37 @@ bool IsProcessAlive(pid_t pid);
 
 static constexpr char kProcDirectory[] = "/proc";
 
-// Platform-specific kill for the specified process identifier.
-// Currently only supported on Linux. Returns nullopt for other platforms.
+/**
+ * @brief Platform-specific kill for the specified process identifier.
+ * @details Currently only supported on Linux. Returns nullopt for other platforms.
+ * @param pid The process identifier to kill.
+ * @return The error code if the kill failed, nullopt otherwise.
+ */
 std::optional<std::error_code> KillProc(pid_t pid);
 
-// Platform-specific kill for an entire process group. Currently only supported on
-// POSIX (non-Windows). Returns nullopt for other platforms.
+/**
+ * @brief Platform-specific kill for an entire process group.
+ * @details Currently only supported on POSIX (non-Windows). Returns nullopt for other
+ * platforms.
+ * @param pgid The process group identifier to kill.
+ * @param sig The signal to send to the process group.
+ * @return The error code if the kill failed, nullopt otherwise.
+ */
 std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig);
 
-// Platform-specific utility to find the process IDs of all processes
-// that have the specified parent_pid as their parent.
-// In other words, find all immediate children of the specified process
-// id.
-//
-// Currently only supported on Linux. Returns nullopt on other platforms.
+/**
+ * @brief Platform-specific utility to find the process IDs of all processes
+ *        that have the specified parent_pid as their parent.
+ * @details Currently only supported on Linux. Returns nullopt on other platforms.
+ * @param parent_pid The parent process identifier to find the children of.
+ * @return The process IDs of all processes that have the specified parent_pid as their
+ * parent.
+ */
 std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
 
-/// Terminate the process without cleaning up the resources.
+/**
+ * @brief Terminate the process without cleaning up the resources.
+ */
 void QuickExit();
 
 }  // namespace ray

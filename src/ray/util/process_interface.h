@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,72 +14,64 @@
 
 #pragma once
 
-#include <cctype>
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/util/compat.h"
-
-#ifndef PID_MAX_LIMIT
-// This is defined by Linux to be the maximum allowable number of processes
-// There's no guarantee for other OSes, but it's useful for testing purposes.
-enum { PID_MAX_LIMIT = 1 << 22 };
-#endif
 
 namespace ray {
 
-class EnvironmentVariableLess {
- public:
-  bool operator()(char a, char b) const {
-    // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode
-    // support. It should be changed when Process adds Unicode support on Windows.
-    return std::less<>()(tolower(a), tolower(b));
-  }
-
-  bool operator()(const std::string &a, const std::string &b) const {
-    bool result = false;
-#ifdef _WIN32
-    result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
-#else
-    result = a < b;
-#endif
-    return result;
-  }
-};
-
-using ProcessEnvironment = std::map<std::string, std::string, EnvironmentVariableLess>;
+using ProcessEnvironment = absl::flat_hash_map<std::string, std::string>;
 
 using StartupToken = int64_t;
 
-/// \class ProcessInterface
-///
-/// Interface for process
+/**
+ * @class ProcessInterface
+ * @details This interface is used to abstract the process implementation
+ *          and provide easy injection of fake process for testing.
+ */
 class ProcessInterface {
  public:
   virtual ~ProcessInterface() = default;
 
-  /// Returns the process ID.
-  /// \return The process ID, or -1 for a null/dummy process.
+  /**
+   * @brief Get the process ID.
+   * @return The process ID, or -1 for a null process.
+   */
   virtual pid_t GetId() const = 0;
 
-  /// Returns true if this is a null process object.
+  /**
+   * @brief Check if this is a null process object.
+   * @return True if the process is null, false otherwise.
+   */
   virtual bool IsNull() const = 0;
 
-  /// Returns true if this process has a valid (non-negative) PID.
+  /**
+   * @brief Check if this process has a valid (non-negative) PID.
+   * @return True if the process is valid, false otherwise.
+   */
   virtual bool IsValid() const = 0;
 
-  /// Forcefully kills the process.
-  /// Unsafe for unowned processes.
+  /**
+   * @brief Forcefully kills the process.
+   * @details It is unsafe to kill unowned processes (processes created outside of raylet)
+   *          as their death may not be tracked by the parent process and can result
+   *          in double kill attempts.
+   */
   virtual void Kill() = 0;
 
-  /// Check whether the process is alive.
+  /**
+   * @brief Check whether the process is alive.
+   * @return True if the process is alive, false otherwise.
+   */
   virtual bool IsAlive() const = 0;
 
-  /// Waits for process to terminate.
-  /// Not supported for unowned processes.
-  /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
+  /**
+   * @brief Waits for process to terminate.
+   * @details Not supported for unowned processes.
+   * @return The process's exit code. Returns -1 for a null process.
+   */
   virtual int Wait() const = 0;
 };
 

@@ -188,7 +188,8 @@ class WorkerPoolMock : public WorkerPool {
       const std::vector<std::string> &worker_command_args,
       const ProcessEnvironment &env) override {
     // Use a bogus process ID that won't conflict with those in the system
-    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
+    pid_t pid =
+        static_cast<pid_t>(Process::PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_pid_ = pid;
     worker_commands_by_proc_[pid] = worker_command_args;
     startup_tokens_by_proc_[pid] = WorkerPool::worker_startup_token_counter_;

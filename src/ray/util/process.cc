@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -47,6 +48,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
@@ -63,7 +65,7 @@ Process::~Process() {
 #else
     success = close(static_cast<int>(fd_)) == 0;
 #endif
-    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
+    RAY_CHECK(success) << absl::StrFormat("error %d closing process %d FD", errno, pid_);
   }
 
   fd_ = -1;
@@ -105,13 +107,13 @@ Process::Process(pid_t pid) {
         // processes owned by this process, we should make this impossible by keeping
         // the SIGCHLD signal. For processes not owned by this process, we need to come up
         // with a strategy to create this class in a way that avoids race conditions.
-        RAY_LOG(ERROR) << "Process " << pid << " does not exist.";
+        RAY_LOG(ERROR) << absl::StrFormat("Process %d does not exist.", pid);
       }
       if (error) {
         // TODO(mehrdadn): Should this be fatal, or perhaps returned as an error code?
         // Failures might occur due to reasons such as permission issues.
-        RAY_LOG(ERROR) << "error " << error << " opening process " << pid << ": "
-                       << error.message();
+        RAY_LOG(ERROR) << absl::StrFormat(
+            "error %d opening process %d: %s", error.value(), pid, error.message());
       }
     }
   }
@@ -121,19 +123,16 @@ Process::Process(pid_t pid) {
 }
 
 Process::Process(const char *argv[],
-                 void *io_service,
                  std::error_code &ec,
                  bool decouple,
                  const ProcessEnvironment &env,
                  bool pipe_to_stdin,
                  std::function<void(const std::string &)> add_to_cgroup,
                  bool new_process_group) {
-  /// TODO: use io_service with boost asio notify_fork.
-  (void)io_service;
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
     auto result =
-        spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
+        Spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
     if (result.ok()) {
       pid_ = result->first;
       fd_ = result->second;
@@ -144,7 +143,7 @@ Process::Process(const char *argv[],
   });
 #else
   auto result =
-      spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
+      Spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
   if (result.ok()) {
     pid_ = result->first;
     fd_ = result->second;
@@ -164,7 +163,7 @@ Process &Process::operator=(Process &&other) {
   return *this;
 }
 
-StatusOr<std::pair<pid_t, intptr_t>> Process::spawnvpe(
+StatusOr<std::pair<pid_t, intptr_t>> Process::Spawnvpe(
     const char *argv[],
     bool decouple,
     const ProcessEnvironment &env,
@@ -396,7 +395,6 @@ StatusOr<std::unique_ptr<ProcessInterface>> Process::Spawn(
   std::error_code error;
   std::unique_ptr<ProcessInterface> proc = std::make_unique<Process>(
       &*argv.begin(),
-      nullptr,
       error,
       decouple,
       env,
@@ -423,7 +421,7 @@ std::error_code Process::Call(const std::vector<std::string> &args,
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), nullptr, ec, true, env);
+  Process proc(&*argv.begin(), ec, true, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
@@ -481,12 +479,12 @@ int Process::Wait() const {
       }
 #endif
       if (error) {
-        RAY_LOG(ERROR) << "Failed to wait for process " << pid_ << " with error " << error
-                       << ": " << error.message();
+        RAY_LOG(ERROR) << absl::StrFormat(
+            "Failed to wait for process %d with error %d: %s",
+            pid_,
+            error.value(),
+            error.message());
       }
-    } else {
-      // (Dummy process case)
-      status = 0;
     }
   } else {
     // (Null process case)
@@ -536,8 +534,10 @@ void Process::Kill() {
       }
 #endif
       if (error) {
-        RAY_LOG(DEBUG) << "Failed to kill process " << pid_ << " with error " << error
-                       << ": " << error.message();
+        RAY_LOG(DEBUG) << absl::StrFormat("Failed to kill process %d with error %d: %s",
+                                          pid_,
+                                          error.value(),
+                                          error.message());
       }
     }
   } else {
