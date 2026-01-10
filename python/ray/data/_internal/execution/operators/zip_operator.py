@@ -58,16 +58,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             *input_ops,
         )
 
-    @property
-    @override
-    def _input_queues(self) -> List["BaseBundleQueue"]:
-        return self._input_buffers
-
-    @property
-    @override
-    def _output_queues(self) -> List["BaseBundleQueue"]:
-        return [self._output_buffer]
-
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
         for input_op in self.input_dependencies:
@@ -79,6 +69,33 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             else:
                 num_outputs = max(num_outputs, input_num_outputs)
         return num_outputs
+
+    def internal_input_queue_num_blocks(self) -> int:
+        return sum(
+            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
+        )
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(bundle.size_bytes() for bundle in self._output_buffer)
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queues."""
+        for input_buffer in self._input_buffers:
+            while input_buffer:
+                bundle = input_buffer.popleft()
+                self._metrics.on_input_dequeued(bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_buffer:
+            bundle = self._output_buffer.popleft()
+            self._metrics.on_output_dequeued(bundle)
 
     def num_output_rows_total(self) -> Optional[int]:
         num_rows = None
