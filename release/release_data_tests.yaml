@@ -644,6 +644,7 @@
 # - Extra output columns
 - name: multi_stage_batch_inference
   python: "3.10"
+  frequency: weekly
   group: data-batch-inference
   env: gce
 
