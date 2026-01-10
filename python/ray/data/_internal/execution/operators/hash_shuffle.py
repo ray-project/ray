@@ -16,6 +16,7 @@ from typing import (
     Deque,
     Dict,
     Generator,
+    Iterator,
     List,
     Optional,
     Set,
@@ -126,7 +127,7 @@ class StatefulShuffleAggregation(abc.ABC):
         """
         raise NotImplementedError()
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
         """Finalizes aggregation of partitions (identified by partition-id)
         from all input sequences returning resulting block.
         """
@@ -181,13 +182,13 @@ class Concat(StatefulShuffleAggregation):
 
         self._partition_block_builders[partition_id].add_block(partition_shard)
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
         block = self._partition_block_builders[partition_id].build()
 
         if self._should_sort and len(block) > 0:
             block = block.sort_by([(k, "ascending") for k in self._key_columns])
 
-        return block
+        yield block
 
     def clear(self, partition_id: int):
         self._partition_block_builders.pop(partition_id)
@@ -742,6 +743,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 RefBundle(
                     [(block_ref, block_metadata)], schema=None, owns_blocks=False
                 ),
+                task_id=task.get_task_id(),
             )
 
             # Update Shuffle progress bar
@@ -916,7 +918,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 **finalize_task_resource_bundle,
             ).remote(partition_id)
 
-            self._finalizing_tasks[partition_id] = DataOpTask(
+            data_task = DataOpTask(
                 task_index=partition_id,
                 streaming_gen=block_gen,
                 output_ready_callback=functools.partial(_on_bundle_ready, partition_id),
@@ -927,6 +929,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
             )
+            self._finalizing_tasks[partition_id] = data_task
 
             # Pop partition id from remaining set
             self._pending_finalization_partition_ids.remove(partition_id)
@@ -935,7 +938,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # NOTE: This is empty because the input is directly forwarded from the
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            self.reduce_metrics.on_task_submitted(partition_id, empty_bundle)
+            self.reduce_metrics.on_task_submitted(
+                partition_id, empty_bundle, task_id=data_task.get_task_id()
+            )
 
     def _do_shutdown(self, force: bool = False) -> None:
         self._aggregator_pool.shutdown(force=True)
@@ -1565,31 +1570,46 @@ class HashShuffleAggregator:
 
         with self._lock:
             exec_stats_builder = BlockExecStats.builder()
+
             # Finalize given partition id
-            block = self._agg.finalize(partition_id)
-            exec_stats = exec_stats_builder.build()
+            blocks = self._agg.finalize(partition_id)
+
+            if self._target_max_block_size is not None:
+                blocks = _shape_blocks(blocks, self._target_max_block_size)
+
+            for block in blocks:
+                # Collect execution stats (and reset)
+                exec_stats = exec_stats_builder.build()
+                exec_stats_builder = BlockExecStats.builder()
+
+                yield block
+                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
-        if self._target_max_block_size is None:
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
-        else:
-            # Creating a block output buffer per partition finalize task because
-            # retrying finalize tasks cause stateful output_bufer to be
-            # fragmented (ie, adding duplicated blocks, calling finalize 2x)
-            output_buffer = BlockOutputBuffer(
-                output_block_size_option=OutputBlockSizeOption(
-                    target_max_block_size=self._target_max_block_size
-                )
-            )
 
-            output_buffer.add_block(block)
-            output_buffer.finalize()
-            while output_buffer.has_next():
-                block = output_buffer.next()
-                yield block
-                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+def _shape_blocks(
+    blocks: Iterator[Block], target_max_block_size: int
+) -> Iterator[Block]:
+    output_buffer = BlockOutputBuffer(
+        output_block_size_option=OutputBlockSizeOption(
+            target_max_block_size=target_max_block_size
+        )
+    )
+
+    for block in blocks:
+        output_buffer.add_block(block)
+
+        while output_buffer.has_next():
+            block = output_buffer.next()
+            yield block
+
+    output_buffer.finalize()
+
+    while output_buffer.has_next():
+        block = output_buffer.next()
+        yield block
 
 
 def _get_total_cluster_resources() -> ExecutionResources:

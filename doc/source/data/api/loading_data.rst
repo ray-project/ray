@@ -1,7 +1,7 @@
-.. _input-output:
+.. _loading-data-api:
 
-Input/Output
-============
+Loading Data API
+================
 
 .. currentmodule:: ray.data
 
@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   Dataset.write_parquet
 
 CSV
 ---
@@ -42,7 +41,6 @@ CSV
    :toctree: doc/
 
    read_csv
-   Dataset.write_csv
 
 JSON
 ----
@@ -52,7 +50,6 @@ JSON
    :toctree: doc/
 
    read_json
-   Dataset.write_json
 
 Text
 ----
@@ -89,7 +86,6 @@ Images
    :toctree: doc/
 
    read_images
-   Dataset.write_images
 
 Binary
 ------
@@ -108,7 +104,6 @@ TFRecords
    :toctree: doc/
 
    read_tfrecords
-   Dataset.write_tfrecords
    TFXReadOptions
 
 Pandas
@@ -120,8 +115,6 @@ Pandas
 
    from_pandas
    from_pandas_refs
-   Dataset.to_pandas
-   Dataset.to_pandas_refs
 
 NumPy
 -----
@@ -133,8 +126,6 @@ NumPy
    read_numpy
    from_numpy
    from_numpy_refs
-   Dataset.write_numpy
-   Dataset.to_numpy_refs
 
 Arrow
 -----
@@ -145,7 +136,6 @@ Arrow
 
    from_arrow
    from_arrow_refs
-   Dataset.to_arrow_refs
 
 MongoDB
 -------
@@ -155,16 +145,15 @@ MongoDB
    :toctree: doc/
 
    read_mongo
-   Dataset.write_mongo
 
 BigQuery
 --------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    read_bigquery
-   Dataset.write_bigquery
 
 SQL Databases
 -------------
@@ -174,7 +163,6 @@ SQL Databases
    :toctree: doc/
 
    read_sql
-   Dataset.write_sql
 
 Databricks
 ----------
@@ -193,7 +181,6 @@ Snowflake
    :toctree: doc/
 
    read_snowflake
-   Dataset.write_snowflake
 
 Unity Catalog
 -------------
@@ -230,7 +217,6 @@ Iceberg
    :toctree: doc/
 
    read_iceberg
-   Dataset.write_iceberg
 
 Delta Lake
 ----------
@@ -249,7 +235,6 @@ Lance
    :toctree: doc/
 
    read_lance
-   Dataset.write_lance
 
 MCAP (Message Capture)
 ----------------------
@@ -268,7 +253,6 @@ ClickHouse
    :toctree: doc/
 
    read_clickhouse
-   Dataset.write_clickhouse
 
 Daft
 ----
@@ -278,7 +262,6 @@ Daft
    :toctree: doc/
 
    from_daft
-   Dataset.to_daft
 
 Dask
 ----
@@ -288,7 +271,6 @@ Dask
    :toctree: doc/
 
    from_dask
-   Dataset.to_dask
 
 Spark
 -----
@@ -298,7 +280,6 @@ Spark
    :toctree: doc/
 
    from_spark
-   Dataset.to_spark
 
 Modin
 -----
@@ -308,7 +289,6 @@ Modin
    :toctree: doc/
 
    from_modin
-   Dataset.to_modin
 
 Mars
 ----
@@ -318,7 +298,6 @@ Mars
    :toctree: doc/
 
    from_mars
-   Dataset.to_mars
 
 Torch
 -----
@@ -365,8 +344,6 @@ WebDataset
 
    read_webdataset
 
-.. _data_source_api:
-
 Kafka
 -----
 
@@ -375,6 +352,8 @@ Kafka
    :toctree: doc/
 
    read_kafka
+
+.. _data_source_api:
 
 Datasource API
 --------------
@@ -387,21 +366,6 @@ Datasource API
    Datasource
    ReadTask
    datasource.FilenameProvider
-
-Datasink API
-------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_datasink
-   Datasink
-   datasource.RowBasedFileDatasink
-   datasource.BlockBasedFileDatasink
-   datasource.FileBasedDatasource
-   datasource.WriteResult
-   datasource.WriteReturnType
 
 Partitioning API
 ----------------
