@@ -169,7 +169,58 @@ class LSTMContainingRLModuleWithTargetNetwork(
     which is required by algorithms like APPO that use target networks for
     importance sampling and policy updates.
 
-    Example usage:
+    .. testcode::
+
+        import numpy as np
+        import gymnasium as gym
+        import tree
+        import torch
+        from ray.rllib.core.columns import Columns
+
+        B = 10  # batch size
+        T = 5  # seq len
+        e = 25  # embedding dim
+        CELL = 32  # LSTM cell size
+
+        # Construct the RLModule with target network support.
+        my_net = LSTMContainingRLModuleWithTargetNetwork(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
+            action_space=gym.spaces.Discrete(4),
+            model_config={"lstm_cell_size": CELL}
+        )
+
+        # Create target networks (required for TargetNetworkAPI).
+        my_net.make_target_networks()
+
+        # Create some dummy input.
+        obs = torch.from_numpy(
+            np.random.random_sample(size=(B, T, e)
+        ).astype(np.float32))
+        state_in = my_net.get_initial_state()
+        # Repeat state_in across batch.
+        state_in = tree.map_structure(
+            lambda s: torch.from_numpy(s).unsqueeze(0).repeat(B, 1), state_in
+        )
+        input_dict = {
+            Columns.OBS: obs,
+            Columns.STATE_IN: state_in,
+        }
+
+        # Run through all forward passes including target network forward.
+        print("Forward inference:", my_net.forward_inference(input_dict))
+        print("Forward exploration:", my_net.forward_exploration(input_dict))
+        print("Forward train:", my_net.forward_train(input_dict))
+        print("Forward target:", my_net.forward_target(input_dict))
+
+        # Get target network pairs for synchronization.
+        target_pairs = my_net.get_target_network_pairs()
+        print(f"Number of target network pairs: {len(target_pairs)}")
+
+        # Print out the number of parameters.
+        num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
+        print(f"num params = {num_all_params}")
+
+    Example usage with APPO:
 
     .. testcode::
 
