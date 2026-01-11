@@ -52,7 +52,45 @@ def freq_of_dicts(dicts: List[Dict], serializer=None, deserializer=dict) -> Dict
             corresponding frequency count.
     """
     if serializer is None:
-        serializer = lambda d: frozenset(d.items())  # noqa: E731
+
+        def freeze(value):
+            if isinstance(value, dict):
+                items = tuple(
+                    sorted(
+                        ((k, freeze(v)) for k, v in value.items()),
+                        key=repr,
+                    )
+                )
+                return ("__dict__", items)
+            if isinstance(value, list):
+                return ("__list__", tuple(freeze(v) for v in value))
+            if isinstance(value, set):
+                frozen_items = tuple(sorted((freeze(v) for v in value), key=repr))
+                return ("__set__", frozen_items)
+            if isinstance(value, tuple):
+                return ("__tuple__", tuple(freeze(v) for v in value))
+            return value
+
+        def unfreeze(value):
+            if (
+                isinstance(value, tuple)
+                and len(value) == 2
+                and value[0] in {"__dict__", "__list__", "__set__", "__tuple__"}
+            ):
+                marker, data = value
+                if marker == "__dict__":
+                    return {k: unfreeze(v) for k, v in data}
+                if marker == "__list__":
+                    return [unfreeze(v) for v in data]
+                if marker == "__set__":
+                    return {unfreeze(v) for v in data}
+                if marker == "__tuple__":
+                    return tuple(unfreeze(v) for v in data)
+            return value
+
+        serializer = freeze
+        if deserializer is dict:
+            deserializer = unfreeze
 
     freqs = Counter(serializer(d) for d in dicts)
     as_list = []
@@ -220,6 +258,15 @@ class LoadMetrics:
 
     def get_resource_requests(self):
         return self.resource_requests
+
+    def get_resource_request_bundles(self):
+        bundles = []
+        for request in self.resource_requests:
+            if isinstance(request, dict) and "resources" in request:
+                bundles.append(request["resources"])
+            else:
+                bundles.append(request)
+        return bundles
 
     def get_pending_placement_groups(self):
         return self.pending_placement_groups

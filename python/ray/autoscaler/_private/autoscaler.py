@@ -451,7 +451,7 @@ class StandardAutoscaler:
             self.load_metrics.get_resource_utilization(),
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
+            ensure_min_cluster_size=self.load_metrics.get_resource_request_bundles(),
             node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
         self._report_pending_infeasible(unfulfilled)
@@ -926,7 +926,7 @@ class StandardAutoscaler:
         resource_demands, strict_spreads = placement_groups_to_resource_demands(
             self.load_metrics.get_pending_placement_groups()
         )
-        resource_demands.extend(self.load_metrics.get_resource_requests())
+        resource_demands.extend(self.load_metrics.get_resource_request_bundles())
         if not resource_demands and not strict_spreads:
             return frozenset(nodes_not_allowed_to_terminate)
 

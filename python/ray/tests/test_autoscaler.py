@@ -366,6 +366,22 @@ class LoadMetricsTest(unittest.TestCase):
             "1.05 GiB/2.1 GiB object_store_memory"
         ) in debug
 
+    def testRequestResourcesSummary(self):
+        lm = LoadMetrics()
+        request = {"resources": {"CPU": 1, "memory": 0}, "label_selector": {}}
+        lm.set_resource_requests([request])
+
+        summary = lm.summary()
+
+        assert summary.request_demand == [(request, 1)]
+
+    def testRequestResourcesBundles(self):
+        lm = LoadMetrics()
+        request = {"resources": {"CPU": 1}, "label_selector": {}}
+        lm.set_resource_requests([request, {"CPU": 2}])
+
+        assert lm.get_resource_request_bundles() == [{"CPU": 1}, {"CPU": 2}]
+
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
