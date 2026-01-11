@@ -396,9 +396,9 @@ class _AutoscalingCoordinatorActor:
         """Reallocate cluster resources."""
         now = self._get_current_time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
-        ongoing_reqs = sorted([
-            req for req in self._ongoing_reqs.values() if req.expiration_time >= now
-        ])
+        ongoing_reqs = sorted(
+            [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]
+        )
         # Allocate resources to ongoing requests.
         # TODO(hchen): Optimize the following triple loop.
         for ongoing_req in ongoing_reqs:
