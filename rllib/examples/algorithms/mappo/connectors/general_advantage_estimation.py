@@ -66,7 +66,7 @@ class MAPPOGAEConnector(ConnectorV2):
         critic_batch[Columns.OBS] = torch.cat(
             [batch[k][Columns.OBS] for k in obs_mids], dim=-1
         )
-        if (Columns.LOSS_MASK in batch[obs_mids[0]]):
+        if Columns.LOSS_MASK in batch[obs_mids[0]]:
             critic_batch[Columns.LOSS_MASK] = batch[obs_mids[0]][Columns.LOSS_MASK]
         # Compute value predictions
         vf_preds = rl_module[SHARED_CRITIC_ID].compute_values(critic_batch)

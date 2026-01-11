@@ -61,7 +61,7 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         vf_targets = batch[Postprocessing.VALUE_TARGETS]
         # Compute a value function loss.
         vf_loss = torch.pow(vf_preds - vf_targets, 2.0)
-        vf_loss = vf_loss.mean(dim=-1) # Reduce for accurate masked mean
+        vf_loss = vf_loss.mean(dim=-1)  # Reduce for accurate masked mean
         vf_loss_clipped = torch.clamp(vf_loss, 0, self.config.vf_clip_param)
         mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
         mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
