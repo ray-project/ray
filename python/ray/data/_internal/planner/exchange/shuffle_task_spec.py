@@ -63,10 +63,11 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             # Create a TaskContext for the upstream map function
             # This is needed when expressions like random() require TaskContext
             from ray.data._internal.execution.interfaces.task_context import (
+                TaskContext,
                 create_temporary_task_context,
             )
 
-            with create_temporary_task_context(task_idx=idx, op_name="ShuffleMap"):
+            with create_temporary_task_context(TaskContext(idx, "ShuffleMap")):
                 upstream_map_iter = upstream_map_fn([block])
                 mapped_block = next(upstream_map_iter)
                 builder = BlockAccessor.for_block(mapped_block).builder()

@@ -78,33 +78,40 @@ class TaskContext:
 
 @contextlib.contextmanager
 def create_temporary_task_context(
-    task_idx: int, op_name: str, **kwargs
+    task_ctx: TaskContext,
 ) -> Generator[TaskContext, None, None]:
     """
     Create a temporary TaskContext for the current thread.
     The TaskContext is created and set for the current thread, and is reset after the context is exited.
 
     Args:
-        task_idx: The task index.
-        op_name: The operator name.
-        **kwargs: Additional keyword arguments to pass to TaskContext.
+        task_ctx: the TaskContext instance to be registered for the current thread.
 
     Yields:
         TaskContext: The created TaskContext instance.
 
     Examples:
-        >>> with create_temporary_task_context(task_idx=100, op_name="test"):
+        >>> with create_temporary_task_context(TaskContext(100, "test")):
         ...     ctx = TaskContext.get_current()
-        ...     ctx.task_idx
+        ...     print(ctx.task_idx)
         100
+
+        >>> ctx = TaskContext(0, "first")
+        >>> TaskContext.set_current(ctx)  # register the first context
+        >>> with create_temporary_task_context(TaskContext(1, "second")):
+        ...     ctx = TaskContext.get_current()
+        ...     print(ctx.op_name)
+        second
+        >>> ctx = TaskContext.get_current()
+        >>> print(ctx.op_name)
+        first
     """
-    ctx = TaskContext(
-        task_idx=task_idx,
-        op_name=op_name,
-        **kwargs,
-    )
-    TaskContext.set_current(ctx)
+    previous_ctx = TaskContext.get_current()
+    TaskContext.set_current(task_ctx)
     try:
-        yield ctx
+        yield task_ctx
     finally:
-        TaskContext.reset_current()
+        if previous_ctx is not None:
+            TaskContext.set_current(previous_ctx)
+        else:
+            TaskContext.reset_current()
