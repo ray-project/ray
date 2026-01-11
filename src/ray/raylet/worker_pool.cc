@@ -624,6 +624,13 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
       // Pop and fail the lease...
       requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
+      auto &retries = worker_register_timeout_retries_[pop_worker_request.get()];
+      retries++;
+      auto max_retries = RayConfig::instance().worker_register_timeout_max_retries();
+      if (max_retries >= 0 && retries > max_retries) {
+        status = PopWorkerStatus::WorkerRegistrationRetryExhausted;
+        worker_register_timeout_retries_.erase(pop_worker_request.get());
+      }
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
     }
   });
@@ -1093,6 +1100,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         });
     if (it != state.pending_registration_requests.end()) {
       pop_worker_request = *it;
+      worker_register_timeout_retries_.erase(pop_worker_request.get());
       state.pending_registration_requests.erase(it);
     }
   }

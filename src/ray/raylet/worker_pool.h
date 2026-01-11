@@ -73,6 +73,10 @@ enum PopWorkerStatus {
   // The lease's job has finished.
   // A nullptr worker will be returned with callback.
   JobFinished = 5,
+  // Worker process has been started, but the worker did not register at the raylet within
+  // the timeout after retrying max times.
+  // A nullptr worker will be returned with callback.
+  WorkerRegistrationRetryExhausted = 6,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
@@ -905,6 +909,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
       pending_exit_idle_workers_;
+
+  /// A map of worker registration timeout retry counts per PopWorkerRequest.
+  absl::flat_hash_map<const PopWorkerRequest *, int> worker_register_timeout_retries_;
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;

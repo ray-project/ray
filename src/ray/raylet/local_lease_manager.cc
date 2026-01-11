@@ -636,6 +636,19 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
+    } else if (status == PopWorkerStatus::WorkerRegistrationRetryExhausted) {
+      // In case of worker register failed, we cancel this task
+      // directly and raise a `WorkerRegistrationRetryExhaustedError` exception to user
+      // eventually. The task will be removed from dispatch queue in
+      // `CancelTask`.
+      CancelLeases(
+          [lease_id](const auto &w) {
+            return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
+          },
+          rpc::RequestWorkerLeaseReply::
+              SCHEDULING_CANCELLED_WORKER_REGISTRATION_RETRY_EXHAUSTED,
+          "Worker did not register at the raylet within the timeout after retrying "
+          "worker_register_timeout_max_retries times.");
     } else if (status == PopWorkerStatus::JobFinished) {
       // The task job finished.
       // Just remove the task from dispatch queue.

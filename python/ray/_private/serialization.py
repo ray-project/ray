@@ -53,6 +53,7 @@ from ray.exceptions import (
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
     WorkerCrashedError,
+    WorkerRegistrationRetryExhaustedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
@@ -534,6 +535,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return TaskUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("WORKER_REGISTRATION_RETRY_EXHAUSTED"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return WorkerRegistrationRetryExhaustedError(
+                    error_message=error_info.error_message
+                )
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
