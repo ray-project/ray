@@ -272,17 +272,21 @@ For distributed KV cache sharing across multiple GPU workers, you can use LMCach
 Mooncake requires system-level dependencies. Use the `args` field in your RayService worker spec to install them at container startup:
 
 ```yaml
-# Reference: https://kvcache-ai.github.io/Mooncake/getting_started/build.html
-args:
-  - |
-    sudo apt-get update && \
-    sudo apt-get install -y --no-install-recommends \
-      build-essential cmake libibverbs-dev libgoogle-glog-dev \
-      libgtest-dev libjsoncpp-dev libnuma-dev libunwind-dev \
-      libpython3-dev libboost-all-dev libssl-dev pybind11-dev \
-      libcurl4-openssl-dev libhiredis-dev pkg-config patchelf && \
-    sudo rm -rf /var/lib/apt/lists/*
+# Reference for system packages required by Mooncake: https://kvcache-ai.github.io/Mooncake/getting_started/build.html
+- name: ray-worker
+  image: rayproject/ray-llm:2.53.0-py311-cu128
+  args:
+    - |
+      sudo apt-get update && \
+      sudo apt-get install -y --no-install-recommends \
+        build-essential cmake libibverbs-dev libgoogle-glog-dev \
+        libgtest-dev libjsoncpp-dev libnuma-dev libunwind-dev \
+        libpython3-dev libboost-all-dev libssl-dev pybind11-dev \
+        libcurl4-openssl-dev libhiredis-dev pkg-config patchelf && \
+      sudo rm -rf /var/lib/apt/lists/*
 ```
+
+For general Kubernetes dependency patterns, also see [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide.
 
 ### Install LMCache and Mooncake via runtime_env
 
@@ -311,18 +315,20 @@ engine_kwargs:
 
 ### LMCache configuration for Mooncake
 
-Create a ConfigMap with your LMCache configuration file. The configuration specifies the Mooncake master address, metadata server, and transfer protocol. For the full configuration reference, see the [LMCache Mooncake backend documentation](https://docs.lmcache.ai/kv_cache/storage_backends/mooncake.html).
+Create a ConfigMap with your LMCache configuration file and mount it on your worker containers. The configuration specifies the Mooncake master address, metadata server, and transfer protocol. For the full configuration reference, see the [LMCache Mooncake backend documentation](https://docs.lmcache.ai/kv_cache/storage_backends/mooncake.html).
 
 Example `lmcache-config.yaml`:
 
 ```yaml
 chunk_size: 256
-remote_url: "mooncakestore://mooncake-master.default.svc.cluster.local:50051/"
+remote_url: "mooncakestore://mooncake-master.default.svc.cluster.local:50051/" # Pre-setup mooncake server by creating custom deployment.
 remote_serde: "naive"
 local_cpu: true
 max_local_cpu_size: 64  # GB
 
 extra_config:
+  # Using etcd instead of mooncake metadata server, since it is currently unstable and it is advised to use etcd. 
+  # Refer here for setting up etcd in K8s environment: https://etcd.io/docs/v3.6/op-guide/kubernetes/
   metadata_server: "etcd://etcd.default.svc.cluster.local:2379"
   protocol: "tcp"  # Use "rdma" for RDMA-capable networks
   master_server_address: "mooncake-master.default.svc.cluster.local:50051"
@@ -332,8 +338,6 @@ extra_config:
 :::{note}
 This setup requires a running Mooncake master service and metadata server (etcd or HTTP). See the [Mooncake deployment guide](https://kvcache-ai.github.io/Mooncake/getting_started/build.html) for infrastructure setup.
 :::
-
-For general Kubernetes dependency patterns, see [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide.
 
 ## See also
 

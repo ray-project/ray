@@ -354,7 +354,7 @@ curl -o ray-serve.extra-dependency.yaml https://raw.githubusercontent.com/ray-pr
 Packages installed via `args` install on every container restart. For production, consider building a custom image with shared dependencies pre-installed.
 :::
 
-For advanced container command customization, see [Specify container commands](kuberay-pod-command). For LLM-specific dependencies such as KV cache offloading with LMCache and Mooncake, see [KV cache offloading](kv-cache-offloading-guide).
+For advanced container command customization, see [Specify container commands](kuberay-pod-command).
 
 ## Next steps
 
