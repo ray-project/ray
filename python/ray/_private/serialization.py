@@ -44,6 +44,7 @@ from ray.exceptions import (
     OutOfMemoryError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
+    PopWorkerRetryExhaustedError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -534,6 +535,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return TaskUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("POP_WORKER_RETRY_EXHAUSTED"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return PopWorkerRetryExhaustedError(
+                    error_message=error_info.error_message
+                )
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)

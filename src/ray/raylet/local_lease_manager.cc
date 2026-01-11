@@ -489,6 +489,7 @@ void LocalLeaseManager::SpillWaitingLeases() {
       if (!lease_spec.GetDependencies().empty()) {
         lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
       }
+      pop_worker_retries_.erase(lease_id);
       num_waiting_lease_spilled_++;
       waiting_leases_index_.erase(lease_id);
       it = waiting_lease_queue_.erase(it);
@@ -536,6 +537,7 @@ bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work
   if (!spec.GetDependencies().empty()) {
     lease_dependency_manager_.RemoveLeaseDependencies(spec.LeaseId());
   }
+  pop_worker_retries_.erase(spec.LeaseId());
   return true;
 }
 
@@ -599,12 +601,14 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           lease_dependency_manager_.RemoveLeaseDependencies(
               _lease.GetLeaseSpecification().LeaseId());
         }
+        pop_worker_retries_.erase(_lease.GetLeaseSpecification().LeaseId());
       };
 
   if (canceled) {
     // Task has been canceled.
     RAY_LOG(DEBUG) << "Lease " << lease_id << " has been canceled when worker popped";
     RemoveFromGrantedLeasesIfExists(lease);
+    pop_worker_retries_.erase(lease_id);
     // All the cleaning work has been done when canceled lease. Just return
     // false without doing anything.
     return false;
@@ -650,11 +654,29 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+        pop_worker_retries_[lease_id]++;
       } else {
         RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                        << status;
       }
-      work->SetStateWaiting(cause);
+
+      auto max_retries = RayConfig::instance().pop_worker_max_retries();
+      if (max_retries >= 0 && pop_worker_retries_[lease_id] > max_retries) {
+        // In case of too many retries, we cancel this task
+        // directly and raise a `PopWorkerRetryExhaustedError` exception to user
+        // eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        CancelLeases(
+            [lease_id](const auto &w) {
+              return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
+            },
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_POP_WORKER_RETRY_EXHAUSTED,
+            absl::StrCat("Empty pop worker after retrying ",
+                         RayConfig::instance().pop_worker_max_retries(),
+                         " times."));
+      } else {
+        work->SetStateWaiting(cause);
+      }
     }
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to
@@ -882,6 +904,7 @@ std::vector<std::shared_ptr<internal::Work>> LocalLeaseManager::CancelLeasesWith
           lease_dependency_manager_.RemoveLeaseDependencies(
               work->lease_.GetLeaseSpecification().LeaseId());
         }
+        pop_worker_retries_.erase(work->lease_.GetLeaseSpecification().LeaseId());
         waiting_leases_index_.erase(work->lease_.GetLeaseSpecification().LeaseId());
         cancelled_works.push_back(work);
         return true;
@@ -920,6 +943,7 @@ void LocalLeaseManager::CancelLeaseToGrantWithoutReply(
     lease_dependency_manager_.RemoveLeaseDependencies(
         work->lease_.GetLeaseSpecification().LeaseId());
   }
+  pop_worker_retries_.erase(lease_id);
   RemoveFromGrantedLeasesIfExists(work->lease_);
   work->SetStateCancelled();
 }

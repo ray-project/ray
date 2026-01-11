@@ -359,7 +359,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                       rpc::RequestWorkerLeaseReply::
                           SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                   reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE ||
+                  reply.failure_type() ==
+                      rpc::RequestWorkerLeaseReply::
+                          SCHEDULING_CANCELLED_POP_WORKER_RETRY_EXHAUSTED) {
                 // We need to actively fail all of the pending tasks in the queue when the
                 // placement group was removed or the runtime env failed to be set up.
                 // Such an operation is straightforward for the scenario of placement
@@ -377,6 +380,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_POP_WORKER_RETRY_EXHAUSTED) {
+                  error_type = rpc::ErrorType::POP_WORKER_RETRY_EXHAUSTED;
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
