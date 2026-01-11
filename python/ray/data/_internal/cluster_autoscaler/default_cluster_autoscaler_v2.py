@@ -50,6 +50,25 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
+def get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
+    """Get the unique node resource specs and their count in the cluster."""
+    # Filter out the head node.
+    node_resources = [
+        node["Resources"]
+        for node in ray.nodes()
+        if node["Alive"] and "node:__internal_head__" not in node["Resources"]
+    ]
+
+    nodes_resource_spec_count = defaultdict(int)
+    for r in node_resources:
+        node_resource_spec = _NodeResourceSpec.of(
+            cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
+        )
+        nodes_resource_spec_count[node_resource_spec] += 1
+
+    return nodes_resource_spec_count
+
+
 class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """Ray Data's second cluster autoscaler implementation.
 
@@ -95,7 +114,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
-        get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
+        get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
+            get_node_resource_spec_and_count
+        ),
     ):
         if resource_utilization_calculator is None:
             assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
@@ -119,29 +140,11 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             autoscaling_coordinator = DefaultAutoscalingCoordinator()
         self._autoscaling_coordinator = autoscaling_coordinator
         if get_node_counts is None:
-            get_node_counts = self._get_node_resource_spec_and_count
+            get_node_counts = get_node_resource_spec_and_count
         self._get_node_counts = get_node_counts
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
-
-    def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
-        """Get the unique node resource specs and their count in the cluster."""
-        # Filter out the head node.
-        node_resources = [
-            node["Resources"]
-            for node in ray.nodes()
-            if node["Alive"] and "node:__internal_head__" not in node["Resources"]
-        ]
-
-        nodes_resource_spec_count = defaultdict(int)
-        for r in node_resources:
-            node_resource_spec = _NodeResourceSpec.of(
-                cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
-            )
-            nodes_resource_spec_count[node_resource_spec] += 1
-
-        return nodes_resource_spec_count
 
     def try_trigger_scaling(self):
         # Note, should call this method before checking `_last_request_time`,

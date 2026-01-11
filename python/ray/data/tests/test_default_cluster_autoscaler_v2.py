@@ -6,6 +6,7 @@ import ray
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _NodeResourceSpec,
+    get_node_resource_spec_and_count,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
@@ -59,13 +60,7 @@ class TestClusterAutoscaling:
         ray.shutdown()
 
     def test_get_node_resource_spec_and_count(self):
-        # Test _get_node_resource_spec_and_count
-        fake_coordinator = FakeAutoscalingCoordinator()
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            autoscaling_coordinator=fake_coordinator,
-        )
+        # Test get_node_resource_spec_and_count
 
         node_table = [
             {
@@ -113,7 +108,7 @@ class TestClusterAutoscaling:
         }
 
         with patch("ray.nodes", return_value=node_table):
-            assert autoscaler._get_node_resource_spec_and_count() == expected
+            assert get_node_resource_spec_and_count() == expected
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -150,38 +145,28 @@ class TestClusterAutoscaling:
             or gpu_util >= scale_up_threshold
             or mem_util >= scale_up_threshold
         )
-        resources_allocated = fake_coordinator.get_allocated_resources(
-            autoscaler._requester_id
-        )
+        resources_allocated = autoscaler.get_total_resources()
         if not should_scale_up:
-            assert resources_allocated == []
+            assert resources_allocated == ExecutionResources.zero()
         else:
             expected_num_resource_spec1_requested = 2 + scale_up_delta
-            expected_request = []
-            expected_request.extend(
-                [
-                    {
-                        "CPU": resource_spec1.cpu,
-                        "GPU": resource_spec1.gpu,
-                        "memory": resource_spec1.mem,
-                    }
-                ]
-                * expected_num_resource_spec1_requested
-            )
-
             expected_num_resource_spec2_requested = 1 + scale_up_delta
-            expected_request.extend(
-                [
-                    {
-                        "CPU": resource_spec2.cpu,
-                        "GPU": resource_spec2.gpu,
-                        "memory": resource_spec2.mem,
-                    }
-                ]
-                * expected_num_resource_spec2_requested
+            expected_resources = ExecutionResources(
+                cpu=(
+                    resource_spec1.cpu * expected_num_resource_spec1_requested
+                    + resource_spec2.cpu * expected_num_resource_spec2_requested
+                ),
+                gpu=(
+                    resource_spec1.gpu * expected_num_resource_spec1_requested
+                    + resource_spec2.gpu * expected_num_resource_spec2_requested
+                ),
+                memory=(
+                    resource_spec1.mem * expected_num_resource_spec1_requested
+                    + resource_spec2.mem * expected_num_resource_spec2_requested
+                ),
             )
 
-            assert resources_allocated == expected_request
+            assert resources_allocated == expected_resources
 
 
 if __name__ == "__main__":
