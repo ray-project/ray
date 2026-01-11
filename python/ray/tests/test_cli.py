@@ -814,6 +814,68 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
 )
 @mock_ec2
 @mock_iam
+def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key):
+    from ray.autoscaler._private.commands import get_worker_node_ips
+
+    worker_ip_to_verify = None
+
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+
+    def commands_verifier(calls):
+        for call in calls:
+            if len(call[1]) > 0:
+                cmd = " ".join(call[1][0]) if isinstance(call[1][0], list) else call[1][0]
+                if "ssh" in cmd and worker_ip_to_verify and worker_ip_to_verify in cmd:
+                    return True
+        return False
+
+    with _setup_popen_mock(commands_mock, commands_verifier):
+        runner = CliRunner()
+        result = runner.invoke(
+            scripts.up,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "-y",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+            ],
+        )
+        _die_on_error(result)
+
+        worker_ips = get_worker_node_ips(
+            DEFAULT_TEST_CONFIG_PATH, override_cluster_name="test-cli"
+        )
+        assert len(worker_ips) > 0
+        worker_ip_to_verify = worker_ips[0]
+
+        result = runner.invoke(
+            scripts.attach,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+                "--ip",
+                worker_ip_to_verify,
+            ],
+        )
+
+        _check_output_via_pattern("test_ray_attach_with_ip.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+@mock_ec2
+@mock_iam
 def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
