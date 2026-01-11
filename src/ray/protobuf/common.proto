@@ -279,6 +279,8 @@ enum ErrorType {
   // The object cannot be reconstructed because lineage reconstruction is
   // disabled system-wide (lineage_pinning_enabled=false).
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 33;
+  // Indicates that a worker failed to register after multiple retry attempts.
+  WORKER_REGISTRATION_RETRY_EXHAUSTED = 34;
 }
 
 // The user error information.

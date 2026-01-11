@@ -624,6 +624,21 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
       // Pop and fail the lease...
       requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
+
+      auto &job_id = pop_worker_request->job_id_;
+      if (!job_id.IsNil() && worker_register_timeout_retries_.contains(job_id)) {
+        auto &retries = worker_register_timeout_retries_[job_id];
+        // As long as there is at least one valid worker for the
+        // pop_worker_request->job_id in pending_registration_requests, retries will be
+        // set to -1. Subsequent WorkerPendingRegistration will be retried infinitely
+        if (retries >= 0) {
+          retries++;
+          auto max_retries = RayConfig::instance().worker_register_timeout_max_retries();
+          if (max_retries >= 0 && retries > max_retries) {
+            status = PopWorkerStatus::WorkerRegistrationRetryExhausted;
+          }
+        }
+      }
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
     }
   });
@@ -734,6 +749,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     return;
   }
   all_jobs_[job_id] = job_config;
+  worker_register_timeout_retries_[job_id] = 0;
   if (NeedToEagerInstallRuntimeEnv(job_config)) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
     auto const &runtime_env_config = job_config.runtime_env_info().runtime_env_config();
@@ -773,6 +789,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
     DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
+  worker_register_timeout_retries_.erase(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -1093,6 +1110,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         });
     if (it != state.pending_registration_requests.end()) {
       pop_worker_request = *it;
+      auto &job_id = pop_worker_request->job_id_;
+      if (!job_id.IsNil() && worker_register_timeout_retries_.contains(job_id)) {
+        worker_register_timeout_retries_[job_id] = -1;
+      }
       state.pending_registration_requests.erase(it);
     }
   }

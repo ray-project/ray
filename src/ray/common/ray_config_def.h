@@ -280,6 +280,13 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Maximum number of retries for worker register timeout.
+/// When a worker fails to register with the raylet (e.g., due to runtime environment
+/// issues), the worker startup will be retried up to this many times before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 3. Retries indefinitely if
+/// the value is -1.
+RAY_CONFIG(int32_t, worker_register_timeout_max_retries, 3)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 

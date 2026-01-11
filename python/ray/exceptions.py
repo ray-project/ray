@@ -903,6 +903,25 @@ class RuntimeEnvSetupError(RayError):
 
 
 @PublicAPI
+class WorkerRegistrationRetryExhaustedError(RayError):
+    """Raised when a worker registration times out multiple times.
+
+    Args:
+        error_message: The error message that explains
+            why worker registration failed.
+    """
+
+    def __init__(self, error_message: str = None):
+        self.error_message = error_message
+
+    def __str__(self):
+        msgs = ["Worker registration timed out multiple times."]
+        if self.error_message:
+            msgs.append(self.error_message)
+        return "\n".join(msgs)
+
+
+@PublicAPI
 class TaskPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
@@ -1089,6 +1108,7 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
+    WorkerRegistrationRetryExhaustedError,
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
