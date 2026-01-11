@@ -24,8 +24,8 @@ import ray
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.tune import CheckpointConfig, SyncConfig
 from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -591,7 +591,7 @@ def run(
             "persistent-storage.html#setting-the-local-staging-directory"
         )
 
-    ray._private.usage.usage_lib.record_library_usage("tune")
+    ray._common.usage.usage_lib.record_library_usage("tune")
 
     # Tracking environment variable usage here will also catch:
     # 1.) Tuner.fit() usage

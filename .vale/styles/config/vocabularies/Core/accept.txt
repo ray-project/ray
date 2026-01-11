@@ -1,8 +1,8 @@
-Raylet
-stderr
+[Rr]aylet(s)?
+[Ss]tderr
 [Ss]tdout
 job_id
-Autoscaler
+[Aa]utoscaler
 ANSI
 PID
 tqdm

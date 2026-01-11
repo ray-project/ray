@@ -1,9 +1,10 @@
+import sys
+
 import click
 
-from ci.ray_ci.doc.module import Module
-from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.api import API
-from ci.ray_ci.utils import logger
+from ci.ray_ci.doc.autodoc import Autodoc
+from ci.ray_ci.doc.module import Module
 
 TEAM_API_CONFIGS = {
     "data": {
@@ -21,7 +22,17 @@ TEAM_API_CONFIGS = {
     "serve": {
         "head_modules": {"ray.serve"},
         "head_doc_file": "doc/source/serve/api/index.md",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # private versions of request router APIs
+            "ray.serve._private.common.ReplicaID",
+            "ray.serve._private.request_router.common.PendingRequest",
+            "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
+            "ray.serve._private.request_router.request_router.RequestRouter",
+            "ray.serve._private.request_router.replica_wrapper.RunningReplica",
+            "ray.serve._private.request_router.request_router.FIFOMixin",
+            "ray.serve._private.request_router.request_router.LocalityMixin",
+            "ray.serve._private.request_router.request_router.MultiplexMixin",
+        },
     },
     "core": {
         "head_modules": {"ray"},
@@ -33,6 +44,8 @@ TEAM_API_CONFIGS = {
             "ray.util.scheduling_strategies.NodeLabelSchedulingStrategy",
             "ray.util.scheduling_strategies.In",
             "ray.util.scheduling_strategies.NotIn",
+            # TODO(jjyao): document this API
+            "ray.ObjectRefGenerator",
             # TODO(jjyao): document or deprecate these APIs
             "ray.experimental.compiled_dag_ref.CompiledDAGFuture",
             "ray.experimental.compiled_dag_ref.CompiledDAGRef",
@@ -50,7 +63,9 @@ TEAM_API_CONFIGS = {
             # These are deprecated APIs, so just white-listing them here for CI.
             "ray.train.error.SessionMisuseError",
             "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.TrainingFailedError",
             "ray.train.context.TrainContext",
+            "ray.train.context.get_context",
         },
     },
     "tune": {
@@ -88,24 +103,28 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
     white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
 
     # Policy 01: all public APIs should be documented
-    logger.info(f"Validating that public {team} APIs should be documented...")
+    print(
+        f"--- Validating that public {team} APIs should be documented...",
+        file=sys.stderr,
+    )
     good_apis, bad_apis = API.split_good_and_bad_apis(
         api_in_codes, api_in_docs, white_list_apis
     )
 
     if good_apis:
-        logger.info("Public APIs that are documented:")
+        print("Public APIs that are documented:", file=sys.stderr)
         for api in good_apis:
-            logger.info(f"\t{api}")
+            print(f"\t{api}", file=sys.stderr)
 
     if bad_apis:
-        logger.info("Public APIs that are NOT documented:")
+        print("Public APIs that are NOT documented:", file=sys.stderr)
         for api in bad_apis:
-            logger.info(f"\t{api}")
+            print(f"\t{api}", file=sys.stderr)
 
     if bad_apis:
-        logger.info(
-            f"Some public {team} APIs are not documented. Please document them."
+        print(
+            f"Some public {team} APIs are not documented. Please document them.",
+            file=sys.stderr,
         )
         return False
     return True

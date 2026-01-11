@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import check
 
@@ -22,7 +22,7 @@ def on_env_runners_recreated(
     for id_ in env_runner_indices:
         key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
         # Increase the counter.
-        algorithm.metrics.log_value(key, 1, reduce="sum")
+        algorithm.metrics.log_value(key, 1, reduce="lifetime_sum")
         print(f"changed {key} to {algorithm._counters[key]}")
 
     # Execute some dummy code on each of the recreated workers.
@@ -108,7 +108,8 @@ class TestCallbacks(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

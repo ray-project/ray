@@ -23,6 +23,10 @@ from packaging import version
 
 import ray
 import ray.cloudpickle as pickle
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -39,10 +43,6 @@ from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
-)
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
 )
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -909,7 +909,7 @@ class Policy(metaclass=ABCMeta):
         """Whether this Policy holds a recurrent Model.
 
         Returns:
-            True if this Policy has-a RNN-based Model.
+            True if this Policy has an RNN-based Model.
         """
         return False
 
@@ -1327,9 +1327,9 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
-            stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
-                TensorType]]]): An optional stats function to be called after
-                the loss.
+                stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
+                    TensorType]]]): An optional stats function to be called after
+                    the loss.
         """
 
         if self.config.get("_disable_initialize_loss_from_dummy_batch", False):

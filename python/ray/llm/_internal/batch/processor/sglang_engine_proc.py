@@ -1,114 +1,109 @@
 """The SGLang engine processor."""
 
+import logging
 from typing import Any, Dict, Optional
 
+import transformers
 from pydantic import Field, root_validator
 
-from ray.data.block import UserDefinedFunction
-
 import ray
-from ray.llm._internal.batch.processor.base import (
-    Processor,
-    ProcessorConfig,
-    ProcessorBuilder,
-)
-from ray.llm._internal.batch.stages import (
-    SGLangEngineStage,
-    ChatTemplateStage,
-    TokenizeStage,
-    DetokenizeStage,
-)
-from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
+from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
     BatchModelTelemetry,
-)
-from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    TelemetryAgent,
     get_or_create_telemetry_agent,
 )
+from ray.llm._internal.batch.processor.base import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+    OfflineProcessorConfig,
+    Processor,
+    ProcessorBuilder,
+)
+from ray.llm._internal.batch.processor.utils import (
+    build_cpu_stage_map_kwargs,
+    get_value_or_fallback,
+)
+from ray.llm._internal.batch.stages import (
+    ChatTemplateStage,
+    DetokenizeStage,
+    SGLangEngineStage,
+    TokenizeStage,
+)
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    TokenizerStageConfig,
+    resolve_stage_config,
+)
+from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 
-import transformers
+logger = logging.getLogger(__name__)
+
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 
-class SGLangEngineProcessorConfig(ProcessorConfig):
+class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     """The configuration for the SGLang engine processor."""
 
     # SGLang stage configurations.
-    model_source: str = Field(
-        description="The model source to use for the SGLang engine.",
-    )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="The kwargs to pass to the SGLang engine. See "
         "https://docs.sglang.ai/backend/server_arguments.html "
         "for more details.",
     )
-    task_type: SGLangTaskType = Field(
+    task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
-    runtime_env: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="The runtime environment to use for the SGLang engine.",
-    )
-    max_pending_requests: Optional[int] = Field(
-        default=None,
-        description="The maximum number of pending requests. If not specified, "
-        "will use the default value from the SGLang engine.",
-    )
-    max_concurrent_batches: int = Field(
-        default=4,
-        description="The maximum number of concurrent batches in the engine. "
-        "This is to overlap the batch processing to avoid the tail latency of "
-        "each batch. The default value may not be optimal when the batch size "
-        "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 64.",
-    )
-
-    # Processor stage configurations.
-    apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
-    )
-    chat_template: Optional[str] = Field(
-        default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
-    )
-    tokenize: bool = Field(
-        default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "SGLang engine. If not, SGLang will tokenize the prompt in the engine.",
-    )
-    detokenize: bool = Field(
-        default=True,
-        description="Whether to detokenize the output.",
-    )
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
-        task_type_str = values.get("task_type", "generate")
-        values["task_type"] = SGLangTaskType(task_type_str)
+        task_type = values.get("task_type", SGLangTaskType.GENERATE)
+        if task_type not in SGLangTaskType.values():
+            raise ValueError(f"Invalid task type: {task_type}")
+
+        engine_kwargs = values.get("engine_kwargs", {})
+        engine_kwargs_task = engine_kwargs.get("task", "")
+        if engine_kwargs_task != task_type:
+            logger.warning(
+                "The task set in engine kwargs (%s) is different from the "
+                "stage (%s). Overriding the task in engine kwargs to %s.",
+                engine_kwargs_task,
+                task_type,
+                task_type,
+            )
+            engine_kwargs["task"] = task_type
+        values["engine_kwargs"] = engine_kwargs
         return values
 
 
 def build_sglang_engine_processor(
     config: SGLangEngineProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
+
     Args:
         config: The configuration for the processor.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
         telemetry_agent: An optional telemetry agent for collecting usage telemetry.
 
     Returns:
@@ -118,34 +113,50 @@ def build_sglang_engine_processor(
 
     stages = []
 
-    if config.apply_chat_template:
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "concurrency": config.concurrency,
+        "runtime_env": config.runtime_env,
+        "model_source": config.model_source,
+    }
+
+    # Resolve and build ChatTemplateStage if enabled
+    chat_template_stage_cfg = resolve_stage_config(
+        config.chat_template_stage,
+        ChatTemplateStageConfig,
+        processor_defaults,
+    )
+    if chat_template_stage_cfg.enabled:
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
-                    chat_template=config.chat_template,
+                    model=chat_template_stage_cfg.model_source,
+                    chat_template=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template, config.chat_template
+                    ),
+                    chat_template_kwargs=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template_kwargs,
+                        chat_template_kwargs,
+                    ),
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
         )
 
-    if config.tokenize:
+    # Resolve and build TokenizeStage if enabled
+    tokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "tokenize_stage", config.tokenize),
+        TokenizerStageConfig,
+        processor_defaults,
+    )
+    if tokenize_stage_cfg.enabled:
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=tokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
         )
 
@@ -160,10 +171,16 @@ def build_sglang_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas. Note that we use a single
-                # integer to let Ray Data prepare all replicas before kicking
-                # off the processing for now.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    **config.get_concurrency(autoscaling_enabled=False),
+                    max_tasks_in_flight_per_actor=config.experimental.get(
+                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
@@ -174,18 +191,19 @@ def build_sglang_engine_processor(
         )
     )
 
-    if config.detokenize:
+    # Resolve and build DetokenizeStage if enabled
+    detokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "detokenize_stage", config.detokenize),
+        DetokenizeStageConfig,
+        processor_defaults,
+    )
+    if detokenize_stage_cfg.enabled:
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=detokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
         )
 
@@ -200,7 +218,7 @@ def build_sglang_engine_processor(
             batch_size=config.batch_size,
             accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
             concurrency=config.concurrency,
-            task_type=SGLangTaskType(config.task_type),
+            task_type=config.task_type,
             tensor_parallel_size=config.engine_kwargs.get("tp_size", 1),
             data_parallel_size=config.engine_kwargs.get("dp_size", 1),
         )
@@ -211,6 +229,8 @@ def build_sglang_engine_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

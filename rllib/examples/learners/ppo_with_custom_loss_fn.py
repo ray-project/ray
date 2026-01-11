@@ -23,7 +23,7 @@ able to learn properly as it's forced to keep the weights small.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --regularizer-coeff=0.02
+`python [script file name].py --regularizer-coeff=0.02
 --lr=0.01`
 
 Use the `--regularizer-coeff` option to set the value of the coefficient with which
@@ -73,11 +73,11 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.learners.classes.custom_ppo_loss_fn_learner import (
     PPOTorchLearnerWithWeightRegularizerLoss,
 )
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 
@@ -86,7 +86,6 @@ parser = add_rllib_example_script_args(
     default_reward=250.0,
     default_timesteps=200000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--regularizer-coeff",
     type=float,
@@ -105,9 +104,6 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (

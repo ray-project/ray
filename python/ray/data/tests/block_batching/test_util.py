@@ -1,5 +1,6 @@
 import logging
 import random
+import sys
 import time
 from os import urandom
 
@@ -7,10 +8,9 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-import sys
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch
+from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
     blocks_to_batches,
@@ -20,7 +20,6 @@ from ray.data._internal.block_batching.util import (
     resolve_block_refs,
 )
 from ray.data._internal.util import make_async_gen
-
 
 logger = logging.getLogger(__file__)
 
@@ -33,8 +32,104 @@ def block_generator(num_rows: int, num_blocks: int):
 def test_resolve_block_refs(ray_start_regular_shared):
     block_refs = [ray.put(0), ray.put(1), ray.put(2)]
 
-    resolved_iter = resolve_block_refs(iter(block_refs))
+    ctx = ray.data.DataContext.get_current()
+    resolved_iter = resolve_block_refs(iter(block_refs), ctx=ctx)
     assert list(resolved_iter) == [0, 1, 2]
+
+
+# Ensures `resolve_block_refs` respects the batch size knob.
+def test_resolve_block_refs_batches(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 2
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    block_refs = [ray.put(i) for i in range(5)]
+
+    try:
+        assert list(resolve_block_refs(iter(block_refs), ctx=ctx)) == list(range(5))
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [2, 2, 1]
+
+
+# Ensures the explicit `max_get_batch_size` override is prioritized.
+def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 32
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    block_refs = [ray.put(i) for i in range(7)]
+
+    try:
+        assert list(
+            resolve_block_refs(iter(block_refs), max_get_batch_size=3, ctx=ctx)
+        ) == list(range(7))
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [3, 3, 1]
+
+
+# Ensures callable overrides are honored when provided.
+def test_resolve_block_refs_max_batch_callable(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 32
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    provider_calls = {"count": 0}
+
+    def provider() -> int:
+        provider_calls["count"] += 1
+        return 2
+
+    block_refs = [ray.put(i) for i in range(5)]
+
+    try:
+        assert list(
+            resolve_block_refs(iter(block_refs), max_get_batch_size=provider, ctx=ctx)
+        ) == list(range(5))
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [2, 2, 1]
+    assert provider_calls["count"] > 0
 
 
 @pytest.mark.parametrize("block_size", [1, 10])
@@ -65,13 +160,17 @@ def test_blocks_to_batches(block_size, drop_last):
         assert leftover_batches == 1
         assert full_batches == (dataset_size // batch_size)
 
-    assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
+    assert [batch.metadata.batch_idx for batch in batch_iter] == list(
+        range(len(batch_iter))
+    )
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 def test_format_batches(batch_format):
     block_iter = block_generator(num_rows=2, num_blocks=2)
-    batch_iter = (Batch(i, block) for i, block in enumerate(block_iter))
+    batch_iter = (
+        Batch(BatchMetadata(batch_idx=i), block) for i, block in enumerate(block_iter)
+    )
     batch_iter = list(format_batches(batch_iter, batch_format=batch_format))
 
     for batch in batch_iter:
@@ -83,7 +182,9 @@ def test_format_batches(batch_format):
             assert isinstance(batch.data, dict)
             assert isinstance(batch.data["foo"], np.ndarray)
 
-    assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
+    assert [batch.metadata.batch_idx for batch in batch_iter] == list(
+        range(len(batch_iter))
+    )
 
 
 def test_collate():
@@ -91,13 +192,13 @@ def test_collate():
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, data)
+        Batch(BatchMetadata(batch_idx=i), data)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = collate(batches, collate_fn=collate_fn)
 
     for i, batch in enumerate(batch_iter):
-        assert batch.batch_idx == i
+        assert batch.metadata.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
@@ -106,13 +207,13 @@ def test_finalize():
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, data)
+        Batch(BatchMetadata(batch_idx=i), data)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = finalize_batches(batches, finalize_fn=finalize_fn)
 
     for i, batch in enumerate(batch_iter):
-        assert batch.batch_idx == i
+        assert batch.metadata.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
@@ -409,11 +510,11 @@ def test_calculate_ref_hits(ray_start_regular_shared):
     # With ctx.enable_get_object_locations_for_metrics set to False
     # by default, `_calculate_ref_hits` returns -1 for all, since
     # getting object locations is disabled.
-    assert hits == -1
-    assert misses == -1
-    assert unknowns == -1
+    assert hits == 0
+    assert misses == 0
+    assert unknowns == 0
 
-    ctx = ray.data.context.DataContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     prev_enable_get_object_locations_for_metrics = (
         ctx.enable_get_object_locations_for_metrics
     )

@@ -16,19 +16,9 @@ import ray
 import ray.cluster_utils
 import ray.exceptions
 from ray import cloudpickle
+from ray._common.test_utils import is_named_tuple
 
 logger = logging.getLogger(__name__)
-
-
-def is_named_tuple(cls):
-    """Return True if cls is a namedtuple and False otherwise."""
-    b = cls.__bases__
-    if len(b) != 1 or b[0] is not tuple:
-        return False
-    f = getattr(cls, "_fields", None)
-    if not isinstance(f, tuple):
-        return False
-    return all(type(n) is str for n in f)
 
 
 @pytest.mark.parametrize(
@@ -790,10 +780,4 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

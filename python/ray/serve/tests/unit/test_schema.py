@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Union
 import pytest
 
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -135,13 +135,10 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
+        original_runtime_env = copy.deepcopy(env)
         schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
-        original_runtime_env = copy.deepcopy(schema.runtime_env)
-        # Make sure "working_dir" is only added once.
-        for _ in range(5):
-            schema = RayActorOptionsSchema.parse_obj(schema)
-            assert schema.runtime_env == original_runtime_env
+        # Make sure runtime environment is unchanged by the validation
+        assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -445,13 +442,10 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
+        original_runtime_env = copy.deepcopy(env)
         schema = ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        original_runtime_env = copy.deepcopy(schema.runtime_env)
-        # Make sure "working_dir" is only added once.
-        for _ in range(5):
-            schema = ServeApplicationSchema.parse_obj(schema)
-            assert schema.runtime_env == original_runtime_env
+        # Make sure runtime environment is unchanged by the validation
+        assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_serve_application_invalid_runtime_env(self, env):
@@ -487,6 +481,115 @@ class TestServeApplicationSchema:
         # If no import path is specified, this should not parse successfully
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+
+    def test_external_scaler_enabled_defaults_to_false(self):
+        # Ensure external_scaler_enabled defaults to False
+        serve_application_schema = self.get_valid_serve_application_schema()
+        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+        assert schema.external_scaler_enabled is False
+
+    def test_external_scaler_enabled_with_fixed_replicas(self):
+        # external_scaler_enabled=True should work with fixed num_replicas
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["external_scaler_enabled"] = True
+        serve_application_schema["deployments"] = [
+            {
+                "name": "deployment1",
+                "num_replicas": 5,
+            },
+            {
+                "name": "deployment2",
+                "num_replicas": 3,
+            },
+        ]
+        # This should parse successfully
+        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+        assert schema.external_scaler_enabled is True
+
+    def test_external_scaler_enabled_conflicts_with_autoscaling(self):
+        # external_scaler_enabled=True should conflict with autoscaling_config
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["external_scaler_enabled"] = True
+        serve_application_schema["deployments"] = [
+            {
+                "name": "deployment1",
+                "num_replicas": None,
+                "autoscaling_config": {
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "target_ongoing_requests": 5,
+                },
+            },
+        ]
+        # This should raise a validation error
+        with pytest.raises(ValueError) as exc_info:
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        error_message = str(exc_info.value)
+        assert "external_scaler_enabled is set to True" in error_message
+        assert "deployment1" in error_message
+
+    def test_external_scaler_enabled_conflicts_with_multiple_deployments(self):
+        # Test that validation catches multiple deployments with autoscaling
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["external_scaler_enabled"] = True
+        serve_application_schema["deployments"] = [
+            {
+                "name": "deployment1",
+                "num_replicas": 5,  # Fixed replicas - OK
+            },
+            {
+                "name": "deployment2",
+                "num_replicas": None,
+                "autoscaling_config": {
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "target_ongoing_requests": 5,
+                },
+            },
+            {
+                "name": "deployment3",
+                "autoscaling_config": {
+                    "min_replicas": 2,
+                    "max_replicas": 20,
+                },
+            },
+        ]
+        # This should raise a validation error mentioning both problematic deployments
+        with pytest.raises(ValueError) as exc_info:
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        error_message = str(exc_info.value)
+        assert "external_scaler_enabled is set to True" in error_message
+        assert "deployment2" in error_message
+        assert "deployment3" in error_message
+        # deployment1 should not be mentioned since it doesn't have autoscaling
+        assert (
+            "deployment1" not in error_message or '"deployment1"' not in error_message
+        )
+
+    def test_external_scaler_enabled_with_num_replicas_auto(self):
+        # external_scaler_enabled=True with num_replicas="auto" should conflict
+        # since "auto" implies autoscaling
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["external_scaler_enabled"] = True
+        serve_application_schema["deployments"] = [
+            {
+                "name": "deployment1",
+                "num_replicas": "auto",
+                "autoscaling_config": {
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+        ]
+        # This should raise a validation error
+        with pytest.raises(ValueError) as exc_info:
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        error_message = str(exc_info.value)
+        assert "external_scaler_enabled is set to True" in error_message
+        assert "deployment1" in error_message
 
 
 class TestServeDeploySchema:
@@ -767,7 +870,6 @@ def test_deployment_to_schema_to_deployment():
     )
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
         TEST_DEPLOY_GROUP_PINNED_URI,
-        TEST_MODULE_PINNED_URI,
     ]
 
 
@@ -829,6 +931,7 @@ def test_serve_instance_details_is_json_serializable():
                         "replicas": [],
                     }
                 },
+                "external_scaler_enabled": False,
             }
         },
     )._get_user_facing_json_serializable_dict(exclude_unset=True)
@@ -863,6 +966,7 @@ def test_serve_instance_details_is_json_serializable():
                             "replicas": [],
                         }
                     },
+                    "external_scaler_enabled": False,
                 }
             },
         }

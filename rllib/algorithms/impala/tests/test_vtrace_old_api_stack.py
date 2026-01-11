@@ -20,9 +20,10 @@ Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
 """
 
-from gymnasium.spaces import Box
-import numpy as np
 import unittest
+
+import numpy as np
+from gymnasium.spaces import Box
 
 from ray.rllib.algorithms.impala import vtrace_torch as vtrace_torch
 from ray.rllib.utils.framework import try_import_torch
@@ -53,7 +54,7 @@ def _ground_truth_vtrace_calculation(
     and bootstrap_values before calling _ground_truth_vtrace_calculation.
 
     Args:
-        discounts: Array of shape [T*B] of discounts. T is the lenght of the trajectory
+        discounts: Array of shape [T*B] of discounts. T is the length of the trajectory
             or sequence and B is the batch size.
             NOTE: The discount will be equal to gamma, the discount factor when the
             timestep that the discount is being applied to is not a terminal timestep.
@@ -282,7 +283,8 @@ class VtraceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

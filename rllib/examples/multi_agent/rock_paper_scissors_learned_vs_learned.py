@@ -20,12 +20,11 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
-
 
 parser = add_rllib_example_script_args(
     default_iters=50,
@@ -33,7 +32,6 @@ parser = add_rllib_example_script_args(
     default_reward=6.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(
@@ -60,7 +58,9 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("pettingzoo_rps")
         .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            env_to_module_connector=(
+                lambda env, spaces, device: FlattenObservations(multi_agent=True)
+            ),
         )
         .multi_agent(
             policies={"p0", "p1"},

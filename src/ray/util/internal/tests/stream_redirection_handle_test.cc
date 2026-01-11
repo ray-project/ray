@@ -22,13 +22,16 @@
 #include <thread>
 #include <vector>
 
-#include "ray/common/test/testing.h"
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/util.h"
 
 namespace ray::internal {
 
 namespace {
+
+inline std::string RandomID() { return UniqueID::FromRandom().Hex(); }
 
 // Output logging files to cleanup at process termination.
 std::vector<std::string> log_files;
@@ -54,7 +57,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   constexpr std::string_view kLogLine1 = "hello\n";
   constexpr std::string_view kLogLine2 = "world\n";
 
-  const std::string test_file_path = absl::StrFormat("%s.err", GenerateUUIDV4());
+  const std::string test_file_path = absl::StrFormat("%s.err", RandomID());
   const std::string log_file_path1 = test_file_path;
   const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
   log_files.emplace_back(log_file_path1);
@@ -69,7 +72,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  StreamRedirectionHandle redirection_handle(GetStderrHandle(), opts);
+  StreamRedirectionHandle redirection_handle(GetStderrFd(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -100,7 +103,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   constexpr std::string_view kLogLine1 = "hello";
   constexpr std::string_view kLogLine2 = "world";
 
-  const std::string test_file_path = absl::StrFormat("%s.err", GenerateUUIDV4());
+  const std::string test_file_path = absl::StrFormat("%s.err", RandomID());
   const std::string log_file_path1 = test_file_path;
   const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
   log_files.emplace_back(log_file_path1);
@@ -115,7 +118,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  StreamRedirectionHandle redirection_handle(GetStderrHandle(), opts);
+  StreamRedirectionHandle redirection_handle(GetStderrFd(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;

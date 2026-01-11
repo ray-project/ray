@@ -1,55 +1,60 @@
+import hashlib
 import os
+import random
+import string
 import time
-import traceback
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
+
+from google.cloud import storage as gcs_storage
 
 from ray_release.alerts.handle import handle_result, require_result
-from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
+from ray_release.anyscale_util import (
+    LAST_LOGS_LENGTH,
+    create_cluster_env_from_image,
+    get_custom_cluster_env_name,
+)
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
+from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.job_runner import JobRunner
-from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.test import Test
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.config import (
+    DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-    RELEASE_PACKAGE_DIR,
-    DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_compute
 from ray_release.exception import (
+    ClusterEnvCreateError,
+    CommandError,
+    CommandTimeout,
+    PrepareCommandError,
+    PrepareCommandTimeout,
     ReleaseTestConfigError,
     ReleaseTestSetupError,
-    CommandError,
-    PrepareCommandError,
-    CommandTimeout,
-    PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
+from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
+from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, ResultStatus, handle_exception
+from ray_release.result import Result, ResultStatus, update_result_from_exception
 from ray_release.signal_handling import (
-    setup_signal_handling,
     reset_signal_handling,
-    register_handler,
+    setup_signal_handling,
 )
+from ray_release.template import get_working_dir, load_test_cluster_compute
+from ray_release.test import Test
 
 type_str_to_command_runner = {
-    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
@@ -61,7 +66,10 @@ def _get_extra_tags_from_env() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_ORGANIZATION_SLUG",
         "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_BUILD_ID",
+        "BUILDKITE_BUILD_NUMBER",
         "BUILDKITE_SOURCE",
         "RELEASE_FREQUENCY",
     )
@@ -73,8 +81,6 @@ def _load_test_configuration(
     anyscale_project: str,
     result: Result,
     smoke_test: bool = False,
-    no_terminate: bool = False,
-    test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
@@ -90,21 +96,11 @@ def _load_test_configuration(
     result.buildkite_job_id = buildkite_job_id
 
     # Setting up working directory
-    working_dir = test["working_dir"]
-    new_wd = os.path.join(test_definition_root or RELEASE_PACKAGE_DIR, working_dir)
-    os.chdir(new_wd)
+
+    working_dir = get_working_dir(test)
+    os.chdir(working_dir)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
-
-    # Workaround while Anyscale Jobs don't support leaving cluster alive
-    # after the job has finished.
-    # TODO: Remove once we have support in Anyscale
-    if no_terminate and run_type == "anyscale_job":
-        logger.warning(
-            "anyscale_job run type does not support --no-terminate. "
-            "Switching to job (Ray Job) run type."
-        )
-        run_type = "job"
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -120,6 +116,8 @@ def _load_test_configuration(
     # We don't need other attributes as they can be derived from the name
     extra_tags["test_name"] = str(test["name"])
     extra_tags["test_smoke_test"] = str(result.smoke_test)
+    extra_tags["release_test_team"] = str(test.get("team", ""))
+    extra_tags["release_test_env"] = str(test.get("env", ""))
     result.extra_tags = extra_tags
 
     artifact_path = test["run"].get("artifact_path", None)
@@ -159,7 +157,6 @@ def _setup_cluster_environment(
         try:
             cluster_manager.cluster_env_id = cluster_env_id
             cluster_manager.build_cluster_env()
-            cluster_manager.fetch_build_info()
             logger.info(
                 "Using overridden cluster environment with ID "
                 f"{cluster_env_id} and build ID "
@@ -233,38 +230,17 @@ def _local_environment_information(
     command_runner: CommandRunner,
     build_timeout: int,
     cluster_timeout: int,
-    no_terminate: bool,
-    cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
-    if isinstance(cluster_manager, FullClusterManager):
-        if not no_terminate:
-            register_handler(
-                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
-            )
-
     # Start cluster
-    if cluster_id:
-        buildkite_group(":rocket: Using existing cluster")
-        # Re-use existing cluster ID for development
-        cluster_manager.cluster_id = cluster_id
-        cluster_manager.cluster_name = get_cluster_name(cluster_id)
-    else:
-        buildkite_group(":gear: Building cluster environment")
+    buildkite_group(":gear: Building cluster environment")
 
-        if cluster_env_id:
-            cluster_manager.cluster_env_id = cluster_env_id
+    cluster_manager.cluster_env_id = cluster_env_id
 
-        cluster_manager.build_configs(timeout=build_timeout)
+    cluster_manager.build_configs(timeout=build_timeout)
 
-        if isinstance(cluster_manager, FullClusterManager):
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
-        elif isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
-
-    result.cluster_url = cluster_manager.get_cluster_url()
-    result.cluster_id = cluster_manager.cluster_id
+    if isinstance(command_runner, AnyscaleJobRunner):
+        command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
 
 def _prepare_remote_environment(
@@ -293,6 +269,28 @@ def _prepare_remote_environment(
             raise PrepareCommandError(e)
         except CommandTimeout as e:
             raise PrepareCommandTimeout(e)
+
+
+def _upload_working_dir_to_gcs(working_dir: str) -> str:
+    """Upload working directory to GCS bucket.
+
+    Args:
+        working_dir: Path to directory to upload.
+    Returns:
+        GCS path where directory was uploaded.
+    """
+    # Create archive of working dir
+    logger.info(f"Archiving working directory: {working_dir}")
+    archived_file_path = archive_directory(working_dir)
+    archived_filename = os.path.basename(archived_file_path)
+
+    # Upload to GCS
+    gcs_client = gcs_storage.Client()
+    bucket = gcs_client.bucket("ray-release-working-dir")
+    blob = bucket.blob(archived_filename)
+    blob.upload_from_filename(archived_filename)
+
+    return f"gs://ray-release-working-dir/{blob.name}"
 
 
 def _running_test_script(
@@ -384,15 +382,98 @@ def _fetching_results(
 
 def run_release_test(
     test: Test,
+    result: Result,
+    anyscale_project: Optional[str] = None,
+    reporters: Optional[List[Reporter]] = None,
+    smoke_test: bool = False,
+    test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
+) -> Result:
+    if test.is_kuberay():
+        return run_release_test_kuberay(
+            test=test,
+            result=result,
+            smoke_test=smoke_test,
+            test_definition_root=test_definition_root,
+        )
+    return run_release_test_anyscale(
+        test=test,
+        anyscale_project=anyscale_project,
+        result=result,
+        reporters=reporters,
+        smoke_test=smoke_test,
+        test_definition_root=test_definition_root,
+        log_streaming_limit=log_streaming_limit,
+        image=image,
+    )
+
+
+def run_release_test_kuberay(
+    test: Test,
+    result: Result,
+    smoke_test: bool = False,
+    test_definition_root: Optional[str] = None,
+) -> Result:
+    start_time = time.monotonic()
+    pipeline_exception = None
+    try:
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
+        cluster_compute = load_test_cluster_compute(test, test_definition_root)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+            cluster_compute
+        )
+        kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
+        if kuberay_autoscaler_version:
+            kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
+        else:
+            kuberay_autoscaler_config = None
+        working_dir_upload_path = _upload_working_dir_to_gcs(get_working_dir(test))
+
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
+        # random 8 digit suffix
+        random_suffix = "".join(random.choices(string.digits, k=8))
+        base_job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}"
+        job_name = base_job_name.replace("_", "-")
+        logger.info(f"Job name: {job_name}")
+        kuberay_job_manager = KubeRayJobManager()
+        retcode, duration = kuberay_job_manager.run_and_wait(
+            job_name=job_name,
+            image=test.get_anyscale_byod_image(),
+            cmd_to_run=test["run"]["script"],
+            env_vars=test.get_byod_runtime_env(),
+            working_dir=working_dir_upload_path,
+            pip=test.get_byod_pips(),
+            compute_config=kuberay_compute_config,
+            autoscaler_config=kuberay_autoscaler_config,
+            timeout=command_timeout,
+        )
+        kuberay_job_manager.fetch_results()
+        result.return_code = retcode
+        result.runtime = duration
+    except Exception as e:
+        logger.info(f"Exception: {e}")
+        pipeline_exception = e
+        result.runtime = time.monotonic() - start_time
+
+    if pipeline_exception:
+        buildkite_group(":rotating_light: Handling errors")
+        update_result_from_exception(result, pipeline_exception)
+        raise pipeline_exception
+    return result
+
+
+def run_release_test_anyscale(
+    test: Test,
     anyscale_project: str,
     result: Result,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -402,17 +483,27 @@ def run_release_test(
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
+
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(
             test,
             anyscale_project,
             result,
             smoke_test,
-            no_terminate,
-            test_definition_root,
             log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
+
+        cluster_env_id = None
+        # If image is provided, create/reuse a custom cluster environment
+        if image:
+            cluster_env_id = create_cluster_env_from_image(
+                image, test.get_name(), test.get_byod_runtime_env()
+            )
+            cluster_manager.cluster_env_name = get_custom_cluster_env_name(
+                image, test.get_name()
+            )
+
         (
             prepare_cmd,
             prepare_timeout,
@@ -434,8 +525,6 @@ def run_release_test(
             command_runner,
             build_timeout,
             cluster_timeout,
-            no_terminate,
-            cluster_id,
             cluster_env_id,
         )
 
@@ -471,22 +560,13 @@ def run_release_test(
         pipeline_exception = e
         metrics = {}
 
-    # Obtain the cluster URL again as it is set after the
+    # Obtain the cluster info again as it is set after the
     # command was run in case of anyscale jobs
     if isinstance(command_runner, AnyscaleJobRunner):
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
     result.last_logs = command_runner.get_last_logs() if command_runner else None
-
-    if not no_terminate and cluster_manager:
-        buildkite_group(":earth_africa: Terminating cluster")
-        cluster_manager.terminate_cluster(wait=False)
-
-    if hasattr(command_runner, "cleanup"):
-        command_runner.cleanup()
 
     reset_signal_handling()
 
@@ -509,20 +589,8 @@ def run_release_test(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, result_status, runtime = handle_exception(
-            pipeline_exception,
-            result.runtime,
-        )
 
-        result.return_code = exit_code.value
-        result.status = result_status.value
-        if runtime is not None:
-            result.runtime = runtime
-        try:
-            raise pipeline_exception
-        except Exception:
-            if not result.last_logs:
-                result.last_logs = traceback.format_exc()
+        update_result_from_exception(result, pipeline_exception, with_last_logs=True)
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:

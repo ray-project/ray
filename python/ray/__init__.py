@@ -45,7 +45,7 @@ def _configure_system():
                 "previous versions may leak memory."
             )
 
-    # Importing psutil & setproctitle. Must be before ray._raylet is
+    # Importing psutil. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
@@ -198,7 +198,6 @@ __all__ = [
     "put",
     "remote",
     "shutdown",
-    "show_in_dashboard",
     "timeline",
     "wait",
     "LOCAL_MODE",
@@ -240,7 +239,6 @@ NON_AUTO_INIT_APIS = {
     "method",
     "nodes",
     "remote",
-    "show_in_dashboard",
     "shutdown",
     "timeline",
     "LoggingConfig",

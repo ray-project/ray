@@ -9,7 +9,7 @@ More Frameworks
     Hugging Face Accelerate Guide <huggingface-accelerate>
     DeepSpeed Guide <deepspeed>
     TensorFlow and Keras Guide <distributed-tensorflow-keras>
-    XGBoost and LightGBM Guide <examples/xgboost/distributed-xgboost-lightgbm>
+    LightGBM Guide <getting-started-lightgbm>
     Horovod Guide <horovod>
 
 .. grid:: 1 2 3 4
@@ -41,12 +41,12 @@ More Frameworks
         TensorFlow and Keras
 
     .. grid-item-card::
-        :img-top: /images/xgboost_logo.png
+        :img-top: /images/lightgbm_logo.png
         :class-img-top: mt-2 w-75 d-block mx-auto fixed-height-img
-        :link: examples/xgboost/distributed-xgboost-lightgbm
+        :link: getting-started-lightgbm
         :link-type: doc
 
-        XGBoost and LightGBM
+        LightGBM
 
     .. grid-item-card::
         :img-top: /images/horovod.png

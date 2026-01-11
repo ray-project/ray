@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 
 class TestOpenAICompatibilityNoAcceleratorType:
@@ -26,7 +27,7 @@ class TestOpenAICompatibilityNoAcceleratorType:
         )
         assert completion.model == model
         assert completion.model
-        assert completion.choices[0].text == "test_0 test_1 "
+        assert completion.choices[0].text == "test_0 test_1"
 
     def test_chat_no_accelerator_type(self, testing_model_no_accelerator):  # noqa: F811
         """Check chat completions without accelerator_type"""

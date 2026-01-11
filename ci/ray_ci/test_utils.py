@@ -1,17 +1,19 @@
 import base64
 import io
 import sys
-import pytest
-from unittest import mock
 from typing import List
+from unittest import mock
 
-from ray_release.test import Test
+import pytest
+
 from ci.ray_ci.utils import (
     chunk_into_n,
-    docker_login,
-    get_flaky_test_names,
+    ecr_docker_login,
     filter_tests,
+    get_flaky_test_names,
 )
+
+from ray_release.test import Test
 
 
 def test_chunk_into_n() -> None:
@@ -21,7 +23,7 @@ def test_chunk_into_n() -> None:
 
 
 @mock.patch("boto3.client")
-def test_docker_login(mock_client) -> None:
+def test_ecr_docker_login(mock_client) -> None:
     def _mock_subprocess_run(
         cmd: List[str],
         stdin=None,
@@ -38,7 +40,7 @@ def test_docker_login(mock_client) -> None:
     }
 
     with mock.patch("subprocess.run", side_effect=_mock_subprocess_run):
-        docker_login("docker_ecr")
+        ecr_docker_login("docker_ecr")
 
 
 def _make_test(name: str, state: str, team: str) -> Test:

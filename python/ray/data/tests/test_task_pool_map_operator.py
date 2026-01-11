@@ -16,7 +16,6 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
-        target_max_block_size=None,
         ray_remote_args={"num_cpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
@@ -26,12 +25,13 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    assert (
-        # At a minimum, you need enough processors to run one task and enough object
-        # store memory for a pending task.
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-        and max_resource_usage_bound == ExecutionResources.for_limits()
+    # At a minimum, you need enough processors to run one task and enough object
+    # store memory for a pending task.
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=0, object_store_memory=3
     )
+    # For CPU-only operators, max GPU/memory is 0 (not inf) to prevent hoarding.
+    assert max_resource_usage_bound == ExecutionResources.for_limits(gpu=0, memory=0)
 
 
 if __name__ == "__main__":

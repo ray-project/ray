@@ -5,7 +5,7 @@ import ray
 import sys
 from typing import List
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 # Overwrite print statement to make doc code testable

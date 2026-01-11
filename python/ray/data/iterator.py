@@ -1,5 +1,6 @@
 import abc
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -8,6 +9,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -16,26 +18,38 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.block_batching.iter_batches import iter_batches
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
+from ray.data.collate_fn import (
+    ArrowBatchCollateFn,
+    CollateFn,
+    DefaultCollateFn,
+    NumpyBatchCollateFn,
+    PandasBatchCollateFn,
+    TensorBatchReturnType,
+    TensorBatchType,
+    is_tensor_batch_type,
+)
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
 
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
         TorchBatchType,
+        TorchDeviceType,
     )
 
 
@@ -79,15 +93,17 @@ class DataIterator(abc.ABC):
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+    ]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple. The first item of the tuple is an iterator over RefBundles.
-            The second item of the tuple is a DatasetStats object used for recording
-            stats during iteration.
-            The third item is a boolean indicating if the blocks can be safely cleared
-            after use.
+            A tuple containing:
+            - An iterator over RefBundles.
+            - A DatasetStats object used for recording stats during iteration.
+            - A boolean indicating if the blocks can be safely cleared after use.
+            - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
 
@@ -101,8 +117,6 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
-        _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
         """Return a batched iterable over the dataset.
 
@@ -140,10 +154,44 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over record batches.
         """
+        return self._iter_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def _create_batch_iterator(
+        self,
+        ref_bundles_iter: Iterator[RefBundle],
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        **kwargs,
+    ) -> BatchIterator:
+        return BatchIterator(
+            ref_bundles_iter,
+            prefetch_bytes_callback=prefetch_bytes_callback,
+            **kwargs,
+        )
+
+    def _iter_batches(
+        self,
+        *,
+        prefetch_batches: int = 1,
+        batch_size: int = 256,
+        batch_format: Optional[str] = "default",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
+        _finalize_fn: Optional[Callable[[Any], Any]] = None,
+    ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
+
             # Iterate through the dataset from the start each time
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
@@ -152,33 +200,43 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats,
                 blocks_owned_by_consumer,
+                executor,
             ) = self._to_ref_bundle_iterator()
 
-            iterator = iter(
-                iter_batches(
-                    ref_bundles_iterator,
-                    stats=stats,
-                    clear_block_after_read=blocks_owned_by_consumer,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    drop_last=drop_last,
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
-                    shuffle_buffer_min_size=local_shuffle_buffer_size,
-                    shuffle_seed=local_shuffle_seed,
-                    prefetch_batches=prefetch_batches,
-                )
+            dataset_tag = self._get_dataset_tag()
+
+            # Create a callback to report prefetched bytes to the executor's
+            # resource manager.
+            def make_prefetch_callback(exec):
+                def callback(num_bytes: int) -> None:
+                    exec.set_external_consumer_bytes(num_bytes)
+
+                return callback
+
+            prefetch_bytes_callback = (
+                make_prefetch_callback(executor) if executor is not None else None
             )
 
-            dataset_tag = self._get_dataset_tag()
+            batch_iterator = self._create_batch_iterator(
+                ref_bundles_iterator,
+                stats=stats,
+                dataset_tag=dataset_tag,
+                clear_block_after_read=blocks_owned_by_consumer,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
+                shuffle_buffer_min_size=local_shuffle_buffer_size,
+                shuffle_seed=local_shuffle_seed,
+                prefetch_batches=prefetch_batches,
+                prefetch_bytes_callback=prefetch_bytes_callback,
+            )
 
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            for batch in iterator:
-                yield batch
-                StatsManager.update_iteration_metrics(stats, dataset_tag)
-            StatsManager.clear_iteration_metrics(dataset_tag)
+            yield from batch_iterator
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -207,7 +265,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over rows of the dataset.
         """
-        batch_iterable = self.iter_batches(
+        batch_iterable = self._iter_batches(
             batch_size=None, batch_format=None, prefetch_batches=1
         )
 
@@ -241,11 +299,14 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], "CollatedData"]] = None,
+        device: Union["TorchDeviceType", Literal["auto"]] = "auto",
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -263,24 +324,57 @@ class DataIterator(abc.ABC):
             {'id': tensor([4, 5, 6, 7])}
             {'id': tensor([ 8,  9, 10, 11])}
 
-            Use the ``collate_fn`` to customize how the tensor batch is created.
+            Use the ``ArrowBatchCollateFn`` to customize how the tensor batch is created
+            from an Arrow batch.
 
-            >>> from typing import Any, Dict
+            >>> import pyarrow as pa
             >>> import torch
-            >>> import numpy as np
             >>> import ray
-            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
-            ...     return torch.stack(
-            ...         [torch.as_tensor(array) for array in batch.values()],
-            ...         axis=1
-            ...     )
+            >>> from ray.data.collate_fn import ArrowBatchCollateFn
+            >>> class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+            ...     def __call__(self, batch: pa.Table) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
             >>> iterator = ray.data.from_items([
             ...     {"col_1": 1, "col_2": 2},
             ...     {"col_1": 3, "col_2": 4}]).iterator()
-            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomArrowBatchCollateFn()):
             ...     print(batch)
-            tensor([[1, 2],
-                    [3, 4]])
+            tensor([6, 8])
+
+            Use the ``NumpyBatchCollateFn`` to customize how the tensor batch is created
+            from a Numpy batch.
+
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import NumpyBatchCollateFn
+            >>> class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"] + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomNumpyBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
+
+            Use the ``PandasBatchCollateFn`` to customize how the tensor batch is created
+            from a Pandas batch.
+
+            >>> import pandas as pd
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import PandasBatchCollateFn
+            >>> class CustomPandasBatchCollateFn(PandasBatchCollateFn):
+            ...     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomPandasBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
 
         Time complexity: O(1)
 
@@ -301,17 +395,28 @@ class DataIterator(abc.ABC):
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
                 Otherwise, defaults to CPU. You can't use this parameter with
                 ``collate_fn``.
-            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of ``collate_fn``.
-                This is useful for further processing the data after it has been
-                batched. Potential use cases include collating along a dimension other
-                than the first, padding sequences of various lengths, or generally
-                handling batches of different length tensors. If not provided, the
-                default collate function is used which simply converts the batch of
-                numpy arrays to a batch of PyTorch tensors. This API is still
-                experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. If not provided, `iter_torch_batches` automatically
+                converts batches to `torch.Tensor`s and moves them to the device
+                assigned to the current worker. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                   Note that you should use util function `arrow_batch_to_tensors` to
+                   convert the pyarrow.Table to a dictionary of non-contiguous tensor
+                   batches.
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output can be any type. If the output is a `TensorBatchType`, it will be
+                automatically moved to the current worker's device. For other types,
+                you must handle device transfer manually in your training loop.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -322,15 +427,15 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
         """
 
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
         from ray.train.torch import get_device
+        from ray.train.utils import _in_ray_train_worker
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(
@@ -339,45 +444,85 @@ class DataIterator(abc.ABC):
                 "desired dtype and device outside of collate_fn."
             )
 
+        if pin_memory and collate_fn is not None:
+            raise ValueError(
+                "pin_memory is only supported when using `DefaultCollateFn`."
+            )
+
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
-            device = get_device()
+            device = get_device() if _in_ray_train_worker() else "cpu"
+
+        from ray.data.util.torch_utils import (
+            move_tensors_to_device,
+        )
+
+        # The default finalize_fn handles the host to device data transfer.
+        # This is executed in a 1-thread pool separately from collate_fn
+        # to allow independent parallelism of these steps.
+        def default_finalize_fn(
+            batch: TensorBatchType,
+        ) -> Union[TensorBatchReturnType, Any]:
+            """Default finalize function for moving PyTorch tensors to device. If
+            batch is of type `TensorBatchType`, it will be automatically moved to the
+            current worker's device. For other types, you must handle device transfer
+            manually in your training loop.
+
+            Args:
+                batch: Input batch to move to device.
+
+            Returns:
+                Batch with tensors moved to the target device.
+                - If input is TensorBatchType, returns tensors moved to device
+                - Otherwise returns the same type as input without moving tensors
+                to device.
+            """
+            if is_tensor_batch_type(batch):
+                return move_tensors_to_device(batch, device=device)
+            else:
+                return batch
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
-            # Here, we set device=None to defer host to device data transfer
-            # to the subsequent finalize_fn.
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch,
-                    dtypes=dtypes,
-                    device=None,
-                )
-
-            # The default finalize_fn handles the host to device data transfer.
-            # This is executed in a 1-thread pool separately from collate_fn
-            # to allow independent parallelism of these steps.
-            def finalize_fn(batch: Union["torch.Tensor", Dict[str, "torch.Tensor"]]):
-                if device is not None:
-                    if isinstance(batch, dict):
-                        for k, t in batch.items():
-                            batch[k] = t.to(device=device)
-                    else:
-                        batch = batch.to(device=device)
-                return batch
-
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            collate_fn = DefaultCollateFn(
+                dtypes=dtypes,
+                device=device,
+                pin_memory=pin_memory,
+            )
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            # The ArrowBatchCollateFn handles formatting and Tensor creation.
+            # Here, we defer host to device data transfer to the subsequent
+            # finalize_fn.
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
+        elif callable(collate_fn):
+            batch_format = "numpy"
+            warnings.warn(
+                "Passing a function to `iter_torch_batches(collate_fn)` is "
+                "deprecated in Ray 2.47. Please switch to using a callable class that "
+                "inherits from `ArrowBatchCollateFn`, `NumpyBatchCollateFn`, or "
+                "`PandasBatchCollateFn`.",
+                RayDeprecationWarning,
+            )
         else:
-            finalize_fn = None
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
-        return self.iter_batches(
+        return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
+            batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=finalize_fn,
+            _finalize_fn=default_finalize_fn,
         )
 
     def iter_tf_batches(
@@ -438,11 +583,11 @@ class DataIterator(abc.ABC):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
-        batch_iterable = self.iter_batches(
+        batch_iterable = self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             drop_last=drop_last,
@@ -568,8 +713,8 @@ class DataIterator(abc.ABC):
         """
         import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -606,7 +751,7 @@ class DataIterator(abc.ABC):
                     raise ValueError("column list may not be empty")
 
         def make_generator():
-            for batch in self.iter_batches(
+            for batch in self._iter_batches(
                 batch_size=batch_size,
                 batch_format="pandas",
                 prefetch_batches=prefetch_batches,
@@ -681,16 +826,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(
-               num_rows=?,
-               schema={
-                  sepal length (cm): double,
-                  sepal width (cm): double,
-                  petal length (cm): double,
-                  petal width (cm): double,
-                  target: int64
-               }
-            ))
+            DataIterator(Dataset(num_rows=?, schema=...))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -712,16 +848,7 @@ class DataIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
-            +- Dataset(
-                  num_rows=?,
-                  schema={
-                     sepal length (cm): double,
-                     sepal width (cm): double,
-                     petal length (cm): double,
-                     petal width (cm): double,
-                     target: int64
-                  }
-               ))
+            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -801,7 +928,7 @@ class DataIterator(abc.ABC):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
 
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_to_tf_tensor,
             get_type_spec,
         )
@@ -843,7 +970,7 @@ class DataIterator(abc.ABC):
             }
 
         def generator():
-            for batch in self.iter_batches(
+            for batch in self._iter_batches(
                 prefetch_batches=prefetch_batches,
                 batch_size=batch_size,
                 drop_last=drop_last,
@@ -914,8 +1041,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
-
+        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
@@ -926,10 +1052,6 @@ class DataIterator(abc.ABC):
             execution_plan,
             logical_plan,
         )
-
-    def __del__(self):
-        # Clear metrics on deletion in case the iterator was not fully consumed.
-        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
 
 # Backwards compatibility alias.

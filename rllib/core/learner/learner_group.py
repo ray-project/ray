@@ -1,8 +1,9 @@
 import copy
-from functools import partial
 import itertools
 import pathlib
+from functools import partial
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,11 +12,11 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -34,7 +35,10 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -45,27 +49,52 @@ from ray.rllib.utils.typing import (
 )
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.util.annotations import PublicAPI
+from ray.util.metrics import Histogram
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.util.placement_group import PlacementGroup
 
 
 def _get_backend_config(learner_class: Type[Learner]) -> str:
     if learner_class.framework == "torch":
-        from ray.train.torch import TorchConfig
+        from ray.train.torch.config import TorchConfig, _TorchBackend
 
-        backend_config = TorchConfig()
-    elif learner_class.framework == "tf2":
-        from ray.train.tensorflow import TensorflowConfig
+        # Override `_TorchBackend` share_cuda_visible_devices=True setting.
+        # We need this to be False to make sure Learner actors only see their
+        # own GPU. There is no need in RLlib's LearnerGroups for 2 different Learner
+        # actors to communicate with each other through their GPUs.
+        class _RLlibTorchBackend(_TorchBackend):
+            share_cuda_visible_devices = False
 
-        backend_config = TensorflowConfig()
+        class RLlibTorchConfig(TorchConfig):
+            @property
+            def backend_cls(self):
+                return _RLlibTorchBackend
+
+        backend_config = RLlibTorchConfig()
+
     else:
         raise ValueError(
-            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            "`learner_class.framework` must be 'torch' (but is "
             f"{learner_class.framework}!"
         )
 
     return backend_config
+
+
+class RLlibBackendExecutor(BackendExecutor):
+    # Override `BackendExecutor` placement group creation logic. We need to pass our own
+    # to make sure the one of the Algorithm (Trainable) is used for all the
+    # Algorithm's actors.
+    def _create_placement_group(self):
+        pass
+
+    # TODO (sven): Change this once there is a better (public) API for this in the
+    #  superclass.
+    def set_placement_group(self, placement_group):
+        if placement_group is not None:
+            self._placement_group = placement_group
 
 
 @PublicAPI(stability="alpha")
@@ -82,6 +111,7 @@ class LearnerGroup(Checkpointable):
         config: "AlgorithmConfig",
         # TODO (sven): Rename into `rl_module_spec`.
         module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ):
         """Initializes a LearnerGroup instance.
 
@@ -98,6 +128,10 @@ class LearnerGroup(Checkpointable):
                 the specifics for your RLModule to be used in each Learner.
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
+            placement_group: An optional `PlacementGroup` instance to set the
+                `RLlibBackendExecutor`'s `self._placement_group` attribute to.
+                If run within an Algorithm (tune.Trainable), the placement group of tune
+                trial actor is passed through here.
         """
         self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
@@ -121,6 +155,18 @@ class LearnerGroup(Checkpointable):
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
+
+            # Ray metrics
+            self._metrics_local_learner_training_data_solve_refs = Histogram(
+                name="rllib_learner_local_training_data_solve_refs_time",
+                description="Time spent in resolve training data refs for local learner.",
+                boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+                tag_keys=("rllib",),
+            )
+            self._metrics_local_learner_training_data_solve_refs.set_default_tags(
+                {"rllib": self.__class__.__name__}
+            )
+
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
@@ -132,23 +178,20 @@ class LearnerGroup(Checkpointable):
                 if self.config.num_gpus_per_learner == 0
                 else 0
             )
-            num_gpus_per_learner = max(
-                0,
-                self.config.num_gpus_per_learner
-                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-                # - (0.01 * self.config.num_aggregator_actors_per_learner),
-            )
+            num_gpus_per_learner = max(0, self.config.num_gpus_per_learner)
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
             }
 
-            backend_executor = BackendExecutor(
+            backend_executor = RLlibBackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learners,
                 resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
+            # Set the placement group - if any - of the BackendExecutor.
+            backend_executor.set_placement_group(placement_group)
             backend_executor.start(
                 train_cls=learner_class,
                 train_cls_kwargs={
@@ -160,6 +203,16 @@ class LearnerGroup(Checkpointable):
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
+            ray.get(
+                [
+                    worker._set_learner_index_and_placement_group.remote(
+                        learner_index=idx,
+                        placement_group=placement_group,
+                    )
+                    for idx, worker in enumerate(self._workers)
+                ]
+            )
+
             # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
 
@@ -169,6 +222,15 @@ class LearnerGroup(Checkpointable):
                     self.config.max_requests_in_flight_per_learner
                 ),
             )
+
+        # Ray metrics
+        self._metrics_update_time = Histogram(
+            name="rllib_learner_group_update_time",
+            description="Time spent in LearnerGroup.update()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_update_time.set_default_tags({"rllib": self.__class__.__name__})
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
@@ -207,18 +269,29 @@ class LearnerGroup(Checkpointable):
         # User kwargs passed onto the Learners.
         **kwargs,
     ) -> List[Dict[str, Any]]:
-        """Performs gradient based updates on Learners, based on given training data.
+        """Performs gradient based updates on Learners in parallel.
+
+        Updates are performed with data from any of the provided arguments
+        (batch, batches, batch_refs, episodes, episodes_refs, data_iterators, training_data).
 
         Args:
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
-            batch_refs:
+            batch_refs: A list of Ray ObjectRefs to the batches. If there are more
+                than one Learner workers, the list of batch refs is split amongst these and
+                one list shard is sent to each Learner.
             episodes: A list of Episodes to process and perform the update
                 for. If there are more than one Learner workers, the list of episodes
                 is split amongst these and one list shard is sent to each Learner.
-            episodes_refs:
-            timesteps:
+            episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
+                than one Learner workers, the list of episode refs is split amongst these and
+                one list shard is sent to each Learner.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
+            training_data: A TrainingData object to use for the update. If not provided,
+                a new TrainingData object will be created from the batch, batches, batch_refs,
+                episodes, and episodes_refs.
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -253,104 +326,119 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        # Create and validate TrainingData object, if not already provided.
-        if training_data is None:
-            training_data = TrainingData(
-                batch=batch,
-                batches=batches,
-                batch_refs=batch_refs,
-                episodes=episodes,
-                episodes_refs=episodes_refs,
-                data_iterators=data_iterators,
-            )
-        training_data.validate()
-
-        # Local Learner instance.
-        if self.is_local:
-            if async_update:
-                raise ValueError(
-                    "Can't call `update(async_update=True)` when running with "
-                    "`num_learners=0`! Set `config.num_learners > 0` to allow async "
-                    "updates."
+        with TimerAndPrometheusLogger(self._metrics_update_time):
+            # Create and validate TrainingData object, if not already provided.
+            if training_data is None:
+                training_data = TrainingData(
+                    batch=batch,
+                    batches=batches,
+                    batch_refs=batch_refs,
+                    episodes=episodes,
+                    episodes_refs=episodes_refs,
+                    data_iterators=data_iterators,
                 )
-            # Solve all ray refs locally already here.
-            training_data.solve_refs()
-            if return_state:
-                kwargs["return_state"] = return_state
-            # Return the single Learner's update results.
-            return [
-                self._learner.update(
-                    training_data=training_data,
+            training_data.validate()
+
+            # NEW: allow caller to defer Ray.get()/materialization to the learner thread.
+            # TODO (simon): Set to `False` and create attribute in config.
+            defer_solve = kwargs.pop("defer_solve_refs_to_learner", False)
+
+            # Local Learner instance.
+            if self.is_local:
+                if async_update:
+                    raise ValueError(
+                        "Can't call `update(async_update=True)` when running with "
+                        "`num_learners=0`! Set `config.num_learners > 0` to allow async "
+                        "updates."
+                    )
+                # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
+                # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+                if not defer_solve:
+                    # Ray metrics
+                    with TimerAndPrometheusLogger(
+                        self._metrics_local_learner_training_data_solve_refs
+                    ):
+                        training_data.solve_refs()
+
+                if return_state:
+                    kwargs["return_state"] = return_state
+                # Return the single Learner's update results.
+                return [
+                    self._learner.update(
+                        training_data=training_data,
+                        timesteps=timesteps,
+                        **kwargs,
+                    )
+                ]
+
+            # Remote Learner actors' kwargs.
+            remote_call_kwargs = [
+                dict(
+                    training_data=td_shard,
                     timesteps=timesteps,
+                    # If `return_state=True`, only return it from the first Learner
+                    # actor.
+                    return_state=(return_state and i == 0),
+                    **kw,
                     **kwargs,
+                )
+                for i, (td_shard, kw) in enumerate(
+                    training_data.shard(
+                        num_shards=len(self),
+                        len_lookback_buffer=self.config.episode_lookback_horizon,
+                        **kwargs,
+                    )
                 )
             ]
 
-        # Remote Learner actors' kwargs.
-        remote_call_kwargs = [
-            dict(
-                training_data=td_shard,
-                timesteps=timesteps,
-                # If `return_state=True`, only return it from the first Learner
-                # actor.
-                return_state=(return_state and i == 0),
-                **kw,
-                **kwargs,
-            )
-            for i, (td_shard, kw) in enumerate(
-                training_data.shard(
-                    num_shards=len(self),
-                    len_lookback_buffer=self.config.episode_lookback_horizon,
-                    **kwargs,
+            # Async updates.
+            if async_update:
+                # Retrieve all ready results (kicked off by prior calls to this method).
+                results = self._worker_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0
                 )
-            )
-        ]
+                # Send out new request(s), if there is still capacity on the actors
+                # (each actor is allowed only some number of max in-flight requests
+                # at the same time).
+                num_sent_requests = self._worker_manager.foreach_actor_async(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-        # Async updates.
-        if async_update:
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
-            # Send out new request(s), if there is still capacity on the actors
-            # (each actor is allowed only some number of max in-flight requests
-            # at the same time).
-            num_sent_requests = self._worker_manager.foreach_actor_async(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+                # Some requests were dropped, record lost ts/data.
+                if num_sent_requests != len(self):
+                    factor = 1 - (num_sent_requests / len(self))
+                    # TODO (sven): Move this logic into a TrainingData API as well
+                    #  (`TrainingData.env_steps()`).
+                    if training_data.batch_refs is not None:
+                        dropped = (
+                            len(training_data.batch_refs)
+                            * self.config.train_batch_size_per_learner
+                        )
+                    elif training_data.batch is not None:
+                        dropped = len(training_data.batch)
+                    # List of Ray ObjectRefs (each object ref is a list of episodes of
+                    # total len=`rollout_fragment_length * num_envs_per_env_runner`)
+                    elif training_data.episodes_refs is not None:
+                        dropped = (
+                            len(training_data.episodes_refs)
+                            * self.config.get_rollout_fragment_length()
+                            * self.config.num_envs_per_env_runner
+                        )
+                    else:
+                        assert training_data.episodes is not None
+                        dropped = sum(len(e) for e in training_data.episodes)
 
-            # Some requests were dropped, record lost ts/data.
-            if num_sent_requests != len(self):
-                factor = 1 - (num_sent_requests / len(self))
-                # TODO (sven): Move this logic into a TrainingData API as well
-                #  (`TrainingData.env_steps()`).
-                if training_data.batch_refs is not None:
-                    dropped = (
-                        len(training_data.batch_refs)
-                        * self.config.train_batch_size_per_learner
-                    )
-                elif training_data.batch is not None:
-                    dropped = len(training_data.batch)
-                # List of Ray ObjectRefs (each object ref is a list of episodes of
-                # total len=`rollout_fragment_length * num_envs_per_env_runner`)
-                elif training_data.episodes_refs is not None:
-                    dropped = (
-                        len(training_data.episodes_refs)
-                        * self.config.get_rollout_fragment_length()
-                        * self.config.num_envs_per_env_runner
-                    )
-                else:
-                    assert training_data.episodes is not None
-                    dropped = sum(len(e) for e in training_data.episodes)
+                    self._ts_dropped += factor * dropped
+            # Sync updates.
+            else:
+                results = self._worker_manager.foreach_actor(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-                self._ts_dropped += factor * dropped
-        # Sync updates.
-        else:
-            results = self._worker_manager.foreach_actor(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+            results = self._get_results(results)
 
-        results = self._get_results(results)
         return results
 
     def add_module(

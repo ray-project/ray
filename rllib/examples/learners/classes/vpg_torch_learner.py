@@ -1,7 +1,7 @@
-import torch
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 import numpy as np
+import torch
 
 from ray.rllib.connectors.learner import ComputeReturnsToGo
 from ray.rllib.core.columns import Columns
@@ -53,9 +53,7 @@ class VPGTorchLearner(TorchLearner):
             self.metrics.log_value(
                 key=(module_id, f"action_{act}_return_to_go_mean"),
                 value=ret_to_go,
-                # Mean over the batch size.
                 reduce="mean",
-                window=len(batch[Columns.RETURNS_TO_GO]),
             )
 
         return loss

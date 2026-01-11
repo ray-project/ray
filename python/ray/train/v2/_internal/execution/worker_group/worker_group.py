@@ -1,27 +1,31 @@
 import collections
+import copy
 import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
+from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.train import Checkpoint
+from ray.runtime_env import RuntimeEnv
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
@@ -35,7 +39,6 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
-    StorageContext,
     TrainRunContext,
 )
 from ray.train.v2._internal.execution.worker_group.poll import (
@@ -59,6 +62,7 @@ from ray.train.v2._internal.util import (
     ray_get_safe,
     time_monotonic,
 )
+from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import (
     PlacementGroup,
@@ -68,6 +72,11 @@ from ray.util.placement_group import (
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+)
+from ray.util.tpu import (
+    SlicePlacementGroup,
+    get_current_pod_name,
+    get_tpu_version_from_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,7 +96,8 @@ class WorkerGroupContext:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
-        checkpoint: Optional checkpoint to restore from.
+        label_selector: Optional label selectors to apply per-bundle for workers.
+        num_slices: The number of TPU slices (if using TPU). Defaults to 1.
     """
 
     run_attempt_id: str
@@ -95,13 +105,11 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
-    # TODO: Remove checkpoint from WorkerGroupContext
-    # and move it to CheckpointManager. Populate TrainContext
-    # similar to how the dataset shards are passed to the workers.
-    checkpoint: Optional[Checkpoint] = None
+    label_selector: Optional[List[Dict[str, str]]] = None
+    num_slices: int = 1
 
 
-class WorkerGroup:
+class WorkerGroup(BaseWorkerGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -146,11 +154,7 @@ class WorkerGroup:
         """
         self._train_run_context = train_run_context
         run_config = self._train_run_context.run_config
-        self._storage_context = StorageContext(
-            storage_path=run_config.storage_path,
-            experiment_dir_name=run_config.name,
-            storage_filesystem=run_config.storage_filesystem,
-        )
+        self._storage_context = run_config.storage_context
 
         self._worker_group_context: WorkerGroupContext = worker_group_context
 
@@ -168,6 +172,7 @@ class WorkerGroup:
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
+
         # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
@@ -181,12 +186,12 @@ class WorkerGroup:
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
-        self._report_barrier_timeout_s = env_float(
-            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+        self._collective_timeout_s = env_float(
+            COLLECTIVE_TIMEOUT_S_ENV_VAR, DEFAULT_COLLECTIVE_TIMEOUT_S
         )
-        self._report_barrier_warn_interval_s = env_float(
-            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
-            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        self._collective_warn_interval_s = env_float(
+            COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
     ################################################################################
@@ -212,6 +217,34 @@ class WorkerGroup:
 
         assert self.has_started(), "Worker group failed to start."
 
+    @staticmethod
+    def _check_cluster_resources_and_raise_if_insufficient(
+        resources_per_worker: Dict[str, float], num_workers: int
+    ) -> None:
+        """Check if the cluster has enough resources before waiting for placement group.
+
+        Args:
+            resources_per_worker: The resources per worker.
+            num_workers: The number of workers.
+        """
+        max_cluster_resources = ray_state.get_max_resources_from_cluster_config()
+        if not max_cluster_resources:
+            return
+
+        for (
+            resource_name,
+            required_amount,
+        ) in resources_per_worker.items():
+            total_required_amount = required_amount * num_workers
+            available_amount = max_cluster_resources.get(resource_name, 0)
+            if total_required_amount > available_amount:
+                error_msg = (
+                    "Insufficient cluster resources to launch training workers.\n"
+                    f'The worker group requires {{"{resource_name}": {total_required_amount}}} but the cluster only has a maximum of {{"{resource_name}": {available_amount}}} resources.\n'
+                    "Please reduce `num_workers`, lower resource requirements, or increase the cluster size."
+                )
+                raise InsufficientClusterResourcesError(error_msg)
+
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -229,6 +262,13 @@ class WorkerGroup:
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
+        # Check that we have sufficient resources in the cluster before waiting for
+        # a placement group.
+        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+            worker_group_context.resources_per_worker,
+            worker_group_context.num_workers,
+        )
+
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
         # are triggered before the `after_worker_group_start` callbacks.
@@ -238,11 +278,10 @@ class WorkerGroup:
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            pg = placement_group(
-                bundles=[worker_group_context.resources_per_worker]
-                * worker_group_context.num_workers,
-                strategy=worker_group_context.placement_strategy,
+            pg, slice_pg = self._create_placement_group(
+                self._train_run_context.scaling_config, worker_group_context
             )
+
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
@@ -258,12 +297,17 @@ class WorkerGroup:
                 ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
             except GetTimeoutError as timeout_exc:
                 remove_placement_group(pg)
+                if slice_pg:
+                    slice_pg.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
             worker_group_state_builder.with_placement_group(pg)
+
+            if slice_pg:
+                worker_group_state_builder.with_slice_placement_group(slice_pg)
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
@@ -272,8 +316,8 @@ class WorkerGroup:
                     soft=False,
                 )
             ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
+                timeout_s=self._collective_timeout_s,
+                warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
@@ -289,9 +333,7 @@ class WorkerGroup:
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                train_context_args = {
-                    "checkpoint": [worker_group_context.checkpoint] * len(workers)
-                }
+                train_context_args = {}
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
                     for arg, arg_values in args.items():
@@ -349,16 +391,19 @@ class WorkerGroup:
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
-        worker_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            self._worker_cls
+        runtime_env = self._get_worker_runtime_env(
+            custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
         )
+        worker_actor_cls = ray.remote(
+            runtime_env=runtime_env,
+            **bundle_to_remote_args(resources_per_worker),
+        )(self._worker_cls)
 
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=placement_group, placement_group_bundle_index=i
                 ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
             for i in range(num_workers)
         ]
@@ -396,6 +441,7 @@ class WorkerGroup:
                 synchronization_actor=sync_actor,
                 storage_context=self._storage_context,
                 worker_callbacks=self._worker_callbacks_to_propagate,
+                controller_actor=ray.get_runtime_context().current_actor,
                 **{
                     arg: arg_values[i] for arg, arg_values in train_context_args.items()
                 },
@@ -405,6 +451,56 @@ class WorkerGroup:
         ray_get_safe(context_init_tasks)
 
         self._decorate_worker_log_file_paths(workers)
+
+    def _create_placement_group(
+        self,
+        scaling_config: ScalingConfig,
+        worker_group_context: WorkerGroupContext,
+    ) -> Tuple[PlacementGroup, Optional[SlicePlacementGroup]]:
+        """Creates and returns the placement group for the worker group.
+
+        If TPU resources are requested, this uses `SlicePlacementGroup` to reserve
+        resources. Otherwise, it creates a standard placement group.
+        """
+
+        if (
+            scaling_config.use_tpu
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        ):
+            # TPU specific SlicePlacementGroup reservation.
+            logger.info(
+                f"Using SlicePlacementGroup utility to reserve {worker_group_context.num_slices} "
+                f"slice(s) with topology '{scaling_config.topology}'..."
+            )
+
+            try:
+                accelerator_version = get_tpu_version_from_type(
+                    scaling_config.accelerator_type
+                )
+                spg_handle = SlicePlacementGroup(
+                    topology=scaling_config.topology,
+                    accelerator_version=accelerator_version,
+                    num_slices=worker_group_context.num_slices,
+                    resources_per_bundle=worker_group_context.resources_per_worker,
+                    strategy=worker_group_context.placement_strategy,
+                )
+
+                return spg_handle.placement_group, spg_handle
+
+            except Exception as e:
+                raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
+
+        return (
+            placement_group(
+                # TODO: support heterogeneous workers and placement
+                bundles=[worker_group_context.resources_per_worker]
+                * worker_group_context.num_workers,
+                strategy=worker_group_context.placement_strategy,
+                bundle_label_selector=worker_group_context.label_selector,
+            ),
+            None,
+        )
 
     #####################################################################################
     # Shutdown Worker Group
@@ -427,9 +523,26 @@ class WorkerGroup:
 
             logger.debug("Worker group shutdown successful.")
 
+            for callback in self._callbacks:
+                callback.after_worker_group_shutdown(self._worker_group_context)
+
     def _clear_state(self):
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
+
+    def abort(self):
+        """Abort the worker group."""
+        self._assert_active()
+        for callback in self._callbacks:
+            callback.before_worker_group_abort(self._worker_group_context)
+
+        # TODO: Add shutdown callback hooks
+
+        self._worker_group_state.shutdown()
+        self._clear_state()
+
+        for callback in self._callbacks:
+            callback.after_worker_group_abort(self._worker_group_context)
 
     #####################################################################################
     # Polling Worker Group
@@ -517,7 +630,7 @@ class WorkerGroup:
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
             poll_task_to_result[hanging_poll] = WorkerStatus(
-                running=True, error=error, training_result=None
+                running=True, error=error, training_report=None
             )
 
         for done_poll in done_polls:
@@ -536,7 +649,7 @@ class WorkerGroup:
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
-                    training_result=None,
+                    training_report=None,
                 )
 
             poll_task_to_result[done_poll] = poll_result
@@ -666,9 +779,32 @@ class WorkerGroup:
         self._assert_active()
         return len(self.get_workers())
 
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return copy.deepcopy(self._worker_group_context.resources_per_worker)
+
     #########################################################################################
     # Static Utility Methods
     #########################################################################################
+
+    @staticmethod
+    def _sort_workers_by_tpu_pod_name(workers: List[Worker]) -> List[Worker]:
+        """
+        Sort workers by their TPU Pod name to ensure deterministic
+        topology mapping for TPU multi-slice. The TPU Pod name is based on
+        TPU_NAME env var, which is unique and indexed within the Ray worker group
+        requesting TPUs.
+        """
+        pod_name_refs = [
+            worker.execute_async(get_current_pod_name) for worker in workers
+        ]
+        pod_names = ray_get_safe(pod_name_refs)
+
+        # Zip workers with names and sort by name.
+        worker_name_pairs = list(zip(workers, pod_names))
+        worker_name_pairs.sort(key=lambda pair: pair[1] or "")
+
+        return [w for w, name in worker_name_pairs]
 
     @staticmethod
     def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
@@ -680,7 +816,15 @@ class WorkerGroup:
             workers: Workers sorted by increasing world rank,
                 with the `DistributedContext` set.
         """
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+        is_tpu = False
+        if len(workers) > 0:
+            is_tpu = workers[0].resources.get("TPU", 0) > 0
+
+        if is_tpu:
+            # Use deterministic sort for TPU to align with actual slice IDs.
+            workers = WorkerGroup._sort_workers_by_tpu_pod_name(workers)
+        else:
+            workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         node_ip_to_workers = collections.defaultdict(list)
         for worker in workers:
@@ -715,17 +859,15 @@ class WorkerGroup:
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):
-            if log_path is None:
-                raise ValueError("Worker log file path is not set.")
             worker.log_file_path = log_path
 
         return workers
 
     @staticmethod
-    def _sort_workers_by_node_id_and_gpu_id(
+    def _sort_workers_by_gpu_id_grouped_by_node(
         workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
-        """Reorder the workers by their node id and the lowest GPU id.
+        """Reorder the workers by grouping by node id and sorting each group by lowest GPU id.
 
         Example:
             Given workers with the following attributes:
@@ -735,18 +877,22 @@ class WorkerGroup:
                 worker_3: id=0, gpu_ids=[1]
 
             The function will perform the following steps:
-                1. Group by node IP:
-                    id=0: worker_1, worker_3
+                1. Group by node id (by default, order node id by insertion order):
                     id=1: worker_0, worker_2
+                    id=0: worker_1, worker_3
 
                 2. Sort each group by GPU ID:
-                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
                     id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
 
-            Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
+            Resulting in the order: [worker_2, worker_0, worker_1, worker_3]
 
         Args:
+            workers: The workers to sort.
             _first_id: The first node id to group by.
+
+        Returns:
+            List of sorted workers.
         """
         node_id_to_workers = collections.defaultdict(list)
 
@@ -778,3 +924,24 @@ class WorkerGroup:
         for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
         return sorted_workers
+
+    @staticmethod
+    def _get_worker_runtime_env(
+        custom_runtime_env: Union[Dict, RuntimeEnv],
+    ) -> Union[Dict, RuntimeEnv]:
+        """Update custom runtime env with internal Ray Train env vars
+        that should be propagated from the driver to worker processes.
+
+        Args:
+            custom_runtime_env: The custom runtime env dict passed in by the user.
+
+        Returns:
+            A copy of the custom runtime env dict updated with internal
+            Ray Train environment variables to propagate to worker processes.
+        """
+        merged_env_vars = get_env_vars_to_propagate()
+        merged_env_vars.update(custom_runtime_env.get("env_vars", {}))
+
+        runtime_env = dict(custom_runtime_env)
+        runtime_env["env_vars"] = merged_env_vars
+        return runtime_env

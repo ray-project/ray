@@ -14,13 +14,15 @@
 
 #include "ray/raylet/scheduling/policy/scorer.h"
 
-#include <numeric>
-
 namespace ray {
 namespace raylet_scheduling_policy {
 
 double LeastResourceScorer::Score(const ResourceRequest &required_resources,
                                   const NodeResources &node_resources) {
+  if (!node_resources.IsAvailable(required_resources)) {
+    return -1.;
+  }
+
   // In GCS-based actor scheduling, the `NodeResources` are only acquired or released by
   // actor scheduling, instead of being updated by resource reports from raylets. So we
   // have to subtract normal task resources (if exist) from the current available
@@ -38,22 +40,16 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   for (auto &resource_id : required_resources.ResourceIds()) {
     const auto &request_resource = required_resources.Get(resource_id);
     const auto &node_available_resource = node_resources_ptr->available.Get(resource_id);
-    auto score = Calculate(request_resource, node_available_resource);
-    if (score < 0.) {
-      return -1.;
-    }
-    node_score += score;
+    node_score += Calculate(request_resource, node_available_resource);
   }
   return node_score;
 }
 
+// This function assumes the resource request has already passed the availability check
 double LeastResourceScorer::Calculate(const FixedPoint &requested,
                                       const FixedPoint &available) {
   RAY_CHECK(available >= 0) << "Available resource " << available.Double()
                             << " should be nonnegative.";
-  if (requested > available) {
-    return -1;
-  }
 
   if (available == 0) {
     return 0;

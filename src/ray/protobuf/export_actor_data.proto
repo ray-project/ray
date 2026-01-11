@@ -1,0 +1,80 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+// ExportActorData defines the event_data stored by the export API
+// for EXPORT_ACTOR type events. This schema is public and any changes must
+// be backward compatible.
+message ExportActorData {
+  // State of an actor.
+  enum ActorState {
+    // Actor info is registered in GCS. But its dependencies are not ready.
+    DEPENDENCIES_UNREADY = 0;
+    // Actor local dependencies are ready. This actor is being created.
+    PENDING_CREATION = 1;
+    // Actor is alive.
+    ALIVE = 2;
+    // Actor is dead, now being restarted.
+    // After reconstruction finishes, the state will become alive again.
+    RESTARTING = 3;
+    // Actor is already dead and won't be restarted.
+    DEAD = 4;
+  }
+  // The ID of the actor that was created.
+  bytes actor_id = 1;
+  // The ID of the job that created the actor.
+  bytes job_id = 2;
+  // Current state of this actor.
+  ActorState state = 3;
+  // Whether the actor is persistent.
+  bool is_detached = 4;
+  // Name of the actor.
+  string name = 5;
+  // The process id of this actor.
+  uint32 pid = 6;
+  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 7;
+  // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
+  // it here instead of grabbing it from the task spec because the task spec is cleared
+  // for deleted actors: https://github.com/ray-project/ray/pull/11149.
+  string serialized_runtime_env = 8;
+  // The actor's class name. This is necessary because the task spec's lifetime
+  // is shorter than the ActorTableData.
+  string class_name = 9;
+  // Contains metadata about why the actor is dead.
+  ActorDeathCause death_cause = 10;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 11;
+  // The node id of the actor once it is created.
+  // address field can contain an address although actor is not created
+  // so we have a separate field to track this.
+  // If the actor is restarting, the node id could be incorrect.
+  optional bytes node_id = 12;
+  // Placement group ID if the actor requires a placement group.
+  optional bytes placement_group_id = 13;
+  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+  // This field is only available after the actor creation task has been run since it
+  // might depend on actor fields to be initialized in __init__.
+  // Default to empty string if no customized repr is defined.
+  string repr_name = 14;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 15;
+  // The label selector for the actor.
+  map<string, string> label_selector = 16;
+}

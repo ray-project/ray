@@ -2,6 +2,8 @@ import os
 import sys
 
 from ray._private.ray_constants import (  # noqa F401
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
     LABELS_ENVIRONMENT_VARIABLE,
@@ -88,6 +90,9 @@ AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = env_integer(
 # Port that autoscaler prometheus metrics will be exported to
 AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
 
+# The minimum number of nodes to launch concurrently.
+AUTOSCALER_UPSCALING_INITIAL_NUM_NODES = 5
+
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)
@@ -125,10 +130,9 @@ RAY_PROCESSES = [
     ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
-    ["reporter.py", False],
-    [os.path.join("dashboard", "agent.py"), False],
+    [AGENT_PROCESS_TYPE_DASHBOARD_AGENT, False],
     [os.path.join("dashboard", "dashboard.py"), False],
-    [os.path.join("runtime_env", "agent", "main.py"), False],
+    [AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT, False],
     ["ray_process_reaper.py", False],
     ["gcs_server", True],
 ]

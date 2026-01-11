@@ -6,12 +6,13 @@ import numpy as np
 import pytest
 
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):
-    test_utils.wait_for_condition(
+    ray._common.test_utils.wait_for_condition(
         lambda: (available_resources().get("CPU", 0) == expected_cpus)
     )
 
@@ -291,10 +292,6 @@ def test_threaded_actor_integration_test_stress(
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

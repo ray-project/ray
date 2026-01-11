@@ -1,26 +1,27 @@
-import ray
-from ray.util.state import list_workers
-from ray._private.test_utils import (
-    get_load_metrics_report,
-    run_string_as_driver,
-    run_string_as_driver_nonblocking,
-    wait_for_condition,
-    get_resource_usage,
-)
-import pytest
+import collections
+import logging
 import os
-from ray.util.state import list_objects
+import shutil
 import subprocess
-from ray._private.utils import get_num_cpus
-import time
 import sys
+import tempfile
+import time
+from typing import List, Optional
+
+import pytest
+
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from typing import List, Optional
-import logging
-import tempfile
-import collections
-import shutil
+from ray._private.test_utils import (
+    get_load_metrics_report,
+    get_resource_usage,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+)
+from ray._private.utils import get_num_cpus
+from ray.util.state import list_objects, list_workers
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -526,9 +527,4 @@ def test_can_reuse_released_workers(
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

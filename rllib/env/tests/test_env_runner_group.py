@@ -1,3 +1,4 @@
+import time
 import unittest
 
 import ray
@@ -91,9 +92,44 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
         ws.stop()
 
+    def test_foreach_env_runner_async_fetch_ready(self):
+        """Test to make sure that test_foreach_env_runner_async_fetch_ready works."""
+        ws = EnvRunnerGroup(
+            config=(
+                PPOConfig()
+                .environment("CartPole-v1")
+                .env_runners(num_env_runners=2, rollout_fragment_length=1)
+            ),
+        )
+
+        # Sample from both env runners.
+        # First call to foreach_env_runner_async_fetch_ready should not return ready results.
+        self.assertEqual(
+            len(
+                ws.foreach_env_runner_async_fetch_ready(
+                    lambda w: w.sample(),
+                    tag="sample",
+                )
+            ),
+            0,
+        )
+        time.sleep(1)
+
+        # Second call to foreach_env_runner_async_fetch_ready should return ready results.
+        self.assertEqual(
+            len(
+                ws.foreach_env_runner_async_fetch_ready(
+                    lambda w: w.sample(),
+                    tag="sample",
+                )
+            ),
+            2,
+        )
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

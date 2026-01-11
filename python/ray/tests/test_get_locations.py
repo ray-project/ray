@@ -1,3 +1,4 @@
+import sys
 import time
 
 import numpy as np
@@ -16,15 +17,6 @@ def test_uninitialized():
 def test_get_locations_empty_list(ray_start_regular):
     locations = ray.experimental.get_object_locations([])
     assert len(locations) == 0
-
-
-def test_get_locations_timeout(ray_start_regular):
-    sizes = [100, 1000]
-    obj_refs = [ray.put(np.zeros(s, dtype=np.uint8)) for s in sizes]
-    ray.wait(obj_refs)
-    timeout_ms = 0
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.experimental.get_object_locations(obj_refs, timeout_ms)
 
 
 def test_get_locations(ray_start_regular):
@@ -267,10 +259,4 @@ def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

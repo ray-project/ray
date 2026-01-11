@@ -1,31 +1,34 @@
+import json
 import os
 import random
-import unittest
 import socket
-import json
+import sys
+import unittest
 
-from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
+import pytest
+
+from ray._common.network_utils import build_address
+from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.local import config as local_config
-from ray.autoscaler._private.local.node_provider import LocalNodeProvider
-from ray.autoscaler._private.local.node_provider import (
-    record_local_head_state_if_needed,
-)
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,
 )
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
+from ray.autoscaler._private.local.node_provider import (
+    LocalNodeProvider,
+    record_local_head_state_if_needed,
 )
-from ray._private.utils import get_ray_temp_dir
-import pytest
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
+from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
@@ -37,7 +40,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             host=self.host,
             port=self.port,
         )
-        self.coordinator_address = self.host + ":" + str(self.port)
+        self.coordinator_address = build_address(self.host, self.port)
 
     def tearDown(self):
         self.server.shutdown()
@@ -72,7 +75,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # second time.)
         self._monkeypatch.setenv("RAY_TMPDIR", self._tmpdir)
         # ensure that a new cluster can start up if RAY_TMPDIR doesn't exist yet
-        assert not os.path.exists(get_ray_temp_dir())
+        assert not os.path.exists(get_default_ray_temp_dir())
         head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
@@ -89,7 +92,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False
         )
-        assert os.path.exists(get_ray_temp_dir())
+        assert os.path.exists(get_default_ray_temp_dir())
         assert node_provider.external_ip(head_ip) == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
@@ -291,9 +294,4 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

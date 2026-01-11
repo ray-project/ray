@@ -1,43 +1,43 @@
-import time
 import json
-import pytest
-import ray
-from unittest.mock import AsyncMock
 import random
 import sys
-from dataclasses import asdict
+import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
+from unittest.mock import AsyncMock
 
-from ray.util.state import (
-    summarize_tasks,
-    summarize_actors,
-    summarize_objects,
-)
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import ActorID, TaskID, ObjectID
+import pytest
+from click.testing import CliRunner
 
+import ray
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
+from ray._raylet import ActorID, ObjectID, TaskID
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
+from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply, GetAllNodeInfoReply
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.dashboard.state_aggregator import StateAPIManager
 from ray.tests.test_state_api import (
-    generate_task_data,
-    generate_task_event,
     generate_actor_data,
     generate_object_info,
+    generate_task_data,
+    generate_task_event,
+)
+from ray.util.state import (
+    summarize_actors,
+    summarize_objects,
+    summarize_tasks,
 )
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
-    SummaryApiOptions,
+    DRIVER_TASK_ID_PREFIX,
     Link,
     NestedTaskSummary,
+    SummaryApiOptions,
     TaskSummaries,
-    DRIVER_TASK_ID_PREFIX,
 )
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply, GetAllNodeInfoReply
-from ray.core.generated.gcs_pb2 import ActorTableData
-from click.testing import CliRunner
 from ray.util.state.state_cli import summary_state_cli_group
-from ray.dashboard.state_aggregator import StateAPIManager
 from ray.util.state.state_manager import StateDataSourceClient
 
 
@@ -310,11 +310,19 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_task_summary(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=2)
+
+    # Wait for aggregator agents on all nodes
+    for node in ray.nodes():
+        wait_for_aggregator_agent_if_enabled(cluster.address, node["NodeID"])
 
     @ray.remote
     def run_long_time_task():
@@ -352,6 +360,10 @@ def test_task_summary(ray_start_cluster):
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_actor_summary(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
@@ -397,6 +409,10 @@ def test_actor_summary(ray_start_cluster):
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_object_summary(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
         m.setenv("RAY_record_ref_creation_sites", "1")

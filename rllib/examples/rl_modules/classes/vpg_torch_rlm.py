@@ -11,11 +11,20 @@ class VPGTorchRLModule(TorchRLModule):
     """
 
     def setup(self):
-        # You have access here to the following already set attributes:
-        # self.observation_space
-        # self.action_space
-        # self.inference_only
-        # self.model_config  # <- a dict with custom settings
+        """Use this method to create all the model components that you require.
+
+        Feel free to access the following useful properties in this class:
+        - `self.model_config`: The config dict for this RLModule class,
+        which should contain flexible settings, for example: {"hiddens": [256, 256]}.
+        - `self.observation|action_space`: The observation and action space that
+        this RLModule is subject to. Note that the observation space might not be the
+        exact space from your env, but that it might have already gone through
+        preprocessing through a connector pipeline (for example, flattening,
+        frame-stacking, mean/std-filtering, etc..).
+        - `self.inference_only`: If True, this model should be built only for inference
+        purposes, in which case you may want to exclude any components that are not used
+        for computing actions, for example a value function branch.
+        """
         input_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["hidden_dim"]
         output_dim = self.action_space.n

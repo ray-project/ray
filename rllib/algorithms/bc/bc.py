@@ -15,7 +15,7 @@ class BCConfig(MARWILConfig):
         # Run this from the ray directory root.
         config = BCConfig().training(lr=0.00001, gamma=0.99)
         config = config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json")
+            input_="./rllib/offline/tests/data/cartpole/large.json")
 
         # Build an Algorithm object from the config and run 1 training iteration.
         algo = config.build()
@@ -36,7 +36,7 @@ class BCConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json"
+            input_="./rllib/offline/tests/data/cartpole/large.json"
         )
         # Set the config object's env, used for evaluation.
         config.environment(env="CartPole-v1")
@@ -97,14 +97,6 @@ class BCConfig(MARWILConfig):
         pipeline.remove("AddOneTsToEpisodesAndTruncate")
         pipeline.remove("GeneralAdvantageEstimation")
 
-        # In case we run multiple updates per RLlib training step in the `Learner` or
-        # when training on GPU conversion to tensors is managed in batch prefetching.
-        if self.num_gpus_per_learner > 0 or (
-            self.dataset_num_iters_per_learner
-            and self.dataset_num_iters_per_learner > 1
-        ):
-            pipeline.remove("NumpyToTensor")
-
         return pipeline
 
     @override(MARWILConfig)
@@ -124,5 +116,5 @@ class BC(MARWIL):
 
     @classmethod
     @override(MARWIL)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> BCConfig:
         return BCConfig()

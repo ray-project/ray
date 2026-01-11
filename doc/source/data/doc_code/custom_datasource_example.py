@@ -33,7 +33,7 @@ class ImageDatasource(FileBasedDatasource):
 
         # Each block contains one row
         builder = DelegatingBlockBuilder()
-        array = np.array(image)
+        array = np.asarray(image)
         item = {"image": array}
         builder.add(item)
         yield builder.build()

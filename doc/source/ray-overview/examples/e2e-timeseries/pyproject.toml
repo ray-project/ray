@@ -1,0 +1,39 @@
+# pyproject.toml
+[project]
+name = "e2e_timeseries"
+version = "0.1.0"
+requires-python = ">=3.10.0"
+
+[tool.ruff]
+line-length = 150
+target-version = "py38"
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    "venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "E226"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["e2e_timeseries", "e2e_timeseries.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

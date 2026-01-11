@@ -330,7 +330,7 @@ Custom callbacks
 ----------------
 
 If you're using custom callbacks on the old API stack, you're subclassing the ``DefaultCallbacks`` class,
-which the Ray team renamed to :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`.
+which the Ray team renamed to :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 You can continue this approach with the new API stack and pass your custom subclass to your config like the following:
 
 .. testcode::
@@ -340,7 +340,7 @@ You can continue this approach with the new API stack and pass your custom subcl
 However, if you're overriding those methods that triggered on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
 side, for example, ``on_episode_start/stop/step/etc...``, you may have to translate some call arguments.
 
-The following is a one-to-one translation guide for these types of :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`
+The following is a one-to-one translation guide for these types of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
 methods:
 
 .. testcode::
@@ -530,6 +530,7 @@ customizations inside the old stack's Policy class, you need to move the logic i
 See :ref:`Learner <learner-guide>` for details on how to write a custom Learner .
 
 The following example scripts show how to write:
+
 - `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
 - `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 

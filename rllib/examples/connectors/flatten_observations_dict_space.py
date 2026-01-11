@@ -43,7 +43,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -71,7 +71,6 @@ Results to expect
 |                 100000 |                 100000 |                 421.42 |
 +------------------------+------------------------+------------------------+
 """
-from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
@@ -80,23 +79,21 @@ from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import
 from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentCartPoleWithDictObservationSpace,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls
-
+from ray.tune.registry import get_trainable_cls, register_env
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define env-to-module-connector pipeline for the new stack.
-    def _env_to_module_pipeline(env):
+    def _env_to_module_pipeline(env, spaces, device):
         return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.

@@ -38,54 +38,6 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
 .. tab-set::
 
-    .. tab-item:: PyTorch Lightning
-
-        .. This snippet isn't tested because it doesn't use any Ray code.
-
-        .. testcode::
-            :skipif: True
-
-            import torch
-            from torchvision.models import resnet18
-            from torchvision.datasets import FashionMNIST
-            from torchvision.transforms import ToTensor, Normalize, Compose
-            from torch.utils.data import DataLoader
-            import lightning.pytorch as pl
-
-            # Model, Loss, Optimizer
-            class ImageClassifier(pl.LightningModule):
-                def __init__(self):
-                    super(ImageClassifier, self).__init__()
-                    self.model = resnet18(num_classes=10)
-                    self.model.conv1 = torch.nn.Conv2d(
-                        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
-                    )
-                    self.criterion = torch.nn.CrossEntropyLoss()
-
-                def forward(self, x):
-                    return self.model(x)
-
-                def training_step(self, batch, batch_idx):
-                    x, y = batch
-                    outputs = self.forward(x)
-                    loss = self.criterion(outputs, y)
-                    self.log("loss", loss, on_step=True, prog_bar=True)
-                    return loss
-
-                def configure_optimizers(self):
-                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
-
-            # Data
-            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
-            train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
-            train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
-
-            # Training
-            model = ImageClassifier()
-            trainer = pl.Trainer(max_epochs=10)
-            trainer.fit(model, train_dataloaders=train_dataloader)
-
-
     .. tab-item:: PyTorch Lightning + Ray Train
 
         .. code-block:: python
@@ -174,6 +126,53 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                         ray.train.lightning.RayTrainReportCallback.CHECKPOINT_NAME,
                     ),
                 )
+
+    .. tab-item:: PyTorch Lightning
+
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
+
+            import torch
+            from torchvision.models import resnet18
+            from torchvision.datasets import FashionMNIST
+            from torchvision.transforms import ToTensor, Normalize, Compose
+            from torch.utils.data import DataLoader
+            import lightning.pytorch as pl
+
+            # Model, Loss, Optimizer
+            class ImageClassifier(pl.LightningModule):
+                def __init__(self):
+                    super(ImageClassifier, self).__init__()
+                    self.model = resnet18(num_classes=10)
+                    self.model.conv1 = torch.nn.Conv2d(
+                        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+                    )
+                    self.criterion = torch.nn.CrossEntropyLoss()
+
+                def forward(self, x):
+                    return self.model(x)
+
+                def training_step(self, batch, batch_idx):
+                    x, y = batch
+                    outputs = self.forward(x)
+                    loss = self.criterion(outputs, y)
+                    self.log("loss", loss, on_step=True, prog_bar=True)
+                    return loss
+
+                def configure_optimizers(self):
+                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
+
+            # Data
+            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
+            train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
+            train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
+
+            # Training
+            model = ImageClassifier()
+            trainer = pl.Trainer(max_epochs=10)
+            trainer.fit(model, train_dataloaders=train_dataloader)
 
 
 Set up a training function

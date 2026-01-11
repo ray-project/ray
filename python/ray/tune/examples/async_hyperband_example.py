@@ -2,7 +2,7 @@
 
 import argparse
 import time
-from typing import Dict, Any
+from typing import Any, Dict
 
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler

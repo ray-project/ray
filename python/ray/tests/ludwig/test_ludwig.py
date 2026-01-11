@@ -19,9 +19,11 @@
 
 import contextlib
 import os
+import sys
 import tempfile
 
 import pytest
+
 import ray
 
 ludwig_installed = True
@@ -45,18 +47,21 @@ pytestmark = pytest.mark.skipif(skip, reason="Missing Ludwig dependency")
 if not skip:
     from ludwig.backend.ray import RayBackend, get_horovod_kwargs
 
-    from ray.tests.ludwig.ludwig_test_utils import create_data_set_to_use, spawn
-    from ray.tests.ludwig.ludwig_test_utils import bag_feature
-    from ray.tests.ludwig.ludwig_test_utils import binary_feature
-    from ray.tests.ludwig.ludwig_test_utils import category_feature
-    from ray.tests.ludwig.ludwig_test_utils import date_feature
-    from ray.tests.ludwig.ludwig_test_utils import generate_data
-    from ray.tests.ludwig.ludwig_test_utils import h3_feature
-    from ray.tests.ludwig.ludwig_test_utils import numerical_feature
-    from ray.tests.ludwig.ludwig_test_utils import sequence_feature
-    from ray.tests.ludwig.ludwig_test_utils import set_feature
-    from ray.tests.ludwig.ludwig_test_utils import train_with_backend
-    from ray.tests.ludwig.ludwig_test_utils import vector_feature
+    from ray.tests.ludwig.ludwig_test_utils import (
+        bag_feature,
+        binary_feature,
+        category_feature,
+        create_data_set_to_use,
+        date_feature,
+        generate_data,
+        h3_feature,
+        numerical_feature,
+        sequence_feature,
+        set_feature,
+        spawn,
+        train_with_backend,
+        vector_feature,
+    )
 
 else:
 
@@ -160,7 +165,4 @@ def test_ray_tabular_client():
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-v", "-x", __file__]))

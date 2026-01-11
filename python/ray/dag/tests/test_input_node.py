@@ -3,12 +3,13 @@ Tests to ensure ray DAG can correctly mark its input(s) to take user
 request, for all DAGNode types.
 """
 
-import pytest
-from ray.dag.dag_node import DAGNode
-from ray.dag.input_node import InputNode
 from typing import Any, TypeVar
 
+import pytest
+
 import ray
+from ray.dag.dag_node import DAGNode
+from ray.dag.input_node import InputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -118,7 +119,7 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
     with pytest.raises(
         ValueError,
         match=(
-            "InputNode handles user dynamic input the the DAG, and "
+            "InputNode handles user dynamic input the DAG, and "
             "cannot be used as args, kwargs, or other_args_to_resolve "
             "in ClassNode constructor because it is not available at "
             "class construction or binding time."

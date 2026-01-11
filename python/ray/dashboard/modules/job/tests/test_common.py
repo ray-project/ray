@@ -5,6 +5,7 @@ from google.protobuf.json_format import Parse
 
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
+    JobErrorType,
     JobInfo,
     JobStatus,
     JobSubmitRequest,
@@ -86,6 +87,41 @@ class TestJobSubmitRequestValidation:
         with pytest.raises(TypeError, match="values must be strings"):
             validate_request_type(
                 {"entrypoint": "abc", "metadata": {"hi": 1}}, JobSubmitRequest
+            )
+
+    def test_validate_entrypoint_label_selector(self):
+        r = validate_request_type(
+            {
+                "entrypoint": "abc",
+                "entrypoint_label_selector": {"fragile_node": "!1"},
+            },
+            JobSubmitRequest,
+        )
+        assert r.entrypoint_label_selector == {"fragile_node": "!1"}
+
+        with pytest.raises(TypeError, match="must be a dict"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": "bad"},
+                JobSubmitRequest,
+            )
+
+        with pytest.raises(TypeError, match="keys must be strings"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": {1: "bad"}},
+                JobSubmitRequest,
+            )
+
+        with pytest.raises(TypeError, match="values must be strings"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": {"k": 1}},
+                JobSubmitRequest,
+            )
+
+    def test_entrypoint_resources_disallow_strings(self):
+        with pytest.raises(TypeError, match="values must be numbers"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_resources": {"Custom": "1"}},
+                JobSubmitRequest,
             )
 
 
@@ -179,7 +215,7 @@ def test_job_info_json_to_proto():
     info = JobInfo(
         status=JobStatus.PENDING,
         entrypoint="echo hi",
-        error_type="error_type",
+        error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE,
         start_time=123,
         end_time=456,
         metadata={"hi": "hi2"},
@@ -208,7 +244,7 @@ def test_job_info_json_to_proto():
         "(CPUs, GPUs, memory, custom resources) to become available. "
         "It may be waiting for the runtime environment to be set up."
     )
-    assert info_proto.error_type == "error_type"
+    assert info_proto.error_type == "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
     assert info_proto.driver_agent_http_address == "http://localhost:1234"
     assert info_proto.driver_node_id == "node_id"
 

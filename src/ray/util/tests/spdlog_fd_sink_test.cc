@@ -39,7 +39,7 @@ class HelloworldFormatter : public spdlog::formatter {
 };
 
 TEST(SpdlogFdSinkTest, SinkWithFd) {
-  non_owned_fd_sink_st sink{GetStdoutHandle()};
+  non_owned_fd_sink_st sink{GetStdoutFd()};
   sink.set_formatter(std::make_unique<HelloworldFormatter>());
   spdlog::details::log_msg msg_to_log{
       /*logger_name=*/"logger_name", spdlog::level::level_enum::info, /*msg=*/"content"};

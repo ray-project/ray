@@ -6,16 +6,18 @@ import re
 import sys
 import threading
 import time
-from unittest.mock import Mock
 from typing import Type
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 from pydantic import BaseModel as BaseModelV2
 from pydantic.v1 import BaseModel as BaseModelV1
 
+import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
+from ray._common.network_utils import build_address
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
     disable_client_hook,
@@ -47,7 +49,9 @@ from ray.util.client.ray_client_helpers import (
 
 # Client server port of the shared Ray instance
 SHARED_CLIENT_SERVER_PORT = 25555
-SHARED_CLIENT_SERVER_ADDRESS = f"ray://localhost:{SHARED_CLIENT_SERVER_PORT}"
+SHARED_CLIENT_SERVER_ADDRESS = (
+    f"ray://{build_address('localhost', SHARED_CLIENT_SERVER_PORT)}"
+)
 
 
 @pytest.fixture(scope="module")
@@ -63,8 +67,6 @@ def call_ray_start_shared(request):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(call_ray_start_shared, connect_to_client):
-    import ray
-
     if connect_to_client:
         with ray_start_client_server_for_address(
             call_ray_start_shared
@@ -108,8 +110,6 @@ def test_client_thread_safe(call_ray_start_shared):
         b.join()
 
 
-# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-# @pytest.mark.skip()
 def test_client_mode_hook_thread_safe(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared):
         with enable_client_mode():
@@ -654,7 +654,7 @@ def test_startup_retry(call_ray_start_shared):
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()
     time.sleep(3)
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
@@ -674,7 +674,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
         time.sleep(2)
         server.stop(0)
 
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     ray_client.connect("localhost:50051")
     thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()
@@ -953,6 +953,27 @@ def test_get_runtime_context_gcs_client(call_ray_start_shared):
         assert context.gcs_address, "gcs_address not set"
 
 
+def test_get_runtime_context_session_name_client(call_ray_start_shared):
+    """
+    Tests get_runtime_context get_session_name in client mode
+    """
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        context = ray.get_runtime_context()
+        session_name = context.get_session_name()
+        assert isinstance(session_name, str), "session_name should be a string"
+        assert len(session_name) > 0, "session_name should not be empty"
+
+        @ray.remote
+        def verify_session_name(expected_session_name):
+            rtc = ray.get_runtime_context()
+            assert isinstance(rtc.get_session_name(), str)
+            assert rtc.get_session_name() == expected_session_name
+            return True
+
+        # Verify session name is consistent across driver and remote tasks
+        ray.get(verify_session_name.remote(session_name))
+
+
 def test_internal_kv_in_proxy_mode(call_ray_start_shared):
     import ray
 
@@ -965,7 +986,4 @@ def test_internal_kv_in_proxy_mode(call_ray_start_shared):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

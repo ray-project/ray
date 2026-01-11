@@ -1,11 +1,10 @@
 import abc
 import logging
-
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import DeviceType, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -21,15 +20,22 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The `AlgorithmConfig` to use to setup this `Runner`.
             **kwargs: Forward compatibility `kwargs`.
         """
+        self.worker_index: int = kwargs.get("worker_index")
         self.config: AlgorithmConfig = config.copy(copy_frozen=False)
+        # Set the device.
+        self.set_device()
         # Generate the `RLModule`.
         self.make_module()
         self._weights_seq_no = 0
 
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+        )
 
-        super().__init__(**kwargs)
+        # Initialize the `FaultAwareApply`.
+        super().__init__()
 
     @abc.abstractmethod
     def assert_healthy(self):
@@ -80,6 +86,17 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
         For example, when using a `gym.Env` in this `Runner`, you should make sure
         that its `close()` method is called.
         """
+
+    @property
+    @abc.abstractmethod
+    def _device(self) -> Union[DeviceType, None]:
+        """Returns the device of this `Runner`. None if framework is not supported."""
+        pass
+
+    @abc.abstractmethod
+    def set_device(self) -> None:
+        """Sets the device for this `Runner`."""
+        pass
 
     @abc.abstractmethod
     def __del__(self) -> None:

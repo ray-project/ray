@@ -20,7 +20,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -62,18 +62,16 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_iters=200, default_reward=450.0, default_timesteps=200000
 )
 parser.set_defaults(
     algo="PPO",
-    enable_new_api_stack=True,
 )
 
 
@@ -135,14 +133,13 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (
         (PPOConfig().environment("CartPole-v1"))
-        .env_runners(env_to_module_connector=lambda env: Float16Connector())
+        .env_runners(
+            env_to_module_connector=lambda env, spaces, device: Float16Connector()
+        )
         # Plug in our custom callback (on_algorithm_init) to make EnvRunner RLModules
         # float16 models.
         .callbacks(on_algorithm_init=on_algorithm_init)

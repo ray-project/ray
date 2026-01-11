@@ -8,15 +8,19 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_bool, env_float, env_integer
 from ray._private.worker import WORKER_MODE
+from ray.data._internal.logging import update_dataset_logger_for_worker
+from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
-from ray.data._internal.logging import update_dataset_logger_for_worker
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.issue_detection.issue_detector_configuration import (
+        IssueDetectorsConfiguration,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +57,6 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
-# We will attempt to slice blocks whose size exceeds this factor *
-# target_num_rows_per_block. We will warn the user if slicing fails and we produce
-# blocks with more rows than this threshold.
-MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
-
-
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,
@@ -67,20 +65,28 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
+DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
+    "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
+
+DEFAULT_ITER_GET_BLOCK_BATCH_SIZE = env_integer(
+    "RAY_DATA_ITER_GET_BLOCK_BATCH_SIZE", 32
+)
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
-    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.HASH_SHUFFLE
 )
 
 DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
-    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -93,7 +99,9 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
+DEFAULT_USE_POLARS_SORT = False
+
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -135,6 +143,17 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+# Progress bar log interval in seconds
+DEFAULT_PROGRESS_BAR_LOG_INTERVAL = env_integer("RAY_DATA_PROGRESS_LOG_INTERVAL", 5)
+
+# Globally enable or disable experimental rich progress bars. This is a new
+# interface to replace the old tqdm progress bar implementation.
+DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
+    env_integer("RAY_DATA_ENABLE_RICH_PROGRESS_BARS", 0)
+)
+
+DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
+
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
@@ -158,6 +177,10 @@ DEFAULT_RETRIED_IO_ERRORS = (
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
+
+DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
+
+DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
@@ -192,13 +215,88 @@ DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
-    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
+)
+
+DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 2
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
+
+DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
+    "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
+)
+
+DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
+    "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
+)
+
+
+DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
+    1.75,
+)
+
+DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
+    0.5,
+)
+
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
+    1,
+)
+
+
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", True
+)
+
+
+DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
+    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
+)
+
+
+@DeveloperAPI
+@dataclass
+class AutoscalingConfig:
+    """Configuration for autoscaling of Ray Data.
+
+    Args:
+        actor_pool_util_upscaling_threshold: Actor Pool utilization threshold for upscaling.
+            Once Actor Pool exceeds this utilization threshold it will start adding new actors.
+            Actor Pool utilization is defined as ratio of number of submitted tasks to the
+            number of available concurrency-slots to run them in the current set of actors.
+            This utilization value could exceed 100%, when the number of submitted tasks
+            exceed available concurrency-slots to run them in the current set of actors.
+            This is possible when `max_tasks_in_flight_per_actor`
+            (defaults to 2 x of `max_concurrency`) > Actor's `max_concurrency`
+            and allows to overlap task execution with the fetching of the blocks
+            for the next task providing for ability to negotiate a trade-off
+            between autoscaling speed and resource efficiency (i.e.,
+            making tasks wait instead of immediately triggering execution).
+        actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
+            This limits how many actors can be added at once to prevent resource contention
+            and scheduling pressure. Defaults to 1 for conservative scaling.
+    """
+
+    actor_pool_util_upscaling_threshold: float = (
+        DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD
+    )
+
+    # Actor Pool utilization threshold for downscaling
+    actor_pool_util_downscaling_threshold: float = (
+        DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
+    )
+
+    # Maximum number of actors to scale up in a single scaling decision
+    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -227,6 +325,15 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
         return DEFAULT_SHUFFLE_STRATEGY
 
 
+def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
+    # Lazily import to avoid circular dependencies.
+    from ray.data._internal.issue_detection.issue_detector_configuration import (
+        IssueDetectorsConfiguration,
+    )
+
+    return IssueDetectorsConfiguration()
+
+
 @DeveloperAPI
 @dataclass
 class DataContext:
@@ -248,9 +355,7 @@ class DataContext:
 
     Args:
         target_max_block_size: The max target block size in bytes for reads and
-            transformations.
-        target_shuffle_max_block_size: The max target block size in bytes for shuffle
-            ops like ``random_shuffle``, ``sort``, and ``repartition``.
+            transformations. If `None`, this means the block size is infinite.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -258,6 +363,9 @@ class DataContext:
             remote storage.
         enable_pandas_block: Whether pandas block format is enabled.
         actor_prefetcher_enabled: Whether to use actor based block prefetcher.
+        iter_get_block_batch_size: Maximum number of block object references to resolve
+            in a single ``ray.get()`` call when iterating over datasets.
+        autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
         scheduling_strategy: The global scheduling strategy. For tasks with large args,
@@ -293,11 +401,19 @@ class DataContext:
             to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
+        enable_operator_progress_bars: Whether to enable progress bars for individual
+            operators during execution.
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
+        enable_rich_progress_bars: Whether to use the new rich progress bars instead
+            of the tqdm TUI.
+        progress_bar_log_interval: The interval in seconds for logging progress bar
+            updates in non-interactive terminals.
         enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
+            ``get_object_locations`` for metrics. This is useful for tracking whether
+            the object input of a task is local (cache hit) or not local (cache miss)
+            to the node that task is running on.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -308,7 +424,14 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        enable_op_resource_reservation: Whether to reserve resources for each operator.
+        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
+            Default to `False` to not retry on any errors. Set to `True` to retry
+            all errors.
+        actor_init_max_retries: Maximum number of consecutive retries for actor
+            initialization failures. The counter resets when an actor successfully
+            initializes. Default is 3. Set to -1 for infinite retries.
+        op_resource_reservation_enabled: Whether to enable resource reservation for
+            operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
@@ -328,21 +451,63 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        max_tasks_in_flight_per_actor: Max number of tasks that could be submitted
+            for execution to individual actor at the same time. Note that only up to
+            `max_concurrency` number of these tasks will be executing concurrently
+            while remaining ones will be waiting in the Actor's queue. Buffering
+            tasks in the queue allows us to overlap pulling of the blocks (which are
+            tasks arguments) with the execution of the prior tasks maximizing
+            individual Actor's utilization
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        default_hash_shuffle_parallelism: Default parallelism level for hash-based
+            shuffle operations if the number of partitions is unspecifed.
+        max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
+            provisioned for hash-shuffle aggregations.
+        min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
+            shuffle aggregators to become available, in seconds.
+        hash_shuffle_aggregator_health_warning_interval_s: Interval for health warning
+            checks on hash shuffle aggregators, in seconds.
+        max_hash_shuffle_finalization_batch_size: Maximum batch size for concurrent
+            hash-shuffle finalization tasks. If `None`, defaults to
+            `max_hash_shuffle_aggregators`.
+        join_operator_actor_num_cpus_per_partition_override: Override CPU allocation
+            per partition for join operator actors.
+        hash_shuffle_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash shuffle operator actors.
+        hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash aggregate operator actors.
+        use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        override_object_store_memory_limit_fraction: Override the fraction of object
+            store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
             map tasks won't record memory stats.
+        dataset_logger_id: Optional logger ID for dataset operations. If `None`, uses
+            default logging configuration.
+        issue_detectors_config: Configuration for issue detection and monitoring during
+            dataset operations.
+        downstream_capacity_backpressure_ratio: Ratio for downstream capacity
+            backpressure control. A higher ratio causes backpressure to kick-in
+            later. If `None`, this backpressure policy is disabled.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+            of an operator based on its and downstream operators' queue size.
+        enforce_schemas: Whether to enforce schema consistency across dataset operations.
+        pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
+            between Arrow and pandas formats for better type inference.
     """
 
-    target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
+    # `None` means the block size is infinite.
+    target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+    iter_get_block_batch_size: int = DEFAULT_ITER_GET_BLOCK_BATCH_SIZE
+
+    autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
     ################################################################
     # Sort-based shuffling configuration
@@ -360,13 +525,24 @@ class DataContext:
 
     # Default hash-shuffle parallelism level (will be used when not
     # provided explicitly)
-    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+    default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Max number of aggregating actors that could be provisioned
+    # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
-    # When unset defaults to `DataContext.min_parallelism`
-    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # When unset defaults to the smaller of
+    #   - Total # of CPUs available in the cluster * 2
+    #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
+    max_hash_shuffle_aggregators: Optional[int] = None
+
+    min_hash_shuffle_aggregator_wait_time_in_s: int = (
+        DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
+    )
+
+    hash_shuffle_aggregator_health_warning_interval_s: int = (
+        DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S
+    )
+
     # Max number of *concurrent* hash-shuffle finalization tasks running
     # at the same time. This config is helpful to control concurrency of
     # finalization tasks to prevent single aggregator running multiple tasks
@@ -375,9 +551,11 @@ class DataContext:
     # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
 
-    join_operator_actor_num_cpus_per_partition_override: float = None
-    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
-    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
+    # (Advanced) Following configuration allows to override `num_cpus` allocation for the
+    # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)
+    join_operator_actor_num_cpus_override: float = None
+    hash_shuffle_operator_actor_num_cpus_override: float = None
+    hash_aggregate_operator_actor_num_cpus_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
@@ -385,6 +563,7 @@ class DataContext:
     )
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
+    use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -407,6 +586,8 @@ class DataContext:
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
+    enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    progress_bar_log_interval: int = DEFAULT_PROGRESS_BAR_LOG_INTERVAL
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -415,6 +596,8 @@ class DataContext:
     actor_task_retry_on_errors: Union[
         bool, List[BaseException]
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
+    actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -424,7 +607,14 @@ class DataContext:
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
+    # Timeout threshold (in seconds) for how long it should take for actors in the
+    # Actor Pool to start up. Exceeding this threshold will lead to execution being
+    # terminated with exception due to inability to secure min required capacity.
+    #
+    # Setting non-positive value here (ie <= 0) disables this functionality
+    # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
@@ -432,6 +622,30 @@ class DataContext:
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
+    # This is a temporary workaround to allow actors to perform cleanup
+    # until https://github.com/ray-project/ray/issues/53169 is fixed.
+    # This hook is known to have a race condition bug in fault tolerance.
+    # I.E., after the hook is triggered and the UDF is deleted, another
+    # retry task may still be scheduled to this actor and it will fail.
+    _enable_actor_pool_on_exit_hook: bool = False
+
+    issue_detectors_config: "IssueDetectorsConfiguration" = field(
+        default_factory=_issue_detectors_config_factory
+    )
+
+    downstream_capacity_backpressure_ratio: Optional[
+        float
+    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
+    enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
+
+    pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    _checkpoint_config: Optional[CheckpointConfig] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -444,9 +658,22 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+
+        # Sync hash shuffle aggregator fields to its detector config
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
+            self.hash_shuffle_aggregator_health_warning_interval_s
+        )
+        self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
+            self.min_hash_shuffle_aggregator_wait_time_in_s
+        )
+
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+        # Unique id of the current execution of the data pipeline.
+        # This value increments only upon re-execution of the exact same pipeline.
+        self._execution_idx = 0
 
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
@@ -476,16 +703,32 @@ class DataContext:
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
             warnings.warn(
-                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+
         elif name == "use_push_based_shuffle":
             warnings.warn(
-                "`use_push_based_shuffle` is deprecated, please configure "
+                "`use_push_based_shuffle` is deprecated! Configure "
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "target_shuffle_max_block_size":
+            warnings.warn(
+                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+            )
+
+            self.target_max_block_size = value
+
+        elif name == "use_polars":
+            warnings.warn(
+                "`use_polars` is deprecated, please configure "
+                "`use_polars_sort`  instead.",
+                DeprecationWarning,
+            )
+            self.use_polars_sort = value
 
         super().__setattr__(name, value)
 
@@ -595,6 +838,34 @@ class DataContext:
         workers.
         """
         self.dataset_logger_id = dataset_id
+
+    @property
+    def checkpoint_config(self) -> Optional[CheckpointConfig]:
+        """Get the checkpoint configuration."""
+        return self._checkpoint_config
+
+    @checkpoint_config.setter
+    def checkpoint_config(
+        self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
+    ) -> None:
+        """Set the checkpoint configuration."""
+        if value is None:
+            self._checkpoint_config = None
+        elif isinstance(value, dict):
+            if "override_backend" in value:
+                if not isinstance(value["override_backend"], str):
+                    raise TypeError(
+                        "Expected 'override_backend' to be a string,"
+                        f" but got {type(value['override_backend'])}."
+                    )
+                value["override_backend"] = CheckpointBackend[value["override_backend"]]
+            self._checkpoint_config = CheckpointConfig(**value)
+        elif isinstance(value, CheckpointConfig):
+            self._checkpoint_config = value
+        else:
+            raise TypeError(
+                "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
+            )
 
 
 # Backwards compatibility alias.

@@ -1,6 +1,7 @@
 import unittest
 
 import ray
+import ray._common
 from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.appo import APPOConfig
@@ -12,12 +13,12 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
-
+from ray.rllib.utils.test_utils import check
 
 object_store_memory = 10**8
 num_nodes = 3
 
-assert num_nodes * object_store_memory < ray._private.utils.get_system_memory() / 2, (
+assert num_nodes * object_store_memory < ray._common.utils.get_system_memory() / 2, (
     "Make sure there is enough memory on this machine to run this "
     "workload. We divide the system memory by 2 to provide a buffer."
 )
@@ -119,6 +120,7 @@ class TestNodeFailures(unittest.TestCase):
         )
 
     def _train(self, *, config, iters, min_reward, preempt_freq):
+        config.reporting(min_train_timesteps_per_iteration=1)
         algo = config.build()
 
         best_return = 0.0
@@ -136,7 +138,7 @@ class TestNodeFailures(unittest.TestCase):
                 exp_batch_size = config.minibatch_size
             else:
                 exp_batch_size = config.total_train_batch_size
-            self.assertGreaterEqual(avg_batch, exp_batch_size)
+            check(avg_batch, exp_batch_size, rtol=0.1)
             self.assertLess(
                 avg_batch,
                 exp_batch_size + config.get_rollout_fragment_length(),
@@ -192,7 +194,8 @@ class TestNodeFailures(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

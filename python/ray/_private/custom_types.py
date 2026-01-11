@@ -1,19 +1,18 @@
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
+    ErrorType,
+    Language,
     TaskStatus,
     TaskType,
     WorkerExitType,
     WorkerType,
-    ErrorType,
-    Language,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
@@ -45,6 +44,7 @@ TASK_STATUS = [
     "RUNNING_IN_RAY_WAIT",
     "FINISHED",
     "FAILED",
+    "GETTING_AND_PINNING_ARGS",
 ]
 TypeTaskStatus = Literal[tuple(TASK_STATUS)]
 NODE_STATUS = ["ALIVE", "DEAD"]
@@ -89,7 +89,6 @@ TypeReferenceType = Literal[tuple(REFERENCE_TYPE)]
 ERROR_TYPE = [
     "WORKER_DIED",
     "ACTOR_DIED",
-    "OBJECT_UNRECONSTRUCTABLE",
     "TASK_EXECUTION_EXCEPTION",
     "OBJECT_IN_PLASMA",
     "TASK_CANCELLED",
@@ -113,6 +112,14 @@ ERROR_TYPE = [
     "NODE_DIED",
     "END_OF_STREAMING_GENERATOR",
     "ACTOR_UNAVAILABLE",
+    "GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION",
+    "OBJECT_UNRECONSTRUCTABLE_PUT",
+    "OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED",
+    "OBJECT_UNRECONSTRUCTABLE_BORROWED",
+    "OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE",
+    "OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND",
+    "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
+    "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
@@ -121,7 +128,7 @@ LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
-    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name)
+    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name.keys())
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:

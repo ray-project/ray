@@ -3,11 +3,12 @@ from typing import Optional
 
 import ray
 import ray.serve._private.constants as serve_constants
-from ray._private import ray_constants
 from ray._raylet import GcsClient
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
 logger = logging.getLogger(serve_constants.SERVE_LOGGER_NAME)
+
+SERVE_INTERNAL_KV_NAMESPACE = b"serve"
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:
@@ -47,8 +48,8 @@ class RayInternalKVStore(KVStoreBase):
         """Put the key-value pair into the store.
 
         Args:
-            key (str)
-            val (bytes)
+            key: The key to store.
+            val: The value to store.
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
@@ -60,7 +61,7 @@ class RayInternalKVStore(KVStoreBase):
                 self.get_storage_key(key).encode(),
                 val,
                 overwrite=True,
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:
@@ -70,10 +71,10 @@ class RayInternalKVStore(KVStoreBase):
         """Get the value associated with the given key from the store.
 
         Args:
-            key (str)
+            key: The key to retrieve.
 
         Returns:
-            The bytes value. If the key wasn't found, returns None.
+            Optional[bytes]: The bytes value. If the key wasn't found, returns None.
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
@@ -81,7 +82,7 @@ class RayInternalKVStore(KVStoreBase):
         try:
             return self.gcs_client.internal_kv_get(
                 self.get_storage_key(key).encode(),
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:
@@ -91,7 +92,7 @@ class RayInternalKVStore(KVStoreBase):
         """Delete the value associated with the given key from the store.
 
         Args:
-            key (str)
+            key: The key to delete.
         """
 
         if not isinstance(key, str):
@@ -101,7 +102,7 @@ class RayInternalKVStore(KVStoreBase):
             return self.gcs_client.internal_kv_del(
                 self.get_storage_key(key).encode(),
                 False,
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                namespace=SERVE_INTERNAL_KV_NAMESPACE,
                 timeout=self.timeout,
             )
         except ray.exceptions.RpcError as e:

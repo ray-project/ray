@@ -3,13 +3,13 @@
 Tests that are specific to minimal installations.
 """
 
-import unittest.mock as mock
 import itertools
-import packaging
 import os
 import sys
+import unittest.mock as mock
 from typing import Dict
 
+import packaging
 import pytest
 
 
@@ -94,14 +94,10 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
                     mock_modules[mod] = mock.MagicMock()
 
             with mock.patch.dict("sys.modules", mock_modules):
-                from ray.dashboard.utils import get_all_modules
-                from ray.dashboard.utils import DashboardHeadModule
+                from ray.dashboard.utils import DashboardHeadModule, get_all_modules
 
                 get_all_modules(DashboardHeadModule)
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -6,7 +6,7 @@ import ray
 from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train import BackendConfig, Checkpoint, TrainingIterator
+from ray.train import BackendConfig, Checkpoint
 from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
@@ -14,7 +14,7 @@ from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func, count_required_parameters
 from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
 from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
-from ray.train.trainer import BaseTrainer, GenDataset
+from ray.train.trainer import BaseTrainer, GenDataset, TrainingIterator
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -54,7 +54,7 @@ class DataParallelTrainer(BaseTrainer):
     the "train" key), then it will be split into multiple dataset
     shards that can then be accessed by ``train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``train.get_dataset_shard(...)`` will return the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train loop methods <train-loop-api>`.
@@ -91,6 +91,7 @@ class DataParallelTrainer(BaseTrainer):
     Example:
 
     .. testcode::
+        :skipif: True
 
         import ray
         from ray import train
@@ -112,11 +113,6 @@ class DataParallelTrainer(BaseTrainer):
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     **How do I develop on top of DataParallelTrainer?**
 
@@ -205,7 +201,7 @@ class DataParallelTrainer(BaseTrainer):
     """
 
     # Exposed here for testing purposes. Should never need
-    # to be overriden.
+    # to be overridden.
     _backend_executor_cls: Type[BackendExecutor] = BackendExecutor
     _training_iterator_cls: Type[TrainingIterator] = TrainingIterator
 

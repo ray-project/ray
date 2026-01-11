@@ -1,5 +1,5 @@
-from gymnasium.spaces import Box, Dict, Discrete
 import numpy as np
+from gymnasium.spaces import Box, Dict, Discrete
 
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 

@@ -1,0 +1,61 @@
+# sft_lora_deepspeed.yaml
+
+### model
+model_name_or_path: Qwen/Qwen2.5-32B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+
+### deepspeed
+deepspeed: /mnt/cluster_storage/ds_z3_config.json # path to the DeepSpeed config
+
+### dataset
+dataset: my_glaive_toolcall_en_demo
+dataset_dir: /mnt/cluster_storage
+
+template: qwen
+cutoff_len: 1024
+max_samples: 1000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+output_dir: qwen2.5_32b_lora_sft
+logging_steps: 5
+save_steps: 50
+plot_loss: true
+report_to: wandb # or none
+
+### train
+per_device_train_batch_size: 1 # Adjust this depending on your GPU memory and sequence length
+gradient_accumulation_steps: 4
+num_train_epochs: 3.0
+learning_rate: 1.0e-4
+bf16: true
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+ddp_timeout: 180000000
+
+### ray
+ray_run_name: qwen2.5_32b_lora_sft
+ray_storage_path: /mnt/cluster_storage/
+ray_num_workers: 4  # Number of GPUs to use
+resources_per_worker:
+  GPU: 1
+  # accelerator_type:L40S: 0.001            # Use this to simply specify a GPU type (may place GPUs on separate nodes).
+  anyscale/accelerator_shape:4xL40S: 0.001  # Prefer this for DeepSpeed so all 4 GPUs are on the same node.
+  # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
+ray_init_kwargs:
+  runtime_env:
+    env_vars:
+      # If using wandb for experiments tracking
+      WANDB_API_KEY: <your_wandb_token>
+      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
+      # HF_TOKEN: <your_huggingface_token>
+      # If hf_transfer is installed
+      HF_HUB_ENABLE_HF_TRANSFER: '1'

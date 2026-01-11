@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG ARROW_VERSION=14.*
+ARG ARROW_VERSION=20.*
 ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
 

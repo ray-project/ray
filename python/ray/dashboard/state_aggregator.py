@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 from typing import List, Optional
 
-from ray import NodeID
 import ray.dashboard.memory_utils as memory_utils
+from ray import NodeID
 from ray._common.utils import get_or_create_event_loop
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.ray_constants import env_integer
@@ -243,10 +243,10 @@ class StateAPIManager:
             result = []
             for message in reply.worker_table_data:
                 data = protobuf_message_to_dict(
-                    message=message, fields_to_decode=["worker_id", "raylet_id"]
+                    message=message, fields_to_decode=["worker_id", "node_id"]
                 )
                 data["worker_id"] = data["worker_address"]["worker_id"]
-                data["node_id"] = data["worker_address"]["raylet_id"]
+                data["node_id"] = data["worker_address"]["node_id"]
                 data["ip"] = data["worker_address"]["ip_address"]
                 data["start_time_ms"] = int(data["start_time_ms"])
                 data["end_time_ms"] = int(data["end_time_ms"])

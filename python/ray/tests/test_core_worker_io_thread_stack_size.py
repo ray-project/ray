@@ -1,6 +1,7 @@
-import os
 import sys
+
 import pytest
+
 import ray
 
 
@@ -21,9 +22,4 @@ async def test_core_worker_io_thread_stack_size(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -4,16 +4,16 @@ from typing import Any, Dict, Optional
 
 from pydantic import Field
 
+from ray.data import ActorPoolStrategy
 from ray.data.block import UserDefinedFunction
-
-from ray.llm._internal.batch.processor.base import (
-    Processor,
-    ProcessorConfig,
-    ProcessorBuilder,
-)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     get_or_create_telemetry_agent,
+)
+from ray.llm._internal.batch.processor.base import (
+    Processor,
+    ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages import HttpRequestStage
 
@@ -60,6 +60,8 @@ def build_http_request_processor(
     config: HttpRequestProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
 
@@ -70,6 +72,10 @@ def build_http_request_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
 
     Returns:
         The constructed processor.
@@ -85,7 +91,9 @@ def build_http_request_processor(
                 session_factory=config.session_factory,
             ),
             map_batches_kwargs=dict(
-                concurrency=config.concurrency,
+                compute=ActorPoolStrategy(
+                    **config.get_concurrency(autoscaling_enabled=False),
+                )
             ),
         )
     ]
@@ -101,6 +109,8 @@ def build_http_request_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

@@ -8,8 +8,8 @@ set -euxo pipefail
 SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
-# importing install_miniconda function
-source "${SCRIPT_DIR}/install-miniconda.sh"
+# importing install_miniforge function
+source "${SCRIPT_DIR}/install-miniforge.sh"
 
 pkg_install_helper() {
   case "${OSTYPE}" in
@@ -79,12 +79,12 @@ install_shellcheck() {
     local name="shellcheck-v${shellcheck_version}"
     if [[ "${osname}" == "linux" || "${osname}" == "darwin" ]]; then
       sudo mkdir -p /usr/local/bin || true
-      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+      curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
         sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
       }
     else
       mkdir -p /usr/local/bin
-      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      curl -sSfL -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
       unzip "${name}.zip" "${name}.exe"
       mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
     fi
@@ -108,7 +108,7 @@ install_nvm() {
       (
         cd "${NVM_HOME}"
         local target="./nvm-${ver}.zip"
-        curl -f -s -L -o "${target}" \
+        curl -sSfL -o "${target}" \
           "https://github.com/coreybutler/nvm-windows/releases/download/${ver}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
@@ -133,7 +133,9 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade pip
+    # 25.3 has breaking change where other Python packages like "click" does not work
+    # with it anymore. pip-compile will fail to work with the package's setup code.
+    "${python}" -m pip install pip==25.2
 
     # If we're in a CI environment, do some configuration
     if [[ "${CI-}" == "true" ]]; then
@@ -154,13 +156,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSfL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -198,7 +200,6 @@ download_mnist() {
 }
 
 retry_pip_install() {
-  local pip_command=$1
   local status="0"
   local errmsg=""
 
@@ -206,7 +207,7 @@ retry_pip_install() {
   # that break the entire CI job: Simply retry installation in this case
   # after n seconds.
   for _ in {1..3}; do
-    errmsg=$(eval "${pip_command}" 2>&1) && break
+    errmsg="$("$@" 2>&1)" && break
     status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
   done
   if [[ "$status" != "0" ]]; then
@@ -245,16 +246,12 @@ install_pip_packages() {
     # For DAG visualization
     requirements_packages+=("pydot")
     requirements_packages+=("pytesseract==0.3.13")
-    requirements_packages+=("spacy==3.7.5")
-    requirements_packages+=("spacy_langdetect==0.1.2")
   fi
 
   # Additional RLlib test dependencies.
   if [[ "${RLLIB_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
-    #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
-    pip install --no-dependencies mlagents==0.28.0
 
     # Install MuJoCo.
     sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
@@ -275,24 +272,6 @@ install_pip_packages() {
   if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
-  fi
-
-  # Additional dependency for Ludwig.
-  # This cannot be included in requirements files as it has conflicting
-  # dependencies with Modin.
-  if [[ "${INSTALL_LUDWIG-}" == 1 ]]; then
-    # TODO: eventually pin this to master.
-    requirements_packages+=("ludwig[test]>=0.4")
-    requirements_packages+=("jsonschema>=4")
-  fi
-
-  # Additional dependency for time series libraries.
-  # This cannot be included in tune-requirements.txt as it has conflicting
-  # dependencies.
-  if [[ "${INSTALL_TIMESERIES_LIBS-}" == 1 ]]; then
-    requirements_packages+=("statsforecast==1.5.0")
-    requirements_packages+=("prophet==1.1.1")
-    requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
   fi
 
   # Data processing test dependencies.
@@ -317,7 +296,8 @@ install_pip_packages() {
     fi
   fi
 
-  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  # TODO(ray-ci): pin the dependencies.
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -399,13 +379,6 @@ install_pip_packages() {
   if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     download_mnist
   fi
-
-  if [[ "${DOC_TESTING-}" == 1 ]]; then
-    # Todo: This downgrades spacy and related dependencies because
-    # `en_core_web_sm` is only compatible with spacy < 3.6.
-    # We should move to a model that does not depend on a stale version.
-    python -m spacy download en_core_web_sm
-  fi
 }
 
 install_thirdparty_packages() {
@@ -415,7 +388,7 @@ install_thirdparty_packages() {
   fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -428,7 +401,7 @@ install_dependencies() {
   fi
 
   if [[ -n "${PYTHON-}" || "${LINT-}" == 1 || "${MINIMAL_INSTALL-}" == "1" ]]; then
-    install_miniconda
+    install_miniforge
   fi
 
   install_upgrade_pip
@@ -453,7 +426,11 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies
+if [[ $# -eq 0 ]]; then
+  install_dependencies
+else
+  "$@"
+fi
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

@@ -8,8 +8,6 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray.dashboard.optional_utils as optional_utils
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
-from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.modules.metrics.metrics_head import (
     DEFAULT_PROMETHEUS_HEADERS,
     DEFAULT_PROMETHEUS_HOST,
@@ -18,6 +16,8 @@ from ray.dashboard.modules.metrics.metrics_head import (
     PrometheusQueryError,
     parse_prom_headers,
 )
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -68,9 +68,9 @@ class DataHead(SubprocessModule):
         job_id = req.match_info["job_id"]
 
         try:
-            from ray.data._internal.stats import _get_or_create_stats_actor
+            from ray.data._internal.stats import get_or_create_stats_actor
 
-            _stats_actor = _get_or_create_stats_actor()
+            _stats_actor = get_or_create_stats_actor()
             datasets = await _stats_actor.get_datasets.remote(job_id)
             # Initializes dataset metric values
             for dataset in datasets:
@@ -142,7 +142,7 @@ class DataHead(SubprocessModule):
                 content_type="application/json",
             )
         except Exception as e:
-            logging.exception("Exception occured while getting datasets.")
+            logging.exception("Exception occurred while getting datasets.")
             return Response(
                 status=503,
                 text=str(e),

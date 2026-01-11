@@ -5,41 +5,39 @@ import fnmatch
 import os
 import subprocess
 import sys
-from typing import List, Optional, Set, Tuple
 from pprint import pformat
+from typing import List, Optional, Set, Tuple
 
 
-_ALL_TAGS = set(
-    """
-    always
-    lint python cpp core_cpp java workflow accelerated_dag dashboard
-    data serve ml tune train llm rllib rllib_gpu rllib_directly
-    linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python k8s_doc
-    """.split()
-)
-
-
-def _list_changed_files(commit_range):
+def _list_changed_files(base: str, commit: str) -> List[str]:
     """Returns a list of names of files changed in the given commit range.
 
     The function works by opening a subprocess and running git. If an error
     occurs while running git, the script will abort.
 
     Args:
-        commit_range: The commit range to diff, consisting of the two
-            commit IDs separated by \"..\"
+        base: The base branch to diff, fetchable from origin.
+        commit: The commit to diff.
 
     Returns:
-        list: List of changed files within the commit range
+        list: List of changed files within the commit range.
     """
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    if base_branch:
-        pull_command = ["git", "fetch", "-q", "origin", base_branch]
-        subprocess.check_call(pull_command)
+    if not base:
+        raise ValueError("Base branch is required.")
+    if not commit:
+        raise ValueError("Commit is required.")
 
-    command = ["git", "diff", "--name-only", commit_range, "--"]
-    diff_names = subprocess.check_output(command).decode()
+    pull_command = ["git", "fetch", "-q", "origin", base]
+    subprocess.check_call(pull_command)
+
+    merge_base = (
+        subprocess.check_output(["git", "merge-base", f"origin/{base}", commit])
+        .decode()
+        .strip()
+    )
+
+    command = ["git", "diff", "--name-only", merge_base, commit, "--"]
+    diff_names = subprocess.check_output(command).decode().strip()
 
     files: List[str] = []
     for line in diff_names.splitlines():
@@ -53,22 +51,23 @@ def _is_pull_request():
     return os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
-def _get_commit_range():
-    return "origin/{}...{}".format(
-        os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
-        os.environ["BUILDKITE_COMMIT"],
-    )
+def _get_commit_range() -> Tuple[str, str]:
+    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
+    head_commit = os.environ.get("BUILDKITE_COMMIT", "HEAD")
+    return base_branch, head_commit
 
 
 class TagRule:
     def __init__(
         self,
         tags: List[str],
+        lineno: int,
         dirs: Optional[List[str]] = None,
         files: Optional[List[str]] = None,
         patterns: Optional[List[str]] = None,
     ):
         self.tags = set(tags)
+        self.lineno = lineno
         self.dirs = dirs or []
         self.patterns = patterns or []
         self.files = files or []
@@ -91,7 +90,7 @@ class TagRule:
         return set(), False
 
 
-def _parse_rules(rule_content: str) -> List[TagRule]:
+def _parse_rules(rule_content: str) -> Tuple[Set[str], List[TagRule]]:
     """
     Parse the rule config content into a list ot TagRule's.
 
@@ -113,6 +112,9 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
     """
     rules: List[TagRule] = []
 
+    tag_defs: Set[str] = set()
+    tag_defs_ended: bool = False
+
     tags: Set[str] = set()
     dirs: List[str] = []
     files: List[str] = []
@@ -130,13 +132,22 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
         if comment_index != -1:
             line = line[:comment_index].strip()  # Remove comments.
 
+        if line.startswith("!"):
+            if tag_defs_ended:
+                raise ValueError("Tag must be declared at file start.")
+            tag_defs.update(line[1:].split())
+            continue
+
+        if not tag_defs_ended:
+            tag_defs_ended = True
+
         if line.startswith("@"):  # tags.
             # Strip the leading '@' and split into tags.
             tags.update(line[1:].split())
         elif line.startswith(";"):  # End of a rule.
             if line != ";":
                 raise ValueError(f"Unexpected tokens after semicolon on line {lineno}.")
-            rules.append(TagRule(tags, dirs, files, patterns))
+            rules.append(TagRule(tags, lineno, dirs, files, patterns))
             tags, dirs, files, patterns = set(), [], [], []
         else:
             if line.find("*") != -1:  # Patterns.
@@ -148,20 +159,33 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
 
     # Append the last rule if not empty.
     if tags or dirs or files or patterns:
-        rules.append(TagRule(tags, dirs, files, patterns))
+        rules.append(TagRule(tags, lineno, dirs, files, patterns))
 
-    return rules
+    return tag_defs, rules
 
 
 class TagRuleSet:
     def __init__(self, content: Optional[str] = None):
+        self.tag_defs = set()
+        self.rules = []
+
         if content is not None:
-            self.rules = _parse_rules(content)
-        else:
-            self.rules = []
+            self.add_rules(content)
 
     def add_rules(self, content: str):
-        self.rules.extend(_parse_rules(content))
+        tag_defs, rules = _parse_rules(content)
+        self.tag_defs.update(tag_defs)
+        self.rules.extend(rules)
+
+    def check_rules(self):
+        for rule in self.rules:
+            if not rule.tags:
+                continue
+            for tag in rule.tags:
+                if tag not in self.tag_defs:
+                    raise ValueError(
+                        f"Tag {tag} not declared, used in rule at line {rule.lineno}."
+                    )
 
     def match_tags(self, changed_file: str) -> Tuple[Set[str], bool]:
         for rule in self.rules:
@@ -188,6 +212,8 @@ if __name__ == "__main__":
         with open(config) as f:
             rules.add_rules(f.read())
 
+    rules.check_rules()
+
     tags: Set[str] = set()
 
     tags.add("always")
@@ -197,9 +223,9 @@ if __name__ == "__main__":
         tags.update(line.split())
 
     if _is_pull_request():
-        commit_range = _get_commit_range()
-        files = _list_changed_files(commit_range)
-        print(pformat(commit_range), file=sys.stderr)
+        base_branch, head_commit = _get_commit_range()
+        files = _list_changed_files(base_branch, head_commit)
+        print(pformat(f"origin/{base_branch} -> {head_commit}"), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
         for changed_file in files:
@@ -221,7 +247,7 @@ if __name__ == "__main__":
         # Log the modified environment variables visible in console.
         output_string = " ".join(list(tags))
         for tag in tags:
-            assert tag in _ALL_TAGS, f"Unknown tag {tag}"
+            assert tag in rules.tag_defs, f"Unknown tag {tag}"
 
         print(output_string, file=sys.stderr)  # Debug purpose
         print(output_string)

@@ -3,17 +3,19 @@ import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import (
+    Any,
+    Dict,
     Iterable,
     Optional,
-    Dict,
-    Any,
 )
+
 import pyarrow
+import pyarrow as pa
 import pyarrow.types as pat
-from ray.data.block import BlockAccessor
+
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteReturnType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -299,7 +301,7 @@ class ClickHouseDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         client = None
         try:
             client = self._init_client()

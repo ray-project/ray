@@ -1,8 +1,8 @@
-import tree
 from typing import Dict, Union
 
+import tree
+
 from ray.rllib.algorithms.dqn.default_dqn_rl_module import (
-    DefaultDQNRLModule,
     ATOMS,
     QF_LOGITS,
     QF_NEXT_PREDS,
@@ -10,16 +10,17 @@ from ray.rllib.algorithms.dqn.default_dqn_rl_module import (
     QF_PROBS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
+    DefaultDQNRLModule,
 )
 from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
+from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
 from ray.rllib.core.rl_module.apis.q_net_api import QNetAPI
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, TensorStructType
+from ray.rllib.utils.typing import TensorStructType, TensorType
 from ray.util.annotations import DeveloperAPI
 
 torch, nn = try_import_torch()
@@ -242,7 +243,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 for all heads (Q or advantages and value in case of a dueling
                 architecture).
             head: Either a head model or a dictionary of head model (dueling
-            architecture) containing advantage and value stream heads.
+                architecture) containing advantage and value stream heads.
 
         Returns:
             In case of expectation learning the Q-value predictions ("qf_preds")

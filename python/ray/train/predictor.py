@@ -132,7 +132,7 @@ class Predictor(abc.ABC):
         The preferred batch format to use if both `_predict_pandas` and
         `_predict_numpy` are implemented. Defaults to Pandas.
 
-        Can be overriden by predictor classes depending on the framework type,
+        Can be overridden by predictor classes depending on the framework type,
         e.g. TorchPredictor prefers Numpy and XGBoostPredictor prefers Pandas as
         native batch format.
 
@@ -171,7 +171,7 @@ class Predictor(abc.ABC):
         Args:
             data: A batch of input data of type ``DataBatchType``.
             kwargs: Arguments specific to predictor implementations. These are passed
-            directly to ``_predict_numpy`` or ``_predict_pandas``.
+                directly to ``_predict_numpy`` or ``_predict_pandas``.
 
         Returns:
             DataBatchType:

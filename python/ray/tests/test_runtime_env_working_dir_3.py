@@ -9,14 +9,14 @@ import pytest
 
 import ray
 import ray.experimental.internal_kv as kv
+from ray._common.network_utils import find_free_port
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
-from ray._private.utils import get_directory_size_bytes
 from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
-    wait_for_condition,
-    find_free_port,
 )
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -77,22 +77,8 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-def get_local_file_whitelist(cluster):
-    # On Windows the runtime directory itself is sometimes not deleted due
-    # to it being in use therefore whitelist it for the tests.
-    if sys.platform == "win32":
-        runtime_dir = (
-            Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
-            / "working_dir_files"
-        )
-        pkg_dirs = list(Path(runtime_dir).iterdir())
-        if pkg_dirs:
-            return {pkg_dirs[0].name}
-    return {}
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     def test_job_level_gc(
         self,
         start_cluster,
@@ -114,8 +100,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
@@ -125,8 +113,8 @@ class TestGC:
         @ray.remote(num_cpus=1)
         class A:
             def test_import(self):
-                import test_module
                 import pip_install_test  # noqa: F401
+                import test_module
 
                 test_module.one()
 
@@ -155,8 +143,7 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     # NOTE(edoakes): I tried removing the parametrization here and setting working_dir
@@ -215,8 +202,7 @@ class TestGC:
             ray.kill(actors[i])
             print(f"Issued ray.kill for actor {i}.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     def test_detached_actor_gc(
@@ -240,8 +226,10 @@ class TestGC:
                 "working_dir": tmp_working_dir,
                 "py_modules": [
                     S3_PACKAGE_URI,
-                    Path(os.path.dirname(__file__))
-                    / "pip_install_test-0.5-py3-none-any.whl",
+                    str(
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
                 ],
             },
         )
@@ -251,8 +239,8 @@ class TestGC:
         @ray.remote
         class A:
             def test_import(self):
-                import test_module
                 import pip_install_test  # noqa: F401
+                import test_module
 
                 test_module.one()
 
@@ -292,8 +280,7 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     def test_hit_cache_size_limit(
@@ -392,7 +379,4 @@ def test_pin_runtime_env_uri(start_cluster, tmp_working_dir, expiration_s, monke
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

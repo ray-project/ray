@@ -1,17 +1,24 @@
 import json
-import pytest
-from ray._private.label_utils import (
-    parse_node_labels_json,
-    parse_node_labels_string,
-    parse_node_labels_from_yaml_file,
-    validate_node_labels,
-    validate_label_key,
-    validate_label_value,
-    validate_label_selector_value,
-    validate_node_label_syntax,
-)
+import os
 import sys
 import tempfile
+from contextlib import contextmanager
+from typing import ContextManager, Dict, Optional, Union
+
+import pytest
+
+from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
+    parse_node_labels_string,
+    validate_fallback_strategy,
+    validate_label_key,
+    validate_label_selector,
+    validate_label_selector_value,
+    validate_label_value,
+    validate_node_label_syntax,
+    validate_node_labels,
+)
 
 
 @pytest.mark.parametrize(
@@ -36,6 +43,7 @@ import tempfile
             "Label string is not a key-value pair",
         ),
     ],
+    ids=["empty-string", "empty-value", "multi-kv", "not-kv"],
 )
 def test_parse_node_labels_from_string(
     labels_string, should_raise, expected_result, expected_error_msg
@@ -83,54 +91,63 @@ def test_parse_node_labels_from_json():
     assert 'The value of the "accelerator-type" is not string type' in str(e)
 
 
-def test_parse_node_labels_from_yaml_file():
-    # Empty/invalid yaml
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write("")
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-        assert "The format after deserialization is not a key-value pair map" in str(e)
+@contextmanager
+def _tempfile(content: str) -> ContextManager[str]:
+    """Yields a temporary file containing the provided content.
 
-    # With non-existent yaml file
+    NOTE: we cannot use the built-in NamedTemporaryFile context manager because it
+    causes test failures on Windows due to holding the file descriptor open.
+    """
+    f = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+    try:
+        f.write(content)
+        f.flush()
+        f.close()
+        yield f.name
+    finally:
+        os.unlink(f.name)
+
+
+def test_parse_node_labels_from_missing_yaml_file():
     with pytest.raises(FileNotFoundError):
         parse_node_labels_from_yaml_file("missing-file.yaml")
 
-    # Valid label key with empty value
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('"ray.io/accelerator-type": ""')
-        test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
-    assert labels_dict == {"ray.io/accelerator-type": ""}
 
-    # Multiple valid label keys and values
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write(
-            '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"'
-        )
-        test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
-    assert labels_dict == {
-        "ray.io/accelerator-type": "A100",
-        "region": "us",
-        "market-type": "spot",
-    }
-
-    # Non-string label key
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('{100: "A100"}')
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-    assert "The key is not string type." in str(e)
-
-    # Non-string label value
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('{"gpu": 100}')
-        test_file.flush()  # Ensure data is written
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_from_yaml_file(test_file.name)
-    assert 'The value of "gpu" is not string type' in str(e)
+@pytest.mark.parametrize(
+    "content, expected_output, exception_match",
+    [
+        # Empty/invalid YAML file.
+        ("", ValueError, "is not a key-value pair map"),
+        # Invalid label key (not a string).
+        ('{100: "A100"}', ValueError, "The key is not string type."),
+        # Invalid label value (not a string).
+        ('{"gpu": 100}', ValueError, 'The value of "gpu" is not string type'),
+        # Valid file with empty label value.
+        ('"ray.io/accelerator-type": ""', {"ray.io/accelerator-type": ""}, None),
+        # Multiple valid label keys and values.
+        (
+            '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"',
+            {
+                "ray.io/accelerator-type": "A100",
+                "region": "us",
+                "market-type": "spot",
+            },
+            None,
+        ),
+    ],
+    ids=["empty", "invalid-key", "invalid-value", "empty-value", "multi-kv"],
+)
+def test_parse_node_labels_from_yaml_file(
+    content: str,
+    expected_output: Union[Dict, Exception],
+    exception_match: Optional[str],
+):
+    with _tempfile(content) as p:
+        if not isinstance(expected_output, dict):
+            with pytest.raises(expected_output, match=exception_match):
+                parse_node_labels_from_yaml_file(p)
+        else:
+            assert parse_node_labels_from_yaml_file(p) == expected_output
 
 
 @pytest.mark.parametrize(
@@ -157,6 +174,7 @@ def test_parse_node_labels_from_yaml_file():
             None,
         ),
     ],
+    ids=["invalid-key-prefix", "invalid-key", "invalid-value", "valid"],
 )
 def test_validate_node_label_syntax(labels_dict, expected_error, expected_message):
     if expected_error:
@@ -177,6 +195,14 @@ def test_validate_node_label_syntax(labels_dict, expected_error, expected_messag
         ("ray!.io/accelerator-type", "Invalid label key prefix"),
         ("a" * 64, "Invalid label key name"),
     ],
+    ids=[
+        "valid1",
+        "valid2",
+        "invalid-prefix",
+        "invalid-suffix",
+        "invalid-noteq",
+        "too-long",
+    ],
 )
 def test_validate_label_key(key, expected_error):
     error_msg = validate_label_key(key)
@@ -196,6 +222,7 @@ def test_validate_label_key(key, expected_error):
         ("@invalid", True, "Invalid label key value"),
         ("a" * 64, True, "Invalid label key value"),
     ],
+    ids=["empty", "valid", "invalid-prefix", "invalid-suffix", "bad-char", "too-long"],
 )
 def test_validate_label_value(value, should_raise, expected_message):
     if should_raise:
@@ -204,6 +231,31 @@ def test_validate_label_value(value, should_raise, expected_message):
         assert expected_message in str(e.value)
     else:
         validate_label_value(value)
+
+
+@pytest.mark.parametrize(
+    "label_selector, expected_error",
+    [
+        (None, None),  # Valid: No input provided
+        ({"region": "us-west4"}, None),  # Valid label key and value
+        ({"ray.io/accelerator-type": "A100"}, None),  # Valid label key and value
+        ({"": "valid-value"}, "Invalid label key name"),  # Invalid label key (empty)
+        (
+            {"!-invalidkey": "valid-value"},
+            "Invalid label key name",
+        ),  # Invalid label key syntax
+        (
+            {"valid-key": "a" * 64},
+            "Invalid label selector value",
+        ),  # Invalid label value syntax
+    ],
+)
+def test_validate_label_selector(label_selector, expected_error):
+    result = validate_label_selector(label_selector)
+    if expected_error:
+        assert expected_error in result
+    else:
+        assert result is None
 
 
 @pytest.mark.parametrize(
@@ -222,6 +274,20 @@ def test_validate_label_value(value, should_raise, expected_message):
         ("!!!in(H100, TPU)", "Invalid label selector value"),
         ("a" * 64, "Invalid label selector value"),
     ],
+    ids=[
+        "spot",
+        "no-gpu",
+        "in",
+        "not-in",
+        "valid",
+        "invalid-prefix",
+        "invalid-suffix",
+        "invalid-in",
+        "unfinished-in",
+        "invalid-noteq",
+        "triple-noteq",
+        "too-long",
+    ],
 )
 def test_validate_label_selector_value(selector, expected_error):
     error_msg = validate_label_selector_value(selector)
@@ -239,11 +305,68 @@ def test_validate_node_labels():
     assert "This is reserved for Ray defined labels." in str(e)
 
 
-if __name__ == "__main__":
-    import os
-
-    # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (None, None),  # No fallback_strategy specified.
+        ([], None),  # fallback_strategy passed an empty list.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}, "memory": "500m"},
+            ],
+            "Unsupported option found: 'memory'. Only ['label_selector'] is currently supported.",
+        ),  # fallback_strategy contains unsupported option.
+        (
+            [
+                {},
+            ],
+            "Empty dictionary found in `fallback_strategy`.",
+        ),  # fallback_strategy contains empty dictionary.
+        (
+            [{"label_selector": {"ray.io/availability-region": "us-west4"}}],
+            None,
+        ),  # fallback_strategy contains one selector.
+        (
+            [
+                {"label_selector": {"ray.io/availability-zone": "us-central1-a"}},
+                {"label_selector": {"ray.io/accelerator-type": "A100"}},
+            ],
+            None,
+        ),  # fallback_strategy contains multiple valid selectors.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"-!!invalid-key": "value"}},
+            ],
+            "Invalid label key name",
+        ),  # fallback_strategy contains selector with invalid key.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"key": "-invalid-value!!"}},
+            ],
+            "Invalid label selector value",
+        ),  # fallback_strategy contains selector with invalid value.
+    ],
+    ids=[
+        "none",
+        "empty-list",
+        "unsupported-fallback-option",
+        "fallback-specified-with-empty-dict",
+        "single-valid-label-selector",
+        "multiple-valid-label-selector",
+        "invalid-label-selector-key",
+        "invalid-label-selector-value",
+    ],
+)
+def test_validate_fallback_strategy(fallback_strategy, expected_error):
+    """Tests the validation logic for the fallback_strategy remote option."""
+    result = validate_fallback_strategy(fallback_strategy)
+    if expected_error:
+        assert expected_error in result
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        assert result is None
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", "-vv", __file__]))

@@ -3,18 +3,16 @@ from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
 from ray.rllib.core.learner.utils import make_target_network
-from ray.rllib.core.models.base import ACTOR
-from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
 from ray.rllib.core.rl_module.apis import (
     TARGET_NETWORK_ACTION_DIST_INPUTS,
     TargetNetworkAPI,
 )
-from ray.rllib.utils.typing import NetworkType
-
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
+from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 

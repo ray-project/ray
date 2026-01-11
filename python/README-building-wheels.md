@@ -10,10 +10,13 @@ Inside the root directory (i.e., one level above this python directory), run
 
 ```
 docker run -ti --rm \
+    -e HOST_UID=$(id -u) \
+    -e HOST_GID=$(id -g) \
     -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
     -e BUILD_ONE_PYTHON_ONLY=py39 \
     -w /ray -v "$(pwd)":/ray \
-    quay.io/pypa/manylinux2014_x86_64:2024-07-02-9ac04ee \
+    -e HOME=/tmp \
+    quay.io/pypa/manylinux2014_x86_64:2026.01.02-1 \
     /ray/python/build-wheel-manylinux2014.sh
 ```
 
@@ -31,7 +34,7 @@ docker run -ti --rm \
     -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
     -e BUILD_ONE_PYTHON_ONLY=py39 \
     -w /ray -v "$(pwd)":/ray \
-    quay.io/pypa/manylinux2014_aarch64:2024-07-02-9ac04ee \
+    quay.io/pypa/manylinux2014_aarch64:2026.01.02-1 \
     /ray/python/build-wheel-manylinux2014.sh
 ```
 

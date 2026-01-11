@@ -3,17 +3,17 @@ import sys
 import time
 from collections import defaultdict
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -22,6 +22,7 @@ from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
+from ray.util.state import list_actors
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
@@ -175,12 +176,21 @@ def test_replica_startup_status_transitions(ray_cluster):
         )
         return replicas.get([replica_state])
 
-    # wait for serve to start the replica, and catch a reference to it.
+    # wait for serve to start the replica
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
-    replica = get_replicas(ReplicaState.STARTING)[0]
 
     # currently there are no resources to allocate the replica
-    assert replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
+    def get_starting_replica():
+        replicas = get_replicas(ReplicaState.STARTING)
+        return replicas[0] if replicas else None
+
+    def is_pending_allocation():
+        replica = get_starting_replica()
+        if replica is None:
+            return False
+        return replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
+
+    wait_for_condition(is_pending_allocation)
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
@@ -188,17 +198,34 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
 
     def is_replica_pending_initialization():
+        replica = get_starting_replica()
+        if replica is None:
+            return False
         status, _ = replica.check_started()
-        print(status)
         return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
     wait_for_condition(is_replica_pending_initialization, timeout=25)
 
-    # send signal to complete replica intialization
-    signal.send.remote()
-    wait_for_condition(
-        lambda: replica.check_started()[0] == ReplicaStartupStatus.SUCCEEDED
-    )
+    # send signal to complete replica initialization
+    ray.get(signal.send.remote())
+
+    def check_succeeded():
+        # After initialization succeeds, replica transitions to RUNNING state
+        # So check both STARTING and RUNNING states
+        replica = get_starting_replica()
+        if replica:
+            status, _ = replica.check_started()
+            if status == ReplicaStartupStatus.SUCCEEDED:
+                return True
+
+        # Check if replica has moved to RUNNING state (which means it succeeded)
+        running_replicas = get_replicas(ReplicaState.RUNNING)
+        if running_replicas and len(running_replicas) > 0:
+            return True
+
+        return False
+
+    wait_for_condition(check_succeeded)
 
 
 @serve.deployment
@@ -220,14 +247,13 @@ def test_intelligent_scale_down(ray_cluster):
     client = _get_global_client()
 
     def get_actor_distributions():
-        actors = ray._private.state.actors()
         node_to_actors = defaultdict(list)
-        for actor in actors.values():
-            if "ServeReplica" not in actor["ActorClassName"]:
+        for actor in list_actors(
+            address=cluster.address, filters=[("STATE", "=", "ALIVE")]
+        ):
+            if "ServeReplica" not in actor.class_name:
                 continue
-            if actor["State"] != "ALIVE":
-                continue
-            node_to_actors[actor["Address"]["NodeID"]].append(actor)
+            node_to_actors[actor.node_id].append(actor)
 
         return set(map(len, node_to_actors.values()))
 
@@ -254,7 +280,7 @@ def test_intelligent_scale_down(ray_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.skipif(
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs spread strategy."
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs spread strategy."
 )
 def test_replica_spread(ray_cluster):
     cluster = ray_cluster
@@ -381,7 +407,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
 
     # Since they're sent sequentially, all requests should be routed to
     # the replica on the head node
-    responses = [requests.post("http://localhost:8000").text for _ in range(10)]
+    responses = [httpx.post("http://localhost:8000").text for _ in range(10)]
     if set_flag:
         assert all(resp == head_node_id for resp in responses)
     else:
@@ -409,9 +435,9 @@ class TestHealthzAndRoutes:
         serve.run(Dummy.bind())
 
         # Head node proxy /-/healthz and /-/routes should return 200
-        r = requests.post("http://localhost:8000/-/healthz")
+        r = httpx.post("http://localhost:8000/-/healthz")
         assert r.status_code == 200
-        r = requests.post("http://localhost:8000/-/routes")
+        r = httpx.post("http://localhost:8000/-/routes")
         assert r.status_code == 200
 
     def test_head_and_worker_nodes_no_replicas(self, ray_cluster: Cluster):
@@ -446,25 +472,28 @@ class TestHealthzAndRoutes:
 
         # Ensure worker node has both replicas.
         def check_replicas_on_worker_nodes():
-            _actors = ray._private.state.actors().values()
-            replica_nodes = [
-                a["Address"]["NodeID"]
-                for a in _actors
-                if a["ActorClassName"].startswith("ServeReplica")
-            ]
-            return len(set(replica_nodes)) == 1
+            return (
+                len(
+                    {
+                        a.node_id
+                        for a in list_actors(address=cluster.address)
+                        if a.class_name.startswith("ServeReplica")
+                    }
+                )
+                == 1
+            )
 
         wait_for_condition(check_replicas_on_worker_nodes)
 
         # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
         # and 2 nodes exist.
-        wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+        wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
         assert len(ray.nodes()) == 2
 
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
         # on both nodes.
         def check_request(url: str, expected_code: int, expected_text: str):
-            req = requests.get(url)
+            req = httpx.get(url)
             assert req.status_code == expected_code
             assert req.text == expected_text
             return True
@@ -475,36 +504,27 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
+        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
+        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
 
         # Delete the deployment should bring the active actors down to 3 and drop
         # replicas on all nodes.
         serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
-        def _check():
-            _actors = ray._private.state.actors().values()
-            return (
-                len(
-                    list(
-                        filter(
-                            lambda a: a["State"] == "ALIVE",
-                            _actors,
-                        )
-                    )
-                )
-                == 3
+        wait_for_condition(
+            lambda: len(
+                list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
             )
-
-        wait_for_condition(_check)
+            == 3,
+        )
 
         # Ensure head node `/-/healthz` and `/-/routes` continue to
         # return 200 and expected responses. Also, the worker node
@@ -516,17 +536,17 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8000/-/routes").text == "{}"
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=503,
             expected_text="This node is being drained.",
         )
-        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 503
         assert (
-            requests.get("http://127.0.0.1:8001/-/routes").text
+            httpx.get("http://127.0.0.1:8001/-/routes").text
             == "This node is being drained."
         )
 

@@ -1,15 +1,20 @@
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mlflow.tracking import MlflowClient
 
+import ray
 from ray._private.dict import flatten_dict
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
+from ray.train.torch import TorchTrainer
+from ray.tune import Tuner
 
 
 class MockTrial(
@@ -31,6 +36,42 @@ class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
 def clear_env_vars():
     os.environ.pop("MLFLOW_EXPERIMENT_NAME", None)
     os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    """Automatically start and stop Ray for each test."""
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
+def test_setup_mlflow_in_train_worker(ray_start_4_cpus):
+    """Test that setup_mlflow works in a Train worker."""
+
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
+        )
+
+    trainer = TorchTrainer(train_func)
+    trainer.fit()
+
+
+def test_setup_mlflow_in_tune_trial(ray_start_4_cpus):
+    """Test that setup_mlflow works in a Tune trial."""
+
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
+        )
+
+    tuner = Tuner(train_func)
+    result_grid = tuner.fit()
+
+    assert all(res.error is None for res in result_grid)
 
 
 class MLflowTest(unittest.TestCase):
@@ -192,6 +233,41 @@ class MLflowTest(unittest.TestCase):
             logger.mlflow_util.artifact_info,
             {"dir": "artifact", "run_id": run.info.run_id},
         )
+
+        # Check if params are logged at the end.
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
+
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerLogging_logAtEnd(self):
+        clear_env_vars()
+        trial_config = {"par1": "a", "par2": "b"}
+        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_log_at_end",
+            tags={"hello": "world"},
+            log_params_on_trial_end=True,
+        )
+        logger.setup()
+        exp_id = logger.mlflow_util.experiment_id
+
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=[exp_id])
+        self.assertEqual(len(all_runs), 1)
+        # all_runs is a pandas dataframe.
+        all_runs = all_runs.to_dict(orient="records")
+        run = logger.mlflow_util._mlflow.get_run(all_runs[0]["run_id"])
+
+        # Params should NOT be logged at start.
+        self.assertDictEqual(run.data.params, {})
+
+        # Check that params are logged at the end.
+        logger.on_trial_complete(0, [], trial)
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
 
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
@@ -363,8 +439,4 @@ class MLflowUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

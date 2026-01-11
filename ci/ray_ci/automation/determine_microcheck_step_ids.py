@@ -1,12 +1,14 @@
-import click
 import os
 
+import click
+
 from ci.ray_ci.utils import ci_init
+
 from ray_release.test import (
-    Test,
     LINUX_TEST_PREFIX,
-    WINDOWS_TEST_PREFIX,
     MACOS_TEST_PREFIX,
+    WINDOWS_TEST_PREFIX,
+    Test,
 )
 
 BAZEL_WORKSPACE_DIR = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")

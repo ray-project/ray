@@ -1,12 +1,15 @@
 import logging
 from json import loads
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +52,12 @@ class DeltaSharingDatasource(Datasource):
         """
         Set up delta sharing connections based on the url.
 
-        :param url: a url under the format "<profile>#<share>.<schema>.<table>"
-        :
+        Args:
+            url: A URL under the format "<profile>#<share>.<schema>.<table>"
+
+        Returns:
+            A tuple of (table, rest_client) where table is a delta_sharing Table
+            object and rest_client is a DataSharingRestClient instance.
         """
         from delta_sharing.protocol import DeltaSharingProfile, Table
         from delta_sharing.rest_client import DataSharingRestClient
@@ -62,7 +69,12 @@ class DeltaSharingDatasource(Datasource):
         rest_client = DataSharingRestClient(profile)
         return table, rest_client
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
         from delta_sharing.converter import to_converters
 
@@ -87,7 +99,6 @@ class DeltaSharingDatasource(Datasource):
             files = files.tolist()
             metadata = BlockMetadata(
                 num_rows=None,
-                schema=None,
                 input_files=files,
                 size_bytes=None,
                 exec_stats=None,
@@ -96,6 +107,7 @@ class DeltaSharingDatasource(Datasource):
             read_task = ReadTask(
                 lambda f=files: self._read_files(f, converters),
                 metadata,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

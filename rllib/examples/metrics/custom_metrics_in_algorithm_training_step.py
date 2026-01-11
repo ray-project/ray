@@ -16,7 +16,7 @@ result dict and how to assert, the new metrics has been properly logged.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+`python [script file name].py --wandb-key [your WandB key]
 --wandb-project [some project name]`
 
 For debugging, use the following additional command line options
@@ -51,15 +51,15 @@ Found logged `ratio_time_sampling_over_learning` in result dict.
 """
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.examples.algorithms.classes.vpg import VPG, VPGConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_SAMPLING_TIMER,
     LEARNER_UPDATE_TIMER,
     TIMERS,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 
@@ -86,7 +86,7 @@ class MyVPGWithExtraMetrics(VPG):
 
 
 parser = add_rllib_example_script_args(default_reward=50.0)
-parser.set_defaults(enable_new_api_stack=True)
+parser.set_defaults(default_timesteps=50000)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+# Head node.
+head_node_type:
+  name: head
+  instance_type: m5.2xlarge
+
+# Worker nodes.
+auto_select_worker_config: true
+flags:
+  allow-cross-zone-autoscaling: true

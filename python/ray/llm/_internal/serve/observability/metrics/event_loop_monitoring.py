@@ -2,9 +2,8 @@ import asyncio
 import time
 from typing import Dict
 
-from ray.util import metrics
-
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.util import metrics
 
 logger = get_logger(__name__)
 

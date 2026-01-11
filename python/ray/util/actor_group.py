@@ -1,12 +1,12 @@
+import logging
 import weakref
 from dataclasses import dataclass
-import logging
-from typing import List, TypeVar, Optional, Dict, Type, Tuple
+from typing import Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
+from ray._private.utils import get_ray_doc_version
 from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated
-from ray._private.utils import get_ray_doc_version
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")
@@ -96,7 +96,7 @@ class ActorGroup:
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
     ):
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.ActorGroup")
 

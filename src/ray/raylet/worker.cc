@@ -19,7 +19,8 @@
 #include <string>
 #include <utility>
 
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -31,14 +32,12 @@ namespace raylet {
 Worker::Worker(const JobID &job_id,
                int runtime_env_hash,
                const WorkerID &worker_id,
-               const Language &language,
+               const rpc::Language &language,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager,
-               StartupToken startup_token)
+               rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
-      startup_token_(startup_token),
       language_(language),
       worker_type_(worker_type),
       ip_address_(ip_address),
@@ -48,16 +47,56 @@ Worker::Worker(const JobID &job_id,
       assigned_job_id_(job_id),
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
-      dead_(false),
+      killing_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {}
+      client_call_manager_(client_call_manager) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
-void Worker::MarkDead() { dead_ = true; }
+void Worker::MarkDead() {
+  bool expected = false;
+  killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+}
 
-bool Worker::IsDead() const { return dead_; }
+bool Worker::IsDead() const { return killing_.load(std::memory_order_acquire); }
+
+void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
+  bool expected = false;
+  if (!killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    return;  // This is not the first time calling KillAsync or MarkDead, do nothing.
+  }
+  const auto worker = shared_from_this();
+  if (force) {
+    worker->GetProcess().Kill();
+    return;
+  }
+#ifdef _WIN32
+  // TODO(mehrdadn): implement graceful process termination mechanism
+#else
+  // Attempt to gracefully shutdown the worker before force killing it.
+  kill(worker->GetProcess().GetId(), SIGTERM);
+#endif
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+  auto timeout = RayConfig::instance().kill_worker_timeout_milliseconds();
+  auto retry_duration = boost::posix_time::milliseconds(timeout);
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait(
+      [timeout, retry_timer, worker](const boost::system::error_code &error) {
+#ifdef _WIN32
+#else
+        if (worker->GetProcess().IsAlive()) {
+          RAY_LOG(INFO) << "Worker with PID=" << worker->GetProcess().GetId()
+                        << " did not exit after " << timeout
+                        << "ms, force killing with SIGKILL.";
+        } else {
+          return;
+        }
+#endif
+        // Force kill worker
+        worker->GetProcess().Kill();
+      });
+}
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -69,18 +108,12 @@ WorkerID Worker::WorkerId() const { return worker_id_; }
 
 Process Worker::GetProcess() const { return proc_; }
 
-StartupToken Worker::GetStartupToken() const { return startup_token_; }
-
 void Worker::SetProcess(Process proc) {
   RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
   proc_ = std::move(proc);
 }
 
-void Worker::SetStartupToken(StartupToken startup_token) {
-  startup_token_ = startup_token;
-}
-
-Language Worker::GetLanguage() const { return language_; }
+rpc::Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }
 
@@ -133,14 +166,19 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) {
-  assigned_task_id_ = task_id;
-  if (!task_id.IsNil()) {
-    task_assign_time_ = absl::Now();
-  }
-}
+std::optional<pid_t> Worker::GetSavedProcessGroupId() const { return saved_pgid_; }
 
-const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
+void Worker::SetSavedProcessGroupId(pid_t pgid) { saved_pgid_ = pgid; }
+
+void Worker::GrantLeaseId(const LeaseID &lease_id) {
+  lease_id_ = lease_id;
+  if (!lease_id.IsNil()) {
+    RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
+    lease_grant_time_ = absl::Now();
+  }
+};
+
+const LeaseID &Worker::GetGrantedLeaseId() const { return lease_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
@@ -159,19 +197,20 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const std::string Worker::GetTaskOrActorIdAsDebugString() const {
+const RayLease &Worker::GetGrantedLease() const { return granted_lease_; }
+
+const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
   if (GetActorId().IsNil()) {
-    id_ss << "task ID: " << GetAssignedTaskId();
-  } else {
     id_ss << "actor ID: " << GetActorId();
   }
+  id_ss << "lease ID: " << GetGrantedLeaseId();
   return id_ss.str();
 }
 
-void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
-
-bool Worker::IsDetachedActor() const { return is_detached_actor_; }
+bool Worker::IsDetachedActor() const {
+  return granted_lease_.GetLeaseSpecification().IsDetachedActor();
+}
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 

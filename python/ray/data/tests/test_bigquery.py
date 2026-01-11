@@ -211,7 +211,7 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        ctx = TaskContext(1)
+        ctx = TaskContext(1, "")
         bq_datasink.write(
             blocks=[block],
             ctx=ctx,
@@ -237,7 +237,7 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        ctx = TaskContext(1)
+        ctx = TaskContext(1, "")
         bq_datasink.write(
             blocks=[block],
             ctx=ctx,

@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -43,18 +43,16 @@ at some negative values due to the misplacement penalty of our (simplified) TicT
 game.
 """
 from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env  # noqa
 
-
 parser = add_rllib_example_script_args(
     default_reward=-4.0, default_iters=50, default_timesteps=100000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 

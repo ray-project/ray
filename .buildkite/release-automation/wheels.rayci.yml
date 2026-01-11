@@ -35,7 +35,6 @@ steps:
       - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -58,7 +57,6 @@ steps:
       - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -68,15 +66,6 @@ steps:
     key: block-validate-macos-wheels
     depends_on: []
 
-  - label: "MacOS x86_64"
-    key: validate-macos-x86_64-wheels
-    depends_on:
-      - block-validate-macos-wheels
-    job_env: MACOS
-    instance_type: macos
-    commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
-
   - label: "MacOS arm64"
     key: validate-macos-arm64-wheels
     depends_on:
@@ -84,7 +73,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
+      - bash .buildkite/release-automation/verify-macos-wheels.sh
 
   - block: "Upload wheels to PyPI"
     key: block-upload-wheels-pypi

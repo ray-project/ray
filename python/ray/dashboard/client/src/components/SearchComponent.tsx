@@ -36,7 +36,9 @@ export const SearchInput = ({
         defaultValue,
         endAdornment: (
           <InputAdornment position="end">
-            <SearchOutlined />
+            <SearchOutlined
+              sx={(theme) => ({ color: theme.palette.text.secondary })}
+            />
           </InputAdornment>
         ),
       }}
@@ -72,6 +74,9 @@ export const SearchSelect = ({
           width: 100,
         },
       }}
+      sx={(theme) => ({
+        "& .MuiSvgIcon-root": { color: theme.palette.text.secondary },
+      })}
       defaultValue={defaultValue || ""}
     >
       {showAllOption ? <MenuItem value="">All</MenuItem> : null}
@@ -122,23 +127,11 @@ export const SearchTimezone = ({
   });
 
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  const browserOffset = (() => {
-    const offset = new Date().getTimezoneOffset();
-    const sign = offset < 0 ? "+" : "-";
-    const hours = Math.abs(Math.floor(offset / 60))
-      .toString()
-      .padStart(2, "0");
-    const minutes = Math.abs(offset % 60)
-      .toString()
-      .padStart(2, "0");
-    return `GMT${sign}${hours}:${minutes}`;
-  })();
-
-  if (browserOffset) {
+  const browserUtc = timezones.find((t) => t.value === browserTimezone)?.utc;
+  if (browserUtc) {
     options.unshift({
       value: browserTimezone,
-      utc: browserOffset,
+      utc: browserUtc,
       group: "System",
       country: "Browser Time",
     });
@@ -189,7 +182,10 @@ export const SearchTimezone = ({
           <Typography component="span" sx={{ marginRight: 1 }}>
             {option.country}
           </Typography>
-          <Typography sx={{ color: "#8C9196" }} component="span">
+          <Typography
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+            component="span"
+          >
             {option.value}
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
@@ -201,18 +197,24 @@ export const SearchTimezone = ({
       renderInput={(params) => (
         <TextField
           {...params}
-          sx={{
+          sx={(theme) => ({
             width: 120,
             "& .MuiOutlinedInput-notchedOutline": {
-              borderColor: "#D2DCE6",
+              borderColor: theme.palette.divider,
             },
-          }}
+          })}
           placeholder={curUtc}
         />
       )}
       renderGroup={(params) => (
         <li>
-          <Typography sx={{ color: "#5F6469", paddingX: 2, paddingY: "6px" }}>
+          <Typography
+            sx={(theme) => ({
+              color: theme.palette.text.secondary,
+              paddingX: 2,
+              paddingY: "6px",
+            })}
+          >
             {params.group}
           </Typography>
           <Box

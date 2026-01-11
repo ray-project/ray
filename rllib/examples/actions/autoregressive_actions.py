@@ -17,7 +17,7 @@ its actions.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env-runners 2`
+`python [script file name].py --num-env-runners 2`
 
 Control the number of `EnvRunner`s with the `--num-env-runners` flag. This
 will increase the sampling speed.
@@ -67,18 +67,16 @@ from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedAct
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
     AutoregressiveActionsRLM,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_iters=1000,
     default_timesteps=2000000,
     default_reward=-0.45,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

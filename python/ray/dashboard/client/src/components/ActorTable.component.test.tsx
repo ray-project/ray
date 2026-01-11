@@ -10,7 +10,7 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
     actorId: "ACTOR_1",
     jobId: "01000000",
     address: {
-      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -53,12 +53,15 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25321,
     },
+    labelSelector: {
+      "test-label-key": "test-label-value",
+    },
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
     jobId: "01000000",
     address: {
-      rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
+      nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e1",
       ipAddress: "172.31.11.178",
       port: 10003,
       workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6d",
@@ -101,11 +104,14 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25322,
     },
+    labelSelector: {},
   },
 };
 
-// For some reason these tests are really slow, so we need to increase the timeout
-jest.setTimeout(20000);
+// These tests are slow because they involve a lot of interactivity.
+// Clicking various buttons and waiting for the table to update.
+// So we increase the timeout to 40 seconds.
+jest.setTimeout(40000);
 
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async () => {
@@ -114,7 +120,7 @@ describe("ActorTable", () => {
       ACTOR_2: {
         ...MOCK_ACTORS.ACTOR_2,
         address: {
-          rayletId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
+          nodeId: "426854e68e4225b3941deaf03c8dcfcb1daacc69a92711d370dbb0e2",
           ipAddress: "172.31.11.178",
           port: 10003,
           workerId: "b8b276a03612644098ed7a929c3b0e50f5bde894eb0d8cab288fbb6e",
@@ -182,6 +188,9 @@ describe("ActorTable", () => {
 
     expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(
+      screen.queryByText('{ "test-label-key": "test-label-value" }'),
+    ).toBeInTheDocument();
 
     expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,

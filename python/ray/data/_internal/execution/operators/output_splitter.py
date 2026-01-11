@@ -1,13 +1,16 @@
 import math
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -17,7 +20,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-class OutputSplitter(PhysicalOperator):
+class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
 
     The output bundles of this operator will have a `bundle.output_split_idx` attr
@@ -44,7 +47,6 @@ class OutputSplitter(PhysicalOperator):
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
-            target_max_block_size=None,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
@@ -156,8 +158,29 @@ class OutputSplitter(PhysicalOperator):
                 self._metrics.on_output_queued(b)
         self._buffer = []
 
-    def internal_queue_size(self) -> int:
-        return len(self._buffer)
+    def internal_input_queue_num_blocks(self) -> int:
+        return sum(len(b.block_refs) for b in self._buffer)
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return sum(b.size_bytes() for b in self._buffer)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(b.block_refs) for b in self._output_queue)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(b.size_bytes() for b in self._output_queue)
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue."""
+        while self._buffer:
+            bundle = self._buffer.pop()
+            self._metrics.on_input_dequeued(bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_queue:
+            bundle = self._output_queue.popleft()
+            self._metrics.on_output_dequeued(bundle)
 
     def progress_str(self) -> str:
         if self._locality_hints:
@@ -181,7 +204,7 @@ class OutputSplitter(PhysicalOperator):
                 self._metrics.on_output_queued(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
-                    if self._get_location(target_bundle) == preferred_loc:
+                    if preferred_loc in self._get_locations(target_bundle):
                         self._locality_hits += 1
                     else:
                         self._locality_misses += 1
@@ -201,7 +224,7 @@ class OutputSplitter(PhysicalOperator):
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
-                if self._get_location(bundle) == preferred_loc:
+                if preferred_loc in self._get_locations(bundle):
                     self._buffer.remove(bundle)
                     self._metrics.on_input_dequeued(bundle)
                     return bundle
@@ -246,18 +269,18 @@ class OutputSplitter(PhysicalOperator):
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
         return output
 
-    def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
-        """Ask Ray for the node id of the given bundle.
+    @staticmethod
+    def _get_locations(bundle: RefBundle) -> Collection[NodeIdStr]:
+        """Fetches list of node ids holding the objects of the given bundle.
 
-        This method may be overriden for testing.
+        This method may be overridden for testing.
 
         Returns:
-            A node id associated with the bundle, or None if unknown.
+            A list of node ids where the objects in the bundle are located
         """
-        return bundle.get_cached_location()
+        preferred_locations = bundle.get_preferred_object_locations()
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
+        return preferred_locations.keys()
 
 
 def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
@@ -282,9 +305,15 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
             right_blocks.append(rb)
             acc += lm.num_rows
             assert acc == left_size
-    left = RefBundle(list(zip(left_blocks, left_meta)), owns_blocks=bundle.owns_blocks)
+    left = RefBundle(
+        list(zip(left_blocks, left_meta)),
+        owns_blocks=bundle.owns_blocks,
+        schema=bundle.schema,
+    )
     right = RefBundle(
-        list(zip(right_blocks, right_meta)), owns_blocks=bundle.owns_blocks
+        list(zip(right_blocks, right_meta)),
+        owns_blocks=bundle.owns_blocks,
+        schema=bundle.schema,
     )
     assert left.num_rows() == left_size
     assert left.num_rows() + right.num_rows() == bundle.num_rows()
@@ -298,14 +327,12 @@ def _split_meta(
     left = BlockMetadata(
         num_rows=left_size,
         size_bytes=left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )
     right = BlockMetadata(
         num_rows=m.num_rows - left_size,
         size_bytes=m.size_bytes - left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )

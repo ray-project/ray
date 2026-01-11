@@ -5,27 +5,18 @@ import logging
 import time
 import uuid
 from contextlib import nullcontext
-from enum import Enum
-from pydantic import BaseModel, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
-from ray.llm._internal.utils import try_import
+from pydantic import BaseModel, root_validator
+
+from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 
-sgl = try_import("sglang")
-
 logger = logging.getLogger(__name__)
-
-
-class SGLangTaskType(str, Enum):
-    """The type of task to run on the SGLang engine."""
-
-    """Generate text."""
-    GENERATE = "generate"
 
 
 class SGLangEngineRequest(BaseModel):
@@ -120,14 +111,16 @@ class SGLangEngineWrapper:
         self.skip_tokenizer_init = kwargs.pop("skip_tokenizer_init", True)
         kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
-        if sgl is None:
+        try:
+            import sglang
+        except ImportError as e:
             raise ImportError(
                 "SGLang is not installed or failed to import. Please run "
                 "`pip install sglang[all]` to install required dependencies."
-            )
+            ) from e
 
         # Initialize the SGLang engine
-        self.engine = sgl.Engine(**kwargs)
+        self.engine = sglang.Engine(**kwargs)
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -177,22 +170,25 @@ class SGLangEngineWrapper:
 
     async def generate_async(
         self, row: Dict[str, Any]
-    ) -> Tuple[SGLangEngineRequest, Dict[str, Any]]:
+    ) -> Tuple[SGLangEngineRequest, Dict[str, Any], float]:
         """Process a single request.
 
         Args:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output and bypassed custom fields.
+            A tuple of index in batch, request output and bypassed custom fields, and time taken.
         """
         request = await self._prepare_llm_request(row)
+        t = time.perf_counter()
 
         async with self.semaphore:
             output = await self._generate_async(request)
 
+        time_taken = time.perf_counter() - t
+
         output_data = SGLangOutputData.from_sglang_engine_output(output)
-        return request, output_data.model_dump()
+        return request, output_data.model_dump(), time_taken
 
     async def _generate_async(self, request: SGLangEngineRequest) -> Any:
         """Process a single request.
@@ -237,7 +233,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: SGLangTaskType = SGLangTaskType.GENERATE,
+        task_type: TypeSGLangTaskType = SGLangTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
     ):
         """
@@ -257,7 +253,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         # Setup SGLang engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
         # Disable the semaphore if max_pending_requests is not set.
@@ -275,19 +271,21 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: SGLangTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the SGLang engine (e.g., "generate", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -297,18 +295,6 @@ class SGLangEngineStageUDF(StatefulStageUDF):
                 model,
                 self.model,
             )
-
-        # Override the task if it is different from the stage.
-        task = SGLangTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
         return engine_kwargs
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -321,29 +307,28 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             The response of the SGLang engine.
         """
         batch_uuid = uuid.uuid4()
-        t = time.perf_counter()
+        batch_start_time = time.perf_counter()
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
-        time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
-            request, output = await resp
-            time_taken = time.perf_counter() - t
+            request, output, time_taken_llm = await resp
 
             yield {
                 **output,
                 "request_id": request.request_id,
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken,
+                "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
             }
 
+        batch_time_taken = time.perf_counter() - batch_start_time
         logger.info(
             "[SGLang] Elapsed time for batch %s with size %d: %s",
             batch_uuid.hex,
             len(batch),
-            time_taken,
+            batch_time_taken,
         )
 
     def __del__(self):
@@ -378,12 +363,12 @@ class SGLangEngineStage(StatefulStage):
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Setup num_gpus required per SGLang engine.
+        # Set up num_gpus required
         tp_size = engine_kwargs.get("tp_size", 1)
         dp_size = engine_kwargs.get("dp_size", 1)
         num_gpus = tp_size * dp_size
 
-        map_batches_kwargs["num_gpus"] = num_gpus
+        ray_remote_args["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
 
@@ -394,7 +379,7 @@ class SGLangEngineStage(StatefulStage):
         if task_type == SGLangTaskType.GENERATE:
             ret[
                 "sampling_params"
-            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.htmlfor details."
+            ] = "The sampling parameters. See https://docs.sglang.ai/backend/sampling_params.html for details."
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:

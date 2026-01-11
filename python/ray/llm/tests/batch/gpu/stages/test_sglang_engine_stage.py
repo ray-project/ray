@@ -1,16 +1,18 @@
 """This test suite does not need sglang to be installed."""
+
 import asyncio
-import pytest
 import sys
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
+from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStage,
     SGLangEngineStageUDF,
     SGLangEngineWrapper,
+    SGLangTaskType,
 )
-from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 
 
 @pytest.fixture
@@ -41,6 +43,7 @@ def mock_sglang_wrapper():
                     "generated_text": f"Response to: {row['prompt']}",
                     "num_generated_tokens": 3,
                 },
+                0.1,  # time_taken_llm
             )
 
         mock_instance.generate_async.side_effect = mock_generate
@@ -54,12 +57,17 @@ def mock_sglang_wrapper():
 def mock_sgl_engine():
     """Mock the SGLang engine and its _generate_async method."""
     with (
-        patch("ray.llm._internal.batch.stages.sglang_engine_stage.sgl") as mock_sgl,
         patch(
             "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
         ) as mock_generate_async,
     ):
-        mock_sgl.Engine = AsyncMock()
+        try:
+            import sglang  # noqa: F401
+        except ImportError:
+            # Mock sglang module if it's not installed in test env.
+            mock_sgl = MagicMock()
+            mock_sgl.Engine = AsyncMock()
+            sys.modules["sglang"] = mock_sgl
         num_running_requests = 0
         request_lock = asyncio.Lock()
 
@@ -93,7 +101,7 @@ def mock_sgl_engine():
             }
 
         mock_generate_async.side_effect = mock_generate
-        yield mock_sgl, mock_generate_async
+        yield mock_generate_async
 
 
 def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
@@ -109,7 +117,7 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
-            concurrency=1,
+            compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
             accelerator_type=gpu_type,
         ),
@@ -124,9 +132,14 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
             "dp_size": 2,
         },
     }
+
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ActorPoolStrategy)
+    assert compute.min_size == 1
+    assert compute.max_size == 1
+
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,
@@ -144,6 +157,9 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
+            # When reaching SGLangEngineStageUDF, this kwargs has been inserted by the processor
+            # even though it is unset in the processor config.
+            "task": SGLangTaskType.GENERATE,
         },
     )
 
@@ -162,7 +178,7 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
 
     responses = []
     async for response in udf(batch):
-        responses.append(response["__data"][0])
+        responses.extend(response["__data"])
 
     assert len(responses) == 2
     assert all("batch_uuid" in r for r in responses)
@@ -187,7 +203,7 @@ async def test_sglang_wrapper(
     mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size
 ):
     """Test the SGLang wrapper with different configurations."""
-    _, mock_generate_async = mock_sgl_engine
+    mock_generate_async = mock_sgl_engine
 
     # Set the max_pending_requests for assertion in the mock
     mock_generate_async.side_effect.max_pending_requests = max_pending_requests
@@ -220,15 +236,16 @@ async def test_sglang_wrapper(
     assert mock_generate_async.call_count == batch_size
 
     # Verify the outputs match expected values
-    for i, (request, output) in enumerate(results):
+    for i, (request, output, time_taken_llm) in enumerate(results):
         assert output["prompt"] == f"Test {i}"
         assert output["num_generated_tokens"] == i + 5  # max_new_tokens we set
+        assert time_taken_llm > 0
 
 
 @pytest.mark.asyncio
 async def test_sglang_error_handling(model_llama_3_2_216M):
     """Test error handling when SGLang is not available."""
-    with patch("ray.llm._internal.batch.stages.sglang_engine_stage.sgl", None):
+    with patch.dict(sys.modules, {"sglang": None}):
         with pytest.raises(ImportError, match="SGLang is not installed"):
             SGLangEngineWrapper(
                 model=model_llama_3_2_216M,

@@ -20,11 +20,14 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/metrics.h"
 
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(PeriodicalRunner::Create(io_service)) {
+    : timer_(PeriodicalRunner::Create(io_service)),
+      local_resource_view_node_count_gauge_(
+          raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
   timer_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
@@ -77,16 +80,19 @@ bool ClusterResourceManager::UpdateNode(
     return false;
   }
 
-  auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
-  auto resources_available =
+  const auto resources_total =
+      MapFromProtobuf(resource_view_sync_message.resources_total());
+  const auto resources_available =
       MapFromProtobuf(resource_view_sync_message.resources_available());
+  auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
   NodeResources node_resources =
       ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = node_resources.total;
-  local_view.available = node_resources.available;
+  local_view.total = std::move(node_resources.total);
+  local_view.available = std::move(node_resources.available);
+  local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
@@ -290,13 +296,17 @@ BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
 
 void ClusterResourceManager::SetNodeLabels(
     const scheduling::NodeID &node_id,
-    const absl::flat_hash_map<std::string, std::string> &labels) {
+    absl::flat_hash_map<std::string, std::string> labels) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
-  it->second.GetMutableLocalView()->labels = labels;
+  it->second.GetMutableLocalView()->labels = std::move(labels);
+}
+
+void ClusterResourceManager::RecordMetrics() const {
+  local_resource_view_node_count_gauge_.Record(static_cast<double>(nodes_.size()));
 }
 
 }  // namespace ray

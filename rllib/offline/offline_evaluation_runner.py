@@ -1,22 +1,18 @@
-import numpy
-import ray
 import types
+from typing import TYPE_CHECKING, Any, Collection, Dict, Iterable, Optional, Union
 
-from typing import Any, Collection, Dict, Iterable, Optional, TYPE_CHECKING, Union
-
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.core import (
     ALL_MODULES,
-    COMPONENT_ENV_TO_MODULE_CONNECTOR,
-    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils import unflatten_dict
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_EVALUATED,
     DATASET_NUM_ITERS_EVALUATED_LIFETIME,
@@ -32,10 +28,12 @@ from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.runners.runner import Runner
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, StateDict, TensorType
+from ray.rllib.utils.typing import DeviceType, ModuleID, StateDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+torch, _ = try_import_torch()
 
 TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
 
@@ -55,12 +53,13 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         self.__dataset_iterator = None
         self.__batch_iterator = None
 
-        Runner.__init__(self, config=config)
+        Runner.__init__(self, config=config, **kwargs)
         Checkpointable.__init__(self)
 
         # This has to be defined after we have a `self.config`.
         self._loss_for_module_fn = types.MethodType(self.get_loss_for_module_fn(), self)
 
+    @override(Runner)
     def run(
         self,
         explore: bool = False,
@@ -98,32 +97,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
 
-        # Define the collate function that converts the flattened dictionary
-        # to a `MultiAgentBatch` with Tensors.
-        def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-            _batch = unflatten_dict(_batch)
-            _batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in _batch.items()
-                },
-                env_steps=sum(
-                    len(next(iter(module_data.values())))
-                    for module_data in _batch.values()
-                ),
-            )
-            _batch = self._convert_batch_type(_batch, to_device=False)
-            return _batch
-
-        # Define the finalize function that makes the host-to-device transfer.
-        def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-            return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
         # Return a minibatch iterator.
         return MiniBatchRayDataIterator(
             iterator=self._dataset_iterator,
-            collate_fn=_collate_fn,
-            finalize_fn=_finalize_fn,
+            device=self._device,
             minibatch_size=self.config.offline_eval_batch_size_per_runner,
             num_iters=self.config.dataset_num_iters_per_eval_runner,
             **kwargs,
@@ -134,8 +111,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         explore: bool,
         train: bool,
     ) -> None:
-
-        self.metrics.activate_tensor_mode()
 
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -170,12 +145,11 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED),
             iteration + 1,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
             iteration + 1,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log all individual RLModules' loss terms
         # Note: We do this only once for the last of the minibatch updates, b/c the
@@ -186,8 +160,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 value=loss,
                 window=1,
             )
-
-        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 
@@ -206,11 +178,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
-        state = {
-            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-            ),
-        }
+        state = {}
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
@@ -221,14 +189,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 **kwargs,
             )
             state[WEIGHTS_SEQ_NO] = self._weights_seq_no
-        if self._check_component(
-            COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
-        ):
-            state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
-        if self._check_component(
-            COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
-        ):
-            state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
         return state
 
@@ -236,6 +196,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         """Converts structs to a framework-specific tensor."""
         return convert_to_torch_tensor(struct)
 
+    @override(Runner)
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner.
 
@@ -244,6 +205,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         """
         pass
 
+    @override(Runner)
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
@@ -274,8 +236,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     ) -> MultiAgentBatch:
         batch = convert_to_torch_tensor(
             batch.policy_batches,
-            # TODO (simon): Implement GPU inference.
-            device=None,  # self._device if to_device else None,
+            device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
@@ -331,10 +292,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
-        if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
-            self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
-        if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
-            self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
         # Update the RLModule state.
         if COMPONENT_RL_MODULE in state:
@@ -353,16 +310,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
-
-        # Update our lifetime counters.
-        # TODO (simon): Create extra metrics.
-        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
 
     def _log_steps_evaluated_metrics(self, batch: MultiAgentBatch) -> None:
         for mid, module_batch in batch.policy_batches.items():
@@ -384,38 +331,49 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_SAMPLED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Log module steps (sum of all modules).
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
             batch.env_steps(),
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
             batch.env_steps(),
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
+
+    @override(Runner)
+    def set_device(self):
+        try:
+            self.__device = get_device(
+                self.config,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
+            )
+        except NotImplementedError:
+            self.__device = None
 
     @override(Runner)
     def make_module(self):
@@ -441,14 +399,12 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             # TODO (sven): In order to make this framework-agnostic, we should maybe
             #  make the MultiRLModule.build() method accept a device OR create an
             #  additional `(Multi)RLModule.to()` override.
-            # if torch:
-            #     self.module.foreach_module(
-            #         lambda mid, mod: (
-            #             mod.to(self._device)
-            #             if isinstance(mod, torch.nn.Module)
-            #             else mod
-            #         )
-            #     )
+
+            self.module.foreach_module(
+                lambda mid, mod: (
+                    mod.to(self._device) if isinstance(mod, torch.nn.Module) else mod
+                )
+            )
 
         # If `AlgorithmConfig.get_multi_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
@@ -477,6 +433,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     @property
     def _batch_iterator(self) -> MiniBatchRayDataIterator:
         return self.__batch_iterator
+
+    @property
+    def _device(self) -> Union[DeviceType, None]:
+        return self.__device
 
     @property
     def _module_spec(self) -> MultiRLModuleSpec:

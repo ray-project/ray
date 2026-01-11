@@ -1,26 +1,27 @@
 import abc
 import os
+import re
 import subprocess
 import sys
+from typing import List, Optional, Tuple
 
-from typing import List, Tuple, Optional
-
-
-_CUDA_COPYRIGHT = """
-==========
+# Regex pattern to match CUDA copyright header with any version
+_CUDA_COPYRIGHT_PATTERN = r"""==========
 == CUDA ==
 ==========
 
-CUDA Version 12.1.1
+CUDA Version \d+\.\d+(?:\.\d+)?
 
-Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Container image Copyright \(c\) 2016-2023, NVIDIA CORPORATION & AFFILIATES\. All rights reserved\.
 
-This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+This container image and its contents are governed by the NVIDIA Deep Learning Container License\.
 By pulling and using the container, you accept the terms and conditions of this license:
-https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+https://developer\.nvidia\.com/ngc/nvidia-deep-learning-container-license
 
-A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
-"""  # noqa: E501
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience\.
+"""
+
+_AZURE_REGISTRY_NAME = "rayreleasetest"
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
@@ -29,6 +30,10 @@ _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
 )
+_DOCKER_AZURE_REGISTRY = os.environ.get(
+    "RAYCI_AZURE_REGISTRY",
+    "rayreleasetest.azurecr.io",
+)
 _DOCKER_ENV = [
     "BUILDKITE",
     "BUILDKITE_BUILD_URL",
@@ -36,11 +41,21 @@ _DOCKER_ENV = [
     "BUILDKITE_COMMIT",
     "BUILDKITE_JOB_ID",
     "BUILDKITE_LABEL",
-    "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_PIPELINE_ID",
     "BUILDKITE_PULL_REQUEST",
+    "BUILDKITE_BAZEL_CACHE_URL",
+    "BUILDKITE_CACHE_READONLY",
 ]
-_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
+
+
+def get_docker_image(docker_tag: str, build_id: Optional[str] = None) -> str:
+    """Get rayci image for a particular tag."""
+    if not build_id:
+        build_id = _RAYCI_BUILD_ID
+    if build_id:
+        return f"{_DOCKER_ECR_REPO}:{build_id}-{docker_tag}"
+    return f"{_DOCKER_ECR_REPO}:{docker_tag}"
 
 
 class Container(abc.ABC):
@@ -64,11 +79,9 @@ class Container(abc.ABC):
         Run a script in container and returns output
         """
         # CUDA image comes with a license header that we need to remove
-        return (
-            subprocess.check_output(self.get_run_command(script))
-            .decode("utf-8")
-            .replace(_CUDA_COPYRIGHT, "")
-        )
+        output = subprocess.check_output(self.get_run_command(script)).decode("utf-8")
+        # Use regex to remove CUDA copyright header with any version
+        return re.sub(_CUDA_COPYRIGHT_PATTERN, "", output, flags=re.MULTILINE)
 
     def run_script(self, script: List[str]) -> None:
         """
@@ -81,10 +94,8 @@ class Container(abc.ABC):
         )
 
     def _get_docker_image(self) -> str:
-        """
-        Get docker image for a particular commit
-        """
-        return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
+        """Get docker image for a particular commit."""
+        return get_docker_image(self.docker_tag)
 
     @abc.abstractmethod
     def install_ray(

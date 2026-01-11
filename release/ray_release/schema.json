@@ -28,15 +28,16 @@
 					"type": "string",
 					"enum": [
 						"3.9",
+						"3.10",
 						"3.11",
-						"3.12"
+						"3.12",
+						"3.13"
 					]
 				},
 				"frequency": {
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
 						"weekly",
@@ -73,6 +74,9 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
+				"ray_version": {
+					"type": "string"
+				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -107,6 +111,9 @@
 					"type": "string"
 				},
 				"post_build_script": {
+					"type": "string"
+				},
+				"python_depset": {
 					"type": "string"
 				},
 				"pip": {
@@ -153,6 +160,9 @@
 				},
 				"artifact_path": {
 					"type": "string"
+				},
+				"num_retries": {
+					"type": "integer"
 				}
 			},
 			"required": [
@@ -201,7 +211,6 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
 						"weekly",

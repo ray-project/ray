@@ -1,13 +1,14 @@
-import numpy as np
 import unittest
 
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
-    MultiAgentMixInReplayBuffer,
-)
+import numpy as np
+
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    SampleBatch,
+)
+from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
+    MultiAgentMixInReplayBuffer,
 )
 
 
@@ -65,7 +66,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             sample = buffer.sample(2)
             assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
-        # One sample in the episode does not belong the the episode on thus
+        # One sample in the episode does not belong to the episode on thus
         # gets dropped. Full episodes are of length two.
         self.assertAlmostEqual(np.mean(results), 2 * (len(batch) - 1))
 
@@ -205,7 +206,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

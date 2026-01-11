@@ -5,18 +5,27 @@
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
-# FROM directive resets ARG
-ARG BASE_IMAGE
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
-ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
-ENV PATH "/home/ray/anaconda3/bin:$PATH"
+# Q: Why add paths like /usr/local/nvidia/lib64 and /usr/local/nvidia/bin?
+# A: The NVIDIA GPU operator version used by GKE injects these into the container
+# after it's mounted to a pod.
+# Issue is tracked here:
+# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
+# More context here:
+# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
+# and here:
+# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
+ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
-ARG HOSTTYPE=${HOSTTYPE:-x86_64}
+
+ARG PYTHON_DEPSET
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -38,17 +47,15 @@ APT_PKGS=(
     cmake
     g++
     zlib1g-dev
+
+    # For autoscaler
+    tmux
+    screen
+    rsync
+    netbase
+    openssh-client
+    gnupg
 )
-if [[ "$AUTOSCALER" == "autoscaler" ]]; then
-    APT_PKGS+=(
-        tmux
-        screen
-        rsync
-        netbase
-        openssh-client
-        gnupg
-    )
-fi
 
 apt-get install -y "${APT_PKGS[@]}"
 
@@ -60,8 +67,10 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
+WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 
@@ -70,9 +79,19 @@ RUN <<EOF
 
 set -euo pipefail
 
+# Determine the architecture of the host
+if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
+    exit 1
+fi
+
 # Install miniforge
 wget --quiet \
-    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${ARCH}.sh" \
     -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
@@ -84,29 +103,8 @@ $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
 $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
 
-PIP_PKGS=(
-    # Required a recent version of setuptools to be compatible with python 3.12+.
-    setuptools==71.1.0
-
-    flatbuffers
-    cython
-    numpy  # Necessary for Dataset to work properly.
-    psutil
-)
-if [[ "$AUTOSCALER" == "autoscaler" ]]; then
-    PIP_PKGS+=(
-        redis
-        six
-        boto3
-        pyopenssl
-        cryptography
-        google-api-python-client
-        google-oauth
-    )
-fi
-
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
@@ -114,19 +112,14 @@ export PATH=$HOME/anaconda3/bin:$PATH
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
 # to ensure that the best match is chosen from the available indices.
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c $HOME/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
-
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-uv pip uninstall --system dask
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
 
 # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then
+if [[ ! -d /usr/local/cuda ]]; then
     sudo apt-get autoremove -y g++
 fi
 

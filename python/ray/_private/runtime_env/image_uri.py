@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import os
+import tempfile
 from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.utils import check_output_cmd
 
 default_logger = logging.getLogger(__name__)
 
@@ -12,21 +13,54 @@ default_logger = logging.getLogger(__name__)
 async def _create_impl(image_uri: str, logger: logging.Logger):
     # Pull image if it doesn't exist
     # Also get path to `default_worker.py` inside the image.
-    pull_image_cmd = [
-        "podman",
-        "run",
-        "--rm",
-        image_uri,
-        "python",
-        "-c",
-        (
-            "import ray._private.workers.default_worker as default_worker; "
-            "print(default_worker.__file__)"
-        ),
-    ]
-    logger.info("Pulling image %s", image_uri)
-    worker_path = await check_output_cmd(pull_image_cmd, logger=logger)
-    return worker_path.strip()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.chmod(tmpdir, 0o777)
+        result_file = os.path.join(tmpdir, "worker_path.txt")
+        get_worker_path_script = """
+import ray._private.workers.default_worker as dw
+with open('/shared/worker_path.txt', 'w') as f:
+    f.write(dw.__file__)
+"""
+        cmd = [
+            "podman",
+            "run",
+            "--rm",
+            "-v",
+            f"{tmpdir}:/shared:Z",
+            image_uri,
+            "python",
+            "-c",
+            get_worker_path_script,
+        ]
+
+        logger.info("Pulling image %s", image_uri)
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise RuntimeError(
+                f"Podman command failed: cmd={cmd}, returncode={process.returncode}, stdout={stdout.decode()}, stderr={stderr.decode()}"
+            )
+
+        if not os.path.exists(result_file):
+            raise FileNotFoundError(
+                f"Worker path file not created when getting worker path for image {image_uri}"
+            )
+
+        with open(result_file, "r") as f:
+            worker_path = f.read().strip()
+
+        if not worker_path.endswith(".py"):
+            raise ValueError(
+                f"Invalid worker path inferred in image {image_uri}: {worker_path}"
+            )
+
+        logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
+        return worker_path
 
 
 def _modify_context_impl(

@@ -1,4 +1,6 @@
 import json
+import os
+import pathlib
 import sys
 from tempfile import NamedTemporaryFile
 from typing import Dict, Optional
@@ -10,7 +12,7 @@ import yaml
 from click.testing import CliRunner
 
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve.scripts import convert_args_to_dict, deploy
+from ray.serve.scripts import build, convert_args_to_dict, deploy
 
 
 def test_convert_args_to_dict():
@@ -130,6 +132,62 @@ class TestDeploy:
                 runtime_env=runtime_env,
             ).dict(exclude_unset=True)
         ]
+
+
+class TestEnumSerialization:
+    """Test that enum representer correctly serializes enums in YAML dumps."""
+
+    def test_build_command_with_enum_serialization(self):
+        """Test that serve build correctly serializes AggregationFunction enum."""
+        runner = CliRunner()
+        with NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(
+                "from ray import serve\n"
+                "from ray.serve.config import AggregationFunction, AutoscalingConfig\n\n"
+                "@serve.deployment(\n"
+                "    autoscaling_config=AutoscalingConfig(\n"
+                "        min_replicas=1,\n"
+                "        max_replicas=2,\n"
+                "        aggregation_function=AggregationFunction.MEAN,\n"
+                "    )\n"
+                ")\n"
+                "def test_deployment():\n"
+                "    return 'ok'\n\n"
+                "app = test_deployment.bind()\n"
+            )
+            temp_path = f.name
+
+        output_path = None
+        try:
+            import_path = f"{pathlib.Path(temp_path).stem}:app"
+            with NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as output_file:
+                output_path = output_file.name
+
+            result = runner.invoke(
+                build,
+                [
+                    import_path,
+                    "--app-dir",
+                    str(pathlib.Path(temp_path).parent),
+                    "--output-path",
+                    output_path,
+                ],
+            )
+            assert result.exit_code == 0, result.output
+
+            with open(output_path, "r") as f:
+                config = yaml.safe_load(f)
+            agg_func = config["applications"][0]["deployments"][0][
+                "autoscaling_config"
+            ]["aggregation_function"]
+            assert agg_func == "mean"
+            assert isinstance(agg_func, str)
+        finally:
+            os.unlink(temp_path)
+            if output_path:
+                os.unlink(output_path)
 
 
 if __name__ == "__main__":
