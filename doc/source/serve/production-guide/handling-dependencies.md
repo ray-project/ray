@@ -59,3 +59,7 @@ Example:
 ```{literalinclude} ../doc_code/delayed_import.py
 :language: python
 ```
+
+## Handle dependencies on Kubernetes
+
+When deploying Ray Serve on Kubernetes with KubeRay, you can install packages at container startup using the `args` field or via `runtime_env` in your Serve config. See [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide for details and examples.

@@ -296,6 +296,66 @@ helm uninstall kuberay-operator
 kubectl delete pod curl
 ```
 
+(kuberay-rayservice-custom-deps)=
+## Add custom dependencies
+
+You may need to install additional packages in your Ray containers. KubeRay supports two approaches depending on whether dependencies are shared across all applications or specific to one.
+
+### Install shared dependencies via args
+
+Use the `args` field to install system packages and Python dependencies that all applications in the RayService need. These packages install at container startup and are accessible to every application:
+
+```yaml
+workerGroupSpecs:
+  - groupName: worker-group
+    template:
+      spec:
+        containers:
+          - name: ray-worker
+            image: rayproject/ray:2.53.0-py312-cu129-aarch64
+            args:
+              - |
+                sudo apt-get update && \
+                sudo apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 && \
+                sudo rm -rf /var/lib/apt/lists/* && \
+                pip install opencv-python-headless pillow
+```
+
+You can also install Python packages via `runtime_env`, but using `args` makes them available to all applications and avoids repeated installation.
+
+### Install application-specific dependencies via runtime_env
+
+For dependencies that only a specific application needs, use `runtime_env` in your Serve configuration. This approach lets you install different packages for different applications:
+
+```yaml
+serveConfigV2: |
+  applications:
+  - name: ml_app
+    import_path: ml_module:app
+    runtime_env:
+      pip:
+        - pandas
+        - scikit-learn
+  - name: nlp_app
+    import_path: nlp_module:app
+    runtime_env:
+      pip:
+        - transformers
+        - tokenizers
+```
+
+Download a complete example combining both approaches:
+
+```sh
+curl -o ray-serve.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-serve.extra-dependency.yaml
+```
+
+:::{note}
+Packages installed via `args` install on every container restart. For production, consider building a custom image with shared dependencies pre-installed.
+:::
+
+For advanced container command customization, see [Specify container commands](kuberay-pod-command). For LLM-specific dependencies such as KV cache offloading with LMCache and Mooncake, see [KV cache offloading](kv-cache-offloading-guide).
+
 ## Next steps
 
 * See [RayService high availability](kuberay-rayservice-ha) for more details on RayService HA.

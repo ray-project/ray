@@ -263,7 +263,81 @@ Extending KV cache beyond local GPU memory introduces overhead for managing and 
 **Network transfer costs**: When combining MultiConnector with cross-instance transfer (such as NIXL), ensure that the benefits of disaggregation outweigh the network transfer costs.
 
 
+## Deploy on Kubernetes with LMCache and Mooncake
+
+For distributed KV cache sharing across multiple GPU workers, you can use LMCache with Mooncake as the storage backend. Mooncake creates a distributed memory pool by aggregating memory from multiple nodes, supporting high-bandwidth RDMA or TCP transfer.
+
+### Install system packages
+
+Mooncake requires system-level dependencies. Use the `args` field in your RayService worker spec to install them at container startup:
+
+```yaml
+# Reference: https://kvcache-ai.github.io/Mooncake/getting_started/build.html
+args:
+  - |
+    sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends \
+      build-essential cmake libibverbs-dev libgoogle-glog-dev \
+      libgtest-dev libjsoncpp-dev libnuma-dev libunwind-dev \
+      libpython3-dev libboost-all-dev libssl-dev pybind11-dev \
+      libcurl4-openssl-dev libhiredis-dev pkg-config patchelf && \
+    sudo rm -rf /var/lib/apt/lists/*
+```
+
+### Install LMCache and Mooncake via runtime_env
+
+Add the Python packages through `runtime_env` in your LLM configuration:
+
+```yaml
+runtime_env:
+  pip:
+    - lmcache
+    - mooncake-transfer-engine
+  env_vars:
+    LMCACHE_CONFIG_FILE: "/mnt/configs/lmcache-config.yaml"
+    PYTHONHASHSEED: "0"  # Required for consistent pre-caching keys
+```
+
+### Configure kv_transfer_config
+
+Enable the LMCache connector in your engine configuration:
+
+```yaml
+engine_kwargs:
+  kv_transfer_config:
+    kv_connector: "LMCacheConnectorV1"
+    kv_role: "kv_both"
+```
+
+### LMCache configuration for Mooncake
+
+Create a ConfigMap with your LMCache configuration file. The configuration specifies the Mooncake master address, metadata server, and transfer protocol. For the full configuration reference, see the [LMCache Mooncake backend documentation](https://docs.lmcache.ai/kv_cache/storage_backends/mooncake.html).
+
+Example `lmcache-config.yaml`:
+
+```yaml
+chunk_size: 256
+remote_url: "mooncakestore://mooncake-master.default.svc.cluster.local:50051/"
+remote_serde: "naive"
+local_cpu: true
+max_local_cpu_size: 64  # GB
+
+extra_config:
+  metadata_server: "etcd://etcd.default.svc.cluster.local:2379"
+  protocol: "tcp"  # Use "rdma" for RDMA-capable networks
+  master_server_address: "mooncake-master.default.svc.cluster.local:50051"
+  global_segment_size: 21474836480  # 20GB per worker
+```
+
+:::{note}
+This setup requires a running Mooncake master service and metadata server (etcd or HTTP). See the [Mooncake deployment guide](https://kvcache-ai.github.io/Mooncake/getting_started/build.html) for infrastructure setup.
+:::
+
+For general Kubernetes dependency patterns, see [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide.
+
 ## See also
 
 - {doc}`Prefill/decode disaggregation <prefill-decode>` - Deploy LLMs with separated prefill and decode phases
 - [LMCache documentation](https://docs.lmcache.ai/) - Comprehensive LMCache configuration and features
+- [LMCache Mooncake backend](https://docs.lmcache.ai/kv_cache/storage_backends/mooncake.html) - Distributed KV cache storage setup
+- [Mooncake build guide](https://kvcache-ai.github.io/Mooncake/getting_started/build.html) - System dependencies and installation
