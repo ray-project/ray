@@ -379,9 +379,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   std::vector<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
       node_removed_listeners_ ABSL_GUARDED_BY(mutex_);
 
-  /// Listeners which monitors when nodes are set to draining.
-  /// Uses std::function (not Postable) for synchronous invocation to ensure
-  /// scheduler sees draining state before HandleDrainNode returns.
+  /// Listeners which monitor when nodes are set to draining.
   std::vector<std::function<void(const NodeID &, bool, int64_t)>> node_draining_listeners_
       ABSL_GUARDED_BY(mutex_);
 
