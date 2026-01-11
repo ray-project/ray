@@ -43,7 +43,15 @@ def test_read_sql(temp_database: str):
     assert sorted(actual_values) == sorted(expected_values)
 
 
-def test_read_sql_with_params(temp_database: str):
+@pytest.mark.parametrize(
+    "sql, sql_params",
+    [
+        ("SELECT * FROM movie WHERE year >= ?", (1975,)),
+        ("SELECT * FROM movie WHERE year >= ?", [1975]),
+        ("SELECT * FROM movie WHERE year >= :year", {"year": 1975}),
+    ],
+)
+def test_read_sql_with_params(temp_database: str, sql: str, sql_params):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE movie(title, year, score)")
     expected_values = [
@@ -56,9 +64,9 @@ def test_read_sql_with_params(temp_database: str):
     connection.close()
 
     dataset = ray.data.read_sql(
-        "SELECT * FROM movie WHERE year >= ?",
+        sql,
         lambda: sqlite3.connect(temp_database),
-        sql_params=(1975,),
+        sql_params=sql_params,
     )
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
