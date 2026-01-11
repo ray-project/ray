@@ -1279,6 +1279,8 @@ def exec_cluster(
             attach_command_parts.append(
                 "--cluster-name={}".format(override_cluster_name)
             )
+        if ip is not None:
+            attach_command_parts.append("--ip={}".format(ip))
         if tmux:
             attach_command_parts.append("--tmux")
         elif screen:
