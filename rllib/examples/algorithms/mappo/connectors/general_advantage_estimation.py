@@ -64,11 +64,13 @@ class MAPPOGAEConnector(ConnectorV2):
             and (not isinstance(rl_module[k], SelfSupervisedLossAPI))
         ]
         critic_batch[Columns.OBS] = torch.cat(
-            [batch[k][Columns.OBS] for k in obs_mids], dim=1
+            [batch[k][Columns.OBS] for k in obs_mids], dim=-1
         )
+        if (Columns.LOSS_MASK in batch[obs_mids[0]]):
+            critic_batch[Columns.LOSS_MASK] = batch[obs_mids[0]][Columns.LOSS_MASK]
         # Compute value predictions
         vf_preds = rl_module[SHARED_CRITIC_ID].compute_values(critic_batch)
-        vf_preds = {mid: vf_preds[:, i] for i, mid in enumerate(obs_mids)}
+        vf_preds = {mid: vf_preds[..., i] for i, mid in enumerate(obs_mids)}
         # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             module = rl_module[module_id]
@@ -136,10 +138,10 @@ class MAPPOGAEConnector(ConnectorV2):
             batch[module_id][Postprocessing.VALUE_TARGETS] = module_value_targets
         # Add GAE results to the critic batch
         critic_batch[Postprocessing.VALUE_TARGETS] = np.stack(
-            [batch[mid][Postprocessing.VALUE_TARGETS] for mid in obs_mids], axis=1
+            [batch[mid][Postprocessing.VALUE_TARGETS] for mid in obs_mids], axis=-1
         )
         critic_batch[Postprocessing.ADVANTAGES] = np.stack(
-            [batch[mid][Postprocessing.ADVANTAGES] for mid in obs_mids], axis=1
+            [batch[mid][Postprocessing.ADVANTAGES] for mid in obs_mids], axis=-1
         )
         batch[SHARED_CRITIC_ID] = critic_batch  # Critic data -> training batch
         # Convert all GAE results to tensors.
