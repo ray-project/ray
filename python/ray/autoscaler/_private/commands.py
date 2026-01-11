@@ -1121,8 +1121,10 @@ def attach_cluster(
         use_screen: whether to use screen as multiplexer
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
+        no_config_cache: whether to skip the config cache
         new: whether to force a new screen
         port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
+        ip: IP address of the node to attach to
     """
 
     if use_tmux:
@@ -1186,9 +1188,12 @@ def exec_cluster(
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
+        no_config_cache: whether to skip the config cache
         port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        with_output: whether to return the command output
         _allow_uninitialized_state: whether to execute on an uninitialized head
             node.
+        ip: IP address of the node to execute on
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
