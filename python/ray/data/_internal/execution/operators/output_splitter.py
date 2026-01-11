@@ -202,6 +202,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             target_bundle = self._peek_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
                 target_bundle = self._buffer.remove(target_bundle)
+                self._metrics.on_input_dequeued(target_bundle)
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
@@ -213,8 +214,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     else:
                         self._locality_misses += 1
             else:
-                # Put it back and abort.
-                self._metrics.on_input_queued(target_bundle)
+                # Abort.
                 break
         self._output_splitter_overhead_time += time.perf_counter() - start_time
 
@@ -228,13 +228,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
                 if preferred_loc in self._get_locations(bundle):
-                    self._buffer.remove(bundle)
-                    self._metrics.on_input_dequeued(bundle)
                     return bundle
 
-        bundle = self._buffer.peek_next()
-        self._metrics.on_input_dequeued(bundle)
-        return bundle
+        return self._buffer.peek_next()
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
         if not self._equal:
@@ -244,7 +240,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output_distribution[target_index] += nrow
         buffer_requirement = self._calculate_buffer_requirement(output_distribution)
         buffer_size = self._buffer.num_rows()
-        return buffer_size >= buffer_requirement
+        # Check if we have enough rows LEFT after dispatching to equalize.
+        return buffer_size - nrow >= buffer_requirement
 
     def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
         # Calculate the new number of rows that we'd need to equalize the row
@@ -256,16 +253,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output = []
         acc = 0
         while acc < nrow:
-            b = self._buffer.peek_next()
+            b = self._buffer.get_next()
             self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
-                b = self._buffer.get_next()
                 output.append(b)
                 acc += b.num_rows()
             else:
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
+                self._buffer.add(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 

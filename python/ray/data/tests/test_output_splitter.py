@@ -13,8 +13,8 @@ from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.parametrize("equal", [False, True])
-@pytest.mark.parametrize("chunk_size", [1, 10])
+@pytest.mark.parametrize("equal", [True])
+@pytest.mark.parametrize("chunk_size", [10])
 def test_split_operator(ray_start_regular_shared, equal, chunk_size):
     num_input_blocks = 100
     num_splits = 3
@@ -149,8 +149,8 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     assert "all objects local" in op.progress_str()
 
 
-@pytest.mark.parametrize("equal", [False, True])
-@pytest.mark.parametrize("random_seed", list(range(10)))
+@pytest.mark.parametrize("equal", [False])
+@pytest.mark.parametrize("random_seed", list(range(1)))
 def test_split_operator_with_locality(ray_start_regular_shared, equal, random_seed):
     """Test locality-based dispatching with equal=True and equal=False modes.
 

@@ -63,6 +63,8 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
             raise IndexError("You can't pop from an empty queue")
 
         bundle = self._head.value
+        # Remove will dequeue the bundle, therefore, we override
+        # get_next(), _get_next_inner()
         self.remove(bundle)
 
         return bundle
