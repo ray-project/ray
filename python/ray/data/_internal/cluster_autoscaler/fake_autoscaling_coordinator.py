@@ -70,5 +70,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         # Case 3: allocation still valid.
         allocated_resources = list(allocation.resources)
         if allocation.request_remaining:
+            # Unlike DefaultAutoscalingCoordinator, this fake returns all remaining
+            # resources to each requester to keep tests simple.
             allocated_resources.extend(self._remaining)
         return allocated_resources

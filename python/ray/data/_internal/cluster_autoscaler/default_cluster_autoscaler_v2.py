@@ -176,7 +176,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             return
 
         resource_request = []
-        node_resource_spec_count = self._get_node_counts()
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
@@ -187,6 +186,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # TODO(hchen): We scale up all nodes by the same delta for now.
         # We may want to distinguish different node types based on their individual
         # utilization.
+        node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
             num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))

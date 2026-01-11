@@ -60,9 +60,11 @@ class TestClusterAutoscaling:
 
     def test_get_node_resource_spec_and_count(self):
         # Test _get_node_resource_spec_and_count
+        fake_coordinator = FakeAutoscalingCoordinator()
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
+            autoscaling_coordinator=fake_coordinator,
         )
 
         node_table = [
