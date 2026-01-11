@@ -1183,16 +1183,16 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
-        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
         no_config_cache: whether to skip the config cache
-        port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        port_forward: port(s) to forward
         with_output: whether to return the command output
         _allow_uninitialized_state: whether to execute on an uninitialized head
             node.
+        extra_screen_args: optional custom additional args to screen command
         ip: IP address of the node to execute on
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
