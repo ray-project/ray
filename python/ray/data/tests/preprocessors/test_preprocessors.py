@@ -215,10 +215,7 @@ def test_fit_twice_clears_stale_stats():
 
     # First fit on dataset A
     preprocessor.fit(dataset_a)
-    assert "mean(a)" in preprocessor.stats_
-    assert "mean(b)" in preprocessor.stats_
-    assert preprocessor.stats_["mean(a)"] == 2.0
-    assert preprocessor.stats_["mean(b)"] == 20.0
+    assert preprocessor.stats_ == {"mean(a)": 2.0, "mean(b)": 20.0}
 
     # Second fit on dataset B - stale stats should be cleared
     preprocessor.fit(dataset_b)
