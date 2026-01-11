@@ -221,23 +221,12 @@ def test_fit_twice_clears_stale_stats():
     preprocessor.fit(dataset_b)
 
     # Verify stale stat "mean(a)" is NOT present
-    assert "mean(a)" not in preprocessor.stats_, (
-        "Stale stat 'mean(a)' should have been cleared on refit. "
-        "fit(A).fit(B) should be equivalent to fit(B)."
+    # Verify stats are correct after refit, and stale stats are cleared.
+    expected_stats = {"mean(b)": 200.0, "mean(c)": 2000.0}
+    assert preprocessor.stats_ == expected_stats, (
+        f"Stats after refit are incorrect. "
+        f"Expected: {expected_stats}, Got: {preprocessor.stats_}"
     )
-
-    # Verify new stats are correct
-    assert "mean(b)" in preprocessor.stats_
-    assert "mean(c)" in preprocessor.stats_
-    assert preprocessor.stats_["mean(b)"] == 200.0
-    assert preprocessor.stats_["mean(c)"] == 2000.0
-
-    # Verify only expected keys are present
-    expected_keys = {"mean(b)", "mean(c)"}
-    actual_keys = set(preprocessor.stats_.keys())
-    assert (
-        actual_keys == expected_keys
-    ), f"Expected stats keys {expected_keys}, but got {actual_keys}"
 
 
 def test_transform_all_configs():
