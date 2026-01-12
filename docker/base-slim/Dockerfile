@@ -122,7 +122,7 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda clean -a
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
-    -r $HOME/python_depset.lock
+    -r $HOME/python_depset.lock -c $HOME/requirements_compiled.txt
 
 anyscale --version
 
