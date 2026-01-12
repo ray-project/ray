@@ -1984,7 +1984,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/tqc/tests/test_tqc.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
     deps = [":conftest"],
