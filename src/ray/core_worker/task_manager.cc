@@ -1101,6 +1101,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                        << " failed with application error, failing "
                        << spec.NumStreamingGeneratorReturns() << " return objects.";
         RAY_CHECK_EQ(reply.return_objects_size(), 1);
+        std::optional<std::string> generator_tensor_transport =
+            reference_counter_.GetTensorTransport(generator_return_id);
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);
@@ -1110,7 +1112,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
               return_object,
               NodeID::FromBinary(worker_addr.node_id()),
               store_in_plasma_ids.contains(generator_return_id),
-              reference_counter_.GetTensorTransport(generator_return_id));
+              generator_tensor_transport);
           if (!res.ok()) {
             RAY_LOG(WARNING).WithField(generator_return_id)
                 << "Failed to handle generator return during app error propagation: "

@@ -629,7 +629,8 @@ class TaskManager : public TaskManagerInterface {
                                   const rpc::ReturnObject &return_object,
                                   const NodeID &worker_node_id,
                                   bool store_in_plasma,
-                                  std::optional<std::string>) ABSL_LOCKS_EXCLUDED(mu_);
+                                  std::optional<std::string> tensor_transport)
+                                  ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.

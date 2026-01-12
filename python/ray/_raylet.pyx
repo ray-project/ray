@@ -1812,15 +1812,14 @@ cdef void execute_task(
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
-                        # Note that the report RPCs are called inside an
-                        # event loop thread.
-
 
                         # Transfer py_tensor_transport into c_tensor_transport.
                         py_tensor_transport = None
                         if c_tensor_transport.has_value():
                             py_tensor_transport = c_tensor_transport.value()
 
+                        # Note that the report RPCs are called inside an
+                        # event loop thread.
                         if is_async_gen:
                             if generator_backpressure_num_objects != -1:
                                 raise ValueError(
