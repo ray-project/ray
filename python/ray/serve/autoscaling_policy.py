@@ -9,7 +9,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.queue_monitor import QUEUE_MONITOR_ACTOR_PREFIX
+from ray.serve._private.queue_monitor import get_queue_monitor_actor_name
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -143,22 +143,19 @@ def replica_queue_length_autoscaling_policy(
 
 
 @PublicAPI(stability="alpha")
-def queue_based_autoscaling_policy(
+def combined_workload_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[int, Dict[str, Any]]:
     """
-    Autoscaling policy for TaskConsumer deployments based on queue depth.
+    Autoscaling policy for TaskConsumer deployments based on total workload.
 
-    This policy scales replicas based on the number of pending tasks in the
-    message queue, rather than HTTP request load.
+    This policy scales replicas based on the combined workload from:
+    - Pending tasks in the message queue (via QueueMonitor)
+    - Ongoing HTTP requests (from context)
 
     Formula:
-        desired_replicas = ceil(queue_length / target_ongoing_requests)
-
-    Behavior:
-        - Queries QueueMonitor Ray actor directly via ray.get_actor()
-        - If QueueMonitor unavailable, maintains current replica count
-        - Uses same smoothing/delay logic as default policy to prevent oscillation
+        total_workload = queue_length + total_num_requests
+        desired_replicas = ceil(total_workload / target_ongoing_requests)
 
     Args:
         ctx: AutoscalingContext containing metrics, config, and state
@@ -171,57 +168,51 @@ def queue_based_autoscaling_policy(
     policy_state: Dict[str, Any] = ctx.policy_state
     current_num_replicas: int = ctx.current_num_replicas
     curr_target_num_replicas: int = ctx.target_num_replicas
+    total_num_requests: int = ctx.total_num_requests
     config: Optional[AutoscalingConfig] = ctx.config
     capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
     capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
 
     # Get decision counter from state (for smoothing)
-    decision_counter = policy_state.get("decision_counter", 0)
+    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
 
     # === STEP 1: Get queue length from QueueMonitor actor ===
-    # Actor name format: "QUEUE_MONITOR::<deployment_name>"
-    queue_monitor_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{ctx.deployment_name}"
-    queue_monitor_actor, actor_found = _get_queue_monitor_actor(
-        queue_monitor_actor_name=queue_monitor_actor_name,
-    )
-
-    if not actor_found:
-        logger.warning(
-            f"[{ctx.deployment_name}] QueueMonitor actor unavailable, maintaining {curr_target_num_replicas} replicas"
-        )
-        return curr_target_num_replicas, policy_state
-
     try:
+        queue_monitor_actor_name = get_queue_monitor_actor_name(ctx.deployment_name)
+        queue_monitor_actor = ray.get_actor(
+            queue_monitor_actor_name, namespace=SERVE_NAMESPACE
+        )
         queue_length = ray.get(
             queue_monitor_actor.get_queue_length.remote(), timeout=5.0
         )
     except Exception as e:
-        # Error querying actor - maintain current replicas
         logger.warning(
-            f"[{ctx.deployment_name}] Could not query QueueMonitor ({e}), maintaining {curr_target_num_replicas} replicas"
+            f"[{ctx.deployment_name}] Could not query QueueMonitor: {e}, maintaining {curr_target_num_replicas} replicas"
         )
         return curr_target_num_replicas, policy_state
 
-    # === STEP 2: Calculate desired replicas ===
-    target_ongoing_requests = config.get_target_ongoing_requests()
+    # Calculate total workload = queue tasks + HTTP requests
+    total_workload = queue_length + total_num_requests
 
-    policy_state["last_queue_length"] = queue_length
-
-    # Handle scale from zero
     if current_num_replicas == 0:
-        if queue_length > 0:
-            desired = math.ceil(queue_length / target_ongoing_requests)
-            desired = max(1, min(desired, capacity_adjusted_max_replicas))
-            return desired, policy_state
-        return 0, policy_state
+        # When 0 replicas and there's workload, scale up the replicas
+        if total_workload > 0:
+            return (
+                max(
+                    math.ceil(1 * config.get_upscaling_factor()),
+                    curr_target_num_replicas,
+                ),
+                policy_state,
+            )
+        return curr_target_num_replicas, policy_state
 
-    # Calculate desired replicas based on queue depth
-    desired_num_replicas = math.ceil(queue_length / target_ongoing_requests)
-
-    # Clamp to min/max bounds
-    desired_num_replicas = max(
-        capacity_adjusted_min_replicas,
-        min(capacity_adjusted_max_replicas, desired_num_replicas),
+    # === STEP 2: Calculate desired replicas ===
+    desired_num_replicas = _calculate_desired_num_replicas(
+        config,
+        total_num_requests=total_workload,
+        num_running_replicas=current_num_replicas,
+        override_min_replicas=capacity_adjusted_min_replicas,
+        override_max_replicas=capacity_adjusted_max_replicas,
     )
 
     # === STEP 3: Apply smoothing (same logic as default policy) ===
@@ -233,8 +224,6 @@ def queue_based_autoscaling_policy(
     )
 
     # Update policy state
-    policy_state["decision_counter"] = decision_counter
-
     policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
     return decision_num_replicas, policy_state
 
@@ -305,28 +294,6 @@ def _apply_scaling_decision_smoothing(
     return decision_num_replicas, decision_counter
 
 
-def _get_queue_monitor_actor(
-    queue_monitor_actor_name: str,
-) -> Tuple[Optional[ray.actor.ActorHandle], bool]:
-    """
-    Try to get an existing QueueMonitor actor.
-
-    Args:
-        queue_monitor_actor_name: The name of the QueueMonitor actor to look up.
-
-    Returns:
-        Tuple of (queue_monitor_actor, actor_found). If actor_found is False,
-        queue_monitor_actor will be None.
-    """
-    try:
-        queue_monitor_actor = ray.get_actor(
-            queue_monitor_actor_name, namespace=SERVE_NAMESPACE
-        )
-        return queue_monitor_actor, True
-    except ValueError:
-        return None, False
-
-
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
 
-default_queue_based_autoscaling_policy = queue_based_autoscaling_policy
+default_combined_workload_autoscaling_policy = combined_workload_autoscaling_policy

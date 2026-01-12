@@ -12,6 +12,18 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 QUEUE_MONITOR_ACTOR_PREFIX = "QUEUE_MONITOR::"
 
 
+def get_queue_monitor_actor_name(deployment_name: str) -> str:
+    """Get the Ray actor name for a deployment's QueueMonitor.
+
+    Args:
+        deployment_name: Name of the deployment
+
+    Returns:
+        The full actor name in format "QUEUE_MONITOR::<deployment_name>"
+    """
+    return f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
+
+
 @ray.remote(num_cpus=0)
 class QueueMonitorActor:
     """
@@ -99,16 +111,16 @@ def create_queue_monitor_actor(
     Returns:
         ActorHandle for the QueueMonitor actor
     """
-    full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
+    actor_name = get_queue_monitor_actor_name(deployment_name)
 
     # Check if actor already exists
     try:
         existing = get_queue_monitor_actor(deployment_name, namespace=namespace)
-        logger.info(f"QueueMonitor actor '{full_actor_name}' already exists, reusing")
+        logger.info(f"QueueMonitor actor '{actor_name}' already exists, reusing")
         return existing
     except ValueError:
         actor = QueueMonitorActor.options(
-            name=full_actor_name,
+            name=actor_name,
             namespace=namespace,
             max_restarts=-1,
             max_task_retries=-1,
@@ -116,7 +128,7 @@ def create_queue_monitor_actor(
         ).remote(broker_url, queue_name, rabbitmq_http_url)
 
         logger.info(
-            f"Created QueueMonitor actor '{full_actor_name}' in namespace '{namespace}'"
+            f"Created QueueMonitor actor '{actor_name}' in namespace '{namespace}'"
         )
         return actor
 
@@ -138,8 +150,8 @@ def get_queue_monitor_actor(
     Raises:
         ValueError: If actor doesn't exist
     """
-    full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
-    return ray.get_actor(full_actor_name, namespace=namespace)
+    actor_name = get_queue_monitor_actor_name(deployment_name)
+    return ray.get_actor(actor_name, namespace=namespace)
 
 
 def kill_queue_monitor_actor(
@@ -156,8 +168,8 @@ def kill_queue_monitor_actor(
     Raises:
         ValueError: If actor doesn't exist
     """
-    full_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
+    actor_name = get_queue_monitor_actor_name(deployment_name)
     actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
 
     ray.kill(actor, no_restart=True)
-    logger.info(f"Deleted QueueMonitor actor '{full_actor_name}'")
+    logger.info(f"Deleted QueueMonitor actor '{actor_name}'")

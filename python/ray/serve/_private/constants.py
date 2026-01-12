@@ -424,9 +424,9 @@ DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
 )
 
-# The default queue-based autoscaling policy to use for TaskConsumers if none is specified.
-DEFAULT_QUEUE_BASED_AUTOSCALING_POLICY = (
-    "ray.serve.autoscaling_policy:default_queue_based_autoscaling_policy"
+# The default combined workload autoscaling policy to use for TaskConsumers if none is specified.
+DEFAULT_COMBINED_WORKLOAD_AUTOSCALING_POLICY = (
+    "ray.serve.autoscaling_policy:default_combined_workload_autoscaling_policy"
 )
 
 # Feature flag to enable collecting all queued and ongoing request
