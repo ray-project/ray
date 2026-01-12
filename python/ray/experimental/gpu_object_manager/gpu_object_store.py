@@ -3,7 +3,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
 
-from ray.experimental.gpu_object_manager.types import (
+from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
