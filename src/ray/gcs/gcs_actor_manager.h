@@ -329,18 +329,27 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
       const NodeID &node_id, const WorkerID &worker_id) const;
 
-  /// Reconstruct the specified actor.
+  /// Attempt to restart actor if it has remaining restarts.
+  /// If no restarts remaining or creation task failed, calls FinalizeActorDeath.
   ///
-  /// \param actor The target actor to be reconstructed.
-  /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
-  /// users want to kill an actor intentionally and don't want it to be reconstructed
-  /// again.
-  /// \param death_cause Context about why this actor is dead. Should only be set when
-  /// need_reschedule=false.
-  void RestartActor(const ActorID &actor_id,
-                    bool need_reschedule,
-                    const rpc::ActorDeathCause &death_cause,
-                    std::function<void()> done_callback = nullptr);
+  /// @param actor_id The actor to restart.
+  /// @param death_cause The reason for actor failure.
+  /// @param done_callback Optional callback invoked after persistence.
+  void TryRestartActor(const ActorID &actor_id,
+                       const rpc::ActorDeathCause &death_cause,
+                       std::function<void()> done_callback = nullptr);
+
+  /// Finalize actor as DEAD - no restart attempt.
+  /// Marks actor DEAD, persists state, and cleans up resources.
+  /// May keep actor for lineage reconstruction if death cause is OUT_OF_SCOPE
+  /// and actor has remaining restarts.
+  ///
+  /// @param actor_id The actor to finalize.
+  /// @param death_cause The reason for actor death.
+  /// @param done_callback Optional callback invoked after persistence.
+  void FinalizeActorDeath(const ActorID &actor_id,
+                          const rpc::ActorDeathCause &death_cause,
+                          std::function<void()> done_callback = nullptr);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -372,6 +381,18 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ///
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+
+  /// Clean up a permanently dead actor - remove from registries and caches.
+  /// Called when actor will not be restarted.
+  ///
+  /// @param actor The actor to clean up.
+  /// @param death_cause The reason for actor death.
+  /// @param force_remove_name If true, always remove the actor name. If false,
+  ///        only remove for intentional terminations (ray.kill, out of scope, ref
+  ///        deleted).
+  void CleanupDeadActor(const std::shared_ptr<GcsActor> &actor,
+                        const rpc::ActorDeathCause &death_cause,
+                        bool force_remove_name);
 
   rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
     rpc::ActorTableData actor_delta;
