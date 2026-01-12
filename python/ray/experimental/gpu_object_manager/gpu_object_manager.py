@@ -484,11 +484,10 @@ class GPUObjectManager:
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
-    ) -> bool:
+    ):
         """
         Triggers the transfer if the tensor metadata is available for the object. If it's
         not available, the transfer is queued up until the metadata is available.
-        Returns True if there's any RDT managed objects in the task args, False otherwise.
         """
         gpu_object_ids: Set[str] = set()
         for arg in task_args:
@@ -501,6 +500,7 @@ class GPUObjectManager:
             if self.is_managed_object(obj_id):
                 gpu_object_ids.add(obj_id)
         if gpu_object_ids:
+            self.wait_until_custom_transports_registered(dst_actor)
             for obj_id in gpu_object_ids:
                 # Atomically gets the tensor transport metadata for an object and queues up a transfer
                 # if the tensor transport metadata is not available.
@@ -512,9 +512,6 @@ class GPUObjectManager:
                         self._queued_transfers[obj_id].append(dst_actor)
                 if tensor_transport_meta is not None:
                     self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
-            return True
-        else:
-            return False
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", obj_id: str

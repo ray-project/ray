@@ -856,14 +856,9 @@ class ActorMethod:
                 )
 
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            has_rdt_objects = (
-                gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
-                    dst_actor, args
-                )
+            gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
+                dst_actor, args
             )
-            if has_rdt_objects:
-                # Wait for dst actor to have the transport registered.
-                gpu_object_manager.wait_until_custom_transports_registered(dst_actor)
 
             return dst_actor._actor_method_call(
                 self._method_name,

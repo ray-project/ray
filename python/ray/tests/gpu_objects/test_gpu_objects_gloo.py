@@ -527,10 +527,9 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     task_args = (gpu_ref,)
-    has_rdt_objects = gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
+    gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
         dst_actor, task_args
     )
-    assert has_rdt_objects
 
     gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
         gpu_obj_id,
