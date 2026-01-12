@@ -70,6 +70,7 @@ class Operation(Enum):
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    MOD = "mod"
     FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
@@ -300,7 +301,10 @@ class Expr(ABC):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
-    # arithmetic
+    #
+    # Arithmetic ops
+    #
+
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
         return self._bin(other, Operation.ADD)
@@ -324,6 +328,14 @@ class Expr(ABC):
     def __rmul__(self, other: Any) -> "Expr":
         """Reverse multiplication operator (for literal * expr)."""
         return LiteralExpr(other)._bin(self, Operation.MUL)
+
+    def __mod__(self, other: Any):
+        """Modulation operator (%)."""
+        return self._bin(other, Operation.MOD)
+
+    def __rmod__(self, other: Any):
+        """Modulation operator (%)."""
+        return LiteralExpr(other)._bin(self, Operation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
