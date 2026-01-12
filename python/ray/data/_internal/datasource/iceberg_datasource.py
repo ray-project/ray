@@ -434,7 +434,7 @@ class IcebergDatasource(Datasource):
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
             logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
+                f"Reducing the parallelism to {parallelism}, as that is the "
                 "number of files"
             )
 
