@@ -2,7 +2,7 @@ name: "ray-slim-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
 froms: ["nvidia/cuda:$CUDA_VERSION-runtime-ubuntu22.04"]
 dockerfile: docker/base-slim/Dockerfile
 srcs:
-  - python/requirements_compiled.txt
+  - python/requirements_compiled_py$PYTHON_VERSION.txt
   - $REQUIREMENTS_FILE
 build_args:
   - PYTHON_VERSION

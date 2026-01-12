@@ -99,7 +99,7 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY python/requirements_compiled_py"$PYTHON_VERSION".txt /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
@@ -108,6 +108,8 @@ set -euo pipefail
 set -x
 
 MINIFORGE_VERSION="24.11.3-0"
+
+ls -la /home/ray/
 
 # Install miniforge
 MINIFORGE_LINK="https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-${HOSTTYPE}.sh"
