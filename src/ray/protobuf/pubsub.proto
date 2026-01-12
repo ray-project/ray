@@ -100,9 +100,10 @@ message WorkerObjectLocationsPubMessage {
   // The ID of the node that spilled the object.
   // This will be Nil if the object was spilled to distributed external storage.
   bytes spilled_node_id = 4;
-  // The ID of the node that stores the primary copy in plasma.
-  // This could be Nil if the object has been evicted or inlined.
-  bytes primary_node_id = 6;
+  // DEPRECATED: This field is no longer used. The primary node location
+  // is now reported via UpdateObjectLocationBatch (OBOD) instead.
+  // Kept for wire compatibility.
+  bytes primary_node_id = 6 [deprecated = true];
   // If this is set, then the owner is alive but no longer has an entry for
   // this reference. This can happen if there is a bug in the distributed ref
   // counting protocol that causes the object to be released while there are
