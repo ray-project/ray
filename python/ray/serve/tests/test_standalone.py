@@ -338,6 +338,81 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_shutdown_cleans_up_actors_in_serve_subnamespaces(ray_shutdown):
+    """Regression test: serve.shutdown() should clean up detached actors in sub-namespaces.
+
+    Detached actors in namespaces like 'serve::app::deployment' (used by
+    PrefixTreeActor and similar components) should be killed on shutdown.
+    Previously, these actors would survive because the shutdown logic only
+    cleaned up the main 'serve' namespace, causing stale state to accumulate.
+    """
+    TEST_PORT = 8003
+    TREE_ACTOR_NAME = "LlmPrefixTreeActor"
+    sub_namespace = f"{SERVE_NAMESPACE}::test_app::test_deployment"
+
+    def check_tree_actor_exists(expected_alive: bool):
+        actors = list_actors(filters=[("state", "=", "ALIVE")])
+        found = any(
+            actor.get("name") == TREE_ACTOR_NAME
+            and actor.get("ray_namespace", "").startswith(f"{SERVE_NAMESPACE}::")
+            for actor in actors
+        )
+        return found if expected_alive else not found
+
+    ray.init(num_cpus=4)
+    serve.start(http_options=dict(port=TEST_PORT))
+
+    @ray.remote
+    class MockPrefixTreeActor:
+        def __init__(self):
+            self.tenants = {}
+
+        def add_tenant(self, tenant_id: str):
+            self.tenants[tenant_id] = 0
+
+        def get_tenants(self):
+            return self.tenants
+
+    tree_actor = MockPrefixTreeActor.options(
+        name=TREE_ACTOR_NAME,
+        namespace=sub_namespace,
+        lifetime="detached",
+        get_if_exists=True,
+    ).remote()
+
+    # Add some tenant data (simulating replica registrations)
+    ray.get(tree_actor.add_tenant.remote("replica_1"))
+    ray.get(tree_actor.add_tenant.remote("replica_2"))
+    assert ray.get(tree_actor.get_tenants.remote()) == {"replica_1": 0, "replica_2": 0}
+
+    # Verify actor is alive
+    assert check_tree_actor_exists(expected_alive=True)
+
+    # Shutdown serve
+    serve.shutdown()
+
+    # Verify the detached actor in the sub-namespace is cleaned up
+    wait_for_condition(lambda: check_tree_actor_exists(expected_alive=False))
+
+    # Restart serve and verify a fresh tree actor would be created (no stale state)
+    serve.start(http_options=dict(port=TEST_PORT))
+
+    new_tree_actor = MockPrefixTreeActor.options(
+        name=TREE_ACTOR_NAME,
+        namespace=sub_namespace,
+        lifetime="detached",
+        get_if_exists=True,
+    ).remote()
+
+    # Verify the new tree has no stale tenants from before the restart
+    new_tenants = ray.get(new_tree_actor.get_tenants.remote())
+    assert new_tenants == {}, f"Expected empty tree after restart, got: {new_tenants}"
+
+    # Cleanup
+    serve.shutdown()
+    wait_for_condition(lambda: check_tree_actor_exists(expected_alive=False))
+
+
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
