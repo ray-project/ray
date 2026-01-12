@@ -334,6 +334,12 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# HTTP request timeout
+SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
+
+# HTTP request disconnect disabled
+SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
@@ -615,6 +621,9 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = get_env_int(
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = get_env_float(
     "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", 30.0
+)
+RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH", -1
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
