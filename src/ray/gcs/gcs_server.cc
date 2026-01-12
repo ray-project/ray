@@ -984,10 +984,10 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {
-  RAY_CHECK(!metrics_exporter_initialized_)
-      << "InitMetricsExporter should only be called once.";
-  metrics_exporter_initialized_ = true;
-
+  if (metrics_exporter_initialized_.exchange(true, std::memory_order_acquire)) {
+    // Exit early as exporter has been initialized
+    return;
+  }
   event_aggregator_client_->Connect(metrics_agent_port);
 
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
