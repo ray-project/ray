@@ -3,3 +3,12 @@ filegroup(
     srcs = glob(["*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
 )
+
+filegroup(
+    name = "core_examples_ci_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml",
+    ]),
+    visibility = ["//doc:__pkg__"],
+)

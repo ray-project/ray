@@ -89,14 +89,14 @@ You can create custom aggregations by implementing the :class:`~ray.data.aggrega
 
 1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result
 2. `combine`: Merges two partial aggregation results into a single result
-3. `_finalize`: Transforms the final accumulated result into the desired output format
+3. `finalize`: Transforms the final accumulated result into the desired output format
 
 The aggregation process follows these steps:
 
 1. **Initialization**: For each group (if grouping) or for the entire dataset, an initial accumulator is created using `zero_factory`
 2. **Block Aggregation**: The `aggregate_block` method is applied to each block independently
 3. **Combination**: The `combine` method merges partial results into a single accumulator
-4. **Finalization**: The `_finalize` method transforms the final accumulator into the desired output
+4. **Finalization**: The `finalize` method transforms the final accumulator into the desired output
 
 Example: Creating a Custom Mean Aggregator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -151,7 +151,7 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
         def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
             return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-        def _finalize(self, accumulator: AggType) -> Optional[U]:
+        def finalize(self, accumulator: AggType) -> Optional[U]:
             if accumulator[1] == 0:
                 return np.nan
 

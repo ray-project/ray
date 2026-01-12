@@ -252,20 +252,12 @@ class MinimalClusterManager(ClusterManager):
             ) from e
 
     def delete_configs(self):
-        if self.cluster_id:
-            self.sdk.delete_cluster(self.cluster_id)
         if self.cluster_env_build_id:
             self.sdk.delete_cluster_environment_build(self.cluster_env_build_id)
         if self.cluster_env_id:
             self.sdk.delete_cluster_environment(self.cluster_env_id)
         if self.cluster_compute_id:
             self.sdk.delete_cluster_compute(self.cluster_compute_id)
-
-    def start_cluster(self, timeout: float = 600.0):
-        pass
-
-    def terminate_cluster_ex(self, wait: bool = False):
-        pass
 
     def get_cluster_address(self) -> str:
         return f"anyscale://{self.project_name}/{self.cluster_name}"

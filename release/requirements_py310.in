@@ -17,7 +17,7 @@ pyyaml
 pybuildkite
 PyGithub
 requests >= 2.31.0
-twine == 6.1.0
+twine == 6.2.0
 docker >= 7.1.0
 aws_requests_auth
 
@@ -33,3 +33,9 @@ jsonschema>=4.23.0
 certifi>=2025.1.31
 h11>=0.16.0
 google-cloud-logging
+packaging==25.0
+
+# Last anyscale CLI/SDK release before Ray summit 2025
+# This should have a recent version of the new SDK where still having
+# the old SDK.
+anyscale>=0.26.74

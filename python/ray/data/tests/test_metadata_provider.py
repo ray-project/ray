@@ -13,7 +13,6 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
     FileMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -365,70 +364,6 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
                 list, zip(*meta_provider.expand_paths(dir_paths, fs))
             )
         assert len(file_paths) == len(paths) * num_dfs
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
-    ],
-)
-def test_fast_file_metadata_provider(
-    propagate_logs, caplog, fs, data_path, endpoint_url
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-
-    path_module = os.path if urllib.parse.urlparse(data_path).scheme else posixpath
-    path1 = path_module.join(data_path, "test1.csv")
-    path2 = path_module.join(data_path, "test2.csv")
-    paths = [path1, path2]
-    paths, fs = _resolve_paths_and_filesystem(paths, fs)
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df1.to_csv(path1, index=False, storage_options=storage_options)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df2.to_csv(path2, index=False, storage_options=storage_options)
-
-    meta_provider = FastFileMetadataProvider()
-    with caplog.at_level(logging.WARNING):
-        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    assert "meta_provider=DefaultFileMetadataProvider()" in caplog.text
-    assert file_paths == paths
-    assert len(file_sizes) == len(file_paths)
-
-    meta = meta_provider(
-        paths,
-        rows_per_file=3,
-        file_sizes=file_sizes,
-    )
-    assert meta.size_bytes is None
-    assert meta.num_rows == 6
-    assert len(paths) == 2
-    assert all(path in meta.input_files for path in paths)
-
-
-def test_fast_file_metadata_provider_ignore_missing():
-    meta_provider = FastFileMetadataProvider()
-    with pytest.raises(ValueError):
-        paths = meta_provider.expand_paths([], None, ignore_missing_paths=True)
-        for _ in paths:
-            pass
 
 
 if __name__ == "__main__":

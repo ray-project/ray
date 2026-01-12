@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray_release.exception import ClusterEnvCreateError
 from ray_release.logger import logger
@@ -11,49 +11,60 @@ if TYPE_CHECKING:
 LAST_LOGS_LENGTH = 100
 
 
+class Anyscale:
+    """
+    A wrapper class for latest version of Anyscale SDK.
+
+    Methods of this class can be overwritten for testing.
+    """
+
+    def __init__(self):
+        # We need to late-import Anyscale SDK as merely importing it
+        # will trigger credential lookup on the system.
+        self._anyscale_pkg = None
+
+    def _anyscale(self) -> Any:
+        if self._anyscale_pkg is None:
+            import anyscale
+
+            self._anyscale_pkg = anyscale
+
+        return self._anyscale_pkg
+
+    def cloud_id_by_name(self, cloud_name: str) -> Optional[str]:
+        cloud = self._anyscale().cloud.get(name=cloud_name)
+        return cloud.id if cloud else None
+
+    def project_name_by_id(self, project_id: str) -> str:
+        return self._anyscale().project.get(project_id).name
+
+
+# Global singleton for the V2 Anyscale SDK.
+the_v2_sdk = Anyscale()
+
+
 def find_cloud_by_name(
-    cloud_name: str, sdk: Optional["AnyscaleSDK"] = None
+    cloud_name: str, sdk: Optional[Anyscale] = None
 ) -> Optional[str]:
-    sdk = sdk or get_anyscale_sdk()
-
-    cloud_id = None
-    logger.info(f"Looking up cloud with name `{cloud_name}`. ")
-
-    paging_token = None
-    while not cloud_id:
-        result = sdk.search_clouds(
-            clouds_query=dict(paging=dict(count=50, paging_token=paging_token))
-        )
-
-        paging_token = result.metadata.next_paging_token
-
-        for res in result.results:
-            if res.name == cloud_name:
-                cloud_id = res.id
-                logger.info(f"Found cloud with name `{cloud_name}` as `{cloud_id}`")
-                break
-
-        if not paging_token or cloud_id or not len(result.results):
-            break
-
-    return cloud_id
+    sdk = sdk or the_v2_sdk
+    return sdk.cloud_id_by_name(cloud_name)
 
 
-def get_project_name(project_id: str, sdk: Optional["AnyscaleSDK"] = None) -> str:
-    sdk = sdk or get_anyscale_sdk()
+def get_project_name(
+    project_id: str, sdk: Optional[Union[Anyscale, "AnyscaleSDK"]] = None
+) -> str:
+    sdk = sdk or the_v2_sdk
 
-    result = sdk.get_project(project_id)
-    return result.result.name
+    if not isinstance(sdk, Anyscale):
+        # Fallback to old SDK if provided.
+        # TODO(aslonnie): remove this once we fully migrate to new SDK.
+        return sdk.get_project(project_id).result.name
 
-
-def get_cluster_name(cluster_id: str, sdk: Optional["AnyscaleSDK"] = None) -> str:
-    sdk = sdk or get_anyscale_sdk()
-
-    result = sdk.get_cluster(cluster_id)
-    return result.result.name
+    return sdk.project_name_by_id(project_id)
 
 
 def get_custom_cluster_env_name(image: str, test_name: str) -> str:
+    # TODO(aslonnie): remove this; new SDK does not need creating cluster envs anymore.
     image_normalized = image.replace("/", "_").replace(":", "_").replace(".", "_")
     return f"test_env_{image_normalized}_{test_name}"
 
@@ -66,6 +77,7 @@ def create_cluster_env_from_image(
     cluster_env_id: Optional[str] = None,
     cluster_env_name: Optional[str] = None,
 ) -> str:
+    # TODO(aslonnie): remove this; new SDK does not need creating cluster envs anymore.
     anyscale_sdk = sdk or get_anyscale_sdk()
     if not cluster_env_name:
         cluster_env_name = get_custom_cluster_env_name(image, test_name)

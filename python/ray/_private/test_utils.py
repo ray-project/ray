@@ -20,7 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -398,17 +398,57 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
 def wait_for_dashboard_agent_available(cluster):
     gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
+    )
 
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
 
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
@@ -2099,9 +2139,21 @@ def _execute_command_on_node(command: str, node_ip: str):
 
 
 RPC_FAILURE_MAP = {
-    "request": "100:0:0",
-    "response": "0:100:0",
-    "in_flight": "0:0:100",
+    "request": {
+        "req_failure_prob": 100,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 0,
+    },
+    "response": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 100,
+        "in_flight_failure_prob": 0,
+    },
+    "in_flight": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 100,
+    },
 }
 
 RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

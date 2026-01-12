@@ -635,7 +635,7 @@ def test_batch_size_fn_oversized_item_raises_error(serve_instance):
 
 
 def test_batch_size_fn_deferred_item_processed(serve_instance):
-    @serve.deployment
+    @serve.deployment(max_ongoing_requests=15)
     class DeferredItemBatcher:
         def __init__(self):
             self.batch_sizes = []

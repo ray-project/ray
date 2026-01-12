@@ -590,8 +590,7 @@ bool ActorPoolManager::ShouldRetryTask(const ActorPoolConfig &config,
   case rpc::ErrorType::ACTOR_UNAVAILABLE:
   case rpc::ErrorType::NODE_DIED:
   case rpc::ErrorType::WORKER_DIED:
-  case rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE:
-    // System errors - should retry
+    // System errors - should retry on a different actor
     return true;
 
   case rpc::ErrorType::TASK_CANCELLED:

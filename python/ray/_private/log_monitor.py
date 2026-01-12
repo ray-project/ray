@@ -13,7 +13,6 @@ import traceback
 from typing import Callable, List, Optional, Set
 
 import ray._private.ray_constants as ray_constants
-import ray._private.services as services
 import ray._private.utils
 from ray._private import logging_utils
 from ray._private.ray_logging import setup_component_logger
@@ -509,6 +508,12 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
+        "--node-ip-address",
+        required=False,
+        type=str,
+        help="The IP address of the node.",
+    )
+    parser.add_argument(
         "--logging-level",
         required=False,
         type=str,
@@ -596,10 +601,9 @@ if __name__ == "__main__":
         logging_rotation_backup_count,
     )
 
-    node_ip = services.get_cached_node_ip_address(args.session_dir)
     gcs_client = GcsClient(address=args.gcs_address)
     log_monitor = LogMonitor(
-        node_ip,
+        args.node_ip_address,
         args.logs_dir,
         gcs_client,
         is_proc_alive,

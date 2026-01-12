@@ -9,6 +9,7 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -74,6 +75,7 @@ from ray.train.v2.api.result import Result
 if TYPE_CHECKING:
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
+from ray.util.tpu import get_tpu_num_slices_for_workers
 
 logger = logging.getLogger(__name__)
 
@@ -326,6 +328,16 @@ class TrainController:
         except Exception as e:
             return ControllerError(e)
 
+        # Calculate num_slices for the worker group if using TPU.
+        num_slices = 1
+        if scaling_config.use_tpu:
+            num_slices = get_tpu_num_slices_for_workers(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                num_workers=num_workers,
+                resources_per_worker=resources_per_worker,
+            )
+
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
@@ -333,6 +345,7 @@ class TrainController:
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
             label_selector=label_selector,
+            num_slices=num_slices,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
@@ -431,6 +444,8 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             try:
                 worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except AsyncioActorExit:
+                raise
             except Exception as e:
                 training_failed_error = ControllerError(e)
                 failure_decision = self._failure_policy.make_decision(

@@ -1,13 +1,22 @@
+import os
+import tempfile
 from unittest.mock import MagicMock
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray.data
 import ray.train
-from ray.data import DataContext, ExecutionOptions, ExecutionResources
+from ray.data import (
+    DataContext,
+    ExecutionOptions,
+    ExecutionResources,
+    FileShuffleConfig,
+)
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -83,7 +92,7 @@ def test_data_config_validation():
 
 
 def test_datasets_callback(ray_start_4_cpus):
-    """Check that the `DatasetsSetupCallback` correctly configures the
+    """Check that the `DatasetsCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
 
@@ -112,7 +121,7 @@ def test_datasets_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsSetupCallback(train_run_context)
+    callback = DatasetsCallback(train_run_context)
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -225,6 +234,139 @@ def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+@pytest.mark.parametrize("different_seeds_across_executions", [True, False])
+def test_parquet_file_shuffle_with_executions(
+    ray_start_4_cpus,
+    restore_data_context,  # noqa: F811
+    different_seeds_across_executions,  # noqa: F811,
+):
+    """Test that Parquet file shuffling produces:
+    1. Different results across executions when different_seeds_across_executions=True
+       (FileShuffleConfig with reseed_after_execution=True: seed = seed + execution_idx)
+    2. Same results across executions when different_seeds_across_executions=False
+       (FileShuffleConfig with seed: seed remains constant)
+    3. Same results for different datasets with same shuffle config per execution
+    """
+    NUM_WORKERS = 2
+    NUM_EXECUTIONS = 5
+    NUM_FILES = 15
+
+    # Create temporary directory for test files
+    with tempfile.TemporaryDirectory() as tmp_path:
+
+        def write_parquet_file(path, file_index):
+            """Write a Parquet file with unique data for each file."""
+            data = {
+                "file_id": [file_index] * 10,
+                "row_id": range(10 * file_index, 10 * (file_index + 1)),
+                "value": [f"file_{file_index}_row_{i}" for i in range(10)],
+            }
+            table = pa.Table.from_pydict(data)
+            pq.write_table(table, path)
+
+        # Create multiple Parquet files
+        paths = [
+            os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(NUM_FILES)
+        ]
+        for i, path in enumerate(paths):
+            write_parquet_file(path, i)
+
+        # Configure execution with preserve_order to ensure deterministic results
+        execution_options = ExecutionOptions()
+        execution_options.preserve_order = True
+
+        # Create shuffle config based on parameter
+        if different_seeds_across_executions:
+            shuffle_config = FileShuffleConfig(seed=42)
+        else:
+            shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+
+        # Create two datasets with the same shuffle config
+        ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+        ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+        data_config = ray.train.DataConfig(execution_options=execution_options)
+
+        def train_fn():
+            # Get dataset shards for both datasets
+            train_ds1 = ray.train.get_dataset_shard("train1")
+            train_ds2 = ray.train.get_dataset_shard("train2")
+
+            # Collect results across multiple executions
+            ds1_execution_results = []
+            ds2_execution_results = []
+
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds1_execution_data = list(train_ds1.iter_rows())
+                ds1_execution_results.append(ds1_execution_data)
+
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds2_execution_data = list(train_ds2.iter_rows())
+                ds2_execution_results.append(ds2_execution_data)
+
+            # Assertion 1: For the same execution, ds1 and ds2 should yield identical results
+            # (deterministic shuffling with same base_seed)
+            for i in range(NUM_EXECUTIONS):
+                assert ds1_execution_results[i] == ds2_execution_results[i], (
+                    f"Execution {i}: ds1 and ds2 should produce identical results "
+                    f"for the same execution with the same shuffle seed"
+                )
+
+            # Convert results to hashable format for uniqueness check
+            def make_hashable(rows):
+                """Convert a list of dicts to a hashable tuple representation."""
+                return tuple(tuple(sorted(row.items())) for row in rows)
+
+            ds1_hashable_results = {
+                make_hashable(result) for result in ds1_execution_results
+            }
+            ds2_hashable_results = {
+                make_hashable(result) for result in ds2_execution_results
+            }
+
+            # Assertion 2: Different executions produce different results vs same results
+            # based on whether seed varies by execution_idx
+            if different_seeds_across_executions:
+                # seed varies by execution, so expect variation
+                assert len(ds1_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds1 should produce different results across executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+                assert len(ds2_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds2 should produce different results across executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+            else:
+                # seed is constant, so expect no variation
+                assert len(ds1_hashable_results) == 1, (
+                    f"ds1 should produce the same results across all executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+                assert len(ds2_hashable_results) == 1, (
+                    f"ds2 should produce the same results across all executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+
+            # Additional verification: Check that the total number of rows is consistent
+            for execution_idx in range(NUM_EXECUTIONS):
+                assert (
+                    len(ds1_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
+                )
+                assert (
+                    len(ds2_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
+                )
+
+        trainer = DataParallelTrainer(
+            train_fn,
+            datasets={"train1": ds1, "train2": ds2},
+            dataset_config=data_config,
+            scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        )
+        trainer.fit()
 
 
 @pytest.mark.parametrize("exclude_resources", [None, ExecutionResources(cpu=2, gpu=1)])

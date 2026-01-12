@@ -46,7 +46,7 @@ class ObservableStoreClient : public StoreClient {
 
   void AsyncGet(const std::string &table_name,
                 const std::string &key,
-                ToPostable<OptionalItemCallback<std::string>> callback) override;
+                ToPostable<rpc::OptionalItemCallback<std::string>> callback) override;
 
   void AsyncGetAll(
       const std::string &table_name,

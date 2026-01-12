@@ -520,6 +520,22 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
+    @validator("look_back_period_s", always=True)
+    def look_back_period_s_valid(cls, v: PositiveFloat, values):
+        # Get metrics_interval_s from values, or use default if not set
+        metrics_interval_s = values.get(
+            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+        )
+        if v <= metrics_interval_s:
+            # Warns currently, will raise an exception in a future release
+            warnings.warn(
+                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
+                f"({metrics_interval_s}). This will raise an exception in a future "
+                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                FutureWarning,
+            )
+        return v
+
     @validator("aggregation_function", always=True)
     def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
         if isinstance(v, AggregationFunction):

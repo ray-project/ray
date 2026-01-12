@@ -16,7 +16,6 @@ from typing import List, Optional, Set, Tuple
 import click
 import colorama
 import requests
-import yaml
 
 import ray
 import ray._common.usage.usage_constants as usage_constant
@@ -559,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -772,14 +771,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -2062,11 +2053,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
@@ -2557,63 +2547,6 @@ def healthcheck(address, component, skip_version_check):
 
 
 @cli.command()
-@click.option("-v", "--verbose", is_flag=True)
-@click.option(
-    "--dryrun",
-    is_flag=True,
-    help="Identifies the wheel but does not execute the installation.",
-)
-def install_nightly(verbose, dryrun):
-    """Install the latest wheels for Ray.
-
-    This uses the same python environment as the one that Ray is currently
-    installed in. Make sure that there is no Ray processes on this
-    machine (ray stop) when running this command.
-    """
-    raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
-
-    wheels = None
-    if os.path.exists(all_wheels_path):
-        with open(all_wheels_path) as f:
-            wheels = yaml.safe_load(f)
-
-    if not wheels:
-        raise click.ClickException(
-            f"Wheels not found in '{all_wheels_path}'! "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-
-    platform = sys.platform
-    py_version = "{0}.{1}".format(*sys.version_info[:2])
-
-    matching_wheel = None
-    for target_platform, wheel_map in wheels.items():
-        if verbose:
-            print(f"Evaluating os={target_platform}, python={list(wheel_map)}")
-        if platform.startswith(target_platform):
-            if py_version in wheel_map:
-                matching_wheel = wheel_map[py_version]
-                break
-        if verbose:
-            print("Not matched.")
-
-    if matching_wheel is None:
-        raise click.ClickException(
-            "Unable to identify a matching platform. "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-    if dryrun:
-        print(f"Found wheel: {matching_wheel}")
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "-U", matching_wheel]
-        print(f"Running: {' '.join(cmd)}.")
-        subprocess.check_call(cmd)
-
-
-@cli.command()
 @click.option(
     "--show-library-path",
     "-show",
@@ -2770,7 +2703,6 @@ cli.add_command(local_dump)
 cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)

@@ -1,7 +1,6 @@
 group: core tests
 depends_on:
   - forge
-  - oss-ci-base_build
   - ray-core-build
   - ray-dashboard-build
 steps:
@@ -253,7 +252,7 @@ steps:
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - corebuild-multipy
       - forge
 
@@ -453,7 +452,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
         --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - corebuild-multipy
@@ -475,7 +474,7 @@ steps:
         --install-mask all-ray-libraries
         --only-tags runtime_env_container
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - corebuild-multipy

@@ -9,15 +9,13 @@ import ray
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
+    PanelTemplate,
 )
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
-)
-from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
-    serve_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
@@ -28,6 +26,7 @@ from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import 
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
+from ray.dashboard.modules.metrics.default_impl import get_serve_dashboard_config
 
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
@@ -96,7 +95,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
     Returns:
       Tuple with format content, uid
     """
-    return _generate_grafana_dashboard(serve_dashboard_config)
+    return _generate_grafana_dashboard(get_serve_dashboard_config())
 
 
 def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
@@ -224,17 +223,117 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
-    template["yaxes"][0]["format"] = panel.unit
-    template["fill"] = panel.fill
-    template["stack"] = panel.stack
-    template["linewidth"] = panel.linewidth
+    # Set unit format for legacy graph-style panels (GRAPH, HEATMAP, STAT, GAUGE, PIE_CHART, BAR_CHART)
+    if panel.template in (
+        PanelTemplate.GRAPH,
+        PanelTemplate.HEATMAP,
+        PanelTemplate.STAT,
+        PanelTemplate.GAUGE,
+        PanelTemplate.PIE_CHART,
+        PanelTemplate.BAR_CHART,
+    ):
+        template["yaxes"][0]["format"] = panel.unit
+
+    # Set fieldConfig unit (for newer panel types with fieldConfig.defaults)
+    if panel.template in (
+        PanelTemplate.STAT,
+        PanelTemplate.GAUGE,
+        PanelTemplate.HEATMAP,
+        PanelTemplate.PIE_CHART,
+        PanelTemplate.BAR_CHART,
+        PanelTemplate.TABLE,
+        PanelTemplate.GRAPH,
+    ):
+        template["fieldConfig"]["defaults"]["unit"] = panel.unit
+
+    # Set fill, stack, linewidth, nullPointMode (only for GRAPH panels)
+    if panel.template == PanelTemplate.GRAPH:
+        template["fill"] = panel.fill
+        template["stack"] = panel.stack
+        template["linewidth"] = panel.linewidth
+        if panel.stack is True:
+            template["nullPointMode"] = "connected"
 
     if panel.hideXAxis:
         template.setdefault("xaxis", {})["show"] = False
 
-    # Handle stacking visualization
-    if panel.stack is True:
-        template["nullPointMode"] = "connected"
+    # Handle optional panel customization fields
+
+    # Thresholds (for panels with fieldConfig.defaults.thresholds)
+    if panel.thresholds is not None:
+        if panel.template in (PanelTemplate.STAT, PanelTemplate.GAUGE):
+            template["fieldConfig"]["defaults"]["thresholds"][
+                "steps"
+            ] = panel.thresholds
+
+    # Value mappings (for panels with fieldConfig.defaults.mappings)
+    if panel.value_mappings is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.TABLE,
+        ):
+            template["fieldConfig"]["defaults"]["mappings"] = panel.value_mappings
+
+    # Color mode (for STAT panels with options.colorMode)
+    if panel.color_mode is not None:
+        if panel.template == PanelTemplate.STAT:
+            template["options"]["colorMode"] = panel.color_mode
+
+    # Legend mode
+    if panel.legend_mode is not None:
+        if panel.template in (PanelTemplate.GRAPH, PanelTemplate.BAR_CHART):
+            # For graph panels (legacy format with top-level legend object)
+            template["legend"]["show"] = panel.legend_mode != "hidden"
+            template["legend"]["alignAsTable"] = panel.legend_mode == "table"
+        elif panel.template == PanelTemplate.PIE_CHART:
+            # For PIE_CHART (options.legend.displayMode)
+            template["options"]["legend"]["displayMode"] = panel.legend_mode
+
+    # Min/max values (for panels with fieldConfig.defaults)
+    if panel.min_val is not None or panel.max_val is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.HEATMAP,
+            PanelTemplate.PIE_CHART,
+            PanelTemplate.BAR_CHART,
+            PanelTemplate.TABLE,
+            PanelTemplate.GRAPH,
+        ):
+            if panel.min_val is not None:
+                template["fieldConfig"]["defaults"]["min"] = panel.min_val
+            if panel.max_val is not None:
+                template["fieldConfig"]["defaults"]["max"] = panel.max_val
+
+    # Reduce calculation (for panels with options.reduceOptions)
+    if panel.reduce_calc is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.PIE_CHART,
+        ):
+            template["options"]["reduceOptions"]["calcs"] = [panel.reduce_calc]
+
+    # Handle heatmap-specific options
+    if panel.heatmap_color_scheme is not None:
+        if panel.template == PanelTemplate.HEATMAP:
+            template["options"]["color"]["scheme"] = panel.heatmap_color_scheme
+
+    if panel.heatmap_color_reverse is not None:
+        if panel.template == PanelTemplate.HEATMAP:
+            template["options"]["color"]["reverse"] = panel.heatmap_color_reverse
+
+    if panel.heatmap_yaxis_label is not None:
+        if panel.template in (
+            PanelTemplate.GRAPH,
+            PanelTemplate.HEATMAP,
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.PIE_CHART,
+            PanelTemplate.BAR_CHART,
+        ):
+            template["yaxes"][0]["label"] = panel.heatmap_yaxis_label
 
     return template
 

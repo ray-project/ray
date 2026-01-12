@@ -3,6 +3,7 @@ import functools
 import math
 from typing import Any, Dict, Optional, Union
 
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
@@ -34,18 +35,19 @@ class Read(
         parallelism: int,
         num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        concurrency: Optional[int] = None,
+        compute: Optional[ComputeStrategy] = None,
     ):
         super().__init__(
             name=f"Read{datasource.get_name()}",
             input_op=None,
+            can_modify_num_rows=True,
             num_outputs=num_outputs,
             ray_remote_args=ray_remote_args,
+            compute=compute,
         )
         self._datasource = datasource
         self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
-        self._concurrency = concurrency
         self._detected_parallelism = None
 
     def output_data(self):
@@ -194,8 +196,3 @@ class Read(
         clone._datasource_or_legacy_reader = predicated_datasource
 
         return clone
-
-    def can_modify_num_rows(self) -> bool:
-        # NOTE: Returns true, since most of the readers expands its input
-        #       and produce many rows for every single row of the input
-        return True

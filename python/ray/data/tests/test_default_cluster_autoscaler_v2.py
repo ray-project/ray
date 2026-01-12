@@ -74,7 +74,6 @@ class TestClusterAutoscaling:
     def test_get_node_resource_spec_and_count(self):
         # Test _get_node_resource_spec_and_count
         autoscaler = DefaultClusterAutoscalerV2(
-            topology=MagicMock(),
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
         )
@@ -145,7 +144,6 @@ class TestClusterAutoscaling:
         )
 
         autoscaler = DefaultClusterAutoscalerV2(
-            topology=MagicMock(),
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,

@@ -1,13 +1,26 @@
 import logging
 from collections import Counter
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Hashable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
 import pandas.api.types
+import pyarrow as pa
+import pyarrow.compute as pc
 
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data._internal.util import is_null
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -15,7 +28,8 @@ from ray.data.preprocessor import (
 )
 from ray.data.preprocessors.utils import make_post_processor
 from ray.data.preprocessors.version_support import SerializablePreprocessor
-from ray.util.annotations import PublicAPI
+from ray.data.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -142,28 +156,116 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
         return self
 
+    def _get_ordinal_map(self, column_name: str) -> Dict[Any, int]:
+        """Get the ordinal mapping for a column as a dict.
+
+        Stats can be stored in either:
+        - Dict format: {value: index} (from pandas-style processing)
+        - Arrow format: (keys_array, values_array) tuple
+
+        This method returns a dict in either case.
+        """
+        stat_value = self.stats_[f"unique_values({column_name})"]
+        if isinstance(stat_value, dict):
+            return stat_value
+        # Arrow tuple format (keys_array, values_array)
+        keys_array, values_array = stat_value
+        return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
+
+    def _encode_list_element(self, element: list, *, column_name: str):
+        ordinal_map = self._get_ordinal_map(column_name)
+        # If encoding lists, entire column is flattened, hence we map individual
+        # elements inside the list element (of the column)
+        if self.encode_lists:
+            return [ordinal_map.get(x) for x in element]
+
+        return ordinal_map.get(tuple(element))
+
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
 
-        def encode_list(element: list, *, name: str):
-            return [self.stats_[f"unique_values({name})"].get(x) for x in element]
-
         def column_ordinal_encoder(s: pd.Series):
             if _is_series_composed_of_lists(s):
-                if self.encode_lists:
-                    return s.map(partial(encode_list, name=s.name))
+                return s.map(
+                    lambda elem: self._encode_list_element(elem, column_name=s.name)
+                )
 
-                def list_as_category(element):
-                    key = tuple(element)
-                    return self.stats_[f"unique_values({s.name})"].get(key)
-
-                return s.apply(list_as_category)
-
-            s_values = self.stats_[f"unique_values({s.name})"]
+            s_values = self._get_ordinal_map(s.name)
             return s.map(s_values)
 
         df[self.output_columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations for scalar columns.
+
+        List-type columns are preferably handled by _transform_pandas, which is selected
+        via _determine_transform_to_use when a PyArrow schema is available. However,
+        for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
+        until runtime, so we fall back to pandas here if list columns are found.
+        """
+        # Check for list columns (runtime fallback for PandasBlockSchema datasets)
+        for col_name in self.columns:
+            col_type = table.schema.field(col_name).type
+            if pa.types.is_list(col_type) or pa.types.is_large_list(col_type):
+                # Fall back to pandas transform for list columns
+                df = table.to_pandas()
+                result_df = self._transform_pandas(df)
+                return pa.Table.from_pandas(result_df, preserve_index=False)
+
+        # Validate no null values in target columns
+        null_columns = []
+        for col_name in self.columns:
+            column = table.column(col_name)
+            if pc.any(pc.is_null(column)).as_py():
+                null_columns.append(col_name)
+        if null_columns:
+            raise ValueError(
+                f"Unable to transform columns {null_columns} because they contain "
+                f"null values. Consider imputing missing values first."
+            )
+
+        for input_col, output_col in zip(self.columns, self.output_columns):
+            column = table.column(input_col)
+
+            # Get the ordinal mapping - may be tuple (Arrow) or dict (pandas) format
+            # Dict format can occur when aggregation returns Python list/set
+            stat_value = self.stats_[f"unique_values({input_col})"]
+
+            if isinstance(stat_value, dict):
+                # Stats are in pandas dict format - convert to Arrow format
+                sorted_keys = sorted(stat_value.keys())
+                keys_array = pa.array(sorted_keys)
+                values_array = pa.array(
+                    [stat_value[k] for k in sorted_keys], type=pa.int64()
+                )
+            else:
+                # Stats are in Arrow tuple format: (keys_array, values_array)
+                keys_array, values_array = stat_value
+
+            # Cast keys to match column type if needed
+            if keys_array.type != column.type:
+                keys_array = pc.cast(keys_array, column.type)
+
+            # Use pc.index_in to find position of each value in keys_array
+            indices = pc.index_in(column, keys_array)
+
+            # Map indices to ordinal values using pc.take
+            encoded_column = pc.take(values_array, indices)
+
+            # Add or replace the column in the table
+            if output_col in table.column_names:
+                col_idx = table.column_names.index(output_col)
+                table = table.set_column(col_idx, output_col, encoded_column)
+            else:
+                table = table.append_column(output_col, encoded_column)
+
+        return table
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
@@ -483,6 +585,15 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         )
         return self
 
+    def _encode_list_element(self, element: list, *, column_name: str):
+        ordinal_map = self.stats_[f"unique_values({column_name})"]
+        # If encoding lists, entire column is flattened, hence we map individual
+        # elements inside the list element (of the column)
+        if self.encode_lists:
+            return [ordinal_map.get(x) for x in element]
+
+        return ordinal_map.get(tuple(element))
+
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
 
@@ -789,6 +900,7 @@ class Categorizer(SerializablePreprocessorBase):
             post_key_fn=lambda col: col,
             columns=columns_to_get,
         )
+
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -901,7 +1013,9 @@ def compute_unique_value_indices(
     return unique_values_by_col
 
 
-def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, int]]:
+def unique_post_fn(
+    drop_na_values: bool = False, batch_format: BatchFormat = None
+) -> Callable:
     """
     Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
@@ -909,24 +1023,100 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
     Args:
         drop_na_values: If True, NA/null values will be silently dropped from the
             encoding map. If False, raises an error if any NA/null values are present.
+        batch_format: Determines the output format of the encoding map.
+            - If BatchFormat.ARROW: Returns Arrow format (tuple of arrays) for scalar
+              types, or dict format for list types that PyArrow can't sort.
+            - Otherwise: Returns pandas dict format {value: index}.
 
     Returns:
-        A callable that takes a set of unique values and returns a dictionary
-        mapping each value to a unique integer index.
+        A callable that takes unique values and returns an encoding map.
+        The map format depends on batch_format and input types:
+        - Dict format: {value: int} - used for pandas path or list-type data
+        - Arrow format: (keys_array, values_array) - used for Arrow path with scalar data
     """
 
-    def gen_value_index(values: Set) -> Dict[str, int]:
+    def gen_value_index(values: List) -> Dict[Any, int]:
+        """
+        Generate an encoding map from a list of unique values using Python sorting.
+
+        Args:
+            values: List of unique values to encode (can include lists/tuples).
+
+        Returns:
+            Dict mapping each value to a unique integer index.
+            List values are converted to tuples for hashability.
+
+        Raises:
+            ValueError: If null values are present and drop_na_values is False.
+        """
+        # NOTE: We special-case null here since it prevents provided
+        #       values sequence from being sortable
+        if any(is_null(v) for v in values) and not drop_na_values:
+            raise ValueError(
+                "Unable to fit column because it contains null"
+                " values. Consider imputing missing values first."
+            )
+
+        non_null_values = [v for v in values if not is_null(v)]
+
+        return {
+            (v if not isinstance(v, list) else tuple(v)): i
+            # NOTE: Sorting applied to produce stable encoding
+            for i, v in enumerate(sorted(non_null_values))
+        }
+
+    def gen_value_index_arrow_from_arrow(
+        values: Union["pa.ListScalar", "pa.Array"],
+    ) -> Union[Tuple["pa.Array", "pa.Array"], Dict[Any, int]]:
+        """Generate an encoding map from unique values using Arrow-native operations.
+
+        Args:
+            values: The aggregation result as a pa.ListScalar (list of unique values)
+                or a pa.Array of values directly.
+
+        Returns:
+            For scalar types that PyArrow can sort natively, returns a tuple of
+            (sorted_keys, indices) as pa.Array. For list types that require fallback,
+            returns a dict mapping {value: index}.
+
+        Note:
+            PyArrow's sort_indices doesn't support list types, so we fall back to
+            dict format for columns containing lists. The _transform_arrow method
+            handles this by detecting dict-format stats and converting as needed.
+        """
+        # Handle ListScalar from aggregation result
+        if isinstance(values, pa.ListScalar):
+            values = values.values
+
+        # Check if values contain list types - PyArrow can't sort these
+        # Fall back to pandas dict format for list types
+        if pa.types.is_list(values.type) or pa.types.is_large_list(values.type):
+            return gen_value_index(values.to_pylist())
+
+        # Drop nulls if requested
         if drop_na_values:
-            values = {k for k in values if not pd.isnull(k)}
+            values = pc.drop_null(values)
         else:
-            if any(pd.isnull(k) for k in values):
+            if pc.any(pc.is_null(values)).as_py():
                 raise ValueError(
                     "Unable to fit column because it contains null"
                     " values. Consider imputing missing values first."
                 )
-        return {k: j for j, k in enumerate(sorted(values))}
 
-    return gen_value_index
+        # Sort the values
+        sorted_indices = pc.sort_indices(values)
+        sorted_values = pc.take(values, sorted_indices)
+
+        # Create the index array
+        values_array = pa.array(range(len(sorted_values)), type=pa.int64())
+
+        return (sorted_values, values_array)
+
+    return (
+        gen_value_index_arrow_from_arrow
+        if batch_format == BatchFormat.ARROW
+        else gen_value_index
+    )
 
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:

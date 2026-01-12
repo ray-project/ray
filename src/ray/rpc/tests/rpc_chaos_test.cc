@@ -20,7 +20,8 @@
 namespace ray::rpc::testing {
 
 TEST(RpcChaosTest, MethodRpcFailure) {
-  RayConfig::instance().testing_rpc_failure() = "method1=0:25:25:25,method2=1:100:0:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"method1":{"num_failures":0,"req_failure_prob":25,"resp_failure_prob":25,"in_flight_failure_prob":25},"method2":{"num_failures":1,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   ASSERT_EQ(GetRpcFailure("unknown"), RpcFailure::None);
   ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::None);
@@ -31,7 +32,7 @@ TEST(RpcChaosTest, MethodRpcFailure) {
 
 TEST(RpcChaosTest, MethodRpcFailureEdgeCase) {
   RayConfig::instance().testing_rpc_failure() =
-      "method1=1000:100:0:0,method2=1000:0:100:0,method3=1000:0:0:100,method4=1000:0:0:0";
+      R"({"method1":{"num_failures":1000,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0},"method2":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":100,"in_flight_failure_prob":0},"method3":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":100},"method4":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 1000; i++) {
     ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
@@ -42,25 +43,29 @@ TEST(RpcChaosTest, MethodRpcFailureEdgeCase) {
 }
 
 TEST(RpcChaosTest, WildcardRpcFailure) {
-  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::Request);
   }
 
-  RayConfig::instance().testing_rpc_failure() = "*=-1:0:100:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":100,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::Response);
   }
 
-  RayConfig::instance().testing_rpc_failure() = "*=-1:0:0:100";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":100}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::InFlight);
   }
 
-  RayConfig::instance().testing_rpc_failure() = "*=-1:0:0:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::None);
@@ -73,7 +78,18 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   //         100% req prob after lower bound, 0% resp prob, 0% resp in-flight prob,
   //         3 guaranteed req failures, 5 guaranteed resp failures, 2 guaranteed resp
   //         in-flight failures
-  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0:0:3:5:2";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({
+        "*": {
+          "num_failures": -1,
+          "req_failure_prob": 100,
+          "resp_failure_prob": 0,
+          "in_flight_failure_prob": 0,
+          "num_lower_bound_req_failures": 3,
+          "num_lower_bound_resp_failures": 5,
+          "num_lower_bound_in_flight_failures": 2
+        }
+      })";
   Init();
 
   // First 3 calls should be guaranteed Request failures (lower bound)
@@ -118,6 +134,13 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
   }
+}
+
+TEST(RpcChaosTest, TestInvalidJson) {
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"invalid_key":1}})";
+  ASSERT_DEATH(Init(),
+               "Unknown key specified in testing_rpc_failure config: invalid_key");
 }
 
 }  // namespace ray::rpc::testing

@@ -1,0 +1,10 @@
+name: "manylinux-cibase$JDK_SUFFIX-$HOSTTYPE"
+froms:
+  - quay.io/pypa/manylinux2014_$HOSTTYPE:2026.01.02-1
+srcs:
+  - ci/build/build-manylinux-forge.sh
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+  - RAYCI_DISABLE_JAVA
+  - HOSTTYPE
+dockerfile: ci/docker/manylinux.Dockerfile

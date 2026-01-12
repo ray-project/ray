@@ -60,6 +60,19 @@ both in the usual template (layout.html) as well as (index.html). -->
 <!-- Data to be shared with JS on every page -->
 <script>
   window.data = {
-      copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}"
+    copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}",
   };
 </script>
+
+<!-- RunLLM Widget -->
+<script
+  type="module"
+  id="runllm-widget-script"
+  src="https://widget.runllm.com"
+  version="stable"
+  crossorigin="anonymous"
+  runllm-keyboard-shortcut="Mod+j"
+  runllm-name="Ray RunLLM Bot"
+  runllm-position="BOTTOM_RIGHT"
+  runllm-assistant-id="1003"
+></script>

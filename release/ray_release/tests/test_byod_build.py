@@ -1,4 +1,6 @@
+import os
 import sys
+import tempfile
 from typing import List
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
+from ray_release.byod.build_context import BuildContext
 from ray_release.configs.global_config import get_global_config, init_global_config
 from ray_release.test import Test
 
@@ -66,16 +69,26 @@ def test_build_anyscale_custom_byod_image() -> None:
             name="name",
             cluster={"byod": {"post_build_script": "foo.sh"}},
         )
-        build_anyscale_custom_byod_image(
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
-            test.get_byod_post_build_script(),
-            test.get_byod_python_depset(),
+        with tempfile.TemporaryDirectory() as byod_dir:
+            with open(os.path.join(byod_dir, "foo.sh"), "wt") as f:
+                f.write("echo foo")
+
+            build_context: BuildContext = {
+                "post_build_script": test.get_byod_post_build_script(),
+            }
+            build_anyscale_custom_byod_image(
+                test.get_anyscale_byod_image(),
+                test.get_anyscale_base_byod_image(),
+                build_context,
+                release_byod_dir=byod_dir,
+            )
+        assert (" ".join(cmds[0])).startswith(
+            "docker build --progress=plain . "
+            "--build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
+            "amazonaws.com/anyscale/ray:a1b2c3d4-py310-cpu "
+            "-t 029272617770.dkr.ecr.us-west-2."
+            "amazonaws.com/anyscale/ray:a1b2c3d4-py310-cpu-"
         )
-        assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:a1b2c3d4-py37 -t 029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:a1b2c3d4-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
-        "f59e4c679b8c970f2f77b956bfd8fb" in " ".join(cmds[0])
 
 
 def test_build_anyscale_base_byod_images() -> None:
@@ -121,13 +134,13 @@ def test_build_anyscale_base_byod_images() -> None:
         assert set(images) == {
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu116",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu121",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu121",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
-            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py39-gpu",
-            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
+            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
         }
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

@@ -11,7 +11,7 @@ def test_init() -> None:
     builder = BuilderContainer("3.10", "optimized", "aarch64")
     assert builder.docker_tag == "manylinux-aarch64"
     builder = BuilderContainer("3.10", "optimized", "x86_64")
-    assert builder.docker_tag == "manylinux"
+    assert builder.docker_tag == "manylinux-x86_64"
 
 
 def test_run() -> None:

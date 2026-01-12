@@ -84,3 +84,19 @@ When using model composition, you can send requests from an upstream deployment 
 :start-after: __serve_model_composition_example_begin__
 :end-before: __serve_model_composition_example_end__
 ```
+
+## Using model multiplexing with batching
+
+You can combine model multiplexing with the `@serve.batch` decorator for efficient batched inference. When you use both features together, Ray Serve automatically splits batches by model ID to ensure each batch contains only requests for the same model. This prevents issues where a single batch would contain requests targeting different models.
+
+The following example shows how to combine multiplexing with batching:
+
+```{literalinclude} doc_code/multiplexed.py
+:language: python
+:start-after: __serve_multiplexed_batching_example_begin__
+:end-before: __serve_multiplexed_batching_example_end__
+```
+
+:::{note}
+`serve.get_multiplexed_model_id()` works correctly inside functions decorated with `@serve.batch`. Ray Serve guarantees that all requests in a batch have the same `multiplexed_model_id`, so you can safely use this value to load and apply the appropriate model for the entire batch.
+:::

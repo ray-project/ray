@@ -38,6 +38,11 @@ def check_id(b, size=kUniqueIDSize):
                          str(size) + ", got " + str(len(b)))
 
 
+def check_nil(id_obj):
+    if id_obj.is_nil():
+        raise ValueError(f"{id_obj.__class__.__name__} is nil")
+
+
 cdef extern from "ray/common/constants.h" nogil:
     cdef int64_t kUniqueIDSize
 
@@ -166,6 +171,7 @@ cdef class TaskID(BaseID):
         return ActorID(self.data.ActorId().Binary())
 
     def job_id(self):
+        check_nil(self)
         return JobID(self.data.JobId().Binary())
 
     cdef size_t hash(self):
@@ -320,6 +326,7 @@ cdef class ActorID(BaseID):
 
     @property
     def job_id(self):
+        check_nil(self)
         return JobID(self.data.JobId().Binary())
 
     def binary(self):

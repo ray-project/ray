@@ -20,7 +20,7 @@ resource consumption and runtime. Choose the most appropriate method for your us
 Shuffle the ordering of files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To randomly shuffle the ordering of input files before reading, call a :ref:`read function <input-output>` function that supports shuffling, such as
+To randomly shuffle the ordering of input files before reading, call a :ref:`read function <loading-data-api>` function that supports shuffling, such as
 :func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
 

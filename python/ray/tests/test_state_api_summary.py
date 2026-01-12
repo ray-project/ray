@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
 from ray._raylet import ActorID, ObjectID, TaskID
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -309,11 +310,19 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_task_summary(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=2)
+
+    # Wait for aggregator agents on all nodes
+    for node in ray.nodes():
+        wait_for_aggregator_agent_if_enabled(cluster.address, node["NodeID"])
 
     @ray.remote
     def run_long_time_task():
@@ -351,6 +360,10 @@ def test_task_summary(ray_start_cluster):
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_actor_summary(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
@@ -396,6 +409,10 @@ def test_actor_summary(ray_start_cluster):
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_object_summary(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
         m.setenv("RAY_record_ref_creation_sites", "1")

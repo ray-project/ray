@@ -14,6 +14,7 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
+from ray_release.byod.build_context import BuildContext
 from ray_release.config import (
     RELEASE_TEST_CONFIG_FILES,
     read_and_validate_release_test_collection,
@@ -180,11 +181,17 @@ def _trigger_test_run(
     os.environ["COMMIT_TO_TEST"] = commit
     build_anyscale_base_byod_images([test])
     if test.require_custom_byod_image():
+        build_context: BuildContext = {}
+        post_build_script = test.get_byod_post_build_script()
+        python_depset = test.get_byod_python_depset()
+        if post_build_script:
+            build_context["post_build_script"] = post_build_script
+        if python_depset:
+            build_context["python_depset"] = python_depset
         build_anyscale_custom_byod_image(
             test.get_anyscale_byod_image(),
             test.get_anyscale_base_byod_image(),
-            test.get_byod_post_build_script(),
-            test.get_byod_python_depset(),
+            build_context,
         )
     for run in range(run_per_commit):
         step = get_step(

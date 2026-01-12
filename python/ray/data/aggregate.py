@@ -1,4 +1,5 @@
 import abc
+import enum
 import math
 import pickle
 import re
@@ -6,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Dict,
     Generic,
     List,
@@ -17,13 +19,13 @@ from typing import (
 )
 
 import numpy as np
-import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
     BlockColumnAccessor,
     KeyType,
 )
@@ -171,6 +173,28 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
        into a single, combined accumulator.
     4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
+
+    Generic Type Parameters:
+        This class is parameterized by two type variables:
+
+        - ``AccumulatorType``: The type of the intermediate state (accumulator) used
+          during aggregation. This is what `aggregate_block` returns, what `combine`
+          takes as inputs and returns, and what `finalize` receives. For simple
+          aggregations like `Sum`, this might just be a numeric type. For more complex
+          aggregations like `Mean`, this could be a composite type like
+          ``List[Union[int, float]]`` representing ``[sum, count]``.
+
+        - ``AggOutputType``: The type of the final result after `finalize` is called.
+          This is what gets written to the output dataset. For `Sum`, this is the
+          same as the accumulator type (a number). For `Mean`, the accumulator is
+          ``[sum, count]`` but the output is a single ``float`` (the computed mean).
+
+        Examples of type parameterization in built-in aggregations::
+
+            Count(AggregateFnV2[int, int])               # accumulator: int, output: int
+            Sum(AggregateFnV2[Union[int, float], ...])   # accumulator: number, output: number
+            Mean(AggregateFnV2[List[...], float])        # accumulator: [sum, count], output: float
+            Std(AggregateFnV2[List[...], float])         # accumulator: [M2, mean, count], output: float
 
     Args:
         name: The name of the aggregation. This will be used as the column name
@@ -370,6 +394,69 @@ class Count(AggregateFnV2[int, int]):
         )
 
     def combine(self, current_accumulator: int, new: int) -> int:
+        return current_accumulator + new
+
+
+@PublicAPI
+class AsList(AggregateFnV2[List, List]):
+    """Listing aggregation combining all values within the group into a single
+    list element.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            # Skip testing b/c this example require proper ordering of the output
+            # to be robust and not flaky
+
+            import ray
+            from ray.data.aggregate import AsList
+
+            ds = ray.data.range(10)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Listing all elements per group:
+            result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+            # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
+            #          {'group_key': 1, 'list(id)': [1, 4, 7]},
+            #          {'group_key': 2, 'list(id)': [2, 5, 8]}
+
+    Args:
+        on: The name of the column to collect values from. Must be provided.
+        alias_name: Optional name for the resulting column.
+        ignore_nulls: Whether to ignore null values when collecting. If `True`,
+            nulls are skipped. If `False` (default), nulls are included in the list.
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+        ignore_nulls: bool = False,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"list({on or ''})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [],
+        )
+
+    def aggregate_block(self, block: Block) -> AccumulatorType:
+        column_accessor = BlockColumnAccessor.for_column(
+            block[self.get_target_column()]
+        )
+
+        if self._ignore_nulls:
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.to_pylist()
+
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
         return current_accumulator + new
 
 
@@ -942,12 +1029,24 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             flatten) operation.
     """
 
+    class ListEncodingMode(str, enum.Enum):
+        """Controls how to encode individual elements inside the list column:
+
+        - NONE: no encoding applied, elements (lists) are stored as is and
+                unique ones are returned.
+        - FLATTEN: column of element lists is flattened into a single list.
+        - HASH: each list element is hashed, a list of unique hashes is returned.
+        """
+
+        FLATTEN = "FLATTEN"
+        HASH = "HASH"
+
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,
+        ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
-        encode_lists: bool = False,
+        encode_lists: Union[bool, ListEncodingMode, None] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -955,44 +1054,125 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
-        self._encode_lists = encode_lists
+
+        if isinstance(encode_lists, Unique.ListEncodingMode):
+            self._list_encoding_mode = encode_lists
+        elif isinstance(encode_lists, bool) and encode_lists:
+            self._list_encoding_mode = Unique.ListEncodingMode.FLATTEN
+        else:
+            self._list_encoding_mode = None
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> List[Any]:
-        col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        if pa.types.is_list(col.type):
-            if self._encode_lists:
-                col = pc.list_flatten(col)
+    def _compute_unique(self, block: Block) -> BlockColumn:
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
+
+        if (
+            column_accessor.is_composed_of_lists()
+            and self._list_encoding_mode is not None
+        ):
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN:
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.flatten()
+                )
+            elif self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
             else:
-                # pyarrow doesn't natively support calculating unique over
-                # list-like objects (ie: lists, tuples). Using pandas seem to be
-                # much more efficient than doing something like json dump/load or
-                # pickle dump/load.
-                series = BlockAccessor.for_block(block).to_pandas()[
-                    self._target_col_name
-                ]
-                series = series.map(lambda x: None if x is None else tuple(x))
-                if self._ignore_nulls:
-                    series = series.dropna()
-                return list(series.unique())
+                raise ValueError(
+                    f"list encoding mode not supported: {self._list_encoding_mode}"
+                )
+
         if self._ignore_nulls:
-            col = pc.drop_null(col)
-        return pc.unique(col).to_pylist()
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.unique()
+
+    def aggregate_block(self, block: Block) -> List[Any]:
+        column = self._compute_unique(block)
+        return BlockColumnAccessor.for_column(column).to_pylist()
 
     @staticmethod
     def _to_set(x):
         if isinstance(x, set):
-            return x
+            return Unique._normalize_nans(x)
+
         elif isinstance(x, list):
             if len(x) > 0 and isinstance(x[0], list):
                 # necessary because pyarrow converts all tuples to
                 # list internally.
                 x = map(lambda v: None if v is None else tuple(v), x)
-            return set(x)
+
+            return Unique._normalize_nans(x)
         else:
             return {x}
+
+    @staticmethod
+    def _normalize_nans(x: Collection) -> Set:
+        # NOTE: Pandas when converting to Python objects instantiates
+        #       new `float('nan')` objects which are incomparable b/w each
+        #       other. Here we canonicalize any nan instances replacing them
+        #       w/ `np.nan`
+        return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
+
+
+@PublicAPI
+class CountDistinct(Unique):
+    """Defines distinct count aggregation.
+
+    This aggregation computes the count of distinct values in a column.
+    It is similar to SQL's COUNT(DISTINCT column_name) operation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import CountDistinct
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count distinct categories
+            result = ds.aggregate(CountDistinct(on="category"))
+            # result: {'count_distinct(category)': 3}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(CountDistinct(on="category")).take_all()
+            # result: [{'group': 'X', 'count_distinct(category)': 2},
+            #          {'group': 'Y', 'count_distinct(category)': 1}]
+
+    Args:
+        on: The name of the column to count distinct values on.
+        ignore_nulls: Whether to ignore null values when counting distinct items.
+                      Default is True (nulls are excluded from the count).
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "count_distinct({on})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            on=on,
+            ignore_nulls=ignore_nulls,
+            alias_name=alias_name if alias_name else f"count_distinct({str(on)})",
+        )
+
+    def finalize(self, accumulator: Set[Any]) -> int:
+        """Return the count of distinct values."""
+        return len(accumulator)
 
 
 @PublicAPI

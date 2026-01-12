@@ -9,6 +9,7 @@ import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
     return topologies
 
 
-# The valid TPU topologies for each of the TPU types
+# The valid TPU topologies for each of the TPU types.
 VALID_TPU_TOPOLOGY = {
     "v2": {"4x4", "4x8", "8x8", "8x16", "16x16"},
     "v3": {"4x4", "4x8", "8x8", "8x16", "16x16", "16x32", "32x32"},
@@ -97,8 +98,8 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 16, 24)),
-    "v5litepod": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v6e": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
 }
 
 
@@ -148,6 +149,17 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
 
 
+def get_num_chips_from_topology(topology: str) -> int:
+    """
+    Calculates the total number of chips in a TPU topology.
+    Ex: "2x2x2" -> 8
+    """
+    total_chips = 1
+    for dim in topology.strip().lower().split("x"):
+        total_chips *= int(dim)
+    return total_chips
+
+
 def infer_tpu_pod_type_from_topology(
     topology: str, accelerator_type: str
 ) -> Optional[str]:
@@ -155,11 +167,11 @@ def infer_tpu_pod_type_from_topology(
     if not topology or not accelerator_type:
         return None
     try:
-        num_chips = 1
-        for value in topology.strip().lower().split("x"):
-            num_chips *= int(value)
+        num_chips = get_num_chips_from_topology(topology)
         generation = accelerator_type.lower().replace("tpu-", "")
-        return f"{generation}-{num_chips}"
+        num_cores = num_chips * get_tpu_cores_per_chip(generation)
+
+        return f"{generation}-{num_cores}"
     except Exception as e:
         raise ValueError(
             f"Failed to infer pod type from topology '{topology}' "
@@ -182,11 +194,13 @@ def fetch_tpu_slice_name_from_pg(pg):
 
 
 def get_chips_per_host(topology: str, accelerator_version: str) -> int:
-    """Get the number of chips per host (aka VMs) based on topology and accelerator version.
+    """Get the number of chips per host based on topology and accelerator version.
+
     The current rule is as follows:
         Default chips per host is 4.
-        If accelerator_version is v5e or v6e AND topology product <= 8, the chips per host will just be the proudct. i.e. 1, 4, or 8
-        If accelerator_version is v5e or v6e AND topology product > 8, the chips per host will be 4
+        If accelerator_version is v5e or v6e:
+            If topology total chips < 8, return total chips (partial host).
+            Otherwise return 8.
         If accelerator_version is v5p or other versions, the chips per host will be 4
 
     Args:
@@ -194,26 +208,23 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
         accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
 
     Returns:
-        A int representing the number of chips per host (aka VM)
+        A int representing the number of chips per host
     """
-    chips_per_host = DEFAULT_TPU_NUM_CHIPS_PER_HOST
-    total_chips = 1
-    for value in topology.strip().lower().split("x"):
-        total_chips *= int(value)
+    total_chips = get_num_chips_from_topology(topology)
 
-    if (
-        total_chips <= 8
-        and accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES
-    ):
-        return total_chips
+    # Check for 8-chip host types (v5litepod, v6e)
+    if accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES:
+        if total_chips < 8:
+            return total_chips
+        return 8
 
-    return chips_per_host
+    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
 def reserve_tpu_slice(
     topology: str,
     accelerator_type: str,
-) -> Optional[str]:
+) -> Optional[Tuple[str, PlacementGroup]]:
     """Reserves a TPU slice using its head resource and returns the slice name.
     This enables gang scheduling of training workers with multi-host TPUs.
     This is used by JaxTrainer with TPUs in Ray Train.
@@ -223,7 +234,8 @@ def reserve_tpu_slice(
         accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
 
     Returns:
-        A string representing a unique TPU slice name.
+        A tuple of a string representing a unique TPU slice name and the placement
+        group handle reserving the TPU head.
     """
     pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
     if pod_type is None:
@@ -234,7 +246,7 @@ def reserve_tpu_slice(
         "ray.io/tpu-worker-id": "0",
         "ray.io/tpu-pod-type": pod_type,
     }
-    head_placement_group = ray.util.placement_group(
+    head_placement_group = placement_group(
         bundles=[{f"TPU-{pod_type}-head": 1}],
         bundle_label_selector=[head_label_selector],
     )
@@ -260,8 +272,7 @@ def reserve_tpu_slice(
             "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
         )
 
-    # TODO: return both the slice name and reference to the PG reservation.
-    return slice_name
+    return (slice_name, head_placement_group)
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -348,7 +359,7 @@ class TPUAcceleratorManager(AcceleratorManager):
                 to be checked for validity
 
         Returns:
-            True if it's valid topology, false othrwise
+            True if it's a valid topology, False otherwise.
         """
         tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
         if (
@@ -515,13 +526,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         try:
             # Attempt GKE based lookup first
             if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
-                return topology
+                return topology.strip().lower()
             # GCE-based VM check using TPU env string.
             tpu_env = _get_tpu_metadata(key=GCE_TPU_ENV_KEY)
             if tpu_env:
                 topology = re.search(r"TOPOLOGY:\s*'([^']+)'", tpu_env)
                 if topology:
-                    return topology.group(1)
+                    return topology.group(1).strip().lower()
         except ValueError as e:
             logging.debug("Could not get TPU topology: %s", e)
             return None
@@ -604,10 +615,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         @ray.remote(resources={"TPU-v4-16-head"})
         def run_jax_fn(executable):
             # Note this will execute on worker 0
-            tpu_name = ray.util.tpu.get_tpu_pod_name()
-            num_workers = ray.util.tpu.get_tpu_num_workers()
+            tpu_name = ray.util.tpu.get_current_pod_name()
+            num_hosts = ray.util.tpu.get_current_pod_worker_count()
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
-            return [tpu_executable.remote() for _ in range(num_workers)]
+            return [tpu_executable.remote() for _ in range(num_hosts)]
 
         Returns:
             A dictionary representing additional resources that may be

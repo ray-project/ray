@@ -9,7 +9,8 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data import DataContext
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -22,11 +23,10 @@ from ray.air.util.tensor_extensions.arrow import (
     concat_tensor_arrays,
     unify_tensor_arrays,
 )
-from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
-from ray.data import DataContext
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
@@ -59,11 +59,52 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
+def test_pandas_to_arrow_fixed_shape_tensor_conversion():
+    # First, convert Pandas serise w/ nulls to numpy
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
+
+    # First, check on singular tensor of shape (2, 2, 2)
+    input_tensor = np.stack([array, array])
+
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
+
+    # Next, check "ragged" tensor
+    #   - Outermost ndarray is of shape (2,) (dtype='O')
+    #   - Internal ndarrays are homogeneously shaped (2, 2) (dtype='O')
+    input_tensor = create_ragged_ndarray([array, array])
+
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
+
+
+def test_pandas_to_arrow_var_shape_tensor_conversion():
+    # First, convert Pandas series w/ nulls to numpy
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
+
+    input_tensor = create_ragged_ndarray([array.reshape(1, 4), array.reshape((2, 2))])
+
+    # For ragged arrays, we need to convert each element individually
+    expected_np_tensor = create_ragged_ndarray(
+        [t.astype(np.float64) for t in input_tensor]
+    )
+
+    pa_tensor = ArrowVariableShapedTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    assert len(res_tensor) == len(expected_np_tensor)
+    for actual, expected in zip(res_tensor, expected_np_tensor):
+        np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
-    arr = np.arange(10)
+    arr = np.arange(1000).reshape((10, 1, 100))
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
@@ -91,7 +132,7 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean(
 def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
-    arr = np.arange(10)
+    arr = np.arange(1000).reshape(10, 1, 100)
     ta = TensorArray(arr)
     assert isinstance(ta.dtype, TensorDtype)
     assert len(ta) == len(arr)
@@ -156,33 +197,26 @@ def test_arrow_variable_shaped_tensor_array_validation(
         )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
         np.arange(offset, offset + np.prod(shape)).reshape(shape)
         for offset, shape in zip(cumsum_sizes, shapes)
     ]
-    arr = np.array(arrs, dtype=object)
+
+    arr = create_ragged_ndarray(arrs)
     ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+
     assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
+
     out = ata.to_numpy()
     for o, a in zip(out, arr):
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(restore_data_context):
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
         dtype=object,
@@ -195,12 +229,9 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
-    restore_data_context, tensor_format
+    restore_data_context,
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
     base = np.arange(6)
@@ -216,10 +247,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_slice(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -253,12 +281,7 @@ def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_f
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_bool_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_bool_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             [True],
@@ -294,12 +317,7 @@ def test_arrow_variable_shaped_bool_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_string_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_string_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             ["Philip", "J", "Fry"],
@@ -339,10 +357,7 @@ def test_arrow_variable_shaped_string_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_roundtrip(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -366,10 +381,7 @@ def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_for
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_slice(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
