@@ -130,8 +130,8 @@ class NixlTensorTransport(TensorTransportManager):
             if device.type == "cuda":
                 # We have to synchronize before memory registration to assure the object
                 # has been created because nixl doesn't guarantee it will.
-                for device in devices:
-                    torch.cuda.synchronize(device)
+                for dev in devices:
+                    torch.cuda.synchronize(dev)
             nixl_agent = self.get_nixl_agent()
             reg_descs = nixl_agent.register_memory(gpu_object)
             serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
