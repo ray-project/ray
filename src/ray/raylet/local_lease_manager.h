@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
 #include "ray/raylet/lease_dependency_manager.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
@@ -86,6 +87,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_lease_arguments,
       size_t max_pinned_lease_arguments_bytes,
+      SchedulerMetrics &scheduler_metrics,
       std::function<int64_t(void)> get_time_ms =
           []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
@@ -180,6 +182,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   }
 
   void RecordMetrics() const override;
+
+  SchedulerMetrics &GetSchedulerMetrics() const override { return scheduler_metrics_; }
 
   void DebugStr(std::stringstream &buffer) const override;
 
@@ -295,8 +299,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     explicit SchedulingClassInfo(int64_t cap)
         : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the granted lease ids in this scheduling class.
-    ///
-    /// TODO(hjiang): Store cgroup manager along with lease id as the value for map.
     absl::flat_hash_set<LeaseID> granted_leases;
     /// The total number of leases that can run from this scheduling class.
     uint64_t capacity;
@@ -373,6 +375,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   /// The maximum amount of bytes that can be used by granted lease arguments.
   size_t max_pinned_lease_arguments_bytes_;
+
+  mutable SchedulerMetrics scheduler_metrics_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

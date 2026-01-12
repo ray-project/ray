@@ -6,7 +6,10 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
+    AutoscalingSnapshotError,
+    AutoscalingStatus,
     DeploymentID,
+    DeploymentSnapshot,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -26,6 +29,7 @@ from ray.serve._private.metrics_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -56,9 +60,38 @@ class DeploymentAutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._latest_metrics_timestamp: Optional[float] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
+
+        self.autoscaling_decision_gauge = metrics.Gauge(
+            "serve_autoscaling_desired_replicas",
+            description=(
+                "The raw autoscaling decision (number of replicas) from the autoscaling "
+                "policy before applying min/max bounds."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
+        self.autoscaling_total_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_total_requests",
+            description=(
+                "Total number of requests as seen by the autoscaler. This is the input "
+                "to the autoscaling decision."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
+        self.autoscaling_policy_execution_time_gauge = metrics.Gauge(
+            "serve_autoscaling_policy_execution_time_ms",
+            description=(
+                "Time taken to execute the autoscaling policy in milliseconds. "
+                "High values may indicate a slow or complex policy."
+            ),
+            tag_keys=("deployment", "application", "policy_scope"),
+        )
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -167,6 +200,12 @@ class DeploymentAutoscalingState:
             replica_id not in self._replica_metrics
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
             self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
@@ -183,6 +222,12 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -225,6 +270,23 @@ class DeploymentAutoscalingState:
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 
+    def record_autoscaling_metrics(
+        self,
+        decision_num_replicas: int,
+        total_num_requests: float,
+        policy_execution_time_ms: float,
+        policy_scope: str,
+    ):
+        tags = {
+            "deployment": self._deployment_id.name,
+            "application": self._deployment_id.app_name,
+        }
+        self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
+        self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        self.autoscaling_policy_execution_time_gauge.set(
+            policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
+        )
+
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
     ) -> int:
@@ -239,13 +301,42 @@ class DeploymentAutoscalingState:
         if self._policy is None:
             raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
+
+        # Time the policy execution
+        start_time = time.time()
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        policy_execution_time_ms = (time.time() - start_time) * 1000
+
+        self.record_autoscaling_metrics(
+            decision_num_replicas,
+            autoscaling_context.total_num_requests,
+            policy_execution_time_ms,
+            "deployment",
+        )
+
         if _skip_bound_check:
             return decision_num_replicas
 
-        return self.apply_bounds(decision_num_replicas)
+        decision_num_replicas = self.apply_bounds(decision_num_replicas)
 
-    def get_autoscaling_context(self, curr_target_num_replicas) -> AutoscalingContext:
+        self._cached_deployment_snapshot = self._create_deployment_snapshot(
+            ctx=autoscaling_context,
+            target_replicas=decision_num_replicas,
+        )
+        return decision_num_replicas
+
+    def get_autoscaling_context(
+        self,
+        curr_target_num_replicas,
+        override_policy_state: Optional[Dict[str, Any]] = None,
+    ) -> AutoscalingContext:
+        # Adding this to overwrite policy state during application level autoscaling
+        if override_policy_state is not None:
+            current_policy_state = override_policy_state.copy()
+        elif self._policy_state is not None:
+            current_policy_state = self._policy_state.copy()
+        else:
+            current_policy_state = {}
         return AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -256,9 +347,7 @@ class DeploymentAutoscalingState:
             total_num_requests=self.get_total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=(
-                self._policy_state.copy() if self._policy_state is not None else {}
-            ),
+            policy_state=current_policy_state,
             current_time=time.time(),
             config=self._config,
             total_queued_requests=self._get_queued_requests,
@@ -569,6 +658,73 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
+    def _create_deployment_snapshot(
+        self,
+        *,
+        ctx: AutoscalingContext,
+        target_replicas: int,
+    ) -> DeploymentSnapshot:
+        """Create a fully-populated DeploymentSnapshot using data already available in
+        AutoscalingState and the provided context.
+        """
+        current_replicas = ctx.current_num_replicas
+        min_replicas = ctx.capacity_adjusted_min_replicas
+        max_replicas = ctx.capacity_adjusted_max_replicas
+
+        queued_requests = ctx.total_queued_requests
+
+        if self._latest_metrics_timestamp is not None:
+            time_since_last_collected_metrics_s = (
+                time.time() - self._latest_metrics_timestamp
+            )
+        else:
+            time_since_last_collected_metrics_s = None
+
+        if target_replicas > current_replicas:
+            scaling_status_raw = AutoscalingStatus.UPSCALE
+        elif target_replicas < current_replicas:
+            scaling_status_raw = AutoscalingStatus.DOWNSCALE
+        else:
+            scaling_status_raw = AutoscalingStatus.STABLE
+
+        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
+
+        look_back_period_s = self._config.look_back_period_s
+        metrics_health = DeploymentSnapshot.format_metrics_health_text(
+            time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
+            look_back_period_s=look_back_period_s,
+        )
+
+        errors: List[str] = []
+
+        if time_since_last_collected_metrics_s is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
+
+        policy = ctx.config.policy.get_policy()
+        policy_name_str = f"{policy.__module__}.{policy.__name__}"
+        return DeploymentSnapshot(
+            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            scaling_status=scaling_status,
+            policy_name=policy_name_str,
+            look_back_period_s=look_back_period_s,
+            queued_requests=float(queued_requests),
+            ongoing_requests=float(ctx.total_num_requests),
+            metrics_health=metrics_health,
+            errors=errors,
+        )
+
+    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
+        """
+        Return the cached deployment snapshot if available.
+        """
+        return self._cached_deployment_snapshot
+
     def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values = defaultdict(list)
@@ -659,12 +815,12 @@ class ApplicationAutoscalingState:
         self._policy: Optional[
             Callable[
                 [Dict[DeploymentID, AutoscalingContext]],
-                Tuple[Dict[DeploymentID, int], Optional[Dict[str, Dict]]],
+                Tuple[Dict[DeploymentID, int], Optional[Dict[DeploymentID, Dict]]],
             ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
-        # content of the dictionary is determined by the user defined policy
-        self._policy_state: Optional[Dict[str, Any]] = None
+        # content of the dictionary is determined by the user defined policy but is keyed by deployment id
+        self._policy_state: Optional[Dict[DeploymentID, Dict]] = None
 
     @property
     def deployments(self):
@@ -740,6 +896,26 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    def _validate_policy_state(
+        self, policy_state: Optional[Dict[DeploymentID, Dict[str, Any]]]
+    ):
+        """Validate that the returned policy_state from an application-level policy is correctly formatted."""
+        if policy_state is None:
+            return
+
+        assert isinstance(
+            policy_state, dict
+        ), "Application-level autoscaling policy must return policy_state as Dict[DeploymentID, Dict[str, Any]]"
+
+        # Check that all keys are valid deployment IDs
+        for deployment_id in policy_state.keys():
+            assert (
+                deployment_id in self._deployment_autoscaling_states
+            ), f"Policy state contains invalid deployment ID: {deployment_id}"
+            assert isinstance(
+                policy_state[deployment_id], dict
+            ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(policy_state[deployment_id])}"
+
     def get_decision_num_replicas(
         self,
         deployment_to_target_num_replicas: Dict[DeploymentID, int],
@@ -751,16 +927,27 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
+            # TODO(nadongjun): App-level autoscaling bypasses per-deployment snapshot creation; add snapshot support here.
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
-                    deployment_to_target_num_replicas[deployment_id]
+                    deployment_to_target_num_replicas[deployment_id],
+                    self._policy_state.get(deployment_id, {})
+                    if self._policy_state
+                    else {},
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
+            # Time the policy execution
+            start_time = time.time()
+            # Policy returns decisions: {deployment_id -> decision} and
+            # policy state: {deployment_id -> Dict}
+            decisions, returned_policy_state = self._policy(autoscaling_contexts)
+            policy_execution_time_ms = (time.time() - start_time) * 1000
+            # Validate returned policy_state
+            self._validate_policy_state(returned_policy_state)
+            self._policy_state = returned_policy_state
 
-            # Policy returns {deployment_name -> decision}
-            decisions, self._policy_state = self._policy(autoscaling_contexts)
-
+            # Validate returned decisions
             assert (
                 type(decisions) is dict
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
@@ -774,16 +961,25 @@ class ApplicationAutoscalingState:
                     deployment_id in deployment_to_target_num_replicas
                 ), f"Deployment {deployment_id} is invalid"
 
-            return {
-                deployment_id: (
+            results = {}
+            for deployment_id, num_replicas in decisions.items():
+                deployment_autoscaling_state = self._deployment_autoscaling_states[
+                    deployment_id
+                ]
+                deployment_autoscaling_state.record_autoscaling_metrics(
+                    num_replicas,
+                    autoscaling_contexts[deployment_id].total_num_requests,
+                    policy_execution_time_ms,
+                    "application",
+                )
+                results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
                         num_replicas
                     )
                     if not _skip_bound_check
                     else num_replicas
                 )
-                for deployment_id, num_replicas in decisions.items()
-            }
+            return results
         else:
             # Using deployment-level policy
             return {
@@ -1040,3 +1236,12 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def get_deployment_snapshot(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentSnapshot]:
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if not app_state:
+            return None
+        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
+        return dep_state.get_deployment_snapshot() if dep_state else None

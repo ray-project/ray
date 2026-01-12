@@ -26,7 +26,6 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/placement_group_util.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -57,6 +56,7 @@ LocalLeaseManager::LocalLeaseManager(
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_lease_arguments,
     size_t max_pinned_lease_arguments_bytes,
+    SchedulerMetrics &scheduler_metrics,
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
@@ -70,6 +70,7 @@ LocalLeaseManager::LocalLeaseManager(
       leased_workers_(leased_workers),
       get_lease_arguments_(get_lease_arguments),
       max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes),
+      scheduler_metrics_(scheduler_metrics),
       get_time_ms_(get_time_ms),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
@@ -390,16 +391,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and lease id, we're
-              // able to get physical execution context.
-              //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
-              //
-              // - PID: could get from available worker
-              // - Attempt id: could pass a global attempt id generator from raylet
-              // - Cgroup application folder: could pass from raylet
-
               return PoppedWorkerHandler(worker,
                                          status,
                                          lease_id,
@@ -745,8 +736,6 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   auto sched_cls = lease.GetLeaseSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
-    // TODO(hjiang): After remove the lease id from `granted_leases`, corresponding cgroup
-    // will be updated.
     it->second.granted_leases.erase(lease.GetLeaseSpecification().LeaseId());
     if (it->second.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(it);
@@ -1203,8 +1192,10 @@ uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
 }
 
 void LocalLeaseManager::RecordMetrics() const {
-  ray::stats::STATS_scheduler_tasks.Record(granted_lease_args_.size(), "Executing");
-  ray::stats::STATS_scheduler_tasks.Record(waiting_leases_index_.size(), "Waiting");
+  scheduler_metrics_.scheduler_tasks.Record(granted_lease_args_.size(),
+                                            {{"State", "Executing"}});
+  scheduler_metrics_.scheduler_tasks.Record(waiting_leases_index_.size(),
+                                            {{"State", "Waiting"}});
 }
 
 void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {

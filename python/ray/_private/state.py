@@ -815,11 +815,6 @@ class GlobalState:
         accessor = self._connect_and_get_accessor()
         return json.loads(accessor.get_system_config())
 
-    def get_node_to_connect_for_driver(self, node_ip_address):
-        """Get the node to connect for a Ray driver."""
-        accessor = self._connect_and_get_accessor()
-        return accessor.get_node_to_connect_for_driver(node_ip_address)
-
     def get_node(self, node_id: str):
         """Get the node information for a node id."""
         accessor = self._connect_and_get_accessor()
@@ -1029,7 +1024,14 @@ def timeline(filename=None):
     Returns:
         If filename is not provided, this returns a list of profiling events.
             Each profile event is a dictionary.
+
+    Raises:
+        RuntimeError: An exception is raised if ray.init() has not been called yet.
     """
+    if not ray.is_initialized():
+        raise RuntimeError(
+            "Ray has not been started yet. Timeline requires Ray to be initialized first."
+        )
     return state.chrome_tracing_dump(filename=filename)
 
 

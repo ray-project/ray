@@ -47,7 +47,7 @@ import ray
 import torch
 import torchaudio
 import torchaudio.transforms as T
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
 TRANSCRIPTION_MODEL = "openai/whisper-tiny"
@@ -215,7 +215,7 @@ judge_config = vLLMEngineProcessorConfig(
     batch_size=2,
 )
 
-processor = build_llm_processor(
+processor = build_processor(
     judge_config,
     preprocess=lambda row: dict(
         messages=[
@@ -226,7 +226,7 @@ processor = build_llm_processor(
             {"role": "user", "content": row["transcription"]},
         ],
         sampling_params=dict(
-            guided_decoding={"choice": ["1", "2", "3", "4", "5"]},
+            structured_outputs={"choice": ["1", "2", "3", "4", "5"]},
         ),
     ),
     postprocess=lambda row: dict(

@@ -28,7 +28,7 @@ from ray.data._internal.arrow_block import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -158,11 +158,13 @@ def check_for_legacy_tensor_type(schema):
             type, pa.PyExtensionType
         ):
             raise RuntimeError(
-                f"Ray Data couldn't infer the type of column '{name}'. This might mean "
-                "you're trying to read data written with an older version of Ray. "
-                "Reading data written with older versions of Ray might expose you to "
-                "arbitrary code execution. To try reading the data anyway, set "
-                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
+                f"Ray Data couldn't infer the type of column '{name}' (got "
+                f"`UnknownExtensionType` with pickled class ref "
+                f"'{type.__arrow_ext_serialize__()}'). This might mean you're trying "
+                f"to read data written with an older version of Ray. Reading data "
+                f"written with older versions of Ray might expose you to arbitrary code "
+                f"execution. To try reading the data anyway, "
+                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
@@ -432,6 +434,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
+        self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
@@ -473,14 +476,15 @@ class ParquetDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
+        execution_idx = data_context._execution_idx if data_context is not None else 0
         pq_fragments, pq_paths = _shuffle_file_metadata(
-            self._pq_fragments, self._pq_paths, self._shuffle, epoch_idx
+            self._pq_fragments, self._pq_paths, self._shuffle, execution_idx
         )
 
         # Derive expected target schema of the blocks being read

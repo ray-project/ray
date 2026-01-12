@@ -8,7 +8,7 @@ Examples
 .. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
-`examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
+`examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
 of RLlib, demonstrating the different use cases and features of the library.
 
 .. note::
@@ -26,7 +26,7 @@ of RLlib, demonstrating the different use cases and features of the library.
 
 Folder structure
 ----------------
-The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ has
+The `examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__ has
 several sub-directories described in detail below.
 
 
@@ -347,15 +347,11 @@ Multi-agent RL
 - `PettingZoo parameter sharing <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
    Uses `PettingZoo <https://pettingzoo.farama.org/>`__ for an environment where all agents share a single policy.
 
-- `PettingZoo shared value function <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_shared_value_function.py>`__:
-   Also using PettingZoo, this example explores shared value functions among agents.
-   It demonstrates collaborative learning scenarios where agents collectively estimate a value function rather than individual policies.
-
 - `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__:
    Simulates a rock-paper-scissors game with one heuristic-driven agent and one learning agent.
    It provides insights into performance when combining fixed and adaptive strategies in adversarial games.
 
-- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
+- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/tree/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
    Sets up a rock-paper-scissors game where you train both agents to learn strategies on how to play against each other.
    Useful for evaluating performance in simple adversarial settings.
 
@@ -420,7 +416,7 @@ RLModules
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional
    feature extraction tailored to the environment's visual observations.
 
-- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
+- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/tree/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
    Uses a custom LSTM within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, allowing for temporal sequence processing,
    beneficial for partially observable environments with sequential dependencies.
 
@@ -511,8 +507,6 @@ Blog posts
 
 - `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
    Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL attention net architectures.
-- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
-   How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
 - `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
    Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
 - `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
