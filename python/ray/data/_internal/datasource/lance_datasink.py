@@ -97,7 +97,7 @@ class _BaseLanceDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
-    def on_write_start(self):
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         _check_import(self, module="lance", package="pylance")
 
         import lance

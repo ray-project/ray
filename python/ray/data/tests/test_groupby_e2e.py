@@ -20,7 +20,9 @@ from ray.data._internal.util import is_nan
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
+    AsList,
     Count,
+    CountDistinct,
     Max,
     Mean,
     Min,
@@ -31,6 +33,7 @@ from ray.data.aggregate import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -467,6 +470,80 @@ def test_groupby_tabular_sum(
     )
 
 
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_e2e(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    ds = ray.data.range(10)
+    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
+
+    # Listing all elements per group:
+    result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+
+    for i in range(len(result)):
+        result[i]["list(id)"] = sorted(result[i]["list(id)"])
+
+    assert sorted(result, key=lambda x: x["group_key"]) == [
+        {"group_key": 0, "list(id)": [0, 3, 6, 9]},
+        {"group_key": 1, "list(id)": [1, 4, 7]},
+        {"group_key": 2, "list(id)": [2, 5, 8]},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_with_nulls(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    # Test with nulls included (default behavior: ignore_nulls=False)
+    ds = ray.data.from_items(
+        [
+            {"group": "A", "value": 1},
+            {"group": "A", "value": None},
+            {"group": "A", "value": 3},
+            {"group": "B", "value": None},
+            {"group": "B", "value": 5},
+        ]
+    ).repartition(num_parts)
+
+    # Default: nulls are included in the list
+    result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    # Sort the lists for comparison (None values will be at the end in sorted order)
+    for r in result_sorted:
+        # Separate None and non-None values for sorting
+        non_nulls = sorted([v for v in r["list(value)"] if v is not None])
+        nulls = [v for v in r["list(value)"] if v is None]
+        r["list(value)"] = non_nulls + nulls
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3, None]},
+        {"group": "B", "list(value)": [5, None]},
+    ]
+
+    # With ignore_nulls=True: nulls are excluded from the list
+    result = (
+        ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    )
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    for r in result_sorted:
+        r["list(value)"] = sorted(r["list(value)"])
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3]},
+        {"group": "B", "list(value)": [5]},
+    ]
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
 def test_groupby_arrow_multi_agg(
@@ -508,6 +585,7 @@ def test_groupby_arrow_multi_agg(
         .aggregate(
             Count(),
             Count("B"),
+            CountDistinct("B"),
             Sum("B"),
             Min("B"),
             Max("B"),
@@ -526,6 +604,7 @@ def test_groupby_arrow_multi_agg(
             "B": [
                 "count",
                 "count",
+                "nunique",
                 "sum",
                 "min",
                 "max",
@@ -542,6 +621,7 @@ def test_groupby_arrow_multi_agg(
         "A",
         "count()",
         "count(B)",
+        "count_distinct(B)",
         "sum(B)",
         "min(B)",
         "max(B)",
@@ -637,6 +717,9 @@ def test_groupby_multi_agg_with_nans(
         .groupby("A")
         .aggregate(
             Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
+            CountDistinct(
+                "B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls
+            ),
             Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
             Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
             Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -654,6 +737,7 @@ def test_groupby_multi_agg_with_nans(
         {
             "B": [
                 ("count_b", lambda s: s.count() if ignore_nulls else len(s)),
+                ("count_distinct_b", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum_b", lambda s: s.sum(skipna=ignore_nulls)),
                 ("min_b", lambda s: s.min(skipna=ignore_nulls)),
                 ("max_b", lambda s: s.max(skipna=ignore_nulls)),
@@ -674,6 +758,7 @@ def test_groupby_multi_agg_with_nans(
     grouped_df.columns = [
         "A",
         "count_b",
+        "count_distinct_b",
         "sum_b",
         "min_b",
         "max_b",
@@ -744,6 +829,7 @@ def test_groupby_aggregations_are_associative(
 
     aggs = [
         Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
+        CountDistinct("B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls),
         Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
         Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
         Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -759,6 +845,7 @@ def test_groupby_aggregations_are_associative(
         {
             "B": [
                 ("count", lambda s: s.count() if ignore_nulls else len(s)),
+                ("count_distinct", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum", lambda s: s.sum(skipna=ignore_nulls, min_count=1)),
                 ("min", lambda s: s.min(skipna=ignore_nulls)),
                 ("max", lambda s: s.max(skipna=ignore_nulls)),
@@ -779,6 +866,7 @@ def test_groupby_aggregations_are_associative(
     grouped_df.columns = [
         "A",
         "count_b",
+        "count_distinct_b",
         "sum_b",
         "min_b",
         "max_b",

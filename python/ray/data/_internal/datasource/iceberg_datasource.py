@@ -77,6 +77,8 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -411,7 +413,7 @@ class IcebergDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent
@@ -432,8 +434,7 @@ class IcebergDatasource(Datasource):
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
             logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
-                "number of files"
+                f"Reducing the parallelism to {parallelism}, as that is the number of files"
             )
 
         # Get required properties for reading tasks - table IO, table metadata,

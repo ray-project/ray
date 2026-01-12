@@ -151,7 +151,7 @@ TEST_FUNCS = [
 # (transport, device)
 TRANSPORTS_AND_DEVICE = [
     ("nccl", "cuda"),
-    # ("nixl", "cuda"),
+    # ("nixl", "cuda"), # nixl enabled based on cli arg
     # ("nixl", "cpu"),
     ("gloo", "cpu"),
     # ("object_store", "cpu"),
@@ -230,12 +230,19 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
+    "--enable_nixl",
+    action="store_true",
+)
+parser.add_argument(
     "--enable_torch_bench",
     action="store_true",
 )
 args = parser.parse_args()
 if args.enable_10gb:
     SIZES_AND_NUM_TRANSFERS.append(("10GB", (10 * 1024 * 1024 * 1024), 1))
+
+if args.enable_nixl:
+    TRANSPORTS_AND_DEVICE.append(("nixl", "cuda"))
 
 if args.enable_torch_bench:
     TEST_FUNCS.append(torch_latency)
@@ -251,7 +258,7 @@ for test_func in TEST_FUNCS:
         ) and transport != "torch":
             continue
         if transport == "torch" and (
-            test_func != torch_latency or test_func != torch_throughput
+            test_func != torch_latency and test_func != torch_throughput
         ):
             continue
         bench_results.extend(do_benchmark(transport, device, test_func))
