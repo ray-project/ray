@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -68,6 +69,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
+  std::string node_id;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -110,6 +112,11 @@ class GcsServer {
 
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
+
+  /// Set a callback invoked once the RPC server has bound to a port.
+  void SetPortReadyCallback(std::function<void(int)> cb) {
+    port_ready_callback_ = std::move(cb);
+  }
 
   /// Check if gcs server is started.
   bool IsStarted() const { return is_started_; }
@@ -203,11 +210,14 @@ class GcsServer {
   /// Initialize function manager.
   void InitFunctionManager();
 
-  /// Initializes PubSub handler.
+  /// Initialize PubSub handler.
   void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize metrics exporter with the given port.
+  void InitMetricsExporter(int metrics_agent_port);
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -295,7 +305,7 @@ class GcsServer {
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
   /// The node id of GCS.
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
@@ -314,7 +324,11 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  /// Flag to ensure InitMetricsExporter is only called once.
+  bool metrics_exporter_initialized_ = false;
   int task_pending_schedule_detected_ = 0;
+  // Invoked when the RPC server has bound to a port.
+  std::function<void(int)> port_ready_callback_;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
   /// Client to call a metrics agent gRPC server.

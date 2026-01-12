@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.3-labs
-ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
 FROM $BASE_IMAGE
 
 ARG BUILDKITE_BAZEL_CACHE_URL
-ARG PYTHON=3.9
+ARG PYTHON=3.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
-ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.1_py$PYTHON
+ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.8.1_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON

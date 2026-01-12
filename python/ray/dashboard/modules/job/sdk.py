@@ -135,6 +135,7 @@ class JobSubmissionClient(SubmissionClient):
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        entrypoint_label_selector: Optional[Dict[str, str]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -157,10 +158,10 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             entrypoint: The shell command to run for this job.
-            submission_id: A unique ID for this job.
+            job_id: DEPRECATED. This has been renamed to submission_id.
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
-            job_id: DEPRECATED. This has been renamed to submission_id
+            submission_id: A unique ID for this job.
             entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
                 of the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
@@ -173,6 +174,7 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_resources: The quantity of custom resources to reserve for the
                 execution of the entrypoint command, separately from any tasks or
                 actors launched by it.
+            entrypoint_label_selector: Label selector for the entrypoint command.
 
         Returns:
             The submission ID of the submitted job.  If not specified,
@@ -187,11 +189,16 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
-        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_resources:
+        if (
+            entrypoint_num_cpus
+            or entrypoint_num_gpus
+            or entrypoint_resources
+            or entrypoint_label_selector
+        ):
             self._check_connection_and_version(
                 min_version="2.2",
                 version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
-                "and `entrypoint_resources` kwargs "
+                "`entrypoint_resources`, and `entrypoint_label_selector` kwargs "
                 "are not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.2 or higher.",
             )
@@ -237,6 +244,7 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            entrypoint_label_selector=entrypoint_label_selector,
         )
 
         # Remove keys with value None so that new clients with new optional fields
@@ -508,8 +516,15 @@ class JobSubmissionClient(SubmissionClient):
                         )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    # Old Ray versions may send ERROR on connection close
-                    logger.debug(
-                        f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
-                    )
-                    break
+                    # Old Ray versions (<=2.0.1) may send ERROR on connection close
+                    if self._server_ray_version is not None and packaging.version.parse(
+                        self._server_ray_version
+                    ) > packaging.version.parse("2.0.1"):
+                        raise RuntimeError(
+                            f"WebSocket error for job {job_id}: {ws.exception()}"
+                        )
+                    else:
+                        logger.debug(
+                            f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
+                        )
+                        break
