@@ -846,7 +846,7 @@ void GcsServer::InstallEventListeners() {
         // Initialize the metrics exporter when the head node registers,
         // but only if we haven't already initialized it (i.e., when using
         // dynamic port assignment where config_.metrics_agent_port was 0).
-        if (node->is_head_node() && !metrics_exporter_initialized_) {
+        if (node->is_head_node() && !metrics_exporter_initialized_.load()) {
           int actual_port = node->metrics_agent_port();
           if (actual_port > 0) {
             InitMetricsExporter(actual_port);
