@@ -2188,7 +2188,7 @@ class ActorHandle(Generic[T]):
             generator_ref = object_refs[0]
 
             if tensor_transport is not None:
-                ObjectRefGenerator(
+                return ObjectRefGenerator(
                     generator_ref,
                     worker,
                     self,
