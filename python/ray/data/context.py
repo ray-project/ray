@@ -256,11 +256,6 @@ DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
 )
 
 
-DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
-    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
-)
-
-
 @DeveloperAPI
 @dataclass
 class AutoscalingConfig:
@@ -490,9 +485,11 @@ class DataContext:
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
-            later. If `None`, this backpressure policy is disabled.
+            later. If `None`, this type of backpressure is disabled.
+        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
+            bundles before applying backpressure. If `None`, no limit is applied.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
-            of an operator based on its and downstream operators' queue size.
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -632,9 +629,8 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: Optional[
-        float
-    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE

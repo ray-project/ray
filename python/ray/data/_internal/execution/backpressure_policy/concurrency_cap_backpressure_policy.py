@@ -159,18 +159,19 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             return num_tasks_running < self._concurrency_caps[op]
 
         # For this Op, if the objectstore budget (available) to total
-        # ratio is above threshold, skip dynamic output queue size backpressure.
-        available_budget_fraction = (
-            self._resource_manager.get_available_object_store_budget_fraction(op)
-        )
-        if (
-            available_budget_fraction is not None
-            and available_budget_fraction > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
-        ):
-            # If the objectstore budget (available) to total
-            # ratio is above threshold, skip dynamic output queue size
-            # backpressure, but still enforce the configured cap.
-            return num_tasks_running < self._concurrency_caps[op]
+        # ratio is below threshold (10%), skip dynamic output queue size backpressure.
+        op_usage = self._resource_manager.get_op_usage(op)
+        op_budget = self._resource_manager.get_budget(op)
+        if op_usage is not None and op_budget is not None:
+            total_mem = op_usage.object_store_memory + op_budget.object_store_memory
+            if total_mem == 0 or (
+                op_budget.object_store_memory / total_mem
+                > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+            ):
+                # If the objectstore budget (available) to total
+                # ratio is above threshold (10%), skip dynamic output queue size
+                # backpressure, but still enforce the configured cap.
+                return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
@@ -179,7 +180,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total
-        # ratio is above threshold, because the level and dev adjusts quickly.
+        # ratio is above threshold (10%), because the level and dev adjusts quickly.
         self._update_level_and_dev(op, current_queue_size_bytes)
         effective_cap = self._effective_cap(
             op, num_tasks_running, current_queue_size_bytes
