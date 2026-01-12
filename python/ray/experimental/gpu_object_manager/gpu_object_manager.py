@@ -4,7 +4,17 @@ import time
 import warnings
 from collections import defaultdict
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._private import ray_constants
@@ -17,7 +27,7 @@ if TYPE_CHECKING:
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
-    from ray.experimental.gpu_object_manager.types import (
+    from ray.experimental.gpu_object_manager.tensor_transport_manager import (
         CommunicatorMetadata,
         TensorTransportMetadata,
     )
@@ -122,6 +132,34 @@ class GPUObjectManager:
         self._monitor_failures_thread = None
         # Event to signal the monitor_failures thread to shutdown
         self._monitor_failures_shutdown_event = threading.Event()
+
+        # If the actor isn't in the dict, the task to launch the custom transport registration task hasn't been submitted yet.
+        # If the value is an object ref, we have to wait for the registration task to complete.
+        # If the value is True, the actor has registered any custom transports.
+        # The value should never be False.
+        # TODO: This is a short-term solution. In the future, we'll do registration with actor initialization
+        # to make actor restarts and submitting from another worker work.
+        self.actor_id_to_transports_registered: Dict[str, Union[ObjectRef, bool]] = {}
+
+    def register_custom_transports_on_actor(self, actor: "ray.actor.ActorHandle"):
+        from ray.experimental.gpu_object_manager.util import (
+            register_custom_tensor_transports_on_actor,
+        )
+
+        ref = register_custom_tensor_transports_on_actor(actor)
+        # ref is None if there are no custom transports registered.
+        self.actor_id_to_transports_registered[actor._actor_id] = (
+            True if ref is None else ref
+        )
+
+    def wait_until_custom_transports_registered(self, actor: "ray.actor.ActorHandle"):
+        actor_id = actor._actor_id
+        if actor_id not in self.actor_id_to_transports_registered:
+            self.register_custom_transports_on_actor(actor)
+
+        if self.actor_id_to_transports_registered[actor_id] is not True:
+            ray.get(self.actor_id_to_transports_registered[actor_id])
+            self.actor_id_to_transports_registered[actor_id] = True
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -259,7 +297,7 @@ class GPUObjectManager:
 
         tensor_transport_manager = get_tensor_transport_manager(ref_info.backend)
         if tensor_transport_manager.can_abort_transport():
-            if not tensor_transport_manager.is_one_sided():
+            if not tensor_transport_manager.__class__.is_one_sided():
                 # This is dead code until we implement a NCCL abort since NIXL
                 # is the only abortable transport for now and is one-sided.
                 ref_info.src_actor.__ray_call__.options(
@@ -462,6 +500,7 @@ class GPUObjectManager:
             if self.is_managed_object(obj_id):
                 gpu_object_ids.add(obj_id)
         if gpu_object_ids:
+            self.wait_until_custom_transports_registered(dst_actor)
             for obj_id in gpu_object_ids:
                 # Atomically gets the tensor transport metadata for an object and queues up a transfer
                 # if the tensor transport metadata is not available.
@@ -551,7 +590,7 @@ class GPUObjectManager:
         )
 
         send_ref = None
-        if not tensor_transport_manager.is_one_sided():
+        if not tensor_transport_manager.__class__.is_one_sided():
             # Send tensors stored in the `src_actor`'s GPU object store to the
             # destination rank `dst_rank`.
             # NOTE: We put this task on the background thread to avoid tasks

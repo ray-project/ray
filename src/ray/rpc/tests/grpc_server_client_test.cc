@@ -20,7 +20,6 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/tests/grpc_test_common.h"
-#include "ray/util/network_util.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
@@ -36,7 +35,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
-    grpc_server_.reset(new GrpcServer("test", 0, GetLocalhostIP()));
+    grpc_server_.reset(new GrpcServer("test", 0, true));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
