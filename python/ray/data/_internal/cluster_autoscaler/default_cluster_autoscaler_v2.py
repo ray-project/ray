@@ -50,7 +50,7 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
-def get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
+def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
     """Get the unique node resource specs and their count in the cluster."""
     # Filter out the head node.
     node_resources = [
@@ -115,7 +115,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
-            get_node_resource_spec_and_count
+            _get_node_resource_spec_and_count
         ),
     ):
         if resource_utilization_calculator is None:
@@ -139,8 +139,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         if autoscaling_coordinator is None:
             autoscaling_coordinator = DefaultAutoscalingCoordinator()
         self._autoscaling_coordinator = autoscaling_coordinator
-        if get_node_counts is None:
-            get_node_counts = get_node_resource_spec_and_count
         self._get_node_counts = get_node_counts
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.

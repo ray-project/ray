@@ -5,8 +5,8 @@ import pytest
 import ray
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
+    _get_node_resource_spec_and_count,
     _NodeResourceSpec,
-    get_node_resource_spec_and_count,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
@@ -60,7 +60,7 @@ class TestClusterAutoscaling:
         ray.shutdown()
 
     def test_get_node_resource_spec_and_count(self):
-        # Test get_node_resource_spec_and_count
+        # Test _get_node_resource_spec_and_count
 
         node_table = [
             {
@@ -108,7 +108,7 @@ class TestClusterAutoscaling:
         }
 
         with patch("ray.nodes", return_value=node_table):
-            assert get_node_resource_spec_and_count() == expected
+            assert _get_node_resource_spec_and_count() == expected
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
