@@ -3515,7 +3515,7 @@ class AutoscalingTest(unittest.TestCase):
                 _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(
-                    address=ray._private.worker.global_worker.gcs_client.address,
+                    address="localhost:12345",
                     autoscaling_config="",
                     log_dir=self.tmpdir,
                 )
