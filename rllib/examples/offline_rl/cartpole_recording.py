@@ -46,19 +46,27 @@ episodes - in this case each row is one episode.
 
 Number of experiences recorded: 26644
 """
+from pathlib import Path
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
     default_timesteps=200000,
@@ -107,8 +115,6 @@ stop = {
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     results = run_rllib_example_script_experiment(config, args, stop=stop)
 
     # Store the best checkpoint for recording.
@@ -121,7 +127,7 @@ if __name__ == "__main__":
     config.offline_data(
         output="local:///tmp/cartpole/",
         # Store columnar (tabular) data.
-        output_write_episodes=False,
+        output_write_episodes=True,
         # Each file should hold 1,000 rows.
         output_max_rows_per_file=1000,
         output_write_remaining_data=True,
@@ -130,6 +136,9 @@ if __name__ == "__main__":
         # that you have to use `input_compress_columns` in the same
         # way when using the data for training in `RLlib`.
         output_compress_columns=[Columns.OBS, Columns.ACTIONS],
+    )
+    config.env_runners(
+        batch_mode="complete_episodes",
     )
     # Change the evaluation settings to sample exactly 50 episodes
     # per evaluation iteration and increase the number of evaluation
@@ -146,9 +155,21 @@ if __name__ == "__main__":
     # Build the algorithm for evaluation.
     algo = config.build()
     # Load the checkpoint stored above.
+    rl_module_checkpoint = (
+        Path(best_checkpoint)
+        / COMPONENT_LEARNER_GROUP
+        / COMPONENT_LEARNER
+        / COMPONENT_RL_MODULE
+    )
     algo.restore_from_path(
-        best_checkpoint,
-        component=COMPONENT_RL_MODULE,
+        rl_module_checkpoint,
+        # Note, to load only a component of a checkpoint, specify the
+        # `component` argument and provide the path to the component.
+        component=(
+            f"{COMPONENT_LEARNER_GROUP}"
+            f"/{COMPONENT_LEARNER}"
+            f"/{COMPONENT_RL_MODULE}"
+        ),
     )
 
     # Evaluate over 10 iterations and record the data.

@@ -134,7 +134,7 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
 
 
 class PredicatePassThroughBehavior(Enum):
-    """Defines how predicates can be passed through through an operator."""
+    """Defines how predicates can be passed through an operator."""
 
     # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
     PASSTHROUGH = "passthrough"

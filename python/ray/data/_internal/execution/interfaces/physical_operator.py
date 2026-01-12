@@ -28,7 +28,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -76,20 +75,23 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
+
+        is_actor_task = not self.get_task_id().actor_id().is_nil()
+
+        ray.cancel(
+            self.get_waitable(),
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
+    def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
         # Get generator's `ObjectRef`
         if isinstance(object_ref, ObjectRefGenerator):
             object_ref = object_ref._generator_ref
-
-        is_actor_task = not object_ref.task_id().actor_id().is_nil()
-
-        ray.cancel(
-            object_ref,
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+        return object_ref.task_id()
 
 
 class DataOpTask(OpTask):
@@ -340,7 +342,9 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
+        self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
+        self._task_output_backpressure_policy: Optional[str] = None
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._is_execution_marked_finished = False
@@ -427,7 +431,7 @@ class PhysicalOperator(Operator):
             and internal_input_queue_num_blocks == 0
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
@@ -489,7 +493,7 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+    def get_max_concurrency_limit(self: "PhysicalOperator") -> Optional[int]:
         """The maximum number of tasks that can be run concurrently.
 
         Some operators manually configure a maximum concurrency. For example, if you
@@ -584,7 +588,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has completed().
+        """Called when the upstream operator at index `input_index` has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -592,7 +596,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators have completed().
+        """Called when all upstream operators has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.
@@ -730,48 +734,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+        self._task_submission_backpressure_policy = policy_name
 
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's output backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
+        self._task_output_backpressure_policy = policy_name
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        """Return whether this operator implements accurate memory accounting.
-
-        An operator that implements accurate memory accounting should properly
-        report its memory usage via the following APIs:
-          - `self._metrics.on_input_queued`.
-          - `self._metrics.on_input_dequeued`.
-          - `self._metrics.on_output_queued`.
-          - `self._metrics.on_output_dequeued`.
-        """
-        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
-        # all operators in the dataset have implemented accurate memory accounting.
-        # Eventually all operators should implement accurate memory accounting.
-        return False
 
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
@@ -815,11 +812,6 @@ class PhysicalOperator(Operator):
             op.num_outputs_total() or 0 for op in self.input_dependencies
         )
         return upstream_op_num_outputs
-
-    def get_max_concurrency_limit(self) -> Optional[int]:
-        """Max value of how many tasks this operator could run
-        concurrently (if limited)"""
-        return None
 
 
 class ReportsExtraResourceUsage(abc.ABC):
@@ -866,19 +858,3 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
-
-
-def _create_sub_pb(
-    name: str, total_output_rows: Optional[int], position: int
-) -> Tuple[ProgressBar, int]:
-    progress_bar = ProgressBar(
-        name,
-        total_output_rows or 1,
-        unit="row",
-        position=position,
-    )
-    # NOTE: call `set_description` to trigger the initial print of progress
-    # bar on console.
-    progress_bar.set_description(f"  *- {name}")
-    position += 1
-    return progress_bar, position

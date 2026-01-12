@@ -18,11 +18,10 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
@@ -33,6 +32,7 @@ from ray.data.block import (
     BlockType,
     U,
 )
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DataContext
 from ray.data.expressions import Expr
 
@@ -197,7 +197,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def hash(self) -> BlockColumn:
 
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
         if isinstance(first_non_null, TensorArrayElement):
@@ -214,7 +214,15 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         pd = lazy_import_pandas()
 
         try:
-            return pd.Series(self._column.unique())
+            if self.is_composed_of_lists():
+                # NOTE: Pandas uses hashing internally to compute unique values,
+                #       and hence we have to convert lists into tuples to make
+                #       them hashable
+                col = self._column.map(lambda l: l if l is None else tuple(l))
+            else:
+                col = self._column
+
+            return pd.Series(col.unique())
         except ValueError as e:
             if "buffer source array is read-only" in str(e):
                 # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
@@ -224,15 +232,23 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
                 raise
 
     def flatten(self) -> BlockColumn:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
-        if isinstance(first_non_null, TensorArrayElement):
-            self._column = self._column.apply(
+        if not isinstance(first_non_null, TensorArrayElement):
+            column = self._column
+        else:
+            column = self._column.apply(
                 lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
             )
 
-        return self._column.explode(ignore_index=True)
+        # NOTE: `Series.explode` explodes empty lists into NaNs, necessitating
+        #       filtering out of empty lists first
+        if self.is_composed_of_lists():
+            mask = column.apply(lambda x: x is not None and len(x) > 0)
+            column = column[mask]
+
+        return column.explode(ignore_index=True)
 
     def dropna(self) -> BlockColumn:
         return self._column.dropna()
@@ -267,11 +283,10 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     def _is_all_null(self):
         return not self._column.notna().any()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+    def is_composed_of_lists(self) -> bool:
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
-        if not types:
-            types = (list, np.ndarray, TensorArrayElement)
+        types = (list, np.ndarray, TensorArrayElement)
         first_non_null = next((x for x in self._column if x is not None), None)
         return isinstance(first_non_null, types)
 
@@ -302,7 +317,7 @@ class PandasBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        from ray.air.util.data_batch_conversion import (
+        from ray.data.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
         )
 
@@ -424,7 +439,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         ctx = DataContext.get_current()
         table = self._table
@@ -465,7 +480,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         # column to the resulting table.
@@ -506,7 +521,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from ray.air.util.tensor_extensions.pandas import TensorArray
+        from ray.data._internal.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()

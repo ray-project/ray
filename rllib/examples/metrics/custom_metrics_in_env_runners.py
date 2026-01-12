@@ -84,13 +84,13 @@ from matplotlib.colors import Normalize
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.utils.images import resize
-from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
-from ray.rllib.utils.metrics.stats.max import MaxStats
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.images import resize
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
+from ray.rllib.utils.metrics.stats.max import MaxStats
 from ray.tune.registry import get_trainable_cls, register_env
 
 

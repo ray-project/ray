@@ -367,6 +367,31 @@ def test_exception_with_registered_serializer(shutdown_only):
         ray.util.deregister_serializer(NoPickleError)
 
 
+def test_task_error_with_read_only_args_property(ray_start_regular):
+    class ReadOnlyArgsError(Exception):
+        def __init__(self, msg):
+            self._msg = msg
+
+        @property
+        def args(self):
+            return (self._msg,)
+
+        def __str__(self):
+            return self._msg
+
+    @ray.remote
+    def raise_read_only_args():
+        raise ReadOnlyArgsError("boom")
+
+    with pytest.raises(ReadOnlyArgsError) as exc_info:
+        ray.get(raise_read_only_args.remote())
+
+    assert isinstance(exc_info.value, RayTaskError)
+    assert isinstance(exc_info.value, ReadOnlyArgsError)  # verify dual inheritance
+    assert exc_info.value.args == (exc_info.value.cause,)  # verify args property works
+    assert "boom" in str(exc_info.value)
+
+
 def test_serialization_error_message(shutdown_only):
     expected_output_ray_put = """Could not serialize the put value <unlocked _thread.lock object at ADDRESS>:\nINSPECT_SERIALIZABILITY"""  # noqa
     expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg:\nINSPECT_SERIALIZABILITY"""  # noqa

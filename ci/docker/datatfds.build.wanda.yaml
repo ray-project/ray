@@ -1,0 +1,16 @@
+name: "datatfdsbuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
+dockerfile: ci/docker/datatfds.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/deplocks/tests/data/$REQUIREMENTS_FILE
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
+  - PYTHON_DEPSET=python/deplocks/tests/data/$REQUIREMENTS_FILE
+tags:
+  - cr.ray.io/rayproject/datatfdsbuild-py$PYTHON

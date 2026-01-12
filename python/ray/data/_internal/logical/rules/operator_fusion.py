@@ -90,6 +90,30 @@ class FuseOperators(Rule):
 
         This will ensure the map_batch's function receive the correct number of rows.
         We also ensure the output rows is `batch_size`.
+
+        Why don't we fuse `StreamingRepartition -> MapBatches`?
+
+        ----------------------------------------------------------------------------------------------------
+        |                      | Number of `map_batches` tasks                                             |
+        |----------------------|---------------------------------------------------------------------------|
+        | Fused                | num_input_blocks (which is <= num output blocks of StreamingRepartition) |
+        | Not fused            | num output blocks of StreamingRepartition                                 |
+        ----------------------------------------------------------------------------------------------------
+
+        When fused, the number of tasks equals the number of input blocks, which is
+        <= the number of output blocks of StreamingRepartition. If StreamingRepartition
+        is supposed to break down blocks to increase parallelism, that won't happen
+        when fused. So we don't fuse.
+
+        Why do we fuse `MapBatches -> StreamingRepartition` (when `batch_size % target_num_rows == 0`)?
+        ----------------------------------------------------------
+        |                      | Number of `map_batches` tasks  |
+        |----------------------|--------------------------------|
+        | Fused                | total_rows / batch_size        |
+        | Not fused            | total_rows / batch_size        |
+        ----------------------------------------------------------
+
+        Parallelism is unchanged, so we fuse to avoid intermediate materialization.
         """
         upstream_ops = dag.input_dependencies
         while (
@@ -252,8 +276,17 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, StreamingRepartition):
             return (
                 isinstance(up_logical_op, MapBatches)
+                and up_logical_op._batch_size is not None
+                and down_logical_op.target_num_rows_per_block is not None
+                and down_logical_op.target_num_rows_per_block > 0
+                # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
+                # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
+                # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
+                # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
+                # https://anyscale1.atlassian.net/browse/DATA-1731
                 and up_logical_op._batch_size
-                == down_logical_op.target_num_rows_per_block
+                % down_logical_op.target_num_rows_per_block
+                == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
@@ -276,7 +309,9 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert up_logical_op._batch_size == down_logical_op.target_num_rows_per_block
+        assert (
+            up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
+        )
         batch_size = up_logical_op._batch_size
 
         compute = self._fuse_compute_strategy(
@@ -320,6 +355,7 @@ class FuseOperators(Rule):
             name,
             input_op,
             up_logical_op._fn,
+            can_modify_num_rows=up_logical_op.can_modify_num_rows(),
             fn_args=up_logical_op._fn_args,
             fn_kwargs=up_logical_op._fn_kwargs,
             fn_constructor_args=up_logical_op._fn_constructor_args,
@@ -425,6 +461,20 @@ class FuseOperators(Rule):
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
+        # Fuse on_start callbacks from both operators.
+        # This preserves deferred initialization (e.g., on_write_start for Write ops).
+        up_on_start = up_op._on_start
+        down_on_start = down_op._on_start
+        if up_on_start is not None and down_on_start is not None:
+
+            def fused_on_start(schema):
+                up_on_start(schema)
+                down_on_start(schema)
+
+            on_start = fused_on_start
+        else:
+            on_start = up_on_start or down_on_start
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -438,6 +488,7 @@ class FuseOperators(Rule):
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
+            on_start=on_start,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -453,6 +504,10 @@ class FuseOperators(Rule):
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
+
+        can_modify_num_rows = (
+            up_logical_op.can_modify_num_rows() or down_logical_op.can_modify_num_rows()
+        )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
                 name,
@@ -464,6 +519,7 @@ class FuseOperators(Rule):
                 fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 compute=compute,
+                can_modify_num_rows=can_modify_num_rows,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -472,6 +528,7 @@ class FuseOperators(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
+                can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
