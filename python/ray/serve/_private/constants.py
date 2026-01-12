@@ -463,6 +463,12 @@ RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
     "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (4 * 1024 * 1024 * 1024) - 1
 )
 
+RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    # Default max message length in gRPC is 4MB, we keep that default
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH",
+    4 * 1024 * 1024,
+)
+
 # Default options passed when constructing gRPC servers.
 DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),

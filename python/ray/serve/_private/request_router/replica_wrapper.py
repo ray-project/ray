@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
+    RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import (
@@ -238,7 +238,7 @@ class RunningReplica:
                 options=[
                     (
                         "grpc.max_receive_message_length",
-                        RAY_SERVE_GRPC_MAX_MESSAGE_SIZE,
+                        RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
                     )
                 ],
             )
