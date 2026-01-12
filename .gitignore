@@ -244,8 +244,3 @@ tag-mapping.json
 
 # Custom BYOD build rayci yaml file
 .buildkite/release/custom_byod_build.rayci.yml
-
-# Local claude code
-CLAUDE.md
-CPP_ARCHITECTURE.md
-PY_ARCHITECTURE.md
