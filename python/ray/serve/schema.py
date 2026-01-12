@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
-from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.pydantic_compat import (
     BaseModel,
     Extra,
@@ -549,13 +548,12 @@ class ServeApplicationSchema(BaseModel):
         ),
     )
     host: str = Field(
-        default_factory=get_all_interfaces_ip,
+        default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
-            "Serve publicly. Cannot be updated once your Serve application "
-            "has started running. The Serve application must be shut down and "
-            "restarted with the new host instead."
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -730,12 +728,12 @@ class HTTPOptionsSchema(BaseModel):
     """
 
     host: str = Field(
-        default_factory=get_all_interfaces_ip,
+        default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
-            "Serve publicly. Cannot be updated once Serve has started running. "
-            "Serve must be shut down and restarted with the new host instead."
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new host instead."
         ),
     )
     port: int = Field(
