@@ -26,6 +26,9 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
+#: HTTP Host
+DEFAULT_HTTP_HOST = "127.0.0.1"
+
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
@@ -432,11 +435,6 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
 
 RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
-)
-
-# Feature flag to always run a proxy on the head node even if it has no replicas.
-RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = get_env_bool(
-    "RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1"
 )
 
 # Default is 2GiB, the max for a signed int.

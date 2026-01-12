@@ -4,6 +4,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
+from .downstream_capacity_backpressure_policy import (
+    get_available_object_store_budget_fraction,
+)
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -160,8 +163,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         # For this Op, if the objectstore budget (available) to total
         # ratio is above threshold, skip dynamic output queue size backpressure.
-        available_budget_fraction = (
-            self._resource_manager.get_available_object_store_budget_fraction(op)
+        available_budget_fraction = get_available_object_store_budget_fraction(
+            self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
         if (
             available_budget_fraction is not None

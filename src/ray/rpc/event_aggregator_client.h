@@ -25,7 +25,6 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/logging.h"
-#include "ray/util/network_util.h"
 #include "src/ray/protobuf/events_event_aggregator_service.grpc.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 
@@ -65,8 +64,8 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   };
 
   void Connect(const int port) override {
-    grpc_client_ = std::make_shared<GrpcClient<rpc::events::EventAggregatorService>>(
-        GetLocalhostIP(), port, *client_call_manager_);
+    grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
+        "127.0.0.1", port, *client_call_manager_);
 
     // Create RetryableGrpcClient for automatic retry with exponential backoff
     retryable_grpc_client_ = RetryableGrpcClient::Create(
