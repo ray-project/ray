@@ -185,7 +185,9 @@ class TaskManagerTest : public ::testing::Test {
             mock_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
-            /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
+            /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+            /*set_direct_transport_metadata=*/
+            [](const ObjectID &, const std::string &) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -512,11 +514,11 @@ TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   // Check that resubmitting a canceled task does not crash and returns
-  // FAILED_TASK_CANCELED.
+  // OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.
   manager_.MarkTaskCanceled(spec.TaskId());
   std::vector<ObjectID> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
 
   // Final cleanup.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
@@ -1409,7 +1411,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1474,7 +1477,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1537,7 +1541,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -2785,7 +2790,7 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
       spec2.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
   ASSERT_EQ(manager_.ResubmitTask(spec2.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_TRUE(task_deps.empty());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
 
@@ -3027,7 +3032,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3109,7 +3115,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   // Create a task that will be retried
   rpc::Address caller_address;
