@@ -224,4 +224,4 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_slim_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_slim/ray_base_slim_py{{matrix.python}}.lock"
