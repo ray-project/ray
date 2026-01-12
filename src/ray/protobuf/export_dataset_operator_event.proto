@@ -24,6 +24,7 @@ message ExportDatasetOperatorEventData {
     UNSPECIFIED = 0;
     ISSUE_DETECTION_HANGING = 1;
     ISSUE_DETECTION_HIGH_MEMORY = 2;
+    OPERATOR_SCHEMA = 3;
   }
 
   // The dataset ID

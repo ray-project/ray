@@ -35,6 +35,10 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.operator_event_exporter import (
+    OperatorEvent,
+    get_operator_event_exporter,
+)
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
@@ -202,6 +206,7 @@ class OpState:
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
+        self._is_schema_exported: bool = False
         self._warned_on_schema_divergence: bool = False
         # Progress Manager
         self.progress_manager_uuid: Optional[UUID] = None
@@ -249,6 +254,22 @@ class OpState:
         )
 
         self._schema = ref.schema
+        print(self.op)
+        print(self._schema)
+        operator_event_exporter = get_operator_event_exporter()
+        if operator_event_exporter is not None and self._schema is not None and not self._is_schema_exported:
+            event_time = time.time()
+            operator_event = OperatorEvent(
+                dataset_id="dataset_id",
+                operator_id=self.op.id,
+                operator_name=self.op.name,
+                event_time=event_time,
+                event_type="OPERATOR_SCHEMA",
+                message=str(self._schema),
+            )
+            operator_event_exporter.export_operator_event(operator_event)
+            self._is_schema_exported = True
+
         self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
