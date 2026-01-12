@@ -166,26 +166,7 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    # Determine which router to use.
-    # NOTE: RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0 (same-loop mode) is ignored for
-    # driver handles (source=UNKNOWN). Driver handles always use SingletonThreadRouter
-    # because:
-    # 1. Drivers may call handle.remote().result() from sync contexts without an event loop
-    # 2. The same-loop optimization only benefits replicas/proxies that have event loops
-    use_separate_loop = handle_options._run_router_in_separate_loop
-    if handle_options._source == DeploymentHandleSource.UNKNOWN:
-        use_separate_loop = True
-
-    if not use_separate_loop:
-        try:
-            asyncio.get_running_loop()
-            router_wrapper_cls = CurrentLoopRouter
-        except RuntimeError:
-            raise RuntimeError(
-                "No event loop running. Same-loop router mode requires an asyncio "
-                "event loop. This is unexpected for replica/proxy handles."
-            )
-    else:
+    if handle_options._run_router_in_separate_loop:
         router_wrapper_cls = SingletonThreadRouter
         # Determine the component for the event loop monitor
         if handle_options._source == DeploymentHandleSource.REPLICA:
@@ -197,6 +178,17 @@ def create_router(
         SingletonThreadRouter._get_singleton_asyncio_loop(
             component
         ).set_exception_handler(asyncio_grpc_exception_handler)
+    else:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "No event loop running. You cannot use a handle initialized with "
+                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
+                "loop."
+            )
+
+        router_wrapper_cls = CurrentLoopRouter
 
     return router_wrapper_cls(
         controller_handle=controller_handle,
