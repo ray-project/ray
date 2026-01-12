@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
+from ray.data.aggregate import Unique
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -142,15 +143,11 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=self.encode_lists,
-                key_gen=key_gen,
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                col, ignore_nulls=False, encode_lists=self.encode_lists
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
         )
