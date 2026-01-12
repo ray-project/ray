@@ -22,7 +22,7 @@ def parse_lock_file(depset_path: str) -> List[Dep]:
     with open(depset_path, "r") as f:
         for line in f:
             package_line_match = re.search(
-                r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.+-]+)", line
+                r"([A-Za-z0-9_.-]+)==([A-Za-z0-9.+!-]+)", line
             )
             if package_line_match:
                 name, version = package_line_match.group(1), package_line_match.group(2)

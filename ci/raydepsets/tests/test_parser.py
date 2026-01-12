@@ -64,5 +64,16 @@ def test_parser_package_with_dots():
         assert parsed_deps[0].version == "5.4.0"
 
 
+def test_parser_with_version_epoch():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        lock_file_path = Path(tmpdir) / "test.lock"
+        with open(lock_file_path, "w") as f:
+            f.write("setuptools==1!60.0.0\n")
+        parsed_deps = parse_lock_file(lock_file_path)
+        assert len(parsed_deps) == 1
+        assert parsed_deps[0].name == "setuptools"
+        assert parsed_deps[0].version == "1!60.0.0"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
