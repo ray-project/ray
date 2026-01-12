@@ -628,7 +628,7 @@ class MultiAgentEpisode:
                 )
                 # Update the env- to agent-step mapping.
                 self.env_t_to_agent_t[agent_id].append(
-                    self.env_t_started + len(sa_episode)
+                    len(sa_episode) + self.agent_t_started[agent_id]
                 )
 
             # Agent is also done. -> Erase all hanging values for this agent
@@ -2158,6 +2158,34 @@ class MultiAgentEpisode:
         )
         agent_module_ids = agent_module_ids or {}
 
+        # First pass: count observations per agent in lookback AND total.
+        # This allows us to recover the correct env_t_to_agent_t mapping.
+        lookback_obs_count_per_agent = defaultdict(int)
+        total_obs_count_per_agent = defaultdict(int)
+        for data_idx, obs in enumerate(observations):
+            for agent_id in obs:
+                total_obs_count_per_agent[agent_id] += 1
+                if data_idx < self._len_lookback_buffers:
+                    lookback_obs_count_per_agent[agent_id] += 1
+
+        # Compute the starting agent_t for each agent.
+        # The formula depends on whether there are observations after the lookback:
+        # - If new_chunk_obs > 0: first_agent_t = agent_t_started - lookback_count
+        # - If new_chunk_obs == 0: first_agent_t = agent_t_started - lookback_count + 1
+        # This is because agent_t_started = len(completed_actions), which equals the
+        # observation_index of the NEXT observation if there is one, or the LAST
+        # observation if the action is still hanging.
+        current_agent_t = {}
+        for agent_id, lookback_count in lookback_obs_count_per_agent.items():
+            total_count = total_obs_count_per_agent[agent_id]
+            new_chunk_obs = total_count - lookback_count
+            if new_chunk_obs > 0:
+                current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count
+            else:
+                current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count + 1
+        print(f"DEBUG _init_single_agent_episodes: env_t_started={self.env_t_started}, env_t={self.env_t}, _len_lookback_buffers={self._len_lookback_buffers}, num_observations={len(observations)}")
+        print(f"DEBUG _init_single_agent_episodes: {lookback_obs_count_per_agent=}, {total_obs_count_per_agent=}, {current_agent_t=}, {self.agent_t_started=}")
+
         # Step through all observations and interpret these as the (global) env steps.
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
             # If we do have actions/extra outs/rewards for this timestep, use the data.
@@ -2177,14 +2205,6 @@ class MultiAgentEpisode:
 
                 observations_per_agent[agent_id].append(agent_obs)
                 infos_per_agent[agent_id].append(inf.get(agent_id, {}))
-
-                # Update env_t_to_agent_t mapping.
-                self.env_t_to_agent_t[agent_id].append(
-                    self.env_t_started
-                    - self._len_lookback_buffers
-                    + len(observations_per_agent[agent_id])
-                    - 1
-                )
 
                 # Pull out hanging action (if not first obs for this agent) and
                 # complete step for agent.
@@ -2223,6 +2243,16 @@ class MultiAgentEpisode:
                 # be done. Automatically add it to `done_per_agent` and `terminateds`.
                 elif data_idx < len(observations) - 1:
                     done_per_agent[agent_id] = terminateds[agent_id] = True
+
+                # Update env_t_to_agent_t mapping using the recovered agent_t.
+                # For agents in the lookback, current_agent_t was computed as:
+                #   agent_t_started - lookback_obs_count
+                # For new agents (not in lookback), initialize current_agent_t to 0.
+                if agent_id not in current_agent_t:
+                    current_agent_t[agent_id] = 0
+                self.env_t_to_agent_t[agent_id].append(current_agent_t[agent_id])
+                print(f"DEBUG env_t_to_agent_t: {agent_id=}, {data_idx=}, appending agent_t={current_agent_t[agent_id]}")
+                current_agent_t[agent_id] += 1
 
             # Those agents that did NOT step:
             # - Get self.SKIP_ENV_TS_TAG added to their env_t_to_agent_t mapping.
@@ -2302,6 +2332,9 @@ class MultiAgentEpisode:
             )
             # and store it.
             self.agent_episodes[agent_id] = sa_episode
+
+        output = {agent_id: f'get={buffer.get()}, lookback={buffer.lookback}, data={buffer.data}' for agent_id, buffer in self.env_t_to_agent_t.items()}
+        print(output)
 
     def _get(
         self,
