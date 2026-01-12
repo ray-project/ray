@@ -125,6 +125,25 @@ class RayEventRecorderTest : public ::testing::Test {
     return total;
   }
 
+  // Helper to initialize RayConfig with common test settings
+  void InitializeConfig(bool enable_ray_event, int batch_size = 10000) {
+    std::string config = R"(
+{
+  "enable_ray_event": )" +
+                         std::string(enable_ray_event ? "true" : "false");
+
+    if (batch_size != 10000) {
+      config += R"(,
+  "ray_event_recorder_send_batch_size": )" +
+                std::to_string(batch_size);
+    }
+
+    config += R"(
+}
+)";
+    RayConfig::instance().initialize(config);
+  }
+
   instrumented_io_context io_service_;
   std::unique_ptr<FakeEventAggregatorClient> fake_client_;
   std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
@@ -136,12 +155,7 @@ class RayEventRecorderTest : public ::testing::Test {
 };
 
 TEST_F(RayEventRecorderTest, TestMergeEvents) {
-  RayConfig::instance().initialize(
-      R"(
-{
-"enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
   rpc::JobTableData data;
   data.set_job_id("test_job_id");
@@ -168,12 +182,7 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
 }
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
-  RayConfig::instance().initialize(
-      R"(
-{
-"enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
   rpc::JobTableData data1;
   data1.set_job_id("test_job_id_1");
@@ -274,12 +283,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
 }
 
 TEST_F(RayEventRecorderTest, TestDropEvents) {
-  RayConfig::instance().initialize(
-      R"(
-{
-"enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
   size_t expected_num_dropped_events = 3;
 
@@ -313,12 +317,7 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
 }
 
 TEST_F(RayEventRecorderTest, TestDisabled) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": false
-}
-  )");
+  InitializeConfig(/*enable_ray_event=*/false);
   recorder_->StartExportingEvents();
   rpc::JobTableData data;
   data.set_job_id("test_job_id_1");
@@ -339,13 +338,7 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
 }
 
 TEST_F(RayEventRecorderTest, TestBatchSizeEnforcement) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true,
-  "ray_event_recorder_send_batch_size": 2
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true, /*batch_size=*/2);
   recorder_->StartExportingEvents();
 
   // Add 5 unique events (won't merge since different job IDs)
@@ -372,13 +365,7 @@ TEST_F(RayEventRecorderTest, TestBatchSizeEnforcement) {
 }
 
 TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true,
-  "ray_event_recorder_send_batch_size": 2
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true, /*batch_size=*/2);
   recorder_->StartExportingEvents();
 
   rpc::JobTableData data;
@@ -417,12 +404,7 @@ TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
 }
 
 TEST_F(RayEventRecorderTest, TestSuccessMetricsRecorded) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
 
   // Add 3 unique events
@@ -437,12 +419,7 @@ TEST_F(RayEventRecorderTest, TestSuccessMetricsRecorded) {
 }
 
 TEST_F(RayEventRecorderTest, TestFailureMetricsRecorded) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
 
   // Configure client to return error
@@ -460,12 +437,7 @@ TEST_F(RayEventRecorderTest, TestFailureMetricsRecorded) {
 }
 
 TEST_F(RayEventRecorderTest, TestEmptyBufferNoMetrics) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
   recorder_->StartExportingEvents();
 
   // Don't add any events, just trigger export
@@ -478,12 +450,7 @@ TEST_F(RayEventRecorderTest, TestEmptyBufferNoMetrics) {
 }
 
 TEST_F(RayEventRecorderTest, TestMetricSourceTag) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_ray_event": true
-}
-)");
+  InitializeConfig(/*enable_ray_event=*/true);
 
   // Create a new recorder with different metric_source
   auto custom_client = std::make_unique<FakeEventAggregatorClient>();
