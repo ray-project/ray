@@ -116,22 +116,27 @@ class NixlTensorTransport(TensorTransportManager):
             return duplicate_meta
 
         if gpu_object:
+            # We assume all tensors in one GPU object have the same device type, but we
+            # don't assume they're all on the same device.
+            devices = set()
+            device = gpu_object[0].device
             for t in gpu_object:
                 if t.device.type != device.type:
                     raise ValueError(
                         "All tensors in an RDT object must have the same device type."
                     )
                 tensor_meta.append((t.shape, t.dtype))
+                devices.add(t.device)
             if device.type == "cuda":
                 # We have to synchronize before memory registration to assure the object
                 # has been created because nixl doesn't guarantee it will.
-                torch.cuda.synchronize()
+                for device in devices:
+                    torch.cuda.synchronize(device)
             nixl_agent = self.get_nixl_agent()
             reg_descs = nixl_agent.register_memory(gpu_object)
             serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
             agent_meta = nixl_agent.get_agent_metadata()
-            # We assume all tensors in one GPU object have the same device type.
-            device = gpu_object[0].device
+
         else:
             reg_descs, serialized_descs, agent_meta = None, None, None
 
