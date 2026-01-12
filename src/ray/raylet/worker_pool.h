@@ -820,7 +820,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
-  void std::unique_ptr<ProcessInterface> &AddWorkerProcess(
+  const std::unique_ptr<ProcessInterface> &AddWorkerProcess(
       State &state,
       const WorkerID &worker_id,
       rpc::WorkerType worker_type,

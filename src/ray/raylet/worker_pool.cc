@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <deque>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -248,7 +249,7 @@ const std::unique_ptr<ProcessInterface> &WorkerPool::AddWorkerProcess(
       worker_id,
       WorkerProcessInfo{/*is_pending_registration=*/true,
                         worker_type,
-                        proc,
+                        std::move(proc),
                         start,
                         runtime_env_info,
                         dynamic_options,
@@ -524,6 +525,7 @@ WorkerPool::StartWorkerProcess(
 
   auto start = std::chrono::high_resolution_clock::now();
   // Start a process and measure the startup time.
+  std::cout << "[Kunchd] StartWorkerProcess: starting process" << std::endl;
   std::unique_ptr<ProcessInterface> proc =
       StartProcess(worker_command_args, env, worker_id);
   worker_pool_metrics_.num_workers_started_sum.Record(1);
@@ -643,6 +645,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
   // Launch the process to create the worker.
   std::error_code ec;
   std::vector<const char *> argv;
+  std::cout << "[Kunchd] StartProcess: creating argv" << std::endl;
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
@@ -675,6 +678,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
   // Workers should be placed into their own process groups (if enabled) to enable
   // per-worker cleanup via killpg on worker death.
   const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
+  std::cout << "[Kunchd] StartProcess: creating process" << std::endl;
   std::unique_ptr<ProcessInterface> child =
       std::make_unique<Process>(argv.data(),
                                 ec,
@@ -683,6 +687,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
                                 /*pipe_to_stdin=*/false,
                                 add_to_cgroup_hook_,
                                 new_process_group);
+  std::cout << "[Kunchd] StartProcess: created process: " << child->GetId() << std::endl;
   if (!child->IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -1342,6 +1347,7 @@ void WorkerPool::StartNewWorker(
         request->runtime_env_info_.serialized_runtime_env();
 
     PopWorkerStatus status = PopWorkerStatus::OK;
+    std::cout << "[Kunchd] StartNewWorker: starting worker process" << std::endl;
     auto [proc, worker_id] =
         StartWorkerProcess(request->language_,
                            request->worker_type_,
@@ -1487,7 +1493,10 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
   // If there's an idle worker that fits the lease, use it.
   // Else, start a new worker.
   auto worker = FindAndPopIdleWorker(*pop_worker_request);
+  std::cout << "[Kunchd] PopWorker: found worker: "
+            << (worker != nullptr ? worker->WorkerId().Hex() : "null") << std::endl;
   if (worker == nullptr) {
+    std::cout << "[Kunchd] PopWorker: no idle worker, starting new worker" << std::endl;
     StartNewWorker(pop_worker_request);
     return;
   }
