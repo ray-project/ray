@@ -159,3 +159,14 @@ class TestLSTMContainingRLModuleWithTargetNetwork(unittest.TestCase):
             self.module._lstm.parameters(), self.module._old_lstm.parameters()
         ):
             self.assertFalse(torch.allclose(main_param, target_param))
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))
