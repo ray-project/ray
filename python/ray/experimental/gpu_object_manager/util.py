@@ -44,11 +44,13 @@ def register_tensor_transport(
     transport_manager_class: type[TensorTransportManager],
 ):
     """
-    Register a new tensor transport for use in Ray.
+    Register a new tensor transport for use in Ray. Note that this needs to be called
+    before you create the actors that will use the transport. The actors also
+    need to be created in the same process from which you call this function.
 
     Args:
         transport_name: The name of the transport protocol.
-        devices: List of device types supported by this transport (e.g., ["cuda", "cpu"]).
+        devices: List of PyTorch device types supported by this transport (e.g., ["cuda", "cpu"]).
         transport_manager_class: A class that implements TensorTransportManager.
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.

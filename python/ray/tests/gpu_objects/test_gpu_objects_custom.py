@@ -133,7 +133,7 @@ def test_register_and_use_custom_transport(ray_start_regular):
             return data.sum().item()
 
     # Classes defined in test files get pickled by ref. So we need to
-    # explcitly pickle the transport class in this module by value.
+    # explicitly pickle the transport class in this module by value.
     # Note that this doesn't happen if you define the transport class on the
     # driver, something with pytest convinces cloudpickle to pickle by ref.
     from ray import cloudpickle
