@@ -3,6 +3,7 @@ import sys
 import time
 from typing import Optional
 
+import ray._private.worker
 from ray.data._internal.progress.base_progress import BaseProgressBar
 from ray.data._internal.progress.utils import truncate_operator_name
 from ray.experimental import tqdm_ray
@@ -56,10 +57,11 @@ class ProgressBar(BaseProgressBar):
 
         use_ray_tqdm = DataContext.get_current().use_ray_tqdm
 
-        # If enabled, and in non-interactive terminal, use logging instead of tqdm.
-        # Exception: tqdm_ray is designed to work in non-interactive contexts
-        # (workers/actors) by sending JSON progress updates to the driver.
-        if enabled and not sys.stdout.isatty() and not use_ray_tqdm:
+        # If enabled and in non-interactive terminal, use logging instead of tqdm.
+        # Exception: tqdm_ray works in Ray workers by sending JSON to driver.
+        worker = ray._private.worker
+        in_ray_worker = worker.global_worker.mode == worker.WORKER_MODE
+        if enabled and not sys.stdout.isatty() and not (use_ray_tqdm and in_ray_worker):
             self._use_logging = True
             enabled = False
             if log_once("progress_bar_disabled"):
