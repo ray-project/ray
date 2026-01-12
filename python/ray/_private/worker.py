@@ -2821,13 +2821,23 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if _mode() is not LOCAL_MODE:
-        ray._raylet.setproctitle(title)
+    if _mode() is LOCAL_MODE:
+        yield
+        return
+
+    # Avoid expensive per-task proctitle updates on macOS unless explicitly enabled.
+    if (
+        sys.platform == "darwin"
+        and os.environ.get("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN") != "1"
+    ):
+        yield
+        return
+
+    ray._raylet.setproctitle(title)
     try:
         yield
     finally:
-        if _mode() is not LOCAL_MODE:
-            ray._raylet.setproctitle(next_title)
+        ray._raylet.setproctitle(next_title)
 
 
 # Global variable to make sure we only send out the warning once.

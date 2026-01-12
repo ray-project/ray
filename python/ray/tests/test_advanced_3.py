@@ -6,6 +6,7 @@ import pickle
 import socket
 import sys
 import time
+import uuid
 
 import numpy as np
 import pytest
@@ -176,7 +177,16 @@ def test_wait_reconstruction(shutdown_only):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Windows doesn't support changing process title."
+    sys.platform == "win32"
+    or (
+        sys.platform == "darwin"
+        and os.environ.get("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN") != "1"
+    ),
+    reason=(
+        "Windows doesn't support changing process title. "
+        "On macOS, task-level proctitle is disabled unless "
+        "RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN=1."
+    ),
 )
 def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
@@ -197,7 +207,16 @@ def test_ray_setproctitle(ray_start_2_cpus):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Windows doesn't support changing process title."
+    sys.platform == "win32"
+    or (
+        sys.platform == "darwin"
+        and os.environ.get("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN") != "1"
+    ),
+    reason=(
+        "Windows doesn't support changing process title. "
+        "On macOS, task-level proctitle is disabled unless "
+        "RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN=1."
+    ),
 )
 def test_ray_task_name_setproctitle(ray_start_2_cpus):
     method_task_name = "foo"
@@ -222,7 +241,16 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Windows doesn't support changing process title."
+    sys.platform == "win32"
+    or (
+        sys.platform == "darwin"
+        and os.environ.get("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN") != "1"
+    ),
+    reason=(
+        "Windows doesn't support changing process title. "
+        "On macOS, task-level proctitle is disabled unless "
+        "RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN=1."
+    ),
 )
 def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     @ray.remote
@@ -250,6 +278,22 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     generator = actor.f.remote()
     for _ in range(4):
         ray.get(next(generator))
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="macOS-specific proctitle behavior."
+)
+def test_ray_setproctitle_disabled_on_darwin(ray_start_2_cpus, monkeypatch):
+    monkeypatch.delenv("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN", raising=False)
+
+    @ray.remote
+    def unique_task():
+        return psutil.Process().cmdline()[0]
+
+    task_name = f"proctitle_test_{uuid.uuid4().hex}"
+    expected = f"ray::{task_name}"
+    observed = ray.get(unique_task.options(name=task_name).remote())
+    assert observed != expected
 
 
 @pytest.mark.skipif(
