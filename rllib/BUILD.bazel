@@ -2675,6 +2675,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_lstm_target_network_rl_module",
+    size = "small",
+    srcs = ["core/rl_module/torch/tests/test_lstm_target_network_rl_module.py"],
+    tags = [
+        "core",
+        "team:rllib",
+        "torch",
+    ],
+    deps = [":conftest"],
+)
+
 # TODO(Artur): Comment this back in as soon as we can test with GPU
 # py_test(
 #    name = "test_torch_rl_module_gpu",
