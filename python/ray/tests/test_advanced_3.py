@@ -283,9 +283,12 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
 @pytest.mark.skipif(
     sys.platform != "darwin", reason="macOS-specific proctitle behavior."
 )
-def test_ray_setproctitle_disabled_on_darwin(ray_start_2_cpus, monkeypatch):
-    monkeypatch.delenv("RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN", raising=False)
-
+@pytest.mark.parametrize(
+    "ray_start_2_cpus",
+    [{"runtime_env": {"env_vars": {"RAY_ENABLE_TASK_PROCTITLE_ON_DARWIN": "0"}}}],
+    indirect=True,
+)
+def test_ray_setproctitle_disabled_on_darwin(ray_start_2_cpus):
     @ray.remote
     def unique_task():
         return psutil.Process().cmdline()[0]
