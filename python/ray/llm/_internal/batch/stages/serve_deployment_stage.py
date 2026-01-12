@@ -14,6 +14,7 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.stages.common import truncate_str
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -177,12 +178,12 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             request, output, time_taken = await self.generate_async(row)
 
             return {
+                **output,
                 "request_id": request["request_id"],
                 self.IDX_IN_BATCH_COLUMN: request["idx_in_batch"],
                 "batch_uuid": batch_uuid.hex,
                 "time_taken": time_taken,
                 "__inference_error__": None,
-                **output,
             }
         except Exception as e:
             # Fatal errors always propagate - replica/deployment is dead
@@ -197,16 +198,16 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
                 error_msg,
             )
 
-            # Include request_kwargs snippet
-            prompt = str(original_request_kwargs)
-            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
-                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
+            # Include request_kwargs snippet for debuggability
+            request_str = truncate_str(
+                str(original_request_kwargs), _MAX_PROMPT_LENGTH_IN_ERROR
+            )
 
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "__inference_error__": error_msg,
-                "request_kwargs": prompt,
+                "request_kwargs": request_str,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -223,30 +224,13 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         batch_uuid = uuid.uuid4()
         t = time.perf_counter()
 
-        if self.should_continue_on_error:
-            # Use error-handling wrapper for each row
-            tasks = [
-                asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
-                for row in batch
-            ]
+        tasks = [
+            asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
+            for row in batch
+        ]
 
-            for resp in asyncio.as_completed(tasks):
-                result = await resp
-                yield result
-        else:
-            # Original behavior: exceptions propagate immediately
-            tasks = [asyncio.create_task(self.generate_async(row)) for row in batch]
-
-            for resp in asyncio.as_completed(tasks):
-                request, output, time_taken = await resp
-
-                yield {
-                    "request_id": request["request_id"],
-                    self.IDX_IN_BATCH_COLUMN: request["idx_in_batch"],
-                    "batch_uuid": batch_uuid.hex,
-                    "time_taken": time_taken,
-                    **output,
-                }
+        for resp in asyncio.as_completed(tasks):
+            yield await resp
 
         batch_time_taken = time.perf_counter() - t
         logger.info(
