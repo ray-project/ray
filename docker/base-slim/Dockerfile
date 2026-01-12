@@ -109,8 +109,6 @@ set -x
 
 MINIFORGE_VERSION="24.11.3-0"
 
-ls -la /home/ray/
-
 # Install miniforge
 MINIFORGE_LINK="https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-${HOSTTYPE}.sh"
 curl -sfL -o /tmp/miniforge.sh "${MINIFORGE_LINK}"
