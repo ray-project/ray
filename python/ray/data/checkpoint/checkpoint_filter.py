@@ -5,12 +5,17 @@ from typing import List, Optional
 
 import numpy
 import pyarrow
+from pyarrow import parquet as pq
 
 import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
 from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.checkpoint_writer import (
+    DATA_FILE_PATH_METADATA_KEY,
+    PENDING_CHECKPOINT_SUFFIX,
+)
 from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
@@ -177,9 +182,15 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
     def load_checkpoint(self) -> ObjectRef[Block]:
         """Load checkpointed ids as a sorted block.
 
+        This method first recovers any pending checkpoints from incomplete
+        2-phase commits, then loads the committed checkpoint data.
+
         Returns:
             ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
         """
+        # Recover pending checkpoints before loading
+        self._recover_pending_checkpoints()
+
         loader = IdColumnCheckpointLoader(
             checkpoint_path=self.checkpoint_path,
             filesystem=self.filesystem,
@@ -187,6 +198,142 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
             checkpoint_path_partition_filter=self.ckpt_config.checkpoint_path_partition_filter,
         )
         return loader.load_checkpoint()
+
+    def _recover_pending_checkpoints(self) -> None:
+        """Recover pending checkpoints from incomplete 2-phase commits.
+
+        For each pending checkpoint file:
+        - Read the data_file_path from its metadata
+        - If the data file exists → commit the checkpoint (rename to committed)
+        - If the data file doesn't exist → delete the pending checkpoint
+        """
+        from pyarrow.fs import FileSelector, FileType
+
+        try:
+            # List all files in the checkpoint directory
+            file_infos = self.filesystem.get_file_info(
+                FileSelector(self.checkpoint_path_unwrapped, recursive=False)
+            )
+        except Exception as e:
+            # Directory might not exist yet
+            logger.debug(f"Could not list checkpoint directory: {e}")
+            return
+
+        pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
+
+        for file_info in file_infos:
+            if file_info.type != FileType.File:
+                continue
+
+            file_path = file_info.path
+            if not file_path.endswith(pending_suffix):
+                continue
+
+            logger.info(f"Found pending checkpoint file: {file_path}")
+
+            try:
+                # Read metadata from pending checkpoint to get data file path
+                data_file_path = self._read_data_file_path_from_checkpoint(file_path)
+
+                if data_file_path is None:
+                    logger.warning(
+                        f"Pending checkpoint {file_path} has no data_file_path metadata, "
+                        "deleting it."
+                    )
+                    self._delete_pending_checkpoint(file_path)
+                    continue
+
+                # Check if the corresponding data file exists
+                if self._data_file_exists(data_file_path):
+                    # Data was written successfully, commit the checkpoint
+                    logger.info(
+                        f"Data file {data_file_path} exists, "
+                        f"committing pending checkpoint {file_path}"
+                    )
+                    self._commit_pending_checkpoint(file_path)
+                else:
+                    # Data write failed, delete the pending checkpoint
+                    logger.info(
+                        f"Data file {data_file_path} does not exist, "
+                        f"deleting pending checkpoint {file_path}"
+                    )
+                    self._delete_pending_checkpoint(file_path)
+
+            except Exception as e:
+                logger.warning(
+                    f"Error recovering pending checkpoint {file_path}: {e}. "
+                    "Deleting it to avoid issues."
+                )
+                try:
+                    self._delete_pending_checkpoint(file_path)
+                except Exception:
+                    pass
+
+    def _read_data_file_path_from_checkpoint(
+        self, checkpoint_path: str
+    ) -> Optional[str]:
+        """Read the data_file_path from checkpoint file metadata.
+
+        Args:
+            checkpoint_path: Path to the checkpoint parquet file.
+
+        Returns:
+            The data file path stored in metadata, or None if not found.
+        """
+        try:
+            # Read parquet metadata without loading the full file
+            parquet_file = pq.ParquetFile(checkpoint_path, filesystem=self.filesystem)
+            schema = parquet_file.schema_arrow
+            metadata = schema.metadata
+
+            if metadata and DATA_FILE_PATH_METADATA_KEY in metadata:
+                return metadata[DATA_FILE_PATH_METADATA_KEY].decode("utf-8")
+            return None
+        except Exception as e:
+            logger.warning(f"Error reading metadata from {checkpoint_path}: {e}")
+            return None
+
+    def _data_file_exists(self, data_file_path: str) -> bool:
+        """Check if a data file exists.
+
+        Args:
+            data_file_path: Path to the data file.
+
+        Returns:
+            True if the file exists, False otherwise.
+        """
+        from pyarrow.fs import FileType
+
+        try:
+            # Handle the case where data_file_path might have a protocol prefix
+            unwrapped_path = _unwrap_protocol(data_file_path)
+            file_info = self.filesystem.get_file_info(unwrapped_path)
+            return file_info.type == FileType.File
+        except Exception:
+            return False
+
+    def _commit_pending_checkpoint(self, pending_path: str) -> None:
+        """Commit a pending checkpoint by renaming it.
+
+        Args:
+            pending_path: Path to the pending checkpoint file.
+        """
+        # Remove the .pending suffix to get committed path
+        # e.g., "abc123.pending.parquet" -> "abc123.parquet"
+        pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
+        if pending_path.endswith(pending_suffix):
+            committed_path = pending_path[: -len(pending_suffix)] + ".parquet"
+            self.filesystem.move(pending_path, committed_path)
+            logger.info(f"Committed checkpoint: {pending_path} -> {committed_path}")
+
+    def _delete_pending_checkpoint(self, pending_path: str) -> None:
+        """Delete a pending checkpoint file.
+
+        Args:
+            pending_path: Path to the pending checkpoint file to delete.
+        """
+        self.filesystem.delete_file(pending_path)
+        logger.info(f"Deleted pending checkpoint: {pending_path}")
 
     def delete_checkpoint(self) -> None:
         self.filesystem.delete_dir(self.checkpoint_path_unwrapped)

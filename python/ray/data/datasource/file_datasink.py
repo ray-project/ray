@@ -7,7 +7,10 @@ from ray._common.retry import call_with_retry
 from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.planner.plan_write_op import (
+    WRITE_UUID_KWARG_NAME,
+    WRITTEN_FILE_PATHS_KWARG_NAME,
+)
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -27,6 +30,36 @@ if TYPE_CHECKING:
     import pyarrow
 
 logger = logging.getLogger(__name__)
+
+
+def _store_written_file_path(
+    ctx: TaskContext,
+    block_index: int,
+    filename: str,
+    full_path: str,
+    row_index: Optional[int] = None,
+) -> None:
+    """Store written file path in TaskContext for checkpoint mapping.
+
+    Args:
+        ctx: The task context.
+        block_index: The index of the block within the task.
+        filename: The filename (without directory path).
+        full_path: The full path including directory.
+        row_index: Optional row index for row-based writes.
+    """
+    if WRITTEN_FILE_PATHS_KWARG_NAME not in ctx.kwargs:
+        ctx.kwargs[WRITTEN_FILE_PATHS_KWARG_NAME] = []
+
+    file_info = {
+        "block_index": block_index,
+        "filename": filename,
+        "full_path": full_path,
+    }
+    if row_index is not None:
+        file_info["row_index"] = row_index
+
+    ctx.kwargs[WRITTEN_FILE_PATHS_KWARG_NAME].append(file_info)
 
 
 class _FileDatasink(Datasink[None]):
@@ -236,6 +269,9 @@ class RowBasedFileDatasink(_FileDatasink):
                 match=self._data_context.retried_io_errors,
             )
 
+            # Store written file path for checkpoint mapping
+            _store_written_file_path(ctx, block_index, filename, write_path, row_index)
+
 
 @DeveloperAPI
 class BlockBasedFileDatasink(_FileDatasink):
@@ -288,6 +324,9 @@ class BlockBasedFileDatasink(_FileDatasink):
             description=f"write '{write_path}'",
             match=self._data_context.retried_io_errors,
         )
+
+        # Store written file path for checkpoint mapping
+        _store_written_file_path(ctx, block_index, filename, write_path)
 
     @property
     def min_rows_per_write(self) -> Optional[int]:

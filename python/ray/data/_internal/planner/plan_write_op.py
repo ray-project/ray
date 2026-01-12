@@ -1,6 +1,6 @@
 import itertools
 import uuid
-from typing import Callable, Iterator, List, Union
+from typing import Callable, Iterator, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -16,6 +16,12 @@ from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
 
 WRITE_UUID_KWARG_NAME = "write_uuid"
+# Key for storing written file paths in TaskContext.kwargs for checkpoint mapping
+WRITTEN_FILE_PATHS_KWARG_NAME = "_written_file_paths"
+# Key for storing expected file paths (computed before write) for 2-phase commit
+EXPECTED_FILE_PATHS_KWARG_NAME = "_expected_file_paths"
+# Key for storing pending checkpoint paths for commit phase
+PENDING_CHECKPOINTS_KWARG_NAME = "_pending_checkpoints"
 
 
 def generate_write_fn(
@@ -87,22 +93,33 @@ def _plan_write_op_internal(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
     extra_transformations: List[BlockMapTransformFn],
+    pre_write_transformations: Optional[List[BlockMapTransformFn]] = None,
 ) -> PhysicalOperator:
+    """Plan a write operation with optional pre and post write transformations.
+
+    Args:
+        op: The write operator.
+        physical_children: The physical children operators.
+        data_context: The data context.
+        extra_transformations: Transformations to run AFTER the write.
+        pre_write_transformations: Transformations to run BEFORE the write.
+            Useful for 2-phase commit where pending checkpoint is written first.
+    """
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
     datasink = op._datasink_or_legacy_datasource
     write_fn = generate_write_fn(datasink, **op._write_args)
 
-    # Create a MapTransformer for a write operator
-    transform_fns = [
-        BlockMapTransformFn(
-            write_fn,
-            is_udf=False,
-            # NOTE: No need for block-shaping
-            disable_block_shaping=True,
-        ),
-    ] + extra_transformations
+    # Build transform chain: pre_write -> write -> post_write
+    pre_transforms = pre_write_transformations or []
+    write_transform = BlockMapTransformFn(
+        write_fn,
+        is_udf=False,
+        # NOTE: No need for block-shaping
+        disable_block_shaping=True,
+    )
+    transform_fns = pre_transforms + [write_transform] + extra_transformations
 
     map_transformer = MapTransformer(transform_fns)
 
