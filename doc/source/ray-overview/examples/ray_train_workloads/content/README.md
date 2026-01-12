@@ -11,7 +11,7 @@ jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 <a href="https://github.com/ray-project/ray" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial series provides hands-on learning for **Ray Train V2** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
+This tutorial series provides hands-on learning for **Ray Train** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
 The tutorials walk through common ML workload patterns—vision, tabular, time series, generative, policy learning, and recommendation—showing how to scale them **from single-node to fully distributed training and inference** with minimal code changes.
 
 ---
