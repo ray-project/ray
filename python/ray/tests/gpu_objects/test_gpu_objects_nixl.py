@@ -277,7 +277,7 @@ def test_nixl_borrow_after_abort(ray_start_regular):
     assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}])
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_sync_actor_streaming_generator(ray_start_regular):
     """Test sync actor.method with sync ObjectRefGenerator interfaces."""
 
