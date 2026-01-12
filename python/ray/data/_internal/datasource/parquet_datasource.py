@@ -494,6 +494,7 @@ class ParquetDatasource(Datasource):
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
             _block_udf=self._block_udf,
+            include_paths=self._include_paths,
         )
 
         read_tasks = []
@@ -715,6 +716,7 @@ class ParquetDatasource(Datasource):
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
         _block_udf,
+        include_paths: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -744,8 +746,16 @@ class ParquetDatasource(Datasource):
                 metadata=file_schema.metadata,
             )
 
+        # Add path column if include_paths is True and path column is not already present
+        if include_paths and target_schema.get_field_index("path") == -1:
+            target_schema = target_schema.append(pa.field("path", pa.string()))
+
         # Project schema if necessary
         if projected_columns is not None:
+            # If include_paths is True, make sure to include the path column in the projection
+            if include_paths:
+                if "path" not in projected_columns:
+                    projected_columns = projected_columns + ["path"]
             target_schema = pa.schema(
                 [target_schema.field(column) for column in projected_columns],
                 target_schema.metadata,
