@@ -1102,9 +1102,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                        << spec.NumStreamingGeneratorReturns() << " return objects.";
         RAY_CHECK_EQ(reply.return_objects_size(), 1);
         std::optional<std::string> generator_tensor_transport = std::nullopt;
-        if spec
-          .NumStreamingGeneratorReturns() > 0 : generator_tensor_transport =
+        if (spec.NumStreamingGeneratorReturns() > 0){
+          generator_tensor_transport =
               reference_counter_.GetTensorTransport(spec.StreamingGeneratorReturnId(0));
+        }
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);

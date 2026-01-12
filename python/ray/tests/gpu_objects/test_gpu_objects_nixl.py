@@ -281,8 +281,6 @@ def test_nixl_borrow_after_abort(ray_start_regular):
 def test_sync_actor_streaming_generator(ray_start_regular):
     """Test sync actor.method with sync ObjectRefGenerator interfaces."""
 
-    ray.init()
-
     gen_num = 5
     tensor = torch.randn(gen_num, 4, 4)
 
