@@ -458,9 +458,9 @@ RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = get_env_bool(
     "RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1"
 )
 
-# Default is 2GiB, the max for a signed int.
+# Default is 4GiB - 1 byte.
 RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
-    "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1
+    "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (4 * 1024 * 1024 * 1024) - 1
 )
 
 # Default options passed when constructing gRPC servers.
