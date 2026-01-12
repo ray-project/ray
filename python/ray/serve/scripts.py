@@ -15,7 +15,6 @@ import yaml
 
 import ray
 from ray import serve
-from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -24,6 +23,7 @@ from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
+    DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -156,10 +156,10 @@ def cli():
 )
 @click.option(
     "--http-host",
-    default=get_localhost_ip(),
+    default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
-    help="Host for HTTP proxies to listen on. Defaults to localhost(127.0.0.1/::1).",
+    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
 )
 @click.option(
     "--http-port",
@@ -861,7 +861,7 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": get_all_interfaces_ip(),
+            "host": "0.0.0.0",
             "port": 8000,
         },
         "grpc_options": {
