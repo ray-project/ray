@@ -171,5 +171,5 @@ To install additional custom packages necessary for the LLM services that can't 
 Download a basic example:
 
 ```sh
-curl -o ray-serve.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-serve.extra-dependency.yaml
+curl -o ray-service.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.extra-dependency.yaml
 ```

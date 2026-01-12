@@ -283,7 +283,7 @@ Mooncake requires system-level dependencies. Use the `args` field in your RaySer
         libgtest-dev libjsoncpp-dev libnuma-dev libunwind-dev \
         libpython3-dev libboost-all-dev libssl-dev pybind11-dev \
         libcurl4-openssl-dev libhiredis-dev pkg-config patchelf && \
-      sudo rm -rf /var/lib/apt/lists/*
+      sudo rm -rf /var/lib/apt/lists/* \
 ```
 
 For general Kubernetes dependency patterns, also see [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide.

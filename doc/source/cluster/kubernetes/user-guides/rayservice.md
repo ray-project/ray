@@ -312,13 +312,13 @@ workerGroupSpecs:
       spec:
         containers:
           - name: ray-worker
-            image: rayproject/ray:2.53.0-py312-cu129-aarch64
+            image: rayproject/ray:2.53.0
             args:
               - |
                 sudo apt-get update && \
-                sudo apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 && \
+                sudo apt-get install -y --no-install-recommends curl && \
                 sudo rm -rf /var/lib/apt/lists/* && \
-                pip install opencv-python-headless pillow
+                pip install httpx \
 ```
 
 You can also install Python packages via `runtime_env`, but using `args` makes them available to all applications and avoids repeated installation.
@@ -330,24 +330,22 @@ For dependencies that only a specific application needs, use `runtime_env` in yo
 ```yaml
 serveConfigV2: |
   applications:
-  - name: ml_app
-    import_path: ml_module:app
+  - name: fruit_app
+    import_path: fruit.deployment_graph
     runtime_env:
       pip:
         - pandas
-        - scikit-learn
-  - name: nlp_app
-    import_path: nlp_module:app
+  - name: math_app
+    import_path: conditional_dag.serve_dag
     runtime_env:
       pip:
-        - transformers
-        - tokenizers
+        - numpy
 ```
 
 Download a complete example combining both approaches:
 
 ```sh
-curl -o ray-serve.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-serve.extra-dependency.yaml
+curl -o ray-service.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.extra-dependency.yaml
 ```
 
 :::{note}
