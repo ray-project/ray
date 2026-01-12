@@ -39,8 +39,8 @@ class MultiAgentEpisode:
 
     Each AgentID in the `MultiAgentEpisode` has its own `SingleAgentEpisode` object
     in which this agent's data is stored. Together with the env_t_to_agent_t mapping,
-    we can extract information either on any individual agent's time scale or from
-    the (global) multi-agent environment time scale.
+    we can extract information either on any individual agent's timescale or from
+    the (global) multi-agent environment timescale.
 
     Extraction of data from a MultiAgentEpisode happens via the getter APIs, e.g.
     `get_observations()`, which work analogous to the ones implemented in the
@@ -628,7 +628,7 @@ class MultiAgentEpisode:
                 )
                 # Update the env- to agent-step mapping.
                 self.env_t_to_agent_t[agent_id].append(
-                    len(sa_episode) + sa_episode.observations.lookback
+                    self.env_t_started + len(sa_episode)
                 )
 
             # Agent is also done. -> Erase all hanging values for this agent
@@ -2178,6 +2178,14 @@ class MultiAgentEpisode:
                 observations_per_agent[agent_id].append(agent_obs)
                 infos_per_agent[agent_id].append(inf.get(agent_id, {}))
 
+                # Update env_t_to_agent_t mapping.
+                self.env_t_to_agent_t[agent_id].append(
+                    self.env_t_started
+                    - self._len_lookback_buffers
+                    + len(observations_per_agent[agent_id])
+                    - 1
+                )
+
                 # Pull out hanging action (if not first obs for this agent) and
                 # complete step for agent.
                 if len(observations_per_agent[agent_id]) > 1:
@@ -2215,11 +2223,6 @@ class MultiAgentEpisode:
                 # be done. Automatically add it to `done_per_agent` and `terminateds`.
                 elif data_idx < len(observations) - 1:
                     done_per_agent[agent_id] = terminateds[agent_id] = True
-
-                # Update env_t_to_agent_t mapping.
-                self.env_t_to_agent_t[agent_id].append(
-                    len(observations_per_agent[agent_id]) - 1
-                )
 
             # Those agents that did NOT step:
             # - Get self.SKIP_ENV_TS_TAG added to their env_t_to_agent_t mapping.
@@ -2297,7 +2300,7 @@ class MultiAgentEpisode:
                 t_started=self.agent_t_started[agent_id],
                 len_lookback_buffer=max(len_lookback_buffer_per_agent[agent_id], 0),
             )
-            # .. and store it.
+            # and store it.
             self.agent_episodes[agent_id] = sa_episode
 
     def _get(
@@ -2605,7 +2608,7 @@ class MultiAgentEpisode:
                 lookback buffer should be returned, not the first value after the
                 lookback buffer (which would be normal behavior for pulling items from
                 an `InfiniteLookbackBuffer` object).
-            agent_id: The individual agent ID to pull data for. Used to lookup the
+            agent_id: The individual agent ID to pull data for. Used to look up the
                 `SingleAgentEpisode` object for this agent in `self`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -2627,7 +2630,7 @@ class MultiAgentEpisode:
             hanging_val: In case we are pulling actions, rewards, or extra_model_outputs
                 data, there might be information "hanging" (cached). For example,
                 if an agent receives an observation o0 and then immediately sends an
-                action a0 back, but then does NOT immediately reveive a next
+                action a0 back, but then does NOT immediately retrieve the next
                 observation, a0 is now cached (not fully logged yet with this
                 episode). The currently cached value must be provided here to be able
                 to return it in case the index is -1 (most recent timestep).
