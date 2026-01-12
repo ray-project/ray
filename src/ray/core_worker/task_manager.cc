@@ -1102,7 +1102,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                        << spec.NumStreamingGeneratorReturns() << " return objects.";
         RAY_CHECK_EQ(reply.return_objects_size(), 1);
         std::optional<std::string> generator_tensor_transport = std::nullopt;
-        if (spec.NumStreamingGeneratorReturns() > 0){
+        if (spec.NumStreamingGeneratorReturns() > 0) {
           generator_tensor_transport =
               reference_counter_.GetTensorTransport(spec.StreamingGeneratorReturnId(0));
         }
