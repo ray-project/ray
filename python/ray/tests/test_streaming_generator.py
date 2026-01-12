@@ -538,47 +538,6 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     asyncio.run(verify_async_task_async_generator())
 
 
-@pytest.mark.parametrize("tensor_transport", ["nixl"])
-def test_sync_actor_streaming_generator_in_RDT(shutdown_only, tensor_transport):
-    """Test sync actor with sync generator interfaces."""
-
-    ray.init()
-
-    import torch
-
-    gen_num = 5
-    tensor = torch.randn(gen_num, 4, 4)
-
-    @ray.remote
-    class Sender:
-        @ray.method(num_returns="streaming", tensor_transport="nixl")
-        def gen(self):
-            for i in range(gen_num):
-                yield tensor[i]
-
-    @ray.remote
-    class Receiver:
-        @ray.method
-        def get(self, ss: Sender):
-            gpu_manager = ray._private.worker.global_worker.gpu_object_manager
-            obj_ref_gen: ray.ObjectRefGenerator = ss.gen.remote()
-            for i, obj_ref in enumerate(obj_ref_gen):
-
-                got_tensor = ray.get(obj_ref)
-                assert torch.equal(got_tensor, tensor[i])
-
-                obj_id = obj_ref.hex()
-                assert obj_id in gpu_manager.managed_gpu_object_metadata
-                transport = gpu_manager.managed_gpu_object_metadata[
-                    obj_id
-                ].tensor_transport_backend
-                assert transport == "NIXL"
-
-    s = Sender.remote()
-    r = Receiver.remote()
-    ray.get(r.get.remote(s))
-
-
 def test_streaming_generator_exception(shutdown_only):
     # Verify the exceptions are correctly raised.
     # Also verify the followup next will raise StopIteration.

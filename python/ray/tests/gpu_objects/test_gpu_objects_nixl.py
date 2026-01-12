@@ -277,5 +277,44 @@ def test_nixl_borrow_after_abort(ray_start_regular):
     assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}])
+def test_sync_actor_streaming_generator(ray_start_regular):
+    """Test sync actor.method with sync ObjectRefGenerator interfaces."""
+
+    ray.init()
+
+    gen_num = 5
+    tensor = torch.randn(gen_num, 4, 4)
+
+    @ray.remote
+    class Sender:
+        @ray.method(num_returns="streaming", tensor_transport="nixl")
+        def gen(self):
+            for i in range(gen_num):
+                yield tensor[i]
+
+    @ray.remote
+    class Receiver:
+        @ray.method
+        def get(self, ss: Sender):
+            gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+            obj_ref_gen: ray.ObjectRefGenerator = ss.gen.remote()
+            for i, obj_ref in enumerate(obj_ref_gen):
+
+                got_tensor = ray.get(obj_ref)
+                assert torch.equal(got_tensor, tensor[i])
+
+                obj_id = obj_ref.hex()
+                assert obj_id in gpu_manager.managed_gpu_object_metadata
+                transport = gpu_manager.managed_gpu_object_metadata[
+                    obj_id
+                ].tensor_transport_backend
+                assert transport == "NIXL"
+
+    s = Sender.remote()
+    r = Receiver.remote()
+    ray.get(r.get.remote(s))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
