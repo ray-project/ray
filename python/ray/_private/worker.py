@@ -90,7 +90,13 @@ from ray._raylet import (
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
-from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.exceptions import (
+    ActorHandleNotFoundError,
+    ObjectStoreFullError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+)
 from ray.experimental import tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
@@ -3289,7 +3295,20 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
             "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
             "Got: {}.".format(type(actor))
         )
-    worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+
+    try:
+        worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+    except ActorHandleNotFoundError as e:
+        actor_job_id = actor._ray_actor_id.job_id
+        current_job_id = worker.current_job_id
+        raise ActorHandleNotFoundError(
+            f"ActorHandle objects are not valid across Ray sessions. "
+            f"The actor handle was created in job {actor_job_id.hex()}, "
+            f"but the current job is {current_job_id.hex()}. "
+            f"This typically happens when you try to use an actor handle "
+            f"from a previous session after calling ray.shutdown() and ray.init(). "
+            f"Please create a new actor handle in the current session."
+        ) from e
 
 
 @PublicAPI
