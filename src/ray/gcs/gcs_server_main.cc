@@ -196,6 +196,10 @@ int main(int argc, char *argv[]) {
   auto task_events_stored_gauge = ray::gcs::GetTaskManagerTaskEventsStoredGaugeMetric();
   auto event_recorder_dropped_events_counter =
       ray::GetRayEventRecorderDroppedEventsCounterMetric();
+  auto event_recorder_events_sent_counter =
+      ray::GetRayEventRecorderEventsSentCounterMetric();
+  auto event_recorder_events_failed_to_send_counter =
+      ray::GetRayEventRecorderEventsFailedToSendCounterMetric();
   auto storage_operation_latency_in_ms_histogram =
       ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
   auto storage_operation_count_counter =
@@ -223,6 +227,9 @@ int main(int argc, char *argv[]) {
       /*task_events_dropped_gauge=*/task_events_dropped_gauge,
       /*task_events_stored_gauge=*/task_events_stored_gauge,
       /*event_recorder_dropped_events_counter=*/event_recorder_dropped_events_counter,
+      /*event_recorder_events_sent_counter=*/event_recorder_events_sent_counter,
+      /*event_recorder_events_failed_to_send_counter=*/
+      event_recorder_events_failed_to_send_counter,
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
       /*storage_operation_count_counter=*/storage_operation_count_counter,

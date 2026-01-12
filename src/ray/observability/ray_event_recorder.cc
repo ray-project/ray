@@ -27,6 +27,8 @@ RayEventRecorder::RayEventRecorder(
     size_t max_buffer_size,
     std::string_view metric_source,
     ray::observability::MetricInterface &dropped_events_counter,
+    ray::observability::MetricInterface &events_sent_counter,
+    ray::observability::MetricInterface &events_failed_to_send_counter,
     const NodeID &node_id)
     : event_aggregator_client_(event_aggregator_client),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
@@ -34,6 +36,8 @@ RayEventRecorder::RayEventRecorder(
       metric_source_(metric_source),
       buffer_(max_buffer_size),
       dropped_events_counter_(dropped_events_counter),
+      events_sent_counter_(events_sent_counter),
+      events_failed_to_send_counter_(events_failed_to_send_counter),
       node_id_(node_id) {}
 
 void RayEventRecorder::StartExportingEvents() {
@@ -56,39 +60,61 @@ void RayEventRecorder::ExportEvents() {
   if (buffer_.empty()) {
     return;
   }
-  rpc::events::AddEventsRequest request;
-  rpc::events::RayEventsData ray_event_data;
-  // group the event in the buffer_ by their entity id and type; then for each group,
-  // merge the events into a single event. maintain the order of the events in the buffer.
+
+  const size_t max_batch_size =
+      RayConfig::instance().ray_event_recorder_send_batch_size();
+
+  // Group events by entity_id + type (events with same key are merged).
+  // Stop when we have enough merged events for a batch.
   std::list<std::unique_ptr<RayEventInterface>> grouped_events;
   absl::flat_hash_map<RayEventKey,
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
-  for (auto &event : buffer_) {
+
+  size_t processed = 0;
+  for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++processed) {
+    auto &event = *it;
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
-    auto [it, inserted] = event_key_to_iterator.try_emplace(key);
+    auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {
       grouped_events.push_back(std::move(event));
       event_key_to_iterator[key] = std::prev(grouped_events.end());
+
+      // Check if batch size limit is reached
+      if (grouped_events.size() >= max_batch_size) {
+        ++processed;  // Count this event as processed
+        break;
+      }
     } else {
-      (*it->second)->Merge(std::move(*event));
+      (*map_it->second)->Merge(std::move(*event));
     }
   }
+
+  // Remove processed events from buffer
+  buffer_.erase(buffer_.begin(), buffer_.begin() + processed);
+
+  // Build request
+  rpc::events::AddEventsRequest request;
+  size_t num_events = grouped_events.size();
   for (auto &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-    // Set node_id centrally for all events
     ray_event.set_node_id(node_id_.Binary());
-    *ray_event_data.mutable_events()->Add() = std::move(ray_event);
+    *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
   }
-  *request.mutable_events_data() = std::move(ray_event_data);
-  buffer_.clear();
 
+  // Send with callback to record metrics
+  // Capture metric_source_ by value since it's a string_view
+  std::string metric_source_str(metric_source_);
   event_aggregator_client_.AddEvents(
-      request, [](Status status, rpc::events::AddEventsReply reply) {
-        if (!status.ok()) {
-          // TODO(#56391): Add a metric to track the number of failed events. Also
-          // add logic for error recovery.
-          RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
+      std::move(request),
+      [this, num_events, metric_source_str](Status status,
+                                            rpc::events::AddEventsReply reply) {
+        if (status.ok()) {
+          events_sent_counter_.Record(num_events, {{"Source", metric_source_str}});
+        } else {
+          events_failed_counter_.Record(num_events, {{"Source", metric_source_str}});
+          RAY_LOG(ERROR) << "Failed to send " << num_events
+                         << " ray events: " << status.ToString();
         }
       });
 }
