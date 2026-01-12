@@ -4,7 +4,7 @@ Modify README.ipynb instead, then regenerate this file with:
 jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 -->
 
-# Ray Train workloads tutorial series
+# Ray Train workloads
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
