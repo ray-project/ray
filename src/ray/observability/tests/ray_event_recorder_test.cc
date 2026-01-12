@@ -46,7 +46,8 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     for (const auto &event : request.events_data().events()) {
       recorded_events_.push_back(event);
     }
-    callback(Status::OK(), rpc::events::AddEventsReply{});
+    add_events_call_count_++;
+    callback(next_status_, rpc::events::AddEventsReply{});
   }
 
   std::vector<rpc::events::RayEvent> GetRecordedEvents() {
@@ -54,8 +55,25 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     return recorded_events_;
   }
 
+  size_t GetAddEventsCallCount() {
+    absl::MutexLock lock(&mutex_);
+    return add_events_call_count_;
+  }
+
+  void SetNextStatus(Status status) {
+    absl::MutexLock lock(&mutex_);
+    next_status_ = std::move(status);
+  }
+
+  void ClearRecordedEvents() {
+    absl::MutexLock lock(&mutex_);
+    recorded_events_.clear();
+  }
+
  private:
   std::vector<rpc::events::RayEvent> recorded_events_ ABSL_GUARDED_BY(mutex_);
+  size_t add_events_call_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  Status next_status_ ABSL_GUARDED_BY(mutex_) = Status::OK();
   absl::Mutex mutex_;
 };
 
@@ -75,6 +93,36 @@ class RayEventRecorderTest : public ::testing::Test {
                                                    *fake_events_sent_counter_,
                                                    *fake_events_failed_counter_,
                                                    test_node_id_);
+  }
+
+  // Helper to create a unique job definition event
+  std::unique_ptr<RayEventInterface> CreateJobDefinitionEvent(
+      const std::string &job_id, const std::string &session_name = "test_session") {
+    rpc::JobTableData data;
+    data.set_job_id(job_id);
+    return std::make_unique<RayDriverJobDefinitionEvent>(data, session_name);
+  }
+
+  // Helper to add N unique events that won't merge
+  void AddUniqueEvents(size_t count) {
+    std::vector<std::unique_ptr<RayEventInterface>> events;
+    for (size_t i = 0; i < count; i++) {
+      events.push_back(CreateJobDefinitionEvent("job_" + std::to_string(i)));
+    }
+    recorder_->AddEvents(std::move(events));
+  }
+
+  // Helper to get total metric value for a given source
+  double GetMetricValueForSource(FakeCounter *counter, const std::string &source) {
+    auto tag_to_value = counter->GetTagToValue();
+    double total = 0;
+    for (const auto &[tags, value] : tag_to_value) {
+      auto it = tags.find("Source");
+      if (it != tags.end() && it->second == source) {
+        total += value;
+      }
+    }
+    return total;
   }
 
   instrumented_io_context io_service_;
@@ -288,6 +336,181 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
   io_service_.run_one();
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   ASSERT_EQ(recorded_events.size(), 0);
+}
+
+TEST_F(RayEventRecorderTest, TestBatchSizeEnforcement) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true,
+  "ray_event_recorder_send_batch_size": 2
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Add 5 unique events (won't merge since different job IDs)
+  AddUniqueEvents(5);
+
+  // First export - should send batch_size (2) events
+  io_service_.run_one();
+  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 2);
+  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 1);
+
+  // Second export - should send 2 more
+  io_service_.run_one();
+  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 4);
+  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 2);
+
+  // Third export - should send remaining 1
+  io_service_.run_one();
+  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 5);
+  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 3);
+
+  // Fourth export - buffer empty, no call
+  io_service_.run_one();
+  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 3);
+}
+
+TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true,
+  "ray_event_recorder_send_batch_size": 2
+}
+)");
+  recorder_->StartExportingEvents();
+
+  rpc::JobTableData data;
+  data.set_job_id("job_1");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  // Two events that will merge (same job_id, same type = lifecycle)
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::CREATED, "session"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "session"));
+  // Two standalone definition events (different job IDs)
+  events.push_back(CreateJobDefinitionEvent("job_2"));
+  events.push_back(CreateJobDefinitionEvent("job_3"));
+
+  recorder_->AddEvents(std::move(events));
+
+  // First export: merged lifecycle (counts as 1 unique event) + job_2 definition = 2
+  io_service_.run_one();
+  auto recorded = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded.size(), 2);
+
+  // Verify the merged event has both state transitions
+  bool found_merged = false;
+  for (const auto &event : recorded) {
+    if (event.has_driver_job_lifecycle_event()) {
+      ASSERT_EQ(event.driver_job_lifecycle_event().state_transitions_size(), 2);
+      found_merged = true;
+    }
+  }
+  ASSERT_TRUE(found_merged);
+
+  // Second export: job_3 definition = 1
+  io_service_.run_one();
+  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 3);
+}
+
+TEST_F(RayEventRecorderTest, TestSuccessMetricsRecorded) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Add 3 unique events
+  AddUniqueEvents(3);
+  io_service_.run_one();
+
+  // Verify events_sent_counter was recorded with correct value
+  ASSERT_EQ(GetMetricValueForSource(fake_events_sent_counter_.get(), "gcs"), 3);
+
+  // Verify events_failed_counter was NOT recorded
+  ASSERT_TRUE(fake_events_failed_counter_->GetTagToValue().empty());
+}
+
+TEST_F(RayEventRecorderTest, TestFailureMetricsRecorded) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Configure client to return error
+  fake_client_->SetNextStatus(Status::IOError("connection failed"));
+
+  // Add 2 events
+  AddUniqueEvents(2);
+  io_service_.run_one();
+
+  // Verify events_failed_counter was recorded with correct value
+  ASSERT_EQ(GetMetricValueForSource(fake_events_failed_counter_.get(), "gcs"), 2);
+
+  // Verify events_sent_counter was NOT recorded
+  ASSERT_TRUE(fake_events_sent_counter_->GetTagToValue().empty());
+}
+
+TEST_F(RayEventRecorderTest, TestEmptyBufferNoMetrics) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Don't add any events, just trigger export
+  io_service_.run_one();
+
+  // Verify no metrics were recorded
+  ASSERT_TRUE(fake_events_sent_counter_->GetTagToValue().empty());
+  ASSERT_TRUE(fake_events_failed_counter_->GetTagToValue().empty());
+  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 0);
+}
+
+TEST_F(RayEventRecorderTest, TestMetricSourceTag) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true
+}
+)");
+
+  // Create a new recorder with different metric_source
+  auto custom_client = std::make_unique<FakeEventAggregatorClient>();
+  auto custom_sent_counter = std::make_unique<FakeCounter>();
+  auto custom_failed_counter = std::make_unique<FakeCounter>();
+  auto custom_dropped_counter = std::make_unique<FakeCounter>();
+
+  auto custom_recorder = std::make_unique<RayEventRecorder>(*custom_client,
+                                                            io_service_,
+                                                            max_buffer_size_,
+                                                            "raylet",  // Different source
+                                                            *custom_dropped_counter,
+                                                            *custom_sent_counter,
+                                                            *custom_failed_counter,
+                                                            test_node_id_);
+
+  custom_recorder->StartExportingEvents();
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(CreateJobDefinitionEvent("job_1"));
+  custom_recorder->AddEvents(std::move(events));
+  io_service_.run_one();
+
+  // Verify the Source tag is "raylet"
+  ASSERT_EQ(GetMetricValueForSource(custom_sent_counter.get(), "raylet"), 1);
+  // Verify "gcs" source has no value
+  ASSERT_EQ(GetMetricValueForSource(custom_sent_counter.get(), "gcs"), 0);
 }
 
 }  // namespace observability

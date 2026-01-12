@@ -112,7 +112,8 @@ void RayEventRecorder::ExportEvents() {
         if (status.ok()) {
           events_sent_counter_.Record(num_events, {{"Source", metric_source_str}});
         } else {
-          events_failed_counter_.Record(num_events, {{"Source", metric_source_str}});
+          events_failed_to_send_counter_.Record(num_events,
+                                                {{"Source", metric_source_str}});
           RAY_LOG(ERROR) << "Failed to send " << num_events
                          << " ray events: " << status.ToString();
         }
