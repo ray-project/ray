@@ -58,8 +58,9 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
         concurrency: The number of concurrent requests to send. Default to 1.
-            If ``concurrency`` is a ``tuple`` ``(m, n)``,
-            autoscaling strategy is used (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
@@ -313,6 +314,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             not provided, the serve deployment is expected to accept a dict as the request.
         concurrency: The number of workers for data parallelism. Default to 1. Note that this is
             not the concurrency of the underlying serve deployment.
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
 
@@ -457,10 +461,9 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
 
     Args:
         enabled: Whether this stage is enabled. Defaults to True.
-        model_source: Name or path of the Hugging Face model to use for the
-            multimodal processor. This is required to process multimodal data
-            according to a specific model. If not specified, will use the
-            processor-level model_source.
+        model_config_kwargs: Optional kwargs to pass to the model config.
+            See available model config kwargs at
+            https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig.
         chat_template_content_format: The content format to use for the chat
             template. This is used to format the chat template content according
             to a specific model. Choices are "string" or "openai". Defaults to

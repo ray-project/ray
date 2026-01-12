@@ -64,6 +64,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetAgentPIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)
 
@@ -194,6 +195,10 @@ class NodeManagerServiceHandler {
                                    GetWorkerPIDsReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAgentPIDs(GetAgentPIDsRequest request,
+                                  GetAgentPIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleKillLocalActor(KillLocalActorRequest request,
                                     KillLocalActorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
@@ -221,7 +226,7 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override {
+      std::shared_ptr<const AuthenticationToken> auth_token) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 
