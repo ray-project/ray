@@ -1,5 +1,13 @@
 group: reef tests
 steps:
+  - label: ":test_tube: test-rules"
+    key: test-rules
+    commands:
+      - curl -sfL "https://raw.githubusercontent.com/ray-project/rayci/stable/run_rayci.sh" | bash -s -- test-rules
+    instance_type: small
+    tags:
+      - tools
+      - always
   - label: ":coral: reef: ci+release tooling tests"
     key: reef-tests
     commands:
