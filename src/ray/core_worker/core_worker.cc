@@ -1737,10 +1737,12 @@ Status CoreWorker::GetLocationFromOwner(
 }
 
 void CoreWorker::TriggerGlobalGC() {
-  local_raylet_rpc_client_->GlobalGC(
-      [](const Status &status, const rpc::GlobalGCReply &reply) {
+  rpc::TriggerGCRequest request;
+  request.set_global_gc(true);
+  local_raylet_rpc_client_->TriggerGC(
+      request, [](const Status &status, const rpc::TriggerGCReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to send global GC request: " << status;
+          RAY_LOG(ERROR) << "Failed to send TriggerGC request: " << status;
         }
       });
 }

@@ -55,17 +55,13 @@ using ::testing::WithArg;
 namespace ray {
 namespace syncer {
 
-constexpr size_t kTestComponents = 1;
-
 using work_guard_type =
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
 
-RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
+RaySyncMessage MakeMessage(int64_t version, const NodeID &id) {
   auto msg = RaySyncMessage();
   msg.set_version(version);
-  msg.set_message_type(cid);
   msg.set_node_id(id.Binary());
-
   return msg;
 }
 
@@ -73,41 +69,27 @@ class RaySyncerTest : public ::testing::Test {
  protected:
   void SetUp() override {
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
-    local_versions_.fill(0);
-    for (size_t cid = 0; cid < reporters_.size(); ++cid) {
-      receivers_[cid] = std::make_unique<MockReceiverInterface>();
-      auto &reporter = reporters_[cid];
-      reporter = std::make_unique<MockReporterInterface>();
-      auto take_snapshot =
-          [this, cid](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
-        if (curr_version >= local_versions_[cid]) {
-          return std::nullopt;
-        } else {
-          auto msg = RaySyncMessage();
-          msg.set_message_type(static_cast<MessageType>(cid));
-          msg.set_version(++local_versions_[cid]);
-          return std::make_optional(std::move(msg));
-        }
-      };
-      ON_CALL(*reporter, CreateSyncMessage(_, _))
-          .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
-    }
+    local_version_ = 0;
+    receiver_ = std::make_unique<MockReceiverInterface>();
+    reporter_ = std::make_unique<MockReporterInterface>();
+    auto take_snapshot =
+        [this](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
+      if (curr_version >= local_version_) {
+        return std::nullopt;
+      } else {
+        auto msg = RaySyncMessage();
+        msg.set_version(++local_version_);
+        return std::make_optional(std::move(msg));
+      }
+    };
+    ON_CALL(*reporter_, CreateSyncMessage(_))
+        .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
     syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
   }
 
-  MockReporterInterface *GetReporter(MessageType cid) {
-    return reporters_[static_cast<size_t>(cid)].get();
-  }
-
-  MockReceiverInterface *GetReceiver(MessageType cid) {
-    return receivers_[static_cast<size_t>(cid)].get();
-  }
-
-  int64_t &LocalVersion(MessageType cid) {
-    return local_versions_[static_cast<size_t>(cid)];
-  }
+  int64_t &LocalVersion() { return local_version_; }
 
   void TearDown() override {
     work_guard_->reset();
@@ -115,11 +97,9 @@ class RaySyncerTest : public ::testing::Test {
     thread_->join();
   }
 
-  std::array<int64_t, kTestComponents> local_versions_;
-  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters_ = {
-      nullptr};
-  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers_ = {
-      nullptr};
+  int64_t local_version_;
+  std::unique_ptr<MockReporterInterface> reporter_ = nullptr;
+  std::unique_ptr<MockReceiverInterface> receiver_ = nullptr;
 
   instrumented_io_context io_context_;
   std::unique_ptr<work_guard_type> work_guard_;
@@ -131,29 +111,26 @@ class RaySyncerTest : public ::testing::Test {
 
 TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, nullptr);
-  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW));
+  node_status->SetComponent(nullptr, nullptr);
+  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage());
 
-  auto reporter = std::make_unique<MockReporterInterface>();
-  ASSERT_TRUE(node_status->SetComponent(
-      MessageType::RESOURCE_VIEW, GetReporter(MessageType::RESOURCE_VIEW), nullptr));
+  ASSERT_TRUE(node_status->SetComponent(reporter_.get(), nullptr));
 
   // Take a snapshot
-  auto msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
-  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW), msg->version());
+  auto msg = node_status->CreateSyncMessage();
+  ASSERT_EQ(LocalVersion(), msg->version());
   // Revert one version back.
-  LocalVersion(MessageType::RESOURCE_VIEW) -= 1;
-  msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
+  LocalVersion() -= 1;
+  msg = node_status->CreateSyncMessage();
   ASSERT_EQ(std::nullopt, msg);
 }
 
 TEST_F(RaySyncerTest, NodeStateConsume) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponent(
-      MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
+  node_status->SetComponent(nullptr, receiver_.get());
   auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
-  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg = MakeMessage(0, from_node_id);
   ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 
@@ -190,7 +167,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
       &sync_reactor, [](auto *) {}));
   auto from_node_id = NodeID::FromRandom();
-  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg = MakeMessage(0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
   msg.set_version(2);
   auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg);
@@ -207,15 +184,13 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
-  ASSERT_EQ(
-      2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(2, sync_reactor.node_versions_[from_node_id.Binary()]);
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
-  ASSERT_EQ(
-      3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(3, sync_reactor.node_versions_[from_node_id.Binary()]);
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
@@ -233,9 +208,10 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
 
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
-  auto msg1 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id1);
-  auto msg2 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id2);
-  auto msg3 = MakeMessage(MessageType::COMMANDS, 0, from_node_id2);
+  auto from_node_id3 = NodeID::FromRandom();
+  auto msg1 = MakeMessage(0, from_node_id1);
+  auto msg2 = MakeMessage(0, from_node_id2);
+  auto msg3 = MakeMessage(0, from_node_id3);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg1);
   auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg2);
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg3);
@@ -248,7 +224,11 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
   ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
 
-  // Third message will trigger sending
+  // Third message will be dropped because it's a duplicate
+  ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
+
+  // Fourth message will trigger sending (batch_size=3)
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
   ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
 
@@ -256,7 +236,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   EXPECT_TRUE(WaitForCondition(
       [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
-  ASSERT_EQ(2, sync_reactor.node_versions_.size());
+  ASSERT_EQ(3, sync_reactor.node_versions_.size());
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
@@ -273,7 +253,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
       &sync_reactor, [](auto *) {}));
 
   auto from_node_id = NodeID::FromRandom();
-  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg = MakeMessage(0, from_node_id);
   auto msg_ptr = std::make_shared<RaySyncMessage>(msg);
 
   // First message will be batched
@@ -296,12 +276,8 @@ struct SyncerServerTest {
   SyncerServerTest(std::string port,
                    NodeID node_id,
                    RpcCompletionCallback ray_sync_observer)
-      : work_guard(io_context.get_executor()) {
+      : work_guard(io_context.get_executor()), local_version(0) {
     this->server_port = port;
-    // Setup io context
-    for (auto &v : local_versions) {
-      v = 0;
-    }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(
         io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
@@ -314,49 +290,34 @@ struct SyncerServerTest {
     builder.RegisterService(service.get());
     server = builder.BuildAndStart();
 
-    for (size_t cid = 0; cid < reporters.size(); ++cid) {
-      auto snapshot_received = [this,
-                                node_id](std::shared_ptr<const RaySyncMessage> message) {
-        RAY_LOG(DEBUG) << "Message received: from "
-                       << NodeID::FromBinary(message->node_id()) << " to " << node_id;
-        auto iter = received_versions.find(message->node_id());
-        if (iter == received_versions.end()) {
-          for (auto &v : received_versions[message->node_id()]) {
-            v = 0;
-          }
-          iter = received_versions.find(message->node_id());
-        }
-
-        received_versions[message->node_id()][message->message_type()] =
-            message->version();
-        message_consumed[message->node_id()]++;
-        RAY_LOG(DEBUG) << "Message consumed from "
-                       << NodeID::FromBinary(message->node_id())
-                       << ", local_id=" << node_id;
-      };
-      receivers[cid] = std::make_unique<MockReceiverInterface>();
-      EXPECT_CALL(*receivers[cid], ConsumeSyncMessage(_))
-          .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
-      auto &reporter = reporters[cid];
-      auto take_snapshot =
-          [this, cid](int64_t version_after) mutable -> std::optional<RaySyncMessage> {
-        if (local_versions[cid] <= version_after) {
-          return std::nullopt;
-        } else {
-          auto msg = RaySyncMessage();
-          msg.set_version(local_versions[cid]);
-          msg.set_message_type(static_cast<MessageType>(cid));
-          msg.set_node_id(syncer->GetLocalNodeID());
-          snapshot_taken++;
-          return std::make_optional(std::move(msg));
-        }
-      };
-      reporter = std::make_unique<MockReporterInterface>();
-      EXPECT_CALL(*reporter, CreateSyncMessage(_, Eq(cid)))
-          .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
-      syncer->Register(
-          static_cast<MessageType>(cid), reporter.get(), receivers[cid].get());
-    }
+    auto snapshot_received = [this,
+                              node_id](std::shared_ptr<const RaySyncMessage> message) {
+      RAY_LOG(DEBUG) << "Message received: from "
+                     << NodeID::FromBinary(message->node_id()) << " to " << node_id;
+      received_versions[message->node_id()] = message->version();
+      message_consumed[message->node_id()]++;
+      RAY_LOG(DEBUG) << "Message consumed from " << NodeID::FromBinary(message->node_id())
+                     << ", local_id=" << node_id;
+    };
+    receiver = std::make_unique<MockReceiverInterface>();
+    EXPECT_CALL(*receiver, ConsumeSyncMessage(_))
+        .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
+    auto take_snapshot =
+        [this](int64_t version_after) mutable -> std::optional<RaySyncMessage> {
+      if (local_version <= version_after) {
+        return std::nullopt;
+      } else {
+        auto msg = RaySyncMessage();
+        msg.set_version(local_version.load());
+        msg.set_node_id(syncer->GetLocalNodeID());
+        snapshot_taken++;
+        return std::make_optional(std::move(msg));
+      }
+    };
+    reporter = std::make_unique<MockReporterInterface>();
+    EXPECT_CALL(*reporter, CreateSyncMessage(_))
+        .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
+    syncer->Register(reporter.get(), receiver.get());
   }
 
   void WaitSendingFlush() {
@@ -438,18 +399,14 @@ struct SyncerServerTest {
     }
   }
 
-  std::array<std::atomic<int64_t>, kTestComponents> _v;
-  const std::array<std::atomic<int64_t>, kTestComponents> &GetReceivedVersions(
-      const std::string &node_id) {
+  int64_t GetReceivedVersion(const std::string &node_id) const {
     auto iter = received_versions.find(node_id);
     if (iter == received_versions.end()) {
-      for (auto &v : _v) {
-        v.store(-1);
-      }
-      return _v;
+      return -1;
     }
     return iter->second;
   }
+
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
@@ -458,16 +415,13 @@ struct SyncerServerTest {
   instrumented_io_context io_context;
   work_guard_type work_guard;
   std::string server_port;
-  std::array<std::atomic<int64_t>, kTestComponents> local_versions;
-  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters = {
-      nullptr};
+  std::atomic<int64_t> local_version;
+  std::unique_ptr<MockReporterInterface> reporter = nullptr;
   int64_t snapshot_taken = 0;
 
-  std::unordered_map<std::string, std::array<std::atomic<int64_t>, kTestComponents>>
-      received_versions;
+  std::unordered_map<std::string, std::atomic<int64_t>> received_versions;
   std::unordered_map<std::string, std::atomic<int64_t>> message_consumed;
-  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers = {
-      nullptr};
+  std::unique_ptr<MockReceiverInterface> receiver = nullptr;
 };
 
 // Useful for debugging
@@ -505,9 +459,8 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
       BuildAddress("localhost", port), grpc::InsecureChannelCredentials(), argument);
 }
 
-using TClusterView = absl::flat_hash_map<
-    std::string,
-    std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>;
+using TClusterView =
+    absl::flat_hash_map<std::string, std::shared_ptr<const RaySyncMessage>>;
 
 class SyncerTest : public ::testing::Test {
  public:
@@ -558,10 +511,10 @@ TEST_F(SyncerTest, Test1To1) {
   auto &s2 = MakeServer("19991", node_id2, syncer_observer_cb);
 
   // Make sure the setup is correct
-  ASSERT_NE(nullptr, s1.receivers[MessageType::RESOURCE_VIEW]);
-  ASSERT_NE(nullptr, s2.receivers[MessageType::RESOURCE_VIEW]);
-  ASSERT_NE(nullptr, s1.reporters[MessageType::RESOURCE_VIEW]);
-  ASSERT_NE(nullptr, s2.reporters[MessageType::RESOURCE_VIEW]);
+  ASSERT_NE(nullptr, s1.receiver);
+  ASSERT_NE(nullptr, s2.receiver);
+  ASSERT_NE(nullptr, s1.reporter);
+  ASSERT_NE(nullptr, s2.reporter);
   RAY_LOG(DEBUG) << "s1: " << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
   RAY_LOG(DEBUG) << "s2: " << NodeID::FromBinary(s2.syncer->GetLocalNodeID());
 
@@ -599,38 +552,38 @@ TEST_F(SyncerTest, Test1To1) {
       5));
 
   // s2 local module version advance
-  s2.local_versions[0] = 1;
+  s2.local_version = 1;
   ASSERT_TRUE(s2.WaitUntil([&s2]() { return s2.snapshot_taken == 2; }, 2));
 
   // Make sure s2 send the new message to s1.
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() {
-        return s1.GetReceivedVersions(node_id)[MessageType::RESOURCE_VIEW] == 1 &&
+        return s1.GetReceivedVersion(node_id) == 1 &&
                s1.GetNumConsumedMessages(node_id) == 2;
       },
       5));
 
   // Make sure no new messages are sent
-  s2.local_versions[0] = 0;
+  s2.local_version = 0;
   std::this_thread::sleep_for(std::chrono::seconds(1));
 
   ASSERT_EQ(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), 2);
   ASSERT_EQ(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), 1);
   // Change it back
-  s2.local_versions[0] = 1;
+  s2.local_version = 1;
 
   // Make some random messages
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 10000);
-  std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
+  std::uniform_int_distribution<> choose_reporter(0, 1);
 
   auto start = std::chrono::steady_clock::now();
   for (int i = 0; i < 10000; ++i) {
-    if (choose_component(gen) == 0) {
-      s1.local_versions[0]++;
+    if (choose_reporter(gen) == 0) {
+      s1.local_version++;
     } else {
-      s2.local_versions[choose_component(gen)]++;
+      s2.local_version++;
     }
     if (rand_sleep(gen) < 5) {
       std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -648,9 +601,8 @@ TEST_F(SyncerTest, Test1To1) {
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, &s2]() {
-        return s1.GetReceivedVersions(s2.syncer->GetLocalNodeID()) == s2.local_versions &&
-               s2.GetReceivedVersions(s1.syncer->GetLocalNodeID())[0] ==
-                   s1.local_versions[0];
+        return s1.GetReceivedVersion(s2.syncer->GetLocalNodeID()) == s2.local_version &&
+               s2.GetReceivedVersion(s1.syncer->GetLocalNodeID()) == s1.local_version;
       },
       5));
   // s2 has two reporters + 3 for the ones send before the measure
@@ -684,10 +636,10 @@ TEST_F(SyncerTest, Reconnect) {
       [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
       5));
 
-  s1.local_versions[0] = 1;
+  s1.local_version = 1;
   ASSERT_TRUE(s2.WaitUntil(
       [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
-        return s2.received_versions[node_id][0] == 1;
+        return s2.GetReceivedVersion(node_id) == 1;
       },
       5));
 }
@@ -715,25 +667,20 @@ TEST_F(SyncerTest, Broadcast) {
       5));
 
   // Change the resource in s2 and make sure s1 && s3 are correct
-  s2.local_versions[0] = 1;
+  s2.local_version = 1;
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() mutable {
-        return s1.received_versions[node_id][0] == 1;
+        return s1.GetReceivedVersion(node_id) == 1;
       },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s3, node_id = s2.syncer->GetLocalNodeID()]() mutable {
-        return s3.received_versions[node_id][0] == 1;
+        return s3.GetReceivedVersion(node_id) == 1;
       },
       5));
-  ASSERT_EQ(
-      0,
-      s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
-          ->version());
-  ASSERT_EQ(nullptr,
-            s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
-                                      MessageType::RESOURCE_VIEW));
+  ASSERT_EQ(0, s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID())->version());
+  ASSERT_EQ(nullptr, s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary()));
   s1.syncer->Disconnect(s3.syncer->GetLocalNodeID());
   RAY_LOG(INFO) << "s1.id=" << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
   RAY_LOG(INFO) << "s3.id=" << NodeID::FromBinary(s3.syncer->GetLocalNodeID());
@@ -754,7 +701,6 @@ bool CompareViews(const std::vector<SyncerServerTest *> &servers,
                   const std::vector<TClusterView> &views,
                   const std::vector<std::set<size_t>> &g) {
   // Check broadcasting is working
-  // component id = 0
   // simply compare everything with server 0
   for (size_t i = 1; i < views.size(); ++i) {
     if (views[i].size() != views[0].size()) {
@@ -770,18 +716,18 @@ bool CompareViews(const std::vector<SyncerServerTest *> &servers,
       }
       const auto &vv = iter->second;
 
-      if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
-        RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v[0] << ", " << vv[0];
+      if (!google::protobuf::util::MessageDifferencer::Equals(*v, *vv)) {
+        RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v << ", " << vv;
         std::string dbg_message;
-        RAY_CHECK(google::protobuf::util::MessageToJsonString(*v[0], &dbg_message).ok());
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*v, &dbg_message).ok());
         RAY_LOG(ERROR) << "server[0] >> "
                        << NodeID::FromBinary(servers[0]->syncer->GetLocalNodeID()) << ": "
-                       << dbg_message << " - " << NodeID::FromBinary(v[0]->node_id());
+                       << dbg_message << " - " << NodeID::FromBinary(v->node_id());
         dbg_message.clear();
-        RAY_CHECK(google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message).ok());
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*vv, &dbg_message).ok());
         RAY_LOG(ERROR) << "server[i] << "
                        << NodeID::FromBinary(servers[i]->syncer->GetLocalNodeID()) << ": "
-                       << dbg_message << " - " << NodeID::FromBinary(vv[0]->node_id());
+                       << dbg_message << " - " << NodeID::FromBinary(vv->node_id());
         return false;
       }
     }
@@ -821,16 +767,11 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 1000000);
-  std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
-  std::uniform_int_distribution<> choose_server(0, servers.size() - 1);
+  std::uniform_int_distribution<> choose_reporter(0, servers.size() - 1);
 
   for (size_t i = 0; i < 1000000; ++i) {
-    auto server_idx = choose_server(gen);
-    auto message_type = choose_component(gen);
-    if (server_idx == 0) {
-      message_type = 0;
-    }
-    servers[server_idx]->local_versions[message_type]++;
+    auto reporter_idx = choose_reporter(gen);
+    servers[reporter_idx]->local_version++;
     // expect to sleep for 100 times for the whole loop.
     if (rand_sleep(gen) < 100) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));

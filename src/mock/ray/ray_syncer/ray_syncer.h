@@ -25,7 +25,7 @@ class MockReporterInterface : public ReporterInterface {
  public:
   MOCK_METHOD(std::optional<RaySyncMessage>,
               CreateSyncMessage,
-              (int64_t current_version, MessageType message_type),
+              (int64_t current_version),
               (const, override));
 };
 
