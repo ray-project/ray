@@ -31,7 +31,7 @@ Data collection nodes, which represent the old policy, gather data synchronously
 create a large pool of on-policy data from which the agent performs minibatch
 gradient descent on.
 
-### Asychronous PPO (APPO)
+### Asynchronous PPO (APPO)
 
 [See implementation here](https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py)
 

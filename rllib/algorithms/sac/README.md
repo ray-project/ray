@@ -8,7 +8,7 @@ via learning based on a maximum-entropy framework. Unlike the standard RL object
 aims to maximize sum of reward into the future, SAC seeks to optimize sum of rewards as
 well as expected entropy over the current policy. In addition to optimizing over an
 actor and critic with entropy-based objectives, SAC also optimizes for the entropy
-coeffcient.
+coefficient.
 
 [SAC-Discrete](https://arxiv.org/pdf/1910.07207) is a variant of SAC that can be used for discrete action spaces is
 also implemented.
