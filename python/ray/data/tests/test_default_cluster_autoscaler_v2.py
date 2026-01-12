@@ -73,7 +73,7 @@ class TestClusterAutoscaling:
         ray.shutdown()
 
     def test_get_node_resource_spec_and_count(self):
-        # Test _get_node_resource_spec_and_count
+        # Test get_node_resource_spec_and_count
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
@@ -130,7 +130,7 @@ class TestClusterAutoscaling:
                 "ray._private.state.state.get_cluster_config",
                 return_value=None,
             ):
-                assert autoscaler._get_node_resource_spec_and_count() == expected
+                assert autoscaler.get_node_resource_spec_and_count() == expected
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -160,7 +160,7 @@ class TestClusterAutoscaling:
 
         resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
         resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=1, mem=1000)
-        autoscaler._get_node_resource_spec_and_count = MagicMock(
+        autoscaler.get_node_resource_spec_and_count = MagicMock(
             return_value={
                 resource_spec1: 2,
                 resource_spec2: 1,
@@ -202,7 +202,7 @@ class TestClusterAutoscaling:
             _send_resource_request.assert_called_with(expected_resource_request)
 
     def test_get_node_resource_spec_and_count_from_zero(self):
-        """Test that _get_node_resource_spec_and_count can discover node types
+        """Test that get_node_resource_spec_and_count can discover node types
         from cluster config even when there are zero worker nodes."""
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -245,7 +245,7 @@ class TestClusterAutoscaling:
                 "ray._private.state.state.get_cluster_config",
                 return_value=cluster_config,
             ):
-                result = autoscaler._get_node_resource_spec_and_count()
+                result = autoscaler.get_node_resource_spec_and_count()
                 assert result == expected
 
     @patch(
@@ -270,7 +270,7 @@ class TestClusterAutoscaling:
         # Mock the node resource spec with zero counts
         resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
         resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
-        autoscaler._get_node_resource_spec_and_count = MagicMock(
+        autoscaler.get_node_resource_spec_and_count = MagicMock(
             return_value={
                 resource_spec1: 0,  # Zero nodes of this type
                 resource_spec2: 0,  # Zero nodes of this type
@@ -349,7 +349,7 @@ class TestClusterAutoscaling:
                 "ray._private.state.state.get_cluster_config",
                 return_value=cluster_config,
             ):
-                result = autoscaler._get_node_resource_spec_and_count()
+                result = autoscaler.get_node_resource_spec_and_count()
                 assert result == expected
 
 

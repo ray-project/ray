@@ -117,7 +117,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
 
-    def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
+    def get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
         """Get node types from cluster config and count alive nodes.
 
         Enables scaling from zero by discovering node types from cluster config
@@ -126,28 +126,19 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         nodes_resource_spec_count = defaultdict(int)
 
         # Discover node types from cluster config
-        try:
-            cluster_config = ray._private.state.state.get_cluster_config()
-            if cluster_config and cluster_config.node_group_configs:
-                for node_group_config in cluster_config.node_group_configs:
-                    # Skip if no resources or max_count=0 (cannot scale)
-                    if (
-                        not node_group_config.resources
-                        or node_group_config.max_count == 0
-                    ):
-                        continue
+        cluster_config = ray._private.state.state.get_cluster_config()
+        if cluster_config and cluster_config.node_group_configs:
+            for node_group_config in cluster_config.node_group_configs:
+                # Skip if no resources or max_count=0 (cannot scale)
+                if not node_group_config.resources or node_group_config.max_count == 0:
+                    continue
 
-                    node_resource_spec = _NodeResourceSpec.of(
-                        cpu=node_group_config.resources.get("CPU", 0),
-                        gpu=node_group_config.resources.get("GPU", 0),
-                        mem=node_group_config.resources.get("memory", 0),
-                    )
-                    nodes_resource_spec_count[node_resource_spec] = 0
-        except Exception as e:
-            logger.debug(
-                f"Failed to get cluster config: {e}. "
-                "Falling back to alive nodes only."
-            )
+                node_resource_spec = _NodeResourceSpec.of(
+                    cpu=node_group_config.resources.get("CPU", 0),
+                    gpu=node_group_config.resources.get("GPU", 0),
+                    mem=node_group_config.resources.get("memory", 0),
+                )
+                nodes_resource_spec_count[node_resource_spec] = 0
 
         # Count alive worker nodes
         node_resources = [
@@ -197,7 +188,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             return
 
         resource_request = []
-        node_resource_spec_count = self._get_node_resource_spec_and_count()
+        node_resource_spec_count = self.get_node_resource_spec_and_count()
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
