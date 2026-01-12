@@ -2508,6 +2508,7 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    sql_params: Optional[Any] = None,
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
@@ -2585,6 +2586,8 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        sql_params: Parameters to bind to the SQL query. Use the placeholder style
+            required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
         shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
             For other databases, common alternatives include "hash" and "SHA".
@@ -2611,6 +2614,7 @@ def read_sql(
     """
     datasource = SQLDatasource(
         sql=sql,
+        sql_params=sql_params,
         shard_keys=shard_keys,
         shard_hash_fn=shard_hash_fn,
         connection_factory=connection_factory,
