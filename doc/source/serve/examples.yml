@@ -155,3 +155,7 @@ examples:
       - generative ai
     link: tutorials/asynchronous-inference/content/README
     related_technology: integrations
+  - title: Integrate with MLflow Model Registry
+    skill_level: intermediate
+    link: mlflow-serving-intig
+    related_technology: integrations

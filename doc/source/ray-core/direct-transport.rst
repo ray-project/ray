@@ -251,6 +251,7 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+
 Summary
 -------
 
@@ -314,6 +315,56 @@ Error handling
    * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
    * Ray RDT object fetch timeouts (can be overridden by setting the ``RAY_rdt_fetch_fail_timeout_milliseconds`` environment variable)
    * Any unexpected system bugs
+
+
+Advanced: Registering a new tensor transport
+--------------------------------------------
+
+Ray allows users to register new tensor transports at runtime for use with RDT.
+To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
+defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
+Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport,
+and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
+to use the transport with, and actors only have access to transports registered before their creation.
+
+.. code-block:: python
+
+   import sys
+   import ray
+   from ray.experimental import (
+      register_tensor_transport,
+      TensorTransportManager,
+      TensorTransportMetadata,
+      CommunicatorMetadata,
+   )
+
+   @dataclass
+   class CustomTransportMetadata(TensorTransportMetadata):
+      pass
+
+   @dataclass
+   class CustomCommunicatorMetadata(CommunicatorMetadata):
+      pass
+
+   class CustomTransport(TensorTransportManager):
+      ...
+
+
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
+
+
+Note that there are currently some limitations with custom transports:
+
+- Actor restarts aren't supported. Your actor doesn't have access to the custom
+  transport after the restart.
+- You must create your actor on the same process you registered the custom tensor
+  transport on. For example, you can't use your custom transport with an actor if
+  you registered the custom transport on the driver and created the actor inside
+  a task.
+- Actors only have access to custom transports registered before their creation.
+- If you have an out-of-order actor and the process where you submit the actor
+  task is different from where you created the actor, Ray can't guarantee it has
+  registered your custom transport on the actor at task submission time.
 
 
 Advanced: RDT Internals
