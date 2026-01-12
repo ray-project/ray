@@ -122,7 +122,6 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized(/*quick_exit*/ false);
   core_worker_process->RunWorkerTaskExecutionLoop();
-  core_worker_process.reset();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
@@ -220,10 +219,16 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
   RAY_CHECK_GE(assigned_port, 0);
 
+  // Create EventAggregatorClient. Use deferred connection if port is invalid
+  // (minimal install writes -1 to indicate metrics agent not available).
+  auto event_aggregator_client =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager_),
+      std::move(event_aggregator_client),
       options.session_name,
       local_node_id);
 
@@ -477,6 +482,18 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
         core_worker->free_actor_object_callback_(object_id);
+      },
+      /*set_direct_transport_metadata=*/
+      [this,
+       set_direct_transport_metadata = std::move(options.set_direct_transport_metadata)](
+          const ObjectID &object_id, std::string direct_transport_metadata) {
+        io_service_.post(
+            [set_direct_transport_metadata,
+             object_id,
+             direct_transport_metadata = std::move(direct_transport_metadata)]() {
+              set_direct_transport_metadata(object_id, direct_transport_metadata);
+            },
+            "CoreWorker.SetDirectTransportMetadata");
       });
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
@@ -688,6 +705,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_);
+
+  core_worker->InitializeShutdownExecutor();
+
   return core_worker;
 }
 
@@ -831,18 +851,25 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
     // Initialize metrics agent client.
-    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
-    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-      if (server_status.ok()) {
-        stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
-        stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-      } else {
-        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
-                          "Metrics will not be exported. "
-                       << "Exporter agent status: " << server_status.ToString();
-      }
-    });
+    // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
+    if (options_.metrics_agent_port > 0) {
+      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
+      metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+        if (server_status.ok()) {
+          stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+          stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to establish connection to the metrics exporter agent. "
+                 "Metrics will not be exported. "
+              << "Exporter agent status: " << server_status.ToString();
+        }
+      });
+    } else {
+      RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
+                       "with dashboard support: `pip install 'ray[default]'`.";
+    }
   }
 }
 
@@ -951,7 +978,9 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   auto core_worker = GetCoreWorker();
   RAY_CHECK(core_worker != nullptr);
   core_worker->RunTaskExecutionLoop();
-  RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
+  RAY_LOG(INFO) << "Task execution loop terminated. Waiting for shutdown to complete...";
+  core_worker->WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get().reset();
@@ -966,6 +995,9 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
+  RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
+  global_worker->WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get().reset();

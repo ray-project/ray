@@ -1085,7 +1085,19 @@ class ReplicaBase(ABC):
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
-    ):
+    ) -> Tuple[Tuple[Any], Dict[str, Any], Any]:
+        # Extract _ray_trace_ctx from kwargs at the entry point.
+        #
+        # Context: When tracing is enabled, Ray's tracing decorators inject
+        # _ray_trace_ctx into ServeReplica actor method calls. The ServeReplica
+        # actor methods properly handle this, but we
+        # need to extract it before calling user-defined deployment methods.
+        #
+        # Design: We return it so it can be passed to _wrap_request() which
+        # stores it in _RequestContext. Users can then access it via serve.context
+        # if needed (advanced use case), while keeping it out of their method signatures.
+        ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
+
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
                 request_args[0], StreamingHTTPRequest
@@ -1113,15 +1125,15 @@ class ReplicaBase(ABC):
                 else {}
             )
 
-        return request_args, request_kwargs
+        return request_args, request_kwargs, ray_trace_ctx
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata):
+        with self._wrap_request(request_metadata, ray_trace_ctx):
             async with self._start_request(request_metadata):
                 return await self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -1131,10 +1143,12 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata) as status_code_callback:
+        with self._wrap_request(
+            request_metadata, ray_trace_ctx
+        ) as status_code_callback:
             async with self._start_request(request_metadata):
                 if request_metadata.is_http_request:
                     scope, receive = request_args
@@ -1167,10 +1181,12 @@ class ReplicaBase(ABC):
             yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
 
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata) as status_code_callback:
+        with self._wrap_request(
+            request_metadata, ray_trace_ctx
+        ) as status_code_callback:
             async with self._start_request(request_metadata):
                 yield ReplicaQueueLengthInfo(
                     accepted=True,
@@ -1816,7 +1832,7 @@ class Replica(ReplicaBase):
 
     @contextmanager
     def _wrap_request(
-        self, request_metadata: RequestMetadata
+        self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
     ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
@@ -1834,6 +1850,7 @@ class Replica(ReplicaBase):
                 grpc_context=request_metadata.grpc_context,
                 cancel_on_parent_request_cancel=self._ingress
                 and RAY_SERVE_ENABLE_DIRECT_INGRESS,
+                _ray_trace_ctx=ray_trace_ctx,
             )
         )
 
