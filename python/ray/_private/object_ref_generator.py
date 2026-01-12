@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Callable, Deque, Iterator, Optional
+from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
@@ -58,7 +58,8 @@ class ObjectRefGenerator:
         self,
         generator_ref: "ray.ObjectRef",
         worker: "Worker",
-        add_gpu_object_ref: Optional[Callable[["ray.ObjectRef"], None]] = None,
+        actor: "ray.actor.ActorHandle" = None,
+        tensor_transport: Optional[str] = None,
     ):
         # The reference to a generator task.
         self._generator_ref = generator_ref
@@ -67,8 +68,11 @@ class ObjectRefGenerator:
         # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
         self.worker.check_connected()
-        self.add_gpu_object_ref = add_gpu_object_ref
+        self.actor = actor
+        self.tensor_transport = tensor_transport
+
         assert hasattr(worker, "core_worker")
+        assert (actor is None) == (tensor_transport is None)
 
     # Public APIs
 
@@ -246,8 +250,10 @@ class ObjectRefGenerator:
                 raise StopIteration from None
 
         # Add ObjectRef to GPUObjectManager.
-        if self.add_gpu_object_ref:
-            self.add_gpu_object_ref(ref)
+        if self.tensor_transport is not None:
+            self.worker.gpu_object_manager.add_gpu_object_ref(
+                ref, self.actor, self.tensor_transport
+            )
         return ref
 
     async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
@@ -293,8 +299,10 @@ class ObjectRefGenerator:
                 # Meaning the task succeed without failure raise StopAsyncIteration.
                 raise StopAsyncIteration from None
 
-        if self.add_gpu_object_ref:
-            self.add_gpu_object_ref(ref)
+        if self.tensor_transport is not None:
+            self.worker.gpu_object_manager.add_gpu_object_ref(
+                ref, self.actor, self.tensor_transport
+            )
         return ref
 
     def __del__(self):
