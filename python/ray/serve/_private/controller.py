@@ -3,12 +3,14 @@ import logging
 import os
 import pickle
 import time
+from collections import defaultdict
 from typing import (
     Any,
     Dict,
     Iterable,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -35,6 +37,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -44,7 +47,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_state import DeploymentStateManager
+from ray.serve._private.deployment_state import (
+    DeploymentReplica,
+    DeploymentStateManager,
+)
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
@@ -58,6 +64,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -83,11 +90,13 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ReplicaDetails,
     ReplicaRank,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    Target,
     TargetGroup,
     gRPCOptionsSchema,
 )
@@ -248,6 +257,15 @@ class ServeController:
             Tuple[str, str, DeploymentDetails, Any]
         ] = []
         self._refresh_autoscaling_deployments_cache()
+
+        # Direct ingress configuration
+        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        self._last_broadcasted_target_groups: List[TargetGroup] = []
+        if self._direct_ingress_enabled:
+            logger.info(
+                "Direct ingress is enabled. Replicas will start HTTP servers "
+                "on allocated ports for direct external access."
+            )
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -599,6 +617,23 @@ class ServeController:
                 self.deployment_state_manager.get_alive_replica_actor_ids()
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
+
+        # Direct ingress port management
+        if self._direct_ingress_enabled:
+            try:
+                # Update port values for ingress replicas
+                ingress_replicas_info = (
+                    self.deployment_state_manager.get_ingress_replicas_info()
+                )
+                NodePortManager.update_ports(ingress_replicas_info)
+
+                # Clean up stale ports
+                NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+                # Broadcast target groups if changed
+                self._broadcast_target_groups_if_changed()
+            except Exception:
+                logger.exception("Exception updating direct ingress state.")
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -1170,17 +1205,58 @@ class ServeController:
         app_name: Optional[str] = None,
         from_proxy_manager: bool = False,
     ) -> List[TargetGroup]:
-        """Target groups contains information about IP
-        addresses and ports of all proxies in the cluster.
+        """Target groups contains information about IP addresses and ports.
+
+        When direct ingress is disabled, returns proxy targets.
+        When direct ingress is enabled, returns replica targets for direct access.
 
         This information is used to setup the load balancer.
         """
+        proxy_target_groups = self._get_proxy_target_groups()
+
+        if not self._direct_ingress_enabled:
+            return proxy_target_groups
+
+        # Direct ingress is enabled - return replica targets
+        if app_name is None:
+            apps = [
+                _app_name
+                for _app_name, _ in self.application_state_manager.list_app_statuses().items()
+            ]
+        else:
+            apps = [app_name]
+
+        # Filter to apps with valid route prefixes
+        apps = [
+            app
+            for app in apps
+            if self.application_state_manager.get_route_prefix(app) is not None
+        ]
+
+        if not apps:
+            return proxy_target_groups
+
+        # Create target groups for each application
+        target_groups = []
+        for app_name in apps:
+            route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
+            if app_target_groups:
+                target_groups.extend(app_target_groups)
+            else:
+                target_groups.extend(
+                    self._get_target_groups_for_app_with_no_running_replicas(
+                        route_prefix, app_name
+                    )
+                )
+
+        return target_groups
+
+    def _get_proxy_target_groups(self) -> List[TargetGroup]:
+        """Get target groups pointing to proxies."""
         target_groups: List[TargetGroup] = []
 
         if self.proxy_state_manager.get_proxy_details():
-            # setting prefix route to "/" because in ray serve, proxy
-            # accepts requests from the client and routes them to the
-            # correct application. This is true for both HTTP and gRPC proxies.
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
@@ -1199,6 +1275,180 @@ class ServeController:
                     )
                 )
         return target_groups
+
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for a specific application's ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        if not ingress_deployment_name:
+            return []
+        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        details = self.deployment_state_manager.get_deployment_details(deployment_id)
+        if not details:
+            return []
+        replica_details = details.replicas
+        running_replica_ids = {
+            replica_info.replica_id.unique_id
+            for replica_info in self.deployment_state_manager.get_running_replica_infos().get(
+                deployment_id, []
+            )
+        }
+        return [
+            replica_detail
+            for replica_detail in replica_details
+            if replica_detail.replica_id in running_replica_ids
+        ]
+
+    def _get_target_groups_for_app(
+        self, app_name: str, route_prefix: str
+    ) -> List[TargetGroup]:
+        """Create HTTP and gRPC target groups for a specific application.
+
+        Returns empty list if there are no running replicas or ports not allocated.
+        """
+        replica_details = self._get_running_replica_details_for_ingress_deployment(
+            app_name
+        )
+        if not replica_details:
+            return []
+
+        target_groups = []
+
+        http_targets = self._get_targets_for_protocol(
+            replica_details, RequestProtocol.HTTP
+        )
+        if http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                )
+            )
+
+        if is_grpc_enabled(self.get_grpc_config()):
+            grpc_targets = self._get_targets_for_protocol(
+                replica_details, RequestProtocol.GRPC
+            )
+            if grpc_targets:
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix=route_prefix,
+                        targets=grpc_targets,
+                        app_name=app_name,
+                    )
+                )
+
+        return target_groups
+
+    def _get_target_groups_for_app_with_no_running_replicas(
+        self, route_prefix: str, app_name: str
+    ) -> List[TargetGroup]:
+        """For apps with no running replicas, return proxy target groups.
+
+        This allows apps to be discoverable via proxy when replicas scaled to 0.
+        """
+        target_groups = []
+        http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
+        grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+
+        if http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                )
+            )
+        if grpc_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.GRPC,
+                    route_prefix=route_prefix,
+                    targets=grpc_targets,
+                    app_name=app_name,
+                )
+            )
+        return target_groups
+
+    def _get_targets_for_protocol(
+        self, replica_details: List[ReplicaDetails], protocol: RequestProtocol
+    ) -> List[Target]:
+        """Create targets for a specific protocol from a list of replicas."""
+        return [
+            Target(
+                ip=replica_detail.node_ip,
+                port=self._get_port(replica_detail, protocol),
+                instance_id=replica_detail.node_instance_id,
+                name=replica_detail.actor_name,
+            )
+            for replica_detail in replica_details
+            if self._is_port_allocated(replica_detail, protocol)
+        ]
+
+    def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        """Get mapping of node IDs to alive replica IDs."""
+        node_id_to_alive_replica_ids = defaultdict(set)
+        for ds in self.deployment_state_manager._deployment_states.values():
+            replicas: List[DeploymentReplica] = ds._replicas.get()
+            for replica in replicas:
+                node_id: Optional[str] = replica.actor_node_id
+                if node_id is None:
+                    continue
+                replica_unique_id = replica.replica_id.unique_id
+                node_id_to_alive_replica_ids[node_id].add(replica_unique_id)
+        return node_id_to_alive_replica_ids
+
+    def allocate_replica_port(
+        self, node_id: str, replica_id: str, protocol: RequestProtocol
+    ) -> int:
+        """Allocate a port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        return node_manager.allocate_port(replica_id, protocol)
+
+    def release_replica_port(
+        self,
+        node_id: str,
+        replica_id: str,
+        port: int,
+        protocol: RequestProtocol,
+        block_port: bool = False,
+    ):
+        """Release a port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        node_manager.release_port(replica_id, port, protocol, block_port)
+
+    def _get_port(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> int:
+        """Get the port for a replica."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.get_port(replica_detail.replica_id, protocol)
+
+    def _is_port_allocated(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> bool:
+        """Check if the port for a replica is allocated."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
+
+    def _broadcast_target_groups_if_changed(self) -> None:
+        """Broadcast target groups over long poll if they have changed."""
+        target_groups: List[TargetGroup] = self.get_target_groups()
+
+        if self._last_broadcasted_target_groups == target_groups:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.TARGET_GROUPS: target_groups}
+        )
+        self._last_broadcasted_target_groups = target_groups
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

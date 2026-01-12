@@ -48,6 +48,7 @@ class LongPollNamespace(Enum):
     ROUTE_TABLE = auto()
     GLOBAL_LOGGING_CONFIG = auto()
     DEPLOYMENT_CONFIG = auto()
+    TARGET_GROUPS = auto()
 
 
 @dataclass

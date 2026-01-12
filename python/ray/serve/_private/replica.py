@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import errno
 import functools
 import inspect
 import logging
@@ -48,6 +49,7 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
+    RequestProtocol,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
@@ -57,6 +59,8 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
@@ -88,6 +92,9 @@ from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
     Response,
+    configure_http_options_with_defaults,
+    convert_object_to_asgi_messages,
+    start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -103,11 +110,12 @@ from ray.serve._private.thirdparty.get_asgi_route_name import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    generate_request_id,
     get_component_file_name,  # noqa: F401
     parse_import_path,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, HTTPOptions
 from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
@@ -1137,7 +1145,20 @@ class ReplicaBase(ABC):
 
 
 class Replica(ReplicaBase):
+    def __init__(self, **kwargs):
+        # Direct ingress state
+        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
+        self._http_port: Optional[int] = None
+        self._http_options: Optional[HTTPOptions] = None
+        self._controller_handle = None
+        self._node_id: Optional[str] = None
+
+        super().__init__(**kwargs)
+
     async def _on_initialized(self):
+        # Start direct ingress servers if enabled
+        await self._maybe_start_direct_ingress_servers()
+
         # Get current rank from replica context during initialization
         current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
@@ -1149,6 +1170,167 @@ class Replica(ReplicaBase):
         # for the first time.
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
+
+    async def _maybe_start_direct_ingress_servers(self):
+        """Start HTTP server for direct ingress if enabled and this is an ingress replica."""
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            return
+
+        if not self._ingress:
+            return
+
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+        self._node_id = ray.get_runtime_context().get_node_id()
+
+        async def allocate_and_start_server(start_server_fn, protocol):
+            """Attempt to allocate a port and start the server with retries."""
+            is_port_in_use = False
+            for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
+                port = await self._controller_handle.allocate_replica_port.remote(
+                    self._node_id, self._replica_id.unique_id, protocol
+                )
+                logger.info(f"Allocated port {port} for {protocol}")
+
+                try:
+                    server_task = await start_server_fn(port)
+                    logger.info(
+                        f"Successfully started {protocol} server on port {port}"
+                    )
+                    return port, server_task
+                except RuntimeError as e:
+                    logger.warning(
+                        f"Failed to start {protocol} server on port {port}: {e}. "
+                        "Retrying..."
+                    )
+
+                    if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
+                        errno.EADDRINUSE,
+                        errno.EADDRNOTAVAIL,
+                    ):
+                        is_port_in_use = True
+                    else:
+                        is_port_in_use = False
+
+                    await self._controller_handle.release_replica_port.remote(
+                        self._node_id,
+                        self._replica_id.unique_id,
+                        port,
+                        protocol,
+                        block_port=True,
+                    )
+
+            err_msg = f"Failed to allocate and start {protocol} server after retries"
+            if is_port_in_use:
+                err_msg = (
+                    f"Failed to start {protocol} server: port already in use. "
+                    "Ensure that the Ray Serve direct ingress port ranges do not "
+                    "overlap with the Ray worker port range."
+                )
+
+            raise RuntimeError(err_msg)
+
+        # Fetch HTTP config
+        self._http_options = ray.get(self._controller_handle.get_http_config.remote())
+
+        # Allocate and start HTTP server
+        async def start_http_server(port):
+            options = configure_http_options_with_defaults(
+                HTTPOptions(**{**self._http_options.dict(), "port": port})
+            )
+
+            return await start_asgi_http_server(
+                self._direct_ingress_asgi,
+                options,
+                event_loop=self._event_loop,
+                enable_so_reuseport=False,
+            )
+
+        (
+            self._http_port,
+            self._direct_ingress_http_server_task,
+        ) = await allocate_and_start_server(
+            start_server_fn=start_http_server,
+            protocol=RequestProtocol.HTTP,
+        )
+
+        logger.info(f"Started direct ingress HTTP server on port {self._http_port}")
+
+    async def _direct_ingress_asgi(self, scope, receive, send):
+        """ASGI handler for direct ingress HTTP requests."""
+        assert (
+            self._user_callable_initialized
+        ), "Replica server should only be started after initialization."
+
+        if self._route_prefix and self._route_prefix != "/":
+            scope["root_path"] = self._route_prefix
+
+        method = scope.get("method", "WS").upper()
+        route = scope.get("path", "")
+
+        # Handle health check
+        if route == "/-/healthz":
+            healthy = self._healthy and not self._shutting_down
+            status_code = 200 if healthy else 503
+            message = "OK" if healthy else "UNHEALTHY"
+            for msg in convert_object_to_asgi_messages(
+                message, status_code=status_code
+            ):
+                await send(msg)
+            return
+
+        # Handle routes endpoint
+        if route == "/-/routes":
+            healthy = self._healthy and not self._shutting_down
+            status_code = 200 if healthy else 503
+            if healthy:
+                message = {self._route_prefix: self._deployment_id.app_name}
+            else:
+                message = "UNHEALTHY"
+            for msg in convert_object_to_asgi_messages(
+                message, status_code=status_code
+            ):
+                await send(msg)
+            return
+
+        # Validate route prefix
+        if self._route_prefix and not route.startswith(self._route_prefix):
+            for msg in convert_object_to_asgi_messages(
+                f"Path '{route}' not found. Ping /-/routes for available routes.",
+                status_code=404,
+            ):
+                await send(msg)
+            return
+
+        request_id = generate_request_id()
+        request_metadata = RequestMetadata(
+            request_id=request_id,
+            internal_request_id=generate_request_id(),
+            call_method="__call__",
+            route=self._route_prefix or route,
+            app_name=self._deployment_id.app_name,
+            multiplexed_model_id="",
+            is_streaming=True,
+            _request_protocol=RequestProtocol.HTTP,
+            _http_method=method,
+        )
+
+        with self._wrap_request(request_metadata) as status_code_callback:
+
+            async def send_with_status(msg):
+                if msg["type"] == "http.response.start":
+                    status_code_callback(str(msg["status"]))
+                await send(msg)
+
+            async with self._start_request(request_metadata):
+                await self._user_callable_wrapper.call_user_health_check()
+                user_method_info = self._user_callable_wrapper.get_user_method_info(
+                    request_metadata.call_method
+                )
+                await self._user_callable_wrapper._call_http_entrypoint(
+                    user_method_info, scope, receive, send_with_status
+                )
 
     def _on_request_cancelled(
         self, metadata: RequestMetadata, e: asyncio.CancelledError
