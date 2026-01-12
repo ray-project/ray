@@ -573,7 +573,12 @@ class _LearnerThread(threading.Thread):
                         # Remove any old learner state in the queue.
                         self.learner._learner_state_queue.get_nowait()
                     except queue.Empty:
-                        logger.warning("No old learner state to remove from the queue.")
+                        # (Mark): While I hate not raising a warning or error here
+                        #   this just caused a huge amount of warnings that were unhelpful
+                        #   we could check if the queue is empty however this requires a mutex
+                        #   and would reduce throughput
+                        # logger.warning("No old learner state to remove from the queue.")
+                        pass
 
                     # Pass the learner state into the queue to the main process.
                     self.learner._learner_state_queue.put_nowait(learner_state)

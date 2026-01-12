@@ -743,6 +743,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 RefBundle(
                     [(block_ref, block_metadata)], schema=None, owns_blocks=False
                 ),
+                task_id=task.get_task_id(),
             )
 
             # Update Shuffle progress bar
@@ -917,7 +918,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 **finalize_task_resource_bundle,
             ).remote(partition_id)
 
-            self._finalizing_tasks[partition_id] = DataOpTask(
+            data_task = DataOpTask(
                 task_index=partition_id,
                 streaming_gen=block_gen,
                 output_ready_callback=functools.partial(_on_bundle_ready, partition_id),
@@ -928,6 +929,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
             )
+            self._finalizing_tasks[partition_id] = data_task
 
             # Pop partition id from remaining set
             self._pending_finalization_partition_ids.remove(partition_id)
@@ -936,7 +938,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # NOTE: This is empty because the input is directly forwarded from the
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            self.reduce_metrics.on_task_submitted(partition_id, empty_bundle)
+            self.reduce_metrics.on_task_submitted(
+                partition_id, empty_bundle, task_id=data_task.get_task_id()
+            )
 
     def _do_shutdown(self, force: bool = False) -> None:
         self._aggregator_pool.shutdown(force=True)
