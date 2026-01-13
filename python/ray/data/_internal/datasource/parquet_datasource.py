@@ -587,9 +587,16 @@ class ParquetDatasource(Datasource):
         data_columns = self._get_data_columns()
         partition_columns = self._get_partition_columns()
         if data_columns is None and partition_columns is None:
-            return None
+            result = None
+        else:
+            result = (data_columns or []) + (partition_columns or [])
+            # If include_paths is True, make sure to include the path column in the projection
+            # NOTE: When result is None (no projection), the path column is already added
+            #       via _derive_schema, so we only need to add it when there is a projection.
+            if self._include_paths and "path" not in result:
+                result = result + ["path"]
 
-        return (data_columns or []) + (partition_columns or [])
+        return result
 
     def _get_partition_columns(self) -> Optional[List[str]]:
         """Extract partition columns from projection map.
@@ -631,6 +638,9 @@ class ParquetDatasource(Datasource):
         Partition columns aren't in the physical file schema, so they must be
         filtered out before passing to PyArrow's to_batches().
 
+        Similarly, the synthetic "path" column (when include_paths=True) isn't in
+        the physical file schema, so it must also be filtered out.
+
         Returns:
             List of data column names to read from files, or None if no projection.
             Can return empty list if only partition columns are projected.
@@ -640,8 +650,13 @@ class ParquetDatasource(Datasource):
 
         # Get partition columns and filter them out from the projection
         partition_cols = self._partition_columns
+        # Also filter out "path" column if include_paths is True, as it's a
+        # synthetic column added after reading from the file
+        cols_to_filter = set(partition_cols)
+        if self._include_paths:
+            cols_to_filter.add("path")
         data_cols = [
-            col for col in self._projection_map.keys() if col not in partition_cols
+            col for col in self._projection_map.keys() if col not in cols_to_filter
         ]
 
         return data_cols
@@ -752,10 +767,6 @@ class ParquetDatasource(Datasource):
 
         # Project schema if necessary
         if projected_columns is not None:
-            # If include_paths is True, make sure to include the path column in the projection
-            if include_paths:
-                if "path" not in projected_columns:
-                    projected_columns = projected_columns + ["path"]
             target_schema = pa.schema(
                 [target_schema.field(column) for column in projected_columns],
                 target_schema.metadata,
@@ -882,13 +893,13 @@ def _read_batches_from(
             ):
                 table = pa.Table.from_batches([batch])
 
+                if partition_col_values:
+                    table = _add_partitions_to_table(partition_col_values, table)
+
                 if include_path:
                     table = ArrowBlockAccessor.for_block(table).fill_column(
                         "path", fragment.path
                     )
-
-                if partition_col_values:
-                    table = _add_partitions_to_table(partition_col_values, table)
 
                 # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
                 # which could have empty projection (ie ``num_columns`` == 0)
