@@ -2,7 +2,7 @@
 
 **Time to complete**: 15 min
 
-This template shows you how to distribute a JAX/Flax training loop with [Ray Train](https://docs.ray.io/en/latest/train/train.html) through the `JaxTrainer`. You’ll train a small GPT-2-style Transformer from scratch on the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/) dataset.
+This template shows you how to distribute a JAX/Flax training loop with [Ray Train](https://docs.ray.io/en/latest/train/train.html)'s `JaxTrainer`. You’ll train a small GPT-2-style Transformer from scratch on the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/) dataset.
 
 Ray Train lets you keep your training code in a normal Python function, then runs that function on a set of Ray workers. `JaxTrainer` handles the orchestration (starting workers, setting up the distributed context, and collecting metrics/checkpoints) so you can focus on the model and the input pipeline.
 
@@ -15,6 +15,38 @@ In this tutorial, you:
 3. Stream data and report metrics (and optionally checkpoints) through Ray Train.
 
 
+
+<div id="anyscale-note" class="alert alert-block alert-warning">
+
+  <strong>Anyscale specific configuration</strong>
+
+  <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you need to manually:</p>
+
+  <ul>
+    <li><strong>Configure your Ray cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
+    <li><strong>Manage dependencies</strong>: Manually install and manage dependencies on each node.</li>
+    <li><strong>Set up storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+  </ul>
+</div>
+
+<style>
+  div#anyscale-note > p,
+  div#anyscale-note > ul,
+  div#anyscale-note > ul li {
+    color: black;
+  }
+
+  div#anyscale-note {
+    background-color: rgb(255, 243, 205);
+  }
+
+  div#anyscale-note {
+    border: 1px solid #ccc; 
+    border-radius: 8px;
+    padding: 15px;
+  }
+
+</style>
 
 ## Step 1: Install dependencies and prepare the dataset
 
@@ -32,10 +64,13 @@ This notebook uses `jax[cuda]` in the examples for simplicity.
 %%bash
 pip install pandas numpy jax[cuda] flax tiktoken datasets transformers orbax optax
 
+```
 
+
+```python
 # Run below if you plan to use Google TPUs.
-# %%bash
-# pip install pandas numpy jax[tpu] flax tiktoken datasets transformers orbax optax
+%%bash
+pip install pandas numpy jax[tpu] flax tiktoken datasets transformers orbax optax
 ```
 
 Next, prepare the data that you’ll feed into the training loop.
@@ -47,7 +82,7 @@ This notebook uses [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/)
 
 You can use Karpathy’s nanoGPT prep script ([`prepare.py`](https://github.com/karpathy/nanoGPT/blob/master/data/openwebtext/prepare.py)) or download preprocessed data from Kaggle ([OpenWebText GPT-2](https://www.kaggle.com/datasets/windmaple/openwebtext-gpt2)).
 
-For simplicity, the following code adapts the nanoGPT approach and writes the output to the shared storage path used in an Anyscale workspace (`/mnt/cluster_storage`). If you already have `train.bin` and `val.bin`, you can skip this step.
+If running on the Anyscale workspace, the following code adapts the nanoGPT approach and writes the output to the shared storage path used in an Anyscale workspace (`/mnt/cluster_storage`). If you already have `train.bin` and `val.bin`, you can skip this step.
 
 
 
@@ -100,7 +135,7 @@ for split, dset in tokenized.items():
     total_batches = 1024
 
     idx = 0
-    for batch_idx in tqdm[int](range(total_batches), desc=f'writing {filename}'):
+    for batch_idx in tqdm(range(total_batches), desc=f'writing {filename}'):
         # Batch together samples for faster write
         batch = dset.shard(num_shards=total_batches, index=batch_idx, contiguous=True).with_format('numpy')
         arr_batch = np.concatenate(batch['ids'])
@@ -355,6 +390,7 @@ def loss_fn_eval(model, batch):
     ).mean()
     return loss, logits
 
+
 @nnx.jit
 def train_step(model, optimizer, metrics, batch):
     grad_fn = nnx.value_and_grad(loss_fn_train, has_aux=True)
@@ -446,14 +482,8 @@ def train_loop_per_worker(config_dict: dict) -> None:
         try:
             local_batch = next(train_batches)
         except StopIteration:
-            train_batches = iter(train_it.iter_batches(
-                batch_size=local_batch_size,
-                batch_format="numpy",
-                prefetch_batches=2,
-                drop_last=True,
-            ))
+            train_it.reset()
             local_batch = next(train_batches)
-
         global_x, global_y = make_global_batch(local_batch["x"], local_batch["y"], global_input_shape)
 
         train_loss = train_step(model, optimizer, train_metrics, (global_x, global_y))
@@ -468,12 +498,7 @@ def train_loop_per_worker(config_dict: dict) -> None:
             try:
                 local_validation_batch = next(val_batches)
             except StopIteration:
-                val_batches = iter(val_it.iter_batches(
-                    batch_size=local_batch_size,
-                    batch_format="numpy",
-                    prefetch_batches=2,
-                    drop_last=True,
-                ))
+                val_it.reset()
                 local_validation_batch = next(val_batches)
 
             global_val_input, global_val_target = make_global_batch(
@@ -482,10 +507,10 @@ def train_loop_per_worker(config_dict: dict) -> None:
                 global_input_shape
             )
             
-            eval_loss, logits = loss_fn_eval(model, (global_val_input, global_val_target))
-            val_metrics.update(val_loss=eval_loss, logits=logits)
+            loss, logits = loss_fn_eval(model, (global_val_input, global_val_target))
+            val_metrics.update(val_loss=loss, logits=logits)
             val_loss = float(val_metrics.compute())
-            metrics = {"step": step + 1, "train_loss": float(train_loss), "val_loss": float(val_loss)}
+            metrics = {"step": step + 1, "train_loss": float(train_loss),"val_loss": float(val_loss)}
             
             checkpoint = None
             if (step + 1) % config.checkpoint_every_n_steps == 0:
@@ -512,8 +537,10 @@ To run `train_loop_per_worker` on a Ray cluster, you construct a `JaxTrainer` wi
 - `train_loop_per_worker`: the training function you defined earlier. Each Ray Train worker runs this function.
 - `train_loop_config`: a hyperparameter dictionary passed into the function.
 - `scaling_config`: the number of workers and compute resources (GPUs or TPUs) for the training run.
-- `datasets`: Ray Data datasets that Ray Train will shard and stream to the workers.
+- `datasets`: The Ray Datasets to ingest for training. Datasets are keyed by name (`{name: dataset}`). Each dataset can be accessed from within the `train_loop_per_worker` by calling `ray.train.get_dataset_shard(name)`. Sharding and additional configuration can be done by passing in a `dataset_config`.
 - `run_config`: runtime configuration including where to write outputs such as checkpoints.
+- `jax_config`: The configuration for setting up the JAX backend. If set to None, a default configuration will be used based on `JAX_PLATFORMS` environment variables.
+- `dataset_config`: The configuration for ingesting the input datasets. By default, all the Ray Dataset are split equally across workers. See [DataConfig](https://docs.ray.io/en/master/train/api/doc/ray.train.DataConfig.html#ray.train.DataConfig) for more details.
 
 The following cells create Ray Data datasets from the `.bin` token files and then launch the trainer.
 
