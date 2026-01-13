@@ -586,7 +586,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
-        self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(
             task_index,
@@ -619,12 +618,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
-        self._data_tasks[task_index] = DataOpTask(
+        data_task = DataOpTask(
             task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
         )
+        self._metrics.on_task_submitted(
+            task_index, inputs, task_id=data_task.get_task_id()
+        )
+        self._data_tasks[task_index] = data_task
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
@@ -701,9 +704,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
     def supports_fusion(self) -> bool:
         return self._supports_fusion
 
@@ -712,7 +712,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # metadata tasks, which are used by the actor-pool map operator to
         # check if a newly created actor is ready.
         # The reasons are because:
-        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        # 1. `PhysicalOperator.has_completed` checks `num_active_tasks`. The operator
         #   should be considered completed if there are still pending actors.
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.

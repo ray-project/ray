@@ -8,15 +8,20 @@ import math
 import time
 import uuid
 from collections import Counter
-from enum import Enum
 from functools import partial
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 import torch
 from pydantic import BaseModel, Field, root_validator
 
+if TYPE_CHECKING:
+    from vllm.multimodal import MultiModalDataDict
+else:
+    MultiModalDataDict = Any
+
 import ray
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
@@ -52,16 +57,6 @@ except ImportError:
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
 
 
-class vLLMTaskType(str, Enum):
-    """The type of task to run on the vLLM engine."""
-
-    """Generate text."""
-    GENERATE = "generate"
-
-    """Generate embeddings."""
-    EMBED = "embed"
-
-
 class vLLMEngineRequest(BaseModel):
     """A request to the vLLM engine."""
 
@@ -70,9 +65,16 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    prompt: str
-    # The images inputs for the multimodal model. Use Any to avoid importing PIL.
+    # Either prompt or prompt_token_ids must be provided.
+    prompt: Optional[str] = None
+    # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
+    # The multimodal data for the multimodal model.
+    multimodal_data: Optional[MultiModalDataDict]
+    # The kwargs for the multimodal processor.
+    mm_processor_kwargs: Optional[Dict[str, Any]]
+    # The uuids for the multimodal data.
+    multimodal_uuids: Optional[Dict[str, Any]]
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
     prompt_token_ids: Optional[List[int]]
@@ -80,6 +82,12 @@ class vLLMEngineRequest(BaseModel):
     params: Any
     # LoRA request.
     lora_request: Optional[Any] = None
+
+    @root_validator(pre=True)
+    def validate_prompt_or_prompt_token_ids(cls, values):
+        if not values.get("prompt") and not values.get("prompt_token_ids"):
+            raise ValueError("Either 'prompt' or 'prompt_token_ids' must be provided.")
+        return values
 
     class Config:
         validate_assignment = True
@@ -192,6 +200,7 @@ class vLLMOutputData(BaseModel):
                 and data.embeddings.dtype == torch.bfloat16
             ):
                 data.embeddings = data.embeddings.to(torch.float32)
+            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -221,7 +230,9 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
+        # Flag to log deprecation warning only once
+        self._guided_decoding_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -235,8 +246,18 @@ class vLLMEngineWrapper:
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
-        # Convert the task type back to a string to pass to the engine.
-        kwargs["task"] = self.task_type.value
+        # Set runner and convert based on task type.
+        if self.task_type == vLLMTaskType.GENERATE:
+            kwargs["runner"] = "generate"
+        elif self.task_type == vLLMTaskType.EMBED:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "embed"
+        elif self.task_type == vLLMTaskType.CLASSIFY:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "classify"
+        elif self.task_type == vLLMTaskType.SCORE:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "reward"
 
         try:
             import vllm
@@ -247,7 +268,11 @@ class vLLMEngineWrapper:
             ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
-        if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
+        if (
+            self.task_type
+            in {vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE}
+            and "override_pooler_config" in kwargs
+        ):
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
@@ -326,7 +351,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -335,12 +360,23 @@ class vLLMEngineWrapper:
         else:
             tokenized_prompt = None
 
+        multimodal_data = row.pop("multimodal_data", None)
+
         # Extract image data from preprocessing output
         # Note: Field name is 'image' (singular) not 'images' (plural).
-        if "image" in row:
+        if multimodal_data is not None:
+            # When multimodal_data is present, images are handled through multimodal_data,
+            # so we should set image to an empty list.
+            row.pop("image", None)
+            image = []
+        elif "image" in row:
             image = row.pop("image")
         else:
             image = []
+        # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,
+        # these kwargs are not needed in the vLLM engine stage.
+        mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
+        multimodal_uuids = row.pop("multimodal_uuids", None)
 
         lora_request = await self._maybe_get_lora_request(row)
 
@@ -349,11 +385,31 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            if "guided_decoding" in sampling_params:
-                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **maybe_convert_ndarray_to_list(
-                        sampling_params.pop("guided_decoding")
+            structured_outputs_config = None
+            # Handle new structured_outputs parameter (preferred)
+            if "structured_outputs" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("structured_outputs")
+                )
+                # Remove guided_decoding if present to avoid passing it to SamplingParams
+                sampling_params.pop("guided_decoding", None)
+            # Handle legacy guided_decoding parameter for backward compatibility
+            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
+            elif "guided_decoding" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("guided_decoding")
+                )
+                # Log deprecation warning only once to avoid log spam
+                if not self._guided_decoding_warning_logged:
+                    logger.warning(
+                        "The 'guided_decoding' parameter is deprecated. "
+                        "Please use 'structured_outputs' in sampling_params instead."
                     )
+                    self._guided_decoding_warning_logged = True
+
+            if structured_outputs_config:
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                    **structured_outputs_config
                 )
             else:
                 structured_outputs = None
@@ -361,8 +417,16 @@ class vLLMEngineWrapper:
                 **maybe_convert_ndarray_to_list(sampling_params),
                 structured_outputs=structured_outputs,
             )
-        elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams(task=self.task_type.value)
+        elif self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
+            pooling_params = row.pop("pooling_params", {})
+            params = vllm.PoolingParams(
+                **maybe_convert_ndarray_to_list(pooling_params),
+                task=self.task_type,
+            )
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
@@ -372,6 +436,9 @@ class vLLMEngineWrapper:
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
             images=image,
+            multimodal_data=multimodal_data,
+            mm_processor_kwargs=mm_processor_kwargs,
+            multimodal_uuids=multimodal_uuids,
             params=params,
             lora_request=lora_request,
         )
@@ -410,26 +477,49 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
-        # NOTE: vLLM v1 tighly couples tokenizer and detokenizer to the engine.
-        # We should investigate whether decoupling them could lead to better
-        # performance. Given that v1 tokenizer and detokenizer are already
-        # in a separate process, the benefit of decoupling them in the Processor
-        # may be limited.
-        assert request.prompt
         import vllm
 
-        multi_modal_data = {"image": request.images} if request.images else None
-        llm_prompt = vllm.inputs.data.TextPrompt(
-            prompt=request.prompt, multi_modal_data=multi_modal_data
-        )
+        # TODO (jeffreywang): Consolidate to multimodal_data only
+        if request.images:
+            multi_modal_data = (
+                {**request.multimodal_data, "image": request.images}
+                if request.multimodal_data
+                else {"image": request.images}
+            )
+        else:
+            multi_modal_data = request.multimodal_data
+
+        if request.prompt_token_ids is not None:
+            llm_prompt = vllm.inputs.data.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=multi_modal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
+            )
+        else:
+            assert request.prompt
+            llm_prompt = vllm.inputs.data.TextPrompt(
+                prompt=request.prompt,
+                multi_modal_data=multi_modal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
+            )
 
         # Send the request to the LLM engine.
-        # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
-        if self.task_type == vLLMTaskType.EMBED:
+        # vLLM 0.12.0 uses encode() for pooling/embedding/classification tasks, generate() for text generation
+        if self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
             stream = self.engine.encode(
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 pooling_params=request.params,
+                # vLLM 0.12.0 ignores truncate_prompt_tokens in the pooling_params.
+                # TODO (jeffreywang): Remove the following line once
+                # https://github.com/vllm-project/vllm/issues/31012 is fixed.
+                truncate_prompt_tokens=request.params.truncate_prompt_tokens,
             )
         else:
             stream = self.engine.generate(
@@ -442,7 +532,9 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = request.prompt
+                request_output.prompt = (
+                    request.prompt if request.prompt is not None else ""
+                )
                 return request_output
 
         raise RuntimeError(
@@ -472,7 +564,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
@@ -500,7 +592,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
@@ -552,19 +644,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -575,17 +669,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 self.model,
             )
 
-        # Override the task if it is different from the stage.
-        task = vLLMTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
@@ -806,23 +889,36 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
+    def _get_task_type(self) -> TypeVLLMTaskType:
+        return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
+
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
-        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
-        if task_type == vLLMTaskType.GENERATE:
+        ret = {}
+        if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
-                "https://docs.vllm.ai/en/latest/api/inference_params.html#sampling-parameters "
+                "https://docs.vllm.ai/en/latest/api/vllm/#vllm.SamplingParams "
                 "for details."
             )
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
-        return {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
+        ret = {
+            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
+            "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
+            "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
+            "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
+        if self._get_task_type() == vLLMTaskType.EMBED:
+            ret["pooling_params"] = (
+                "The pooling parameters. See "
+                "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
+                "for details. If not provided, default pooling parameters will be used."
+            )
+        return ret

@@ -952,7 +952,7 @@ class RecurrentEncoderConfig(ModelConfig):
         hidden_dim: The size of the hidden internal state(s) of the recurrent layer(s).
             For example, for an LSTM, this would be the size of the c- and h-tensors.
         num_layers: The number of recurrent (LSTM or GRU) layers to stack.
-        batch_major: Wether the input is batch major (B, T, ..) or
+        batch_major: Whether the input is batch major (B, T, ..) or
             time major (T, B, ..).
         hidden_weights_initializer: The initializer function or class to use for
             kernel initialization in the hidden layers. If `None` the default

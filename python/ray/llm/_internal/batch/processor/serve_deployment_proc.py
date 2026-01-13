@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import Field
 
+from ray.data import ActorPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -72,7 +73,9 @@ def build_serve_deployment_processor(
                 should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
-                concurrency=config.concurrency,
+                compute=ActorPoolStrategy(
+                    **config.get_concurrency(autoscaling_enabled=False),
+                )
             ),
         )
     ]

@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.pandas import TensorDtype
+from ray.data._internal.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.tests.conftest import *  # noqa
@@ -230,7 +230,7 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["data"]
 
-    from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+    from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
     from ray.data.context import DataContext
 
     if DataContext.get_current().use_arrow_tensor_v2:

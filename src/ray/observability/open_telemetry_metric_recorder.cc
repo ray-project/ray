@@ -29,6 +29,9 @@
 #include <cassert>
 #include <utility>
 
+#include "ray/common/constants.h"
+#include "ray/rpc/authentication/authentication_mode.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/logging.h"
 
 // Anonymous namespace that contains the private callback functions for the
@@ -93,6 +96,14 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
   // counting.
   exporter_options.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
+  // Add authentication token to metadata if auth is enabled
+  if (rpc::RequiresTokenAuthentication()) {
+    auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
+    if (token && !token->empty()) {
+      exporter_options.metadata.insert(
+          {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
+    }
+  }
   auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
 
   // Initialize the OpenTelemetry SDK and create a Meter

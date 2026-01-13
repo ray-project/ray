@@ -16,6 +16,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
@@ -102,7 +103,7 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   /// The io context to run the retry loop.
   instrumented_io_context &io_service_;
   /// Whether the exporter is initialized.
-  bool exporter_initialized_ = false;
+  std::atomic<bool> exporter_initialized_{false};
   /// Wait for the server to be ready with a retry count. Invokes the callback
   /// with the status of the server. This is a helper function for WaitForServerReady.
   void WaitForServerReadyWithRetry(std::function<void(const Status &)> init_exporter_fn,
@@ -113,6 +114,8 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   friend class MetricsAgentClientTest;
   FRIEND_TEST(MetricsAgentClientTest, WaitForServerReadyWithRetrySuccess);
   FRIEND_TEST(MetricsAgentClientTest, WaitForServerReadyWithRetryFailure);
+  FRIEND_TEST(MetricsAgentClientTest, ConcurrentCallbacksCallInitExporterFnOnlyOnce);
+  FRIEND_TEST(MetricsAgentClientTest, ExhaustedRetriesReturnsFailure);
 };
 
 }  // namespace rpc

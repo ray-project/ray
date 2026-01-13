@@ -21,8 +21,8 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
-    RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -39,6 +39,7 @@ from ray.serve.schema import (
     ProxyStatus,
     Target,
 )
+from ray.util import metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -329,6 +330,7 @@ class ProxyState:
         self._actor_proxy_wrapper = actor_proxy_wrapper
         self._actor_name = actor_name
         self._node_id = node_id
+        self._node_ip = node_ip
         self._status = ProxyStatus.STARTING
         self._timer = timer
         self._shutting_down = False
@@ -345,6 +347,30 @@ class ProxyState:
             actor_name=self._actor_name,
             status=self._status,
         )
+
+        # Metric to track proxy status as a numeric value
+        # 1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED (0=UNKNOWN reserved)
+        self._status_gauge = metrics.Gauge(
+            "serve_proxy_status",
+            description=(
+                "The current status of the proxy. "
+                "1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED."
+            ),
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        # Set initial status (STARTING = 1)
+        self._status_gauge.set(ProxyStatus.STARTING.to_numeric())
+
+        # Metric to track proxy shutdown duration
+        self._shutdown_duration_histogram = metrics.Histogram(
+            "serve_proxy_shutdown_duration_ms",
+            description=(
+                "The time it takes for the proxy to shut down in milliseconds."
+            ),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        self._shutdown_start_time: Optional[float] = None
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -378,6 +404,8 @@ class ProxyState:
         """
         self._status = status
         self.update_actor_details(status=self._status)
+        # Update the status gauge with the numeric value of the status
+        self._status_gauge.set(status.to_numeric())
 
     def try_update_status(self, status: ProxyStatus):
         """Try update with the new status and only update when the conditions are met.
@@ -525,6 +553,7 @@ class ProxyState:
 
     def shutdown(self):
         self._shutting_down = True
+        self._shutdown_start_time = self._timer.time()
         self._actor_proxy_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
@@ -536,7 +565,14 @@ class ProxyState:
         if not self._shutting_down:
             return False
 
-        return self._actor_proxy_wrapper.is_shutdown()
+        is_shutdown = self._actor_proxy_wrapper.is_shutdown()
+        if is_shutdown and self._shutdown_start_time is not None:
+            shutdown_duration_ms = (
+                self._timer.time() - self._shutdown_start_time
+            ) * 1000
+            self._shutdown_duration_histogram.observe(shutdown_duration_ms)
+            self._shutdown_start_time = None  # Prevent recording multiple times
+        return is_shutdown
 
 
 class ProxyStateManager:
@@ -653,10 +689,6 @@ class ProxyStateManager:
         """
         if proxy_nodes is None:
             proxy_nodes = set()
-
-        # Ensure head node always has a proxy (unless FF'd off).
-        if RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE:
-            proxy_nodes.add(self._head_node_id)
 
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _, _ in target_nodes}
