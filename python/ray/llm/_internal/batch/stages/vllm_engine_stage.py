@@ -5,6 +5,7 @@ import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
 from collections import Counter
@@ -666,10 +667,23 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "params": str(request.params),
                 "__inference_error__": None,
             }
-        except _VLLM_FATAL_ERRORS:
-            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
-            # The engine is dead and all subsequent requests would fail.
-            raise
+        except _VLLM_FATAL_ERRORS as e:
+            # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
+            # engine subprocess is dead, but the Ray actor is still alive.
+            #
+            # Simply re-raising would cause task retries to go to the SAME
+            # actor (actor methods are bound to specific instances), creating
+            # an infinite retry loop on the broken actor.
+            #
+            # The fix: exit the actor so Ray can restart it with a fresh
+            # engine. Ray Data's max_restarts=-1 (default) will create a
+            # replacement actor, and task retries will go to healthy actors.
+            #
+            # See: https://github.com/ray-project/ray/issues/59522
+            logger.error(
+                f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
+            )
+            os._exit(1)
         except Exception as e:
             if not self.should_continue_on_error:
                 raise
