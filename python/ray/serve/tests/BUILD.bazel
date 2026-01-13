@@ -576,3 +576,40 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+# Direct ingress tests
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_ENABLE_DIRECT_INGRESS": "1"},
+    files = [
+        "test_direct_ingress.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_ENABLE_DIRECT_INGRESS": "1"},
+    files = [
+        "test_direct_ingress_standalone.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
