@@ -196,6 +196,79 @@ py_test_module_list(
     ],
 )
 
+# Direct ingress tests.
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_direct_ingress.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_direct_ingress_standalone.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_direct_ingress.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_direct_ingress_standalone.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Large tests requiring `test_config_files/`.
 py_test_module_list(
     size = "large",
