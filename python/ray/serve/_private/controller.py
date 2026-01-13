@@ -622,20 +622,17 @@ class ServeController:
 
         # Direct ingress port management
         if self._direct_ingress_enabled:
-            try:
-                # Update port values for ingress replicas.
-                # Non-ingress replicas are not expected to have ports allocated.
-                ingress_replicas_info_list: List[
-                    Tuple[str, str, int, int]
-                ] = self.deployment_state_manager.get_ingress_replicas_info()
+            # Update port values for ingress replicas.
+            # Non-ingress replicas are not expected to have ports allocated.
+            ingress_replicas_info_list: List[
+                Tuple[str, str, int, int]
+            ] = self.deployment_state_manager.get_ingress_replicas_info()
 
-                NodePortManager.update_ports(ingress_replicas_info_list)
+            NodePortManager.update_ports(ingress_replicas_info_list)
 
-                # Clean up stale ports
-                # get all alive replica ids and their node ids.
-                NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
-            except Exception:
-                logger.exception("Exception updating direct ingress port state.")
+            # Clean up stale ports
+            # get all alive replica ids and their node ids.
+            NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
