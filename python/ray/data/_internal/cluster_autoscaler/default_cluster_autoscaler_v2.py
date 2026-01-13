@@ -125,6 +125,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
+        min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
             _get_node_resource_spec_and_count
@@ -143,6 +144,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._cluster_scaling_up_delta = cluster_scaling_up_delta
         assert cluster_util_avg_window_s > 0
         self._cluster_util_check_interval_s = cluster_util_check_interval_s
+        assert min_gap_between_autoscaling_requests_s >= 0
+        self._min_gap_between_autoscaling_requests_s = (
+            min_gap_between_autoscaling_requests_s
+        )
         # Last time when the cluster utilization was checked.
         self._last_cluster_util_check_time = 0
         # Last time when a request was sent to Ray's autoscaler.
@@ -170,7 +175,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._resource_utilization_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
-        if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
+        if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
         util = self._resource_utilization_calculator.get()
@@ -227,7 +232,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS} seconds."
+                f" {self._min_gap_between_autoscaling_requests_s} seconds."
             )
             logger.warning(msg, exc_info=True)
 

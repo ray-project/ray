@@ -136,11 +136,10 @@ class TestClusterAutoscaling:
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {resource_spec1: 2, resource_spec2: 1},
         )
-        # Bypass the request rate limit for this test.
-        autoscaler._last_request_time = 0
 
         autoscaler.try_trigger_scaling()
 
@@ -225,25 +224,23 @@ class TestClusterAutoscaling:
         # High utilization to trigger scaling
         utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
 
+        # Mock the node resource spec with zero counts
+        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
+
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
-        )
-        _send_resource_request.assert_called_with([])
-
-        # Mock the node resource spec with zero counts
-        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
-        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
-        autoscaler._get_node_counts = MagicMock(
-            return_value={
-                resource_spec1: 0,  # Zero nodes of this type
-                resource_spec2: 0,  # Zero nodes of this type
+            min_gap_between_autoscaling_requests_s=0,
+            get_node_counts=lambda: {
+                resource_spec1: 0,
+                resource_spec2: 0,
             },
         )
-        autoscaler._last_request_time = 0
+        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
