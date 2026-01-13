@@ -508,11 +508,8 @@ class WorkerGroup(BaseWorkerGroup):
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
             if self.has_started():
-                # for callback in self._callbacks:
-                #     callback.before_worker_group_shutdown(self)
-                self._worker_group_callback_manager.invoke(
-                    "before_worker_group_shutdown", self
-                )
+                for callback in self._callbacks:
+                    callback.before_worker_group_shutdown(self)
 
                 self._worker_group_state.shutdown()
 
