@@ -43,7 +43,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix}}.lock"
       CONSTRAINTS_FILE: "python/requirements_compiled_py{{matrix}}.txt"
 
   - name: raycpubaseextra-aarch64
@@ -58,7 +58,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase-aarch64
 
   - name: raycudabase-aarch64
@@ -88,7 +88,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix.python}}.lock"
       CONSTRAINTS_FILE: "python/requirements_compiled_py{{matrix.python}}.txt"
 
   - name: raycudabaseextra-aarch64
@@ -116,7 +116,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase-aarch64
 
   - name: ray-core-build-aarch64
