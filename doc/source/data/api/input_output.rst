@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   read_parquet_bulk
    Dataset.write_parquet
 
 CSV
@@ -428,7 +427,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.FastFileMetadataProvider
 
 Shuffling API
 -------------

@@ -55,7 +55,6 @@ py_test_module_list(
         "test_failure_3.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
-        "test_global_state.py",
         "test_healthcheck.py",
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
@@ -203,7 +202,8 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_5.py",
         "test_scheduling.py",
-        "test_scheduling_2.py",
+        # TODO(MengjinYan): https://github.com/anyscale/ray/issues/5
+        # "test_scheduling_2.py",
         "test_token_auth_integration.py",
         "test_wait.py",
     ],
@@ -506,6 +506,7 @@ py_test_module_list(
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
         "accelerators/test_rbln.py",
@@ -522,6 +523,7 @@ py_test_module_list(
         "test_component_failures.py",
         "test_concurrency_group.py",
         "test_core_worker_io_thread_stack_size.py",
+        "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
         "test_debug_tools.py",
         "test_distributed_sort.py",
@@ -537,6 +539,7 @@ py_test_module_list(
         "test_list_actors_2.py",
         "test_list_actors_3.py",
         "test_list_actors_4.py",
+        "test_local_port_service_discovery.py",
         "test_log_dedup.py",
         "test_memory_scheduling.py",
         "test_metrics_agent_2.py",
@@ -559,9 +562,7 @@ py_test_module_list(
         "test_runtime_env_py_executable.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
-        "test_submission_client_auth.py",
         "test_system_metrics.py",
-        "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
         "test_tpu.py",
@@ -640,6 +641,7 @@ py_test_module_list(
     files = [
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
+        "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
         "custom_setup",
@@ -728,6 +730,7 @@ py_test_module_list(
     files = [
         "test_autoscaler_e2e.py",
         "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+        "test_submission_client_auth.py",
     ],
     tags = [
         "exclusive",
@@ -872,6 +875,7 @@ py_test_module_list(
         "test_ray_get.py",
         "test_state_api_2.py",
         "test_task_events.py",
+        "test_task_events_3.py",
         "test_unavailable_actors.py",
     ],
     tags = [
@@ -891,11 +895,11 @@ py_test_module_list(
         "test_actor.py",
         "test_actor_failures.py",
         "test_cancel.py",
-        "test_chaos.py",
         "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",
+        "test_global_state.py",
         "test_multi_node.py",
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
@@ -977,6 +981,7 @@ py_test_module_list(
     size = "large",
     files = [
         "test_failure_4.py",
+        "test_implicit_resource.py",
         "test_object_spilling.py",
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
@@ -996,7 +1001,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_implicit_resource.py",
         "test_plasma_unlimited.py",
         "test_threaded_actor.py",
     ],

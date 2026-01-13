@@ -5,6 +5,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Deque,
@@ -17,6 +18,9 @@ from typing import (
     Tuple,
     Union,
 )
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray import ObjectRef
@@ -67,6 +71,61 @@ from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+
+@ray.remote(num_cpus=0)
+def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
+    """Extract PyArrow schema from a block by converting a 1-row sample.
+
+    This runs on a worker to avoid fetching block data to the driver.
+    Uses num_cpus=0 since it's a lightweight metadata operation.
+
+    Slices to 1 row before converting to Arrow to minimize conversion overhead
+    for large Pandas blocks. This ensures schema is consistent with actual
+    block conversion logic (e.g., pa.Table.from_pandas).
+    """
+    accessor = BlockAccessor.for_block(block)
+    sample_block = accessor.slice(0, 1)
+    sample_accessor = BlockAccessor.for_block(sample_block)
+    return sample_accessor.to_arrow().schema
+
+
+def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+    """Extract PyArrow schema from a RefBundle.
+
+    For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
+    remote task to convert a 1-row sample to Arrow and extract the schema.
+    This ensures schema consistency with actual block conversion logic without
+    fetching block data to the driver.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data.dataset import Schema
+
+    if bundle.schema is None:
+        return None
+
+    schema = bundle.schema
+
+    # Unwrap Schema wrapper if present
+    if isinstance(schema, Schema):
+        schema = schema.base_schema
+
+    # Already a PyArrow schema - use directly
+    if isinstance(schema, pa.Schema):
+        return schema
+
+    # PandasBlockSchema - use remote task to convert via actual block conversion
+    # This runs on a worker to avoid fetching block data to the driver
+    if isinstance(schema, PandasBlockSchema):
+        if not bundle.blocks:
+            return None
+        block_ref, _ = bundle.blocks[0]
+        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        return ray.get(schema_ref)
+
+    return None
 
 
 class BaseRefBundler(ABC):
@@ -130,6 +189,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -169,12 +229,48 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+        # Callback for when first input bundle is ready (before task submission).
+        # Receives schema from the first bundle for deferred initialization
+        # (e.g., schema evolution for Iceberg writes via on_write_start).
+        self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
+        self._on_start_called = False
+        # _map_transformer_ref is lazily initialized on first access.
+        # This ensures on_start callback (if registered) can modify the transformer
+        # before serialization (e.g., for Iceberg schema evolution).
+        self.__map_transformer_ref = None
+
+    @property
+    def _map_transformer_ref(self):
+        """Lazily serialize _map_transformer to object store on first access.
+
+        Deferred until first task submission so that on_start callbacks
+        (e.g., on_write_start for Iceberg) can modify the transformer state
+        before serialization.
+        """
+        if self.__map_transformer_ref is None:
+            self.__map_transformer_ref = ray.put(self._map_transformer)
+            self._warn_large_udf()
+        return self.__map_transformer_ref
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
         In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def _notify_first_input(self, bundled_input: RefBundle) -> None:
+        """Invoke on_start callback with schema if registered and not yet invoked.
+
+        Used for deferred initialization that needs schema from the first bundle
+        (e.g., schema evolution for Iceberg writes via on_write_start).
+        """
+        if not self._on_start_called and self._on_start is not None:
+            schema = _get_schema_from_bundle(bundled_input)
+            self._on_start(schema)
+            self._on_start_called = True
+            # Note: _map_transformer_ref is lazily initialized, so no need to
+            # re-serialize here - it will be created with the updated state
+            # when first accessed in _add_bundled_input.
 
     def get_map_task_kwargs(self) -> Dict[str, Any]:
         """Get the kwargs for the map task.
@@ -208,6 +304,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
+        self._block_ref_bundler.done_adding_bundles()
         while self._block_ref_bundler.has_bundle():
             (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
             for input_bundle in input_bundles:
@@ -244,6 +341,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -275,6 +373,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             per_block_limit: Maximum number of rows to process per block, for early termination.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted. Used for deferred initialization
+                that requires schema from actual data (e.g., schema evolution for
+                Iceberg writes).
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -310,6 +412,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -329,6 +432,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_start=on_start,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -380,16 +484,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ]
             )
             map_transformer = map_transformer.fuse(split_transformer)
-        # Put the function def in the object store to avoid repeated serialization
-        # in case it's large (i.e., closure captures large objects).
-        self._map_transformer_ref = ray.put(map_transformer)
-        self._warn_large_udf()
+
+        # Store the potentially modified map_transformer for later use
+        self._map_transformer = map_transformer
 
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""
         udf_size = ray.experimental.get_local_object_locations(
-            [self._map_transformer_ref]
-        )[self._map_transformer_ref]["object_size"]
+            [self.__map_transformer_ref]
+        )[self.__map_transformer_ref]["object_size"]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
@@ -550,7 +653,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 _,
                 bundled_input,
             ) = self._block_ref_bundler.get_next_bundle()
+
             self._add_bundled_input(bundled_input)
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -596,9 +701,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
     def supports_fusion(self) -> bool:
         return self._supports_fusion
 
@@ -607,7 +709,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # metadata tasks, which are used by the actor-pool map operator to
         # check if a newly created actor is ready.
         # The reasons are because:
-        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        # 1. `PhysicalOperator.has_completed` checks `num_active_tasks`. The operator
         #   should be considered completed if there are still pending actors.
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.

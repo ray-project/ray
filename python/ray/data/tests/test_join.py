@@ -764,7 +764,7 @@ def test_join_with_predicate_pushdown(
     plan_str = optimized_plan.dag.dag_str
 
     join_idx = plan_str.find("Join[Join]")
-    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
+    filter_idx = plan_str.find("Filter[Filter(")
 
     if should_push:
         # Filter should be pushed before join

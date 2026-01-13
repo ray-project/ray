@@ -235,8 +235,11 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "data/examples/**/content/README.md",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
+    "serve/tutorials/asynchronous-inference/content/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -573,9 +576,6 @@ def setup(app):
     app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
-    app.add_js_file("js/assistant.js", defer="defer")
-    app.add_css_file("css/assistant.css")
-
     app.add_js_file("js/dismissable-banner.js", defer="defer")
     app.add_css_file("css/dismissable-banner.css")
 
@@ -649,6 +649,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "mlflow",
     "nevergrad",
     "numpy",
     "pandas",

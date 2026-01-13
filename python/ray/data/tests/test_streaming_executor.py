@@ -45,6 +45,7 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
+    _format_metrics_table,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -197,7 +198,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    o1.completed = MagicMock(return_value=True)
+    o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
@@ -258,7 +259,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
 
     # Manually mark o2 as execution finished (simulating limit operator behavior)
     o2.mark_execution_finished()
-    assert o2.execution_finished(), "o2 should be execution finished"
+    assert o2.has_execution_finished(), "o2 should be execution finished"
 
     # Call update_operator_states - this should drain o1's output queue
     update_operator_states(topo)
@@ -320,7 +321,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
     # Completed ops are not eligible
-    with patch.object(o3, "completed") as _mock:
+    with patch.object(o3, "has_completed") as _mock:
         _mock.return_value = True
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2]
 
@@ -342,13 +343,196 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
         # Complete `o3`
-        with patch.object(o3, "completed") as _mock:
+        with patch.object(o3, "has_completed") as _mock:
             _mock.return_value = True
             # Clear up input queue
             topo[o3].input_queues[0].clear()
 
             # To ensure liveness back-pressure limits will be ignored
             assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
+
+
+def test_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that backpressure policies that triggered are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    # Add input to o2's input queue so it becomes eligible
+    topo[o1].output_queue.append(make_ref_bundle("dummy1"))
+
+    # Create mock backpressure policies with name property
+    class MockPolicy1:
+        @property
+        def name(self):
+            return "MockPolicy1"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy2:
+        @property
+        def name(self):
+            return "MockPolicy2"
+
+        def can_add_input(self, op):
+            return True  # Allow all
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy3:
+        @property
+        def name(self):
+            return "MockPolicy3"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    policies = [MockPolicy1(), MockPolicy2(), MockPolicy3()]
+
+    # Call get_eligible_operators which should track triggered policies
+    get_eligible_operators(topo, policies, ensure_liveness=False)
+
+    # Check that o2 has the first triggered policy tracked
+    assert o2._in_task_submission_backpressure is True
+    assert o2._task_submission_backpressure_policy == "MockPolicy1"
+
+    # Now test with no backpressure
+    class AllowAllPolicy:
+        @property
+        def name(self):
+            return "AllowAll"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    get_eligible_operators(topo, [AllowAllPolicy()], ensure_liveness=False)
+
+    # Check that o2 is no longer in backpressure
+    assert o2._in_task_submission_backpressure is False
+    assert o2._task_submission_backpressure_policy is None
+
+
+def test_output_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that output backpressure policies are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    # Create mock backpressure policies for output limiting with name property
+    class LimitingPolicy:
+        @property
+        def name(self):
+            return "Limiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None  # Block o2 output
+
+    class NonLimitingPolicy:
+        @property
+        def name(self):
+            return "NonLimiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 1000  # Allow some output
+
+    class NoLimitPolicy:
+        @property
+        def name(self):
+            return "NoLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None  # No limit
+
+    policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
+
+    # Call process_completed_tasks which tracks output policies
+    process_completed_tasks(topo, policies, max_errored_blocks=0)
+
+    # Check that o2 has the first limiting policy tracked
+    assert o2._in_task_output_backpressure is True
+    assert o2._task_output_backpressure_policy == "Limiting"
+
+    # Now test with no output backpressure
+    process_completed_tasks(topo, [NonLimitingPolicy()], max_errored_blocks=0)
+
+    # Check that o2 is no longer in output backpressure
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_summary_str_backpressure_policies(ray_start_regular_shared):
+    """Test that summary_str correctly displays backpressure policy names."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts)
+
+    resource_manager = mock_resource_manager()
+
+    # Test with no backpressure
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "backpressured" not in summary
+
+    # Set task submission backpressure with policy (using UX name)
+    o2._in_task_submission_backpressure = True
+    o2._task_submission_backpressure_policy = "ConcurrencyCap"
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+
+    # Set output backpressure with policy (using UX name)
+    o2._in_task_output_backpressure = True
+    o2._task_output_backpressure_policy = "ResourceBudget"
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+    assert "outputs(ResourceBudget)" in summary
+
+    # Clear backpressure
+    o2._in_task_submission_backpressure = False
+    o2._task_submission_backpressure_policy = None
+    o2._in_task_output_backpressure = False
+    o2._task_output_backpressure_policy = None
+    summary = topo[o2].summary_str_raw(resource_manager)
+    assert "backpressured" not in summary
 
 
 def test_rank_operators(ray_start_regular_shared):
@@ -1180,6 +1364,141 @@ class TestDataOpTask:
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
+
+
+def test_format_metrics_table():
+    """Test that _format_metrics_table formats metrics in a tabular format."""
+    metrics_dict = {
+        "average_num_outputs_per_task": None,
+        "average_num_inputs_per_task": None,
+        "num_output_blocks_per_task_s": None,
+        "average_total_task_completion_time_s": None,
+        "average_task_completion_excl_backpressure_time_s": None,
+        "average_bytes_per_output": None,
+        "obj_store_mem_internal_inqueue": 0,
+        "obj_store_mem_internal_outqueue": 0,
+        "obj_store_mem_pending_task_inputs": 0,
+        "average_bytes_inputs_per_task": None,
+        "average_rows_inputs_per_task": None,
+        "average_bytes_outputs_per_task": None,
+        "average_rows_outputs_per_task": None,
+        "average_max_uss_per_task": None,
+        "num_inputs_received": 1,
+        "num_row_inputs_received": 20124,
+        "bytes_inputs_received": 322116,
+        "num_task_inputs_processed": 0,
+        "bytes_task_inputs_processed": 0,
+        "bytes_inputs_of_submitted_tasks": 0,
+        "rows_inputs_of_submitted_tasks": 0,
+        "num_task_outputs_generated": 0,
+        "bytes_task_outputs_generated": 0,
+        "rows_task_outputs_generated": 0,
+        "row_outputs_taken": 20124,
+        "block_outputs_taken": 1,
+        "num_outputs_taken": 1,
+        "bytes_outputs_taken": 322116,
+        "num_outputs_of_finished_tasks": 0,
+        "bytes_outputs_of_finished_tasks": 0,
+        "rows_outputs_of_finished_tasks": 0,
+        "num_external_inqueue_blocks": 0,
+        "num_external_inqueue_bytes": 0,
+        "num_external_outqueue_blocks": 0,
+        "num_external_outqueue_bytes": 0,
+        "num_tasks_submitted": 0,
+        "num_tasks_running": 0,
+        "num_tasks_have_outputs": 0,
+        "num_tasks_finished": 0,
+        "num_tasks_failed": 0,
+        "block_generation_time": 0,
+        "task_submission_backpressure_time": 0,
+        "task_output_backpressure_time": 0,
+        "task_completion_time_total_s": 0,
+        "task_completion_time": "(samples: 0, avg: 0.00)",
+        "block_completion_time": "(samples: 0, avg: 0.00)",
+        "task_completion_time_excl_backpressure_s": 0,
+        "block_size_bytes": "(samples: 0, avg: 0.00)",
+        "block_size_rows": "(samples: 0, avg: 0.00)",
+        "num_alive_actors": 0,
+        "num_restarting_actors": 0,
+        "num_pending_actors": 0,
+        "obj_store_mem_internal_inqueue_blocks": 0,
+        "obj_store_mem_internal_outqueue_blocks": 0,
+        "obj_store_mem_freed": 0,
+        "obj_store_mem_spilled": 0,
+        "obj_store_mem_used": 0,
+        "cpu_usage": 0,
+        "gpu_usage": 0,
+    }
+
+    expected = """\
+┌──────────────┬──────────────────────────────────────────────────┬─────────────────────────┐
+│ category     │ metric                                           │ value                   │
+├──────────────┼──────────────────────────────────────────────────┼─────────────────────────┤
+│ Actors       │ num_alive_actors                                 │ 0                       │
+│              │ num_pending_actors                               │ 0                       │
+│              │ num_restarting_actors                            │ 0                       │
+│ Averages     │ average_bytes_inputs_per_task                    │ None                    │
+│              │ average_bytes_outputs_per_task                   │ None                    │
+│              │ average_bytes_per_output                         │ None                    │
+│              │ average_max_uss_per_task                         │ None                    │
+│              │ average_num_inputs_per_task                      │ None                    │
+│              │ average_num_outputs_per_task                     │ None                    │
+│              │ average_rows_inputs_per_task                     │ None                    │
+│              │ average_rows_outputs_per_task                    │ None                    │
+│              │ average_task_completion_excl_backpressure_time_s │ None                    │
+│              │ average_total_task_completion_time_s             │ None                    │
+│ Block Stats  │ block_size_bytes                                 │ (samples: 0, avg: 0.00) │
+│              │ block_size_rows                                  │ (samples: 0, avg: 0.00) │
+│              │ num_output_blocks_per_task_s                     │ None                    │
+│ Inputs       │ bytes_inputs_of_submitted_tasks                  │ 0                       │
+│              │ bytes_inputs_received                            │ 322116                  │
+│              │ bytes_task_inputs_processed                      │ 0                       │
+│              │ num_inputs_received                              │ 1                       │
+│              │ num_row_inputs_received                          │ 20124                   │
+│              │ num_task_inputs_processed                        │ 0                       │
+│              │ rows_inputs_of_submitted_tasks                   │ 0                       │
+│ Object Store │ num_external_inqueue_blocks                      │ 0                       │
+│              │ num_external_inqueue_bytes                       │ 0                       │
+│              │ num_external_outqueue_blocks                     │ 0                       │
+│              │ num_external_outqueue_bytes                      │ 0                       │
+│              │ obj_store_mem_freed                              │ 0                       │
+│              │ obj_store_mem_internal_inqueue                   │ 0                       │
+│              │ obj_store_mem_internal_inqueue_blocks            │ 0                       │
+│              │ obj_store_mem_internal_outqueue                  │ 0                       │
+│              │ obj_store_mem_internal_outqueue_blocks           │ 0                       │
+│              │ obj_store_mem_pending_task_inputs                │ 0                       │
+│              │ obj_store_mem_spilled                            │ 0                       │
+│              │ obj_store_mem_used                               │ 0                       │
+│ Outputs      │ block_outputs_taken                              │ 1                       │
+│              │ bytes_outputs_of_finished_tasks                  │ 0                       │
+│              │ bytes_outputs_taken                              │ 322116                  │
+│              │ bytes_task_outputs_generated                     │ 0                       │
+│              │ num_outputs_of_finished_tasks                    │ 0                       │
+│              │ num_outputs_taken                                │ 1                       │
+│              │ num_task_outputs_generated                       │ 0                       │
+│              │ row_outputs_taken                                │ 20124                   │
+│              │ rows_outputs_of_finished_tasks                   │ 0                       │
+│              │ rows_task_outputs_generated                      │ 0                       │
+│ Resources    │ cpu_usage                                        │ 0                       │
+│              │ gpu_usage                                        │ 0                       │
+│ Tasks        │ num_tasks_failed                                 │ 0                       │
+│              │ num_tasks_finished                               │ 0                       │
+│              │ num_tasks_have_outputs                           │ 0                       │
+│              │ num_tasks_running                                │ 0                       │
+│              │ num_tasks_submitted                              │ 0                       │
+│ Timing       │ block_completion_time                            │ (samples: 0, avg: 0.00) │
+│              │ block_generation_time                            │ 0                       │
+│              │ task_completion_time                             │ (samples: 0, avg: 0.00) │
+│              │ task_completion_time_excl_backpressure_s         │ 0                       │
+│              │ task_completion_time_total_s                     │ 0                       │
+│              │ task_output_backpressure_time                    │ 0                       │
+│              │ task_submission_backpressure_time                │ 0                       │
+└──────────────┴──────────────────────────────────────────────────┴─────────────────────────┘"""
+
+    assert _format_metrics_table(metrics_dict) == expected
+
+    # Empty dict should return "(no metrics)"
+    assert _format_metrics_table({}) == "(no metrics)"
 
 
 if __name__ == "__main__":

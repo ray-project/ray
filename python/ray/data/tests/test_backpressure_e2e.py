@@ -287,7 +287,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)
-    del it, ds
     launched = ray.get(source.counter.get.remote())
 
     # If backpressure is broken we'll launch 15+.
@@ -338,4 +337,4 @@ def test_streaming_backpressure_e2e(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

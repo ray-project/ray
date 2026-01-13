@@ -4,4 +4,4 @@
 
 set -exo pipefail
 
-pip3 install "sglang[all]==0.5.1.post2"
+pip3 install "sglang[all]==0.5.6.post1"

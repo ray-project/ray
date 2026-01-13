@@ -19,7 +19,7 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
@@ -270,6 +270,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 )
                 ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
+                ctx.session_name = rtc.get_session_name()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -786,8 +787,8 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -854,7 +855,10 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--host", type=str, default="0.0.0.0", help="Host IP to bind to"
+        "--host",
+        type=str,
+        default=get_localhost_ip(),
+        help="Host IP to bind to. Defaults to localhost.",
     )
     parser.add_argument("-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
@@ -885,6 +889,13 @@ def main():
         default=None,
         help="The port to use for connecting to the runtime_env_agent.",
     )
+    parser.add_argument(
+        "--node-id",
+        required=False,
+        type=str,
+        default=None,
+        help="The hex ID of this node.",
+    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
@@ -905,6 +916,7 @@ def main():
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
+            node_id=args.node_id,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)

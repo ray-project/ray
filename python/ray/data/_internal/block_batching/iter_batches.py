@@ -4,6 +4,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -21,6 +22,10 @@ from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
+    "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
+)
 
 
 class BatchIterator:
@@ -91,6 +96,8 @@ class BatchIterator:
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
+        prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
+            resource manager.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -111,6 +118,7 @@ class BatchIterator:
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -124,13 +132,14 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
-        )
+        self._prefetch_bytes_callback = prefetch_bytes_callback
+        # TODO: pass the dataset's context down instead of fetching the global context here.
+        self._ctx = DataContext.get_current()
+        self._eager_free = clear_block_after_read and self._ctx.eager_free
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
-            and DataContext.get_current().actor_prefetcher_enabled
+            and self._ctx.actor_prefetcher_enabled
             and not ray.util.client.ray.is_connected()
         )
         self._prefetcher = (
@@ -160,7 +169,21 @@ class BatchIterator:
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
     ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
+        return resolve_block_refs(
+            block_ref_iter=block_refs,
+            stats=self._stats,
+            ctx=self._ctx,
+            max_get_batch_size=self._max_block_get_batch_size,
+        )
+
+    def _max_block_get_batch_size(self) -> int:
+        prefetched_blocks = self._prefetcher.num_prefetched_blocks()
+        if prefetched_blocks <= 0:
+            prefetched_blocks = (
+                self._prefetch_batches if self._prefetch_batches > 0 else 0
+            )
+        limit = max(1, prefetched_blocks + 1)
+        return min(self._ctx.iter_get_block_batch_size, limit)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
@@ -174,12 +197,15 @@ class BatchIterator:
         )
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
+        num_threadpool_workers = min(
+            DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS, self._prefetch_batches
+        )
         return _format_in_threadpool(
             batch_iter=batches,
             stats=self._stats,
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
-            num_threadpool_workers=self._prefetch_batches,
+            num_threadpool_workers=num_threadpool_workers,
         )
 
     def _finalize_batches(
@@ -226,6 +252,7 @@ class BatchIterator:
             fn=self._pipeline,
             num_workers=1,
             preserve_ordering=False,
+            buffer_size=max(self._prefetch_batches, 1),
         )
 
         self.before_epoch_start()
@@ -248,6 +275,10 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
+        # Report 0 prefetched bytes at the end of iteration.
+        if self._prefetch_bytes_callback is not None:
+            self._prefetch_bytes_callback(0)
+
         if self._stats is None:
             return
 
@@ -276,6 +307,10 @@ class BatchIterator:
     def yield_batch_context(self, batch: Batch):
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
+
+        # Report prefetched bytes to the executor's resource manager.
+        if self._prefetch_bytes_callback is not None and self._stats is not None:
+            self._prefetch_bytes_callback(self._stats.iter_prefetched_bytes)
 
         if self._stats is None:
             return
@@ -364,6 +399,8 @@ def prefetch_batches_locally(
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
+        if stats:
+            stats.iter_prefetched_bytes = 0
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -389,6 +426,10 @@ def prefetch_batches_locally(
             break
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    if stats:
+        stats.iter_prefetched_bytes = sum(
+            metadata.size_bytes or 0 for _, metadata in sliding_window
+        )
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -404,6 +445,10 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
+        if stats:
+            stats.iter_prefetched_bytes = sum(
+                metadata.size_bytes or 0 for _, metadata in sliding_window
+            )
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()

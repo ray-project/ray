@@ -81,11 +81,18 @@ class _FileDatasink(Datasink[None]):
         self.file_format = file_format
         self.mode = mode
         self.has_created_dir = False
+        self._skip_write = False
+        self._write_started = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
+        # Make idempotent - if already called, return early.
+        if self._write_started:
+            return
+        self._write_started = True
+
         from pyarrow.fs import FileType
 
         dir_exists = (
@@ -94,10 +101,12 @@ class _FileDatasink(Datasink[None]):
         if dir_exists:
             if self.mode == SaveMode.ERROR:
                 raise ValueError(
-                    f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
+                    f"Path {self.path} already exists. "
+                    "If this is unexpected, use mode='ignore' to ignore those files"
                 )
             if self.mode == SaveMode.IGNORE:
                 logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
+                self._skip_write = True
                 return
             if self.mode == SaveMode.OVERWRITE:
                 logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
