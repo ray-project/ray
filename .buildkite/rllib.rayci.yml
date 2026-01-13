@@ -174,7 +174,7 @@ steps:
       # flaky examples
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
         --only-tags examples
-        --except-tags multi_gpu,gpu,manual
+        --except-tags multi_gpu,gpu,manual,examples_use_all_core
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --build-name rllibbuild-py3.10
         --python-version 3.10
