@@ -41,6 +41,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
@@ -54,6 +56,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TokenizeCompletionRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
     TranscriptionStreamResponse,
@@ -148,6 +152,8 @@ DEFAULT_ENDPOINTS = {
         "/v1/audio/transcriptions",
     ),
     "score": lambda app: app.post("/v1/score"),
+    "tokenize": lambda app: app.post("/tokenize"),
+    "detokenize": lambda app: app.post("/detokenize"),
 }
 
 
@@ -687,6 +693,68 @@ class OpenAiIngress(DeploymentProtocol):
                 )
 
             if isinstance(result, ScoreResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def tokenize(
+        self, body: TokenizeCompletionRequest, request: Request
+    ) -> Response:
+        """Tokenize text into token IDs.
+
+        This endpoint tokenizes the provided text prompt and returns the token IDs,
+        counts, and optionally token strings.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The tokenize request containing the text to tokenize.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with token IDs and metadata.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="tokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, TokenizeResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def detokenize(self, body: DetokenizeRequest, request: Request) -> Response:
+        """Convert token IDs back to text.
+
+        This endpoint detokenizes the provided token IDs and returns the
+        corresponding text.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The detokenize request containing the token IDs.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with the detokenized text.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="detokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, DetokenizeResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod

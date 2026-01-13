@@ -92,6 +92,10 @@ usermod -a -G docker0 forge
 usermod -a -G docker1 forge
 usermod -a -G docker forge
 
+# Create a shared directory for the ray repository checkout.
+mkdir /rayci
+chown forge:users /rayci
+
 if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh
 fi
