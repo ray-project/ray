@@ -9,7 +9,9 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.exceptions
 from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
-from ray._private.internal_api import memory_summary
+from ray._private.internal_api import node_stats
+from ray.dashboard.memory_utils import construct_memory_table
+from ray.dashboard.utils import node_stats_to_dict
 from ray.util.state import list_tasks
 
 # Task status.
@@ -351,27 +353,36 @@ def test_memory_util(config, ray_start_cluster):
         return x
 
     def stats():
-        info = memory_summary(cluster.address, line_wrap=False)
-        print(info)
-        info = info.split("\n")
+        workers_stats = []
+        state = ray._private.internal_api.get_state_from_address(cluster.address)
+        for raylet in state.node_table():
+            if not raylet["Alive"]:
+                continue
+            try:
+                stats_data = node_stats_to_dict(
+                    node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+                )
+                workers_stats.extend(stats_data["coreWorkersStats"])
+            except Exception:
+                continue
+
+        memory_table = construct_memory_table(workers_stats)
+
         reconstructing_waiting = [
-            fields
-            for fields in [[part.strip() for part in line.split("|")] for line in info]
-            if len(fields) == 9
-            and fields[4] == WAITING_FOR_DEPENDENCIES
-            and fields[5] == "2"
+            entry
+            for entry in memory_table.table
+            if entry.task_status == WAITING_FOR_DEPENDENCIES
+            and entry.attempt_number == 2
         ]
         reconstructing_scheduled = [
-            fields
-            for fields in [[part.strip() for part in line.split("|")] for line in info]
-            if len(fields) == 9
-            and fields[4] == WAITING_FOR_EXECUTION
-            and fields[5] == "2"
+            entry
+            for entry in memory_table.table
+            if entry.task_status == WAITING_FOR_EXECUTION and entry.attempt_number == 2
         ]
         reconstructing_finished = [
-            fields
-            for fields in [[part.strip() for part in line.split("|")] for line in info]
-            if len(fields) == 9 and fields[4] == FINISHED and fields[5] == "2"
+            entry
+            for entry in memory_table.table
+            if entry.task_status == FINISHED and entry.attempt_number == 2
         ]
         return (
             len(reconstructing_waiting),

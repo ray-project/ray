@@ -1122,7 +1122,7 @@ def get_all_node_info_until_retrieved(
     node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
     state_filter: Optional[int] = None,
     num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
-    timeout_per_retry: Optional[int | float] = None,
+    timeout_per_retry: Optional[Union[int, float]] = None,
 ) -> List[GcsNodeInfo]:
     """
     Get all node info from GCS with retry until the node info is found.
