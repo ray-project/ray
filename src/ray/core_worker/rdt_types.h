@@ -20,12 +20,11 @@
 namespace ray {
 namespace core {
 
-/// Additional information about an RDT object required for observability since the actual
-/// tensor is only stored on the actor.
+/// Information about an RDT object thats outputted in the memory summary API
 struct RDTObjectInfo {
   std::string object_id;  // Binary object ID
   std::string device;     // Device location (e.g., "cuda:0", "cpu")
-  int64_t object_size;    // Actual tensor data size in bytes
+  int64_t object_size;    // Tensor size in bytes
 };
 
 }  // namespace core
