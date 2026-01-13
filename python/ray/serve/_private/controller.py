@@ -1205,19 +1205,33 @@ class ServeController:
         app_name: Optional[str] = None,
         from_proxy_manager: bool = False,
     ) -> List[TargetGroup]:
-        """Target groups contains information about IP addresses and ports.
+        """Get target groups for direct ingress deployments.
 
-        When direct ingress is disabled, returns proxy targets.
-        When direct ingress is enabled, returns replica targets for direct access.
+        This returns target groups that point directly to replica ports rather
+        than proxy ports when direct ingress is enabled.
 
-        This information is used to setup the load balancer.
+        Following situations are possible:
+        1. Direct ingress is not enabled. In this case, we just return the
+        target groups from the proxy implementation.
+        2. Direct ingress is enabled and there are no applications. In this case,
+        we return target groups for proxy. Serve controller is running but there
+        are no applications to route traffic to.
+        3. Direct ingress is enabled and there are applications. All applications
+        have atleast one running replica. In this case, we return target groups
+        for all applications with targets pointing to the running replicas.
+        4. Direct ingress is enabled and there are applications. Some applications
+        have no running replicas. In this case, for applications that have no
+        running replicas, we return target groups for proxy and for applications
+        that have running replicas, we return target groups for direct ingress.
+        If there are multiple applications with no running replicas, we return
+        one target group per application with unique route prefix.
         """
         proxy_target_groups = self._get_proxy_target_groups()
 
         if not self._direct_ingress_enabled:
             return proxy_target_groups
 
-        # Direct ingress is enabled - return replica targets
+        # Get all applications and their metadata
         if app_name is None:
             apps = [
                 _app_name
@@ -1226,7 +1240,8 @@ class ServeController:
         else:
             apps = [app_name]
 
-        # Filter to apps with valid route prefixes
+        # TODO(landscapepainter): A better way to handle this is to write an API that can tell
+        # if the ingress deployment is healthy regardless of the application status.
         apps = [
             app
             for app in apps
@@ -1234,6 +1249,7 @@ class ServeController:
         ]
 
         if not apps:
+            # TODO: Return the http/grpc proxy on the head node if from_proxy_manager is True
             return proxy_target_groups
 
         # Create target groups for each application
@@ -1279,7 +1295,7 @@ class ServeController:
     def _get_running_replica_details_for_ingress_deployment(
         self, app_name: str
     ) -> List[ReplicaDetails]:
-        """Get running replica details for a specific application's ingress deployment."""
+        """Get running replica details for a specific application."""
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name)
         )
@@ -1305,10 +1321,14 @@ class ServeController:
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
-        """Create HTTP and gRPC target groups for a specific application.
-
-        Returns empty list if there are no running replicas or ports not allocated.
         """
+        Create HTTP and gRPC target groups for a specific application.
+
+        This function can return empty list if there are no running replicas.
+        Or replicas have not fully initialized yet, where their ports are not
+        allocated yet.
+        """
+        # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
@@ -1317,6 +1337,7 @@ class ServeController:
 
         target_groups = []
 
+        # Create targets for each protocol
         http_targets = self._get_targets_for_protocol(
             replica_details, RequestProtocol.HTTP
         )
@@ -1330,6 +1351,7 @@ class ServeController:
                 )
             )
 
+        # Add gRPC targets if enabled
         if is_grpc_enabled(self.get_grpc_config()):
             grpc_targets = self._get_targets_for_protocol(
                 replica_details, RequestProtocol.GRPC
@@ -1349,10 +1371,12 @@ class ServeController:
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
     ) -> List[TargetGroup]:
-        """For apps with no running replicas, return proxy target groups.
-
-        This allows apps to be discoverable via proxy when replicas scaled to 0.
         """
+        For applications that have no running replicas, we return target groups
+        for proxy. This will allow applications to be discoverable via the
+        proxy in situations where their replicas have scaled down to 0.
+        """
+        # TODO: Return the http/grpc proxy on the head node if from_proxy_manager is True
         target_groups = []
         http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
         grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
@@ -1393,9 +1417,16 @@ class ServeController:
         ]
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
-        """Get mapping of node IDs to alive replica IDs."""
         node_id_to_alive_replica_ids = defaultdict(set)
+        # TODO(abrar): Expose the right APIs in the DeploymentStateManager
+        # to get the alive replicas for a deployment.
         for ds in self.deployment_state_manager._deployment_states.values():
+            # here we get all the replicas irrespective of their state
+            # unlike in the get_running_replica_infos_for_ingress_deployment
+            # where we only get the replicas that are running, because we dont
+            # wish to agressively cleanup ports for replicas that are not running
+            # and are in the process of being updated or are in the process of
+            # being started.
             replicas: List[DeploymentReplica] = ds._replicas.get()
             for replica in replicas:
                 node_id: Optional[str] = replica.actor_node_id
@@ -1408,7 +1439,7 @@ class ServeController:
     def allocate_replica_port(
         self, node_id: str, replica_id: str, protocol: RequestProtocol
     ) -> int:
-        """Allocate a port for a replica in direct ingress mode."""
+        """Allocate an HTTP port for a replica in direct ingress mode."""
         node_manager = NodePortManager.get_node_manager(node_id)
         return node_manager.allocate_port(replica_id, protocol)
 
@@ -1420,7 +1451,7 @@ class ServeController:
         protocol: RequestProtocol,
         block_port: bool = False,
     ):
-        """Release a port for a replica in direct ingress mode."""
+        """Release an HTTP port for a replica in direct ingress mode."""
         node_manager = NodePortManager.get_node_manager(node_id)
         node_manager.release_port(replica_id, port, protocol, block_port)
 
@@ -1439,9 +1470,14 @@ class ServeController:
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def _broadcast_target_groups_if_changed(self) -> None:
-        """Broadcast target groups over long poll if they have changed."""
+        """Broadcast target groups over long poll if they have changed.
+
+        Keeps an in-memory record of the last target groups that were broadcast
+        to determine if they have changed.
+        """
         target_groups: List[TargetGroup] = self.get_target_groups()
 
+        # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
             return
 
