@@ -39,14 +39,13 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
+#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
 
 namespace ray {
-using raylet::ClusterLeaseManager;
 using raylet::NoopLocalLeaseManager;
 
 namespace rpc {
@@ -260,8 +259,6 @@ class GcsServer {
   NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster lease manager.
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;

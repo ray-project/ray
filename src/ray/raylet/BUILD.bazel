@@ -36,7 +36,9 @@ ray_cc_library(
     name = "local_lease_manager",
     srcs = ["local_lease_manager.cc"],
     hdrs = ["local_lease_manager.h"],
-    visibility = [":__subpackages__"],
+    # TODO(irabbani): Make this :__subpackages__ after the
+    # local_lease_manager is removed from the GCS.
+    visibility = ["//visibility:public"],
     deps = [
         ":lease_dependency_manager",
         ":metrics",
