@@ -10,7 +10,6 @@ import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
 
-_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -85,8 +84,8 @@ BUILD.bazel:
 
 
 def test_conditional_testing_pull_request():
-    script = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/determine_tests_to_run.py")
-    config_file = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/test_rules.txt")
+    script = _runfiles.Rlocation("_main/ci/pipeline/determine_tests_to_run.py")
+    config_file = _runfiles.Rlocation("_main/ci/pipeline/test_rules.txt")
 
     class FileToTags:
         file: str

@@ -2,7 +2,7 @@ import os
 
 import runfiles
 
-REPO_NAME = "io_ray"
+REPO_NAME = "_main"
 _LEGACY_REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../.."),
 )
