@@ -91,7 +91,7 @@ def test_write_delta_partitioning(ray_start_regular_shared, temp_delta_path):
 def test_write_delta_partition_error(ray_start_regular_shared, temp_delta_path):
     """Test error when partition column doesn't exist."""
     ds = ray.data.range(10)
-    with pytest.raises(ValueError, match="Partition columns.*not found"):
+    with pytest.raises(ValueError, match="Missing partition columns"):
         ds.write_delta(temp_delta_path, partition_cols=["nonexistent"])
 
 

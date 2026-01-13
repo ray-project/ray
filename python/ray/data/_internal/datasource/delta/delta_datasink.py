@@ -344,35 +344,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         f"got {table[field.name].type}"
                     )
 
-    def _partition_table(
-        self, table: pa.Table, partition_cols: List[str]
-    ) -> List[tuple[tuple, pa.Table]]:
-        """Partition a table by specified columns.
-
-        Groups rows by unique combinations of partition column values.
-        Returns a list of (partition_values, partition_table) tuples.
-        """
-        if not partition_cols:
-            return [((tuple()), table)]
-
-        # Get unique combinations of partition values and group rows
-        partition_keys = [table.column(col) for col in partition_cols]
-        groups: Dict[tuple, List[int]] = {}
-
-        for i in range(table.num_rows):
-            key = tuple(col[i].as_py() for col in partition_keys)
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(i)
-
-        # Create partition tables
-        result = []
-        for partition_values, indices in groups.items():
-            partition_table = table.take(indices)
-            result.append((partition_values, partition_table))
-
-        return result
-
     def _validate_existing_partition_columns(self, table: pa.Table) -> None:
         """Validate partition columns against existing table schema."""
         if not self.partition_cols:
@@ -708,8 +679,18 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # Build delete predicate from upsert keys
         if upsert_keys is not None and len(upsert_keys) > 0:
-            # Filter out rows with NULL values in join columns (NULL != NULL in SQL)
-            masks = (pc.is_valid(upsert_keys[col]) for col in upsert_cols)
+            # Filter out rows with NULL or NaN values in join columns
+            # (NULL != NULL and NaN != NaN in SQL semantics, causing silent duplicates)
+            masks = []
+            for col in upsert_cols:
+                col_arr = upsert_keys[col]
+                # Filter NULL values
+                valid_mask = pc.is_valid(col_arr)
+                # Also filter NaN for float columns
+                if pa.types.is_floating(col_arr.type):
+                    not_nan_mask = pc.invert(pc.is_nan(col_arr))
+                    valid_mask = pc.and_(valid_mask, not_nan_mask)
+                masks.append(valid_mask)
             mask = functools.reduce(pc.and_, masks)
             keys_table = upsert_keys.filter(mask)
 
@@ -764,14 +745,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return f"{col} IN ({formatted_vals})"
 
         # For compound keys, build OR of ANDed conditions
-        # Limit to avoid extremely long predicates
+        # Limit to avoid extremely long predicates that cause data corruption
         max_keys = 1000
         if len(keys_table) > max_keys:
-            logger.warning(
-                f"Upsert has {len(keys_table)} keys, using first {max_keys}. "
-                "Consider batching large upserts."
+            raise ValueError(
+                f"Upsert has {len(keys_table)} compound keys, exceeding limit of "
+                f"{max_keys}. Batch your upserts into smaller chunks to avoid "
+                "data corruption from incomplete deletes."
             )
-            keys_table = keys_table.slice(0, max_keys)
 
         conditions = []
         for i in range(len(keys_table)):
