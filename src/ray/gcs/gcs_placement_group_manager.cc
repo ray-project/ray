@@ -210,6 +210,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       << "Failed to create placement group " << placement_group->GetName()
       << ", try again.";
 
+  auto pg_id = placement_group->GetPlacementGroupID();
+
   auto stats = placement_group->GetMutableStats();
   if (!is_feasible) {
     // We will attempt to schedule this placement_group once an eligible node is
@@ -240,7 +242,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
-  MarkSchedulingDone();
+  MarkSchedulingDone(pg_id);
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
@@ -292,9 +294,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
        },
        io_context_});
   lifetime_num_placement_groups_created_++;
+  auto pg_id = placement_group->GetPlacementGroupID();
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
-  MarkSchedulingDone();
+  MarkSchedulingDone(pg_id);
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
@@ -303,14 +306,18 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     return;
   }
 
-  if (IsSchedulingInProgress()) {
-    RAY_LOG(DEBUG) << "Placement group scheduling is still in progress. New placement "
-                      "groups will be scheduled after the current scheduling is done.";
+  if (!CanScheduleMore()) {
+    RAY_LOG(DEBUG) << "Reached max concurrent PG scheduling limit ("
+                   << scheduling_in_progress_ids_.size() << "/"
+                   << RayConfig::instance().gcs_max_concurrent_pg_scheduling()
+                   << "). New placement groups will be scheduled after "
+                      "current ones complete.";
     return;
   }
 
-  bool is_new_placement_group_scheduled = false;
-  while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
+  absl::flat_hash_set<PlacementGroupID> scheduled_this_round;
+
+  while (!pending_placement_groups_.empty() && CanScheduleMore()) {
     auto iter = pending_placement_groups_.begin();
     if (iter->first > absl::GetCurrentTimeNanos()) {
       // Here the rank equals the time to schedule, and it's an ordered tree,
@@ -319,6 +326,12 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       // Tick will cover the next time retry.
       break;
     }
+
+    const auto &pg_id_peek = iter->second.second->GetPlacementGroupID();
+    if (scheduled_this_round.contains(pg_id_peek)) {
+      break;
+    }
+
     auto backoff = iter->second.first;
     auto placement_group = std::move(iter->second.second);
     pending_placement_groups_.erase(iter);
@@ -326,6 +339,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
     // Do not reschedule if the placement group has removed already.
     if (registered_placement_groups_.contains(placement_group_id)) {
+      scheduled_this_round.insert(placement_group_id);
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
@@ -343,7 +357,6 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           [this](std::shared_ptr<GcsPlacementGroup> success_placement_group) {
             OnPlacementGroupCreationSuccess(success_placement_group);
           }});
-      is_new_placement_group_scheduled = true;
     }
     // If the placement group is not registered == removed.
   }

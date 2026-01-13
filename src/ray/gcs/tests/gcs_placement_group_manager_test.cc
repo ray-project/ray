@@ -1233,7 +1233,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetAllPlacementGroupInfoLimit) {
                              ++registered_placement_group_count;
                            });
   }
-  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), num_pgs);
 
   {
     rpc::GetAllPlacementGroupRequest request;
