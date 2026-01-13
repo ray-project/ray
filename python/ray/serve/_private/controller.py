@@ -267,7 +267,6 @@ class ServeController:
         ] = []
         self._refresh_autoscaling_deployments_cache()
 
-        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         self._last_broadcasted_target_groups: List[TargetGroup] = []
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
