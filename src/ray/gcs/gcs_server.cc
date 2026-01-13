@@ -311,14 +311,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
-  global_gc_throttler_ =
-      std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
-
-  periodical_runner_->RunFnPeriodically(
-      [this] { TryGlobalGC(); },
-      /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
-      "GCSServer.deadline_timer.gcs_global_gc");
-
   // If the metrics agent port is already known (not dynamically assigned),
   // initialize the metrics exporter now. Otherwise, it will be initialized
   // when the raylet registers and reports the actual port.
@@ -962,28 +954,6 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
           << "Exporter agent status: " << server_status.ToString();
     }
   });
-}
-
-void GcsServer::TryGlobalGC() {
-  // Trigger global gc to solve task pending.
-  // To avoid spurious triggers, only those after two consecutive
-  // detections and under throttling are sent out (similar to
-  // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 &&
-      global_gc_throttler_->CheckAndUpdateIfPossible()) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.set_should_global_gc(true);
-
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
-    std::string serialized_msg;
-    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
-
-    ray_syncer_->BroadcastMessage(std::move(msg));
-  }
 }
 
 }  // namespace gcs

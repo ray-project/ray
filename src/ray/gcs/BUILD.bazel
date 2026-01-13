@@ -542,7 +542,6 @@ ray_cc_library(
         "//src/ray/util:exponential_backoff",
         "//src/ray/util:network_util",
         "//src/ray/util:thread_checker",
-        "//src/ray/util:throttler",
         "//src/ray/util:time",
         "//src/ray/util:type_traits",
         "@boost//:bimap",

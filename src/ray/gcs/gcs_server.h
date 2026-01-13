@@ -44,7 +44,6 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterLeaseManager;
@@ -237,8 +236,6 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
-  void TryGlobalGC();
-
   /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
@@ -323,11 +320,8 @@ class GcsServer {
   std::atomic<bool> is_stopped_;
   /// Flag to ensure InitMetricsExporter is only called once.
   bool metrics_exporter_initialized_ = false;
-  int task_pending_schedule_detected_ = 0;
   // Invoked when the RPC server has bound to a port.
   std::function<void(int)> port_ready_callback_;
-  /// Throttler for global gc
-  std::unique_ptr<Throttler> global_gc_throttler_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
 };
