@@ -93,6 +93,7 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
         --only-tags ray_client
 
+  # TODO(Kunchd): Remove sleep and || true once ci repro testing is done.
   - label: ":ray: core: redis tests"
     tags:
       - python
@@ -107,6 +108,8 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
+        || true
+      - sleep 28800
 
   - label: ":ray: core: memory pressure tests"
     tags:
