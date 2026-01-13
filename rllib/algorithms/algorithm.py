@@ -1359,7 +1359,7 @@ class Algorithm(Checkpointable, Trainable):
             self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
         eval_results = (
-            self.metrics.compile()[EVALUATION_RESULTS]
+            self.metrics.compile()
             .get(EVALUATION_RESULTS, {})
             .get(OFFLINE_EVAL_RUNNER_RESULTS, {})
         )
