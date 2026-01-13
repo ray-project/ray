@@ -99,7 +99,7 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled_py"$PYTHON_VERSION".txt /home/ray/requirements_compiled.txt
+COPY python/requirements_compiled_py${PYTHON_VERSION}.txt /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
@@ -122,7 +122,7 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda clean -a
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
-    -r $HOME/python_depset.lock -c $HOME/requirements_compiled.txt
+    -r $HOME/python_depset.lock
 
 anyscale --version
 
