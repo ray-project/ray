@@ -1181,18 +1181,18 @@ class SearchSpaceTest(unittest.TestCase):
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
 
         def optuna_define_by_run_with_constants(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return {"constant": 1}
 
         def optuna_define_by_run_invalid(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return 1
 
