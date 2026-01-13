@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.fs as pa_fs
 import pyarrow.parquet as pq
 
+from ray.data._internal.arrow_ops.transform_pyarrow import concat as concat_arrow_tables
 from ray.data._internal.datasource.delta.config import (
     UPSERT_JOIN_COLS,
     DeltaWriteResult,
@@ -50,7 +51,6 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat as concat_arrow_tables
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
