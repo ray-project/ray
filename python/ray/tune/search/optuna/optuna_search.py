@@ -1,5 +1,5 @@
-import inspect
 import functools
+import inspect
 import logging
 import pickle
 import time
@@ -62,7 +62,7 @@ class _OptunaTrialSuggestCaptor:
 
     def _get_wrapper(self, func: Callable) -> Callable:
         sig = inspect.signature(func)
-        
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # name is always the first arg for suggest_ methods
