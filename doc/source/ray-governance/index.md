@@ -56,4 +56,4 @@ Ray participants acknowledge that the copyright in all new contributions will be
 
 ## Amendments
 
-Charter amendments require (a) a supermajority (greater than 67%) of the TSC, (b) a majority (greater than 50%) of the lead maintainers, and (c) approval of LF Projects, LLC.
+Charter amendments require (a) a supermajority (greater than 67%) of the TSC, (b) a majority (greater than 50%) of the lead maintainers, and \(c) approval of LF Projects, LLC.
