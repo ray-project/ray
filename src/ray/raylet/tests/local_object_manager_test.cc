@@ -139,6 +139,7 @@ class MockIOWorkerClient : public rpc::FakeCoreWorkerClient {
   void SpillObjects(
       const rpc::SpillObjectsRequest &request,
       const rpc::ClientCallback<rpc::SpillObjectsReply> &callback) override {
+    spill_request_object_counts.push_back(request.object_refs_to_spill_size());
     callbacks.push_back(callback);
   }
 
@@ -219,6 +220,7 @@ class MockIOWorkerClient : public rpc::FakeCoreWorkerClient {
     return deleted_urls_size;
   }
 
+  std::vector<int> spill_request_object_counts;
   std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
   std::list<rpc::ClientCallback<rpc::DeleteSpilledObjectsReply>> delete_callbacks;
   std::list<rpc::ClientCallback<rpc::RestoreSpilledObjectsReply>> restore_callbacks;
@@ -314,7 +316,8 @@ class MockObjectBuffer : public Buffer {
 class LocalObjectManagerTestWithMinSpillingSize {
  public:
   LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size,
-                                            int64_t max_fused_object_count)
+                                            int64_t max_fused_object_count,
+                                            int64_t max_spilling_file_size = -1)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
@@ -356,6 +359,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
+    manager.max_spilling_file_size_ = max_spilling_file_size;
   }
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
@@ -437,6 +441,17 @@ class LocalObjectManagerFusedTest : public LocalObjectManagerTestWithMinSpilling
                                     public ::testing::Test {
  public:
   LocalObjectManagerFusedTest() : LocalObjectManagerTestWithMinSpillingSize(100, 15) {}
+};
+
+class LocalObjectManagerMaxFileSizeFusedTest
+    : public LocalObjectManagerTestWithMinSpillingSize,
+      public ::testing::Test {
+ public:
+  LocalObjectManagerMaxFileSizeFusedTest()
+      : LocalObjectManagerTestWithMinSpillingSize(
+            /*min_spilling_size=*/100,
+            /*max_fused_object_count=*/15,
+            /*max_spilling_file_size=*/60) {}
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -1561,6 +1576,57 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
   // Spilled all objects
   ASSERT_EQ(GetCurrentSpilledCount(), 40);
   ASSERT_EQ(GetCurrentSpilledBytes(), object_size * 40);
+}
+
+TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionCount) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  // 40 objects * 10 bytes = 400 bytes.
+  // max_spilling_file_size=60 -> batches: 6,6,6,6,6,6,4 (total 7 batches).
+  const int64_t object_size = 10;
+  for (int i = 0; i < 40; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    auto object = std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+
+  EXPECT_CALL(worker_pool, PushSpillWorker(_)).Times(7);
+
+  const std::vector<int> expected_batches = {6, 6, 6, 6, 6, 6, 4};
+  for (size_t batch_idx = 0; batch_idx < expected_batches.size(); batch_idx++) {
+    manager.SpillObjectUptoMaxThroughput();
+
+    ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+    ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+    std::vector<std::string> urls;
+    urls.reserve(expected_batches[batch_idx]);
+    for (int i = 0; i < expected_batches[batch_idx]; i++) {
+      urls.push_back(BuildURL("url", static_cast<int>(batch_idx * 100 + i)));
+    }
+    ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+
+    while (owner_client->ReplyUpdateObjectLocationBatch()) {
+    }
+  }
+
+  ASSERT_EQ(worker_pool.io_worker_client->spill_request_object_counts.size(),
+            expected_batches.size());
+  for (size_t i = 0; i < expected_batches.size(); i++) {
+    ASSERT_EQ(worker_pool.io_worker_client->spill_request_object_counts[i],
+              expected_batches[i]);
+  }
+
+  ASSERT_EQ(GetCurrentSpilledCount(), 40);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 40 * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestPinBytes) {
