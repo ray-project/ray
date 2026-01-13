@@ -2694,7 +2694,6 @@ py_test(
     tags = [
         "core",
         "team:rllib",
-        "torch",
     ],
     deps = [":conftest"],
 )
