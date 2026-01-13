@@ -328,6 +328,9 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     }
 
     const auto &pg_id_peek = iter->second.second->GetPlacementGroupID();
+    // ScheduleUnplacedBundles may synchronously call failure_callback (when nodes are
+    // releasing bundles, or resource scheduling fails), which re-adds the PGs to the
+    // pending queue. In this case, should handle them in the next round.
     if (scheduled_this_round.contains(pg_id_peek)) {
       break;
     }
