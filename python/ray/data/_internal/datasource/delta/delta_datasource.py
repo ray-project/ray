@@ -1,6 +1,4 @@
-"""
-Delta Lake datasource implementation for reading Delta tables.
-"""
+"""Datasource for reading Delta Lake tables."""
 
 import logging
 from typing import Any, Dict, List, Optional, Union
@@ -8,7 +6,6 @@ from typing import Any, Dict, List, Optional, Union
 import pyarrow.fs as pa_fs
 
 from ray.data._internal.datasource.delta.utilities import to_pyarrow_schema
-
 from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
@@ -184,9 +181,15 @@ class DeltaDatasource(Datasource):
         }
 
     def __repr__(self) -> str:
-        """String representation of datasource."""
-        version_info = f", version={self.version}" if self.version else ""
-        return f"DeltaDatasource(path={self.path}{version_info})"
+        """String representation for debugging."""
+        parts = [f"path={self.path!r}"]
+        if self.version is not None:
+            parts.append(f"version={self.version!r}")
+        if self.columns:
+            parts.append(f"columns={self.columns}")
+        if self.partition_filters:
+            parts.append(f"partition_filters={self.partition_filters}")
+        return f"DeltaDatasource({', '.join(parts)})"
 
     def _needs_new_table(self) -> bool:
         """Return True if cached DeltaTable is stale for current settings."""

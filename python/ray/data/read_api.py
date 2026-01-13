@@ -4175,7 +4175,7 @@ def read_unity_catalog(
 
 @PublicAPI(stability="alpha")
 def read_delta(
-    path: Union[str, List[str]],
+    path: str,
     version: Optional[Union[int, str]] = None,
     *,
     storage_options: Optional[Dict[str, str]] = None,
@@ -4195,11 +4195,11 @@ def read_delta(
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
 
-    Supports reading from Unity Catalog tables by directly accessing the underlying
-    S3/cloud storage paths. Provides time travel, partition filtering, and other
-    Delta Lake features.
+    Reads data from a single Delta Lake table with support for time travel,
+    partition filtering, and column projection. Supports local filesystem
+    and cloud storage (S3, GCS, Azure).
 
     Examples:
         Read latest version of Delta table:
@@ -4229,9 +4229,11 @@ def read_delta(
         ... )
 
     Args:
-        path: A single file path for a Delta Lake table. Multiple tables are not yet
-            supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        path: Path to the Delta Lake table. Supports local filesystem and cloud
+            storage (``s3://``, ``gs://``, ``abfss://``).
+        version: Table version to read for time travel. Can be an integer version
+            number or an ISO 8601 timestamp string. If not specified, reads the
+            latest version.
         storage_options: Storage options to pass to the Delta Lake reader. These are
             typically used for cloud storage authentication (e.g., AWS credentials,
             region settings). For example: ``{"AWS_REGION": "us-west-2"}``.
