@@ -108,19 +108,12 @@ class TestClusterAutoscaling:
             ): 1,
         }
 
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            autoscaling_coordinator=FakeAutoscalingCoordinator(),
-        )
-
         # Patch cluster config to return None
         with patch("ray.nodes", return_value=node_table), patch(
             "ray._private.state.state.get_cluster_config",
             return_value=None,
         ):
             assert _get_node_resource_spec_and_count() == expected
-            assert autoscaler.get_node_resource_spec_and_count() == expected
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -183,12 +176,6 @@ class TestClusterAutoscaling:
     def test_get_node_resource_spec_and_count_from_zero(self):
         """Test that get_node_resource_spec_and_count can discover node types
         from cluster config even when there are zero worker nodes."""
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            autoscaling_coordinator=FakeAutoscalingCoordinator(),
-        )
-
         # Simulate a cluster with only head node (no worker nodes)
         node_table = [
             {
@@ -225,7 +212,7 @@ class TestClusterAutoscaling:
                 "ray._private.state.state.get_cluster_config",
                 return_value=cluster_config,
             ):
-                result = autoscaler.get_node_resource_spec_and_count()
+                result = _get_node_resource_spec_and_count()
                 assert result == expected
 
     @patch(
@@ -250,7 +237,7 @@ class TestClusterAutoscaling:
         # Mock the node resource spec with zero counts
         resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
         resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
-        autoscaler.get_node_resource_spec_and_count = MagicMock(
+        autoscaler._get_node_counts = MagicMock(
             return_value={
                 resource_spec1: 0,  # Zero nodes of this type
                 resource_spec2: 0,  # Zero nodes of this type
@@ -289,12 +276,6 @@ class TestClusterAutoscaling:
 
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            autoscaling_coordinator=FakeAutoscalingCoordinator(),
-        )
-
         # Simulate a cluster with only head node (no worker nodes)
         node_table = [
             {
@@ -331,7 +312,7 @@ class TestClusterAutoscaling:
                 "ray._private.state.state.get_cluster_config",
                 return_value=cluster_config,
             ):
-                result = autoscaler.get_node_resource_spec_and_count()
+                result = _get_node_resource_spec_and_count()
                 assert result == expected
 
 

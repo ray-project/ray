@@ -199,7 +199,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # TODO(hchen): We scale up all nodes by the same delta for now.
         # We may want to distinguish different node types based on their individual
         # utilization.
-        node_resource_spec_count = self.get_node_resource_spec_and_count()
+        node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
             num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))
@@ -230,9 +230,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS} seconds."
             )
             logger.warning(msg, exc_info=True)
-
-    def get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
-        return self._get_node_counts()
 
     def get_total_resources(self) -> ExecutionResources:
         resources = self._autoscaling_coordinator.get_allocated_resources(
