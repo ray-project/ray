@@ -83,30 +83,39 @@ class TestHashShuffleAggregator:
         full_block = make_block(80)
         input_seq0_part0 = split_block(full_block, 10)
 
+        def get_compaction_thresholds():
+            """Helper to extract compaction thresholds from partition buckets."""
+            # Thresholds are now per-partition in PartitionBucket
+            return {
+                part_id: bucket.compaction_threshold
+                for part_id, bucket in aggregator._input_seq_partition_buckets[0].items()
+                if bucket.compaction_threshold is not None
+            }
+
         # Submit 2 blocks (below threshold=3) - no compaction
         for b in input_seq0_part0[:2]:
             aggregator.submit(0, 0, b)
         assert agg.compact_calls == []
-        assert dict(aggregator._current_compaction_thresholds) == {0: 3}
+        assert get_compaction_thresholds() == {0: 3, 1: 3, 2: 3}
 
         # Submit 3rd block - triggers compaction, threshold doubles
         aggregator.submit(0, 0, input_seq0_part0[2])
         assert agg.compact_calls == [3]
-        assert dict(aggregator._current_compaction_thresholds) == {0: 6}
+        assert get_compaction_thresholds() == {0: 6, 1: 3, 2: 3}
 
         # Submit 5 more (queue: 1+5=6) - triggers at new threshold
         for b in input_seq0_part0[3:8]:
             aggregator.submit(0, 0, b)
 
         assert agg.compact_calls == [3, 6]
-        assert dict(aggregator._current_compaction_thresholds) == {0: 12}
+        assert get_compaction_thresholds() == {0: 12, 1: 3, 2: 3}
 
         # Partition 1 has independent threshold (starts at 3)
         for b in split_block(make_block(30, offset=1000), 10):
             aggregator.submit(0, 1, b)
 
         assert agg.compact_calls == [3, 6, 3]
-        assert dict(aggregator._current_compaction_thresholds) == {0: 12, 1: 6}
+        assert get_compaction_thresholds() == {0: 12, 1: 6, 2: 3}
 
         # Multiple sequences (join scenario) - seq_id=1 for partition 0
         input_seq1_part0 = split_block(make_block(20, offset=2000), 10)
