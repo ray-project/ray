@@ -74,7 +74,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -184,6 +184,10 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            logger.info("Direct ingress is enabled, enabling proxy on head node only.")
+            http_options.location = DeploymentMode.HeadOnly
+
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
             http_options=configure_http_options_with_defaults(http_options),
@@ -258,14 +262,8 @@ class ServeController:
         ] = []
         self._refresh_autoscaling_deployments_cache()
 
-        # Direct ingress configuration
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         self._last_broadcasted_target_groups: List[TargetGroup] = []
-        if self._direct_ingress_enabled:
-            logger.info(
-                "Direct ingress is enabled. Replicas will start HTTP servers "
-                "on allocated ports for direct external access."
-            )
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
