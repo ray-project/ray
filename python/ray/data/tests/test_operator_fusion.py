@@ -883,6 +883,28 @@ def test_combine_streaming_repartition_to_shuffle_repartition(
     assert expected_optimized_plan in captured
 
 
+def test_combine_shuffle_repartition_to_streaming_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    # Apply shuffle Repartition (global repartition)
+    ds = ds.repartition(num_blocks=3, shuffle=True)
+    # Apply StreamingRepartition (local repartition)
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # When shuffle Repartition is followed by StreamingRepartition,
+    # the optimization drops the shuffle and keeps only StreamingRepartition
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "StreamingRepartition[StreamingRepartition[num_rows_per_block=20]]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
 def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
     data = [{"a": i, "b": 100 - i} for i in range(50)]
     ds = ray.data.from_items(data)
