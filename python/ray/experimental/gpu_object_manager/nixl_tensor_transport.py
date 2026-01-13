@@ -227,6 +227,8 @@ class NixlTensorTransport(TensorTransportManager):
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
 
+        return tensors
+
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
