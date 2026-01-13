@@ -14,6 +14,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
@@ -21,6 +22,7 @@ from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint.checkpoint_filter import (
     BatchBasedCheckpointFilter,
+    IdColumnCheckpointLoader,
 )
 from ray.data.checkpoint.checkpoint_writer import (
     BatchBasedCheckpointWriter,
@@ -29,6 +31,11 @@ from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
     CheckpointConfig,
     InvalidCheckpointingConfig,
+)
+from ray.data.checkpoint.util import (
+    CHECKPOINT_EXISTED_KWARG_NAME,
+    CHECKPOINTED_IDS_KWARG_NAME,
+    filter_checkpointed_rows_for_blocks,
 )
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -767,6 +774,109 @@ def test_checkpoint_restore_after_full_execution(
     assert (
         num_rows_second == 0  # No rows should be written
     ), f"Expected 0 rows, got {num_rows_second}"
+
+
+@pytest.mark.parametrize("fs", [lazy_fixture("local_fs")])
+def test_with_invalid_checkpoint(checkpoint_path, fs):
+    """Test that input blocks should not be filtered when no valid checkpoint exists."""
+
+    # Create checkpoint config
+    checkpoint_config = CheckpointConfig(
+        id_column=ID_COL, checkpoint_path=checkpoint_path
+    )
+
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = checkpoint_config
+
+    # There is no valid checkpoint under checkpoint_path
+    # Test loading Checkpoint from empty dir
+    def create_invalid_checkpoint():
+        fs.create_dir(checkpoint_path)
+
+    create_invalid_checkpoint()
+    loader = IdColumnCheckpointLoader(
+        checkpoint_path=checkpoint_config.checkpoint_path,
+        filesystem=checkpoint_config.filesystem,
+        id_column=checkpoint_config.id_column,
+        checkpoint_path_partition_filter=checkpoint_config.checkpoint_path_partition_filter,
+    )
+    checkpoint_existed, checkpoint_ref = loader.load_checkpoint()
+    assert checkpoint_existed is False
+    assert checkpoint_ref is None
+
+    block = pyarrow.table(
+        {ID_COL: list(range(10)), "data": [str(i) for i in range(10)]}
+    )
+
+    mocked_task_context = TaskContext(task_idx=0, op_name="mocked_op")
+    mocked_task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME] = checkpoint_existed
+    mocked_task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME] = (
+        ray.get(checkpoint_ref) if checkpoint_ref else None
+    )
+
+    filtered_blocks_iter = filter_checkpointed_rows_for_blocks(
+        blocks=[block],
+        task_context=mocked_task_context,
+        checkpoint_config=checkpoint_config,
+    )
+
+    filtered_blocks = list(filtered_blocks_iter)
+    assert len(filtered_blocks) == 1
+    # Should directly return the original block without filtering
+    assert filtered_blocks[0] == block
+
+
+@pytest.mark.parametrize("fs", [lazy_fixture("local_fs")])
+def test_with_valid_checkpoint(checkpoint_path, fs):
+    """Test that input blocks should be filtered when valid checkpoint exists."""
+
+    # Create checkpoint config
+    checkpoint_config = CheckpointConfig(
+        id_column=ID_COL, checkpoint_path=checkpoint_path
+    )
+
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = checkpoint_config
+
+    # There is valid checkpoint under checkpoint_path
+    def create_valid_checkpoint():
+        fs.create_dir(checkpoint_path)
+        checkpoint_data = pd.DataFrame([{ID_COL: i} for i in range(10)])
+        f_path = os.path.join(checkpoint_path, "checkpoint.parquet")
+        table = pa.table(checkpoint_data)
+        pq.write_table(table, f_path)
+
+    create_valid_checkpoint()
+
+    # Test loading Checkpoint
+    loader = IdColumnCheckpointLoader(
+        checkpoint_path=checkpoint_config.checkpoint_path,
+        filesystem=checkpoint_config.filesystem,
+        id_column=checkpoint_config.id_column,
+        checkpoint_path_partition_filter=checkpoint_config.checkpoint_path_partition_filter,
+    )
+    checkpoint_existed, checkpoint_ref = loader.load_checkpoint()
+    assert checkpoint_existed is True
+    assert checkpoint_ref is not None
+
+    block = pyarrow.table(
+        {ID_COL: list(range(10)), "data": [str(i) for i in range(10)]}
+    )
+
+    mocked_task_context = TaskContext(task_idx=0, op_name="mocked_op")
+    mocked_task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME] = checkpoint_existed
+    mocked_task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME] = (
+        ray.get(checkpoint_ref) if checkpoint_ref else None
+    )
+
+    filtered_blocks_iter = filter_checkpointed_rows_for_blocks(
+        blocks=[block],
+        task_context=mocked_task_context,
+        checkpoint_config=checkpoint_config,
+    )
+
+    filtered_blocks = list(filtered_blocks_iter)
+    assert len(filtered_blocks) == 0
 
 
 if __name__ == "__main__":

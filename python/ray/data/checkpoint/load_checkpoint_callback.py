@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
@@ -22,6 +22,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         self._config = config
 
         self._ckpt_filter = self._create_checkpoint_filter(config)
+        self._checkpoint_existed = True
         self._checkpoint_ref: Optional[ObjectRef[Block]] = None
 
     def _create_checkpoint_filter(
@@ -37,7 +38,10 @@ class LoadCheckpointCallback(ExecutionCallback):
         assert self._config is executor._data_context.checkpoint_config
 
         # Load checkpoint data before execution starts.
-        self._checkpoint_ref = self._ckpt_filter.load_checkpoint()
+        (
+            self._checkpoint_existed,
+            self._checkpoint_ref,
+        ) = self._ckpt_filter.load_checkpoint()
 
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
@@ -57,6 +61,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         # Remove the callback from the DataContext.
         remove_execution_callback(self, executor._data_context)
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
-        assert self._checkpoint_ref is not None
-        return self._checkpoint_ref
+    def load_checkpoint(self) -> Tuple[bool, Optional[ObjectRef[Block]]]:
+        if self._checkpoint_existed:
+            assert self._checkpoint_ref is not None
+        return self._checkpoint_existed, self._checkpoint_ref

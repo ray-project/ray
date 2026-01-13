@@ -1,7 +1,7 @@
 import abc
 import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy
 import pyarrow
@@ -81,11 +81,13 @@ class CheckpointLoader:
         self.id_column = id_column
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(self) -> Tuple[bool, Optional[ObjectRef[Block]]]:
         """Loading checkpoint data.
 
         Returns:
-            ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
+            bool: Is there a valid checkpoint under the checkpoint_path.
+            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs ndarray
+                if there is a valid checkpoint.
         """
         start_t = time.time()
 
@@ -101,6 +103,9 @@ class CheckpointLoader:
         # TODO: Clean way to do this would be to introduce per Op config
         # [https://github.com/ray-project/ray/issues/54520]
         checkpoint_ds.context.checkpoint_config = None
+
+        if checkpoint_ds.count() == 0:
+            return False, None
 
         # Pre-process data pipeline
         checkpoint_ds: ray.data.Dataset = self._preprocess_data_pipeline(checkpoint_ds)
@@ -131,7 +136,7 @@ class CheckpointLoader:
             schema.to_string(),
         )
 
-        return checkpoint_block_ref
+        return True, checkpoint_block_ref
 
     @abc.abstractmethod
     def _preprocess_data_pipeline(
@@ -174,11 +179,13 @@ class IdColumnCheckpointLoader(CheckpointLoader):
 class BatchBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends."""
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(self) -> Tuple[bool, Optional[ObjectRef[Block]]]:
         """Load checkpointed ids as a sorted block.
 
         Returns:
-            ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
+            bool: Is there a valid checkpoint under the checkpoint_path.
+            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs ndarray
+                if there is a valid checkpoint.
         """
         loader = IdColumnCheckpointLoader(
             checkpoint_path=self.checkpoint_path,
