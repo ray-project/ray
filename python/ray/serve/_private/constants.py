@@ -578,19 +578,18 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
 
-# Direct ingress feature flag and configuration.
-# When enabled, replicas start HTTP servers on allocated ports for direct external access.
+# Feature flag to enable a limited form of direct ingress where ingress applications
+# listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
 RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0")
 
-# Port ranges for direct ingress HTTP and gRPC servers.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = get_env_int(
     "RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", 30000
 )
-RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = get_env_int(
-    "RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", 31000
-)
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = get_env_int(
     "RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", 40000
+)
+RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = get_env_int(
+    "RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", 31000
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = get_env_int(
     "RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", 41000
@@ -598,6 +597,7 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = get_env_int(
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = get_env_int(
     "RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", 100
 )
+# The minimum drain period for a HTTP proxy.
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = get_env_float(
     "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", 30.0
 )
