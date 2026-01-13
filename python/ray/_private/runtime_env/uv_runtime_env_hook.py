@@ -319,11 +319,15 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser = _create_uv_run_parser()
     (options, command) = _parse_args(parser, cmdline[2:])
 
-    if cmdline[-len(command) :] != command:
+    # `command` can be empty when uv is invoked with options that consume all arguments.
+    # For example, `uv run -m module_name` has no positional command -- the parser
+    # treats `-m module_name` as an option, not as a command to execute.
+    # NOTE: The empty list is a suffix of any list.
+    if len(command) > 0 and cmdline[-len(command) :] != command:
         raise AssertionError(
             f"uv run command {command} is not a suffix of command line {cmdline}"
         )
-    uv_run_args = cmdline[: -len(command)]
+    uv_run_args = cmdline[: len(cmdline) - len(command)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
