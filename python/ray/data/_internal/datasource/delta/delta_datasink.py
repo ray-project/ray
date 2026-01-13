@@ -303,6 +303,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 if use_upsert:
                     upsert_cols = self._get_upsert_cols()
                     if upsert_cols:
+                        # Validate upsert columns exist in table
+                        missing_upsert_cols = [
+                            c for c in upsert_cols if c not in table.column_names
+                        ]
+                        if missing_upsert_cols:
+                            raise ValueError(
+                                f"UPSERT join columns not found in data: {missing_upsert_cols}. "
+                                f"Available columns: {table.column_names}"
+                            )
                         upsert_keys_tables.append(table.select(upsert_cols))
 
                 # Write data and collect actions
@@ -661,13 +670,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         file_actions: List["AddAction"],
         upsert_keys: Optional[pa.Table],
     ) -> None:
-        """Commit files to existing table based on write mode."""
+        """Commit files to existing table based on write mode.
+
+        All modes use atomic transactions via create_write_transaction.
+        """
         if self.mode == SaveMode.UPSERT:
             self._commit_upsert(table, file_actions, upsert_keys)
-        elif self.mode == SaveMode.OVERWRITE:
-            self._commit_overwrite(table, file_actions)
         else:
-            # APPEND mode
+            # APPEND and OVERWRITE both use atomic create_write_transaction
+            # The transaction_mode is set correctly in _commit_to_existing_table
             self._commit_to_existing_table(table, file_actions)
 
     def _commit_upsert(
@@ -830,38 +841,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Default: stringify and escape
         escaped = str(value).replace("'", "''")
         return f"'{escaped}'"
-
-    def _commit_overwrite(
-        self, table: "DeltaTable", file_actions: List["AddAction"]
-    ) -> None:
-        """Commit files using OVERWRITE mode (replace all data).
-
-        Uses delete-then-append pattern for compatibility with deltalake API.
-        First deletes all existing rows, then appends the new files.
-
-        Note: This is a two-step operation (delete + append) rather than a single
-        atomic overwrite. The delete() call with no predicate removes all rows.
-        """
-        from deltalake.transaction import CommitProperties
-
-        # Delete all existing data first (no predicate = delete all rows)
-        # This is intentional for OVERWRITE semantics
-        table.delete()
-
-        commit_properties = self.write_kwargs.get("commit_properties")
-        if isinstance(commit_properties, dict):
-            commit_properties = CommitProperties(**commit_properties)
-
-        delta_schema = table.schema()
-
-        # Append new files after delete
-        table.create_write_transaction(
-            file_actions,
-            mode="append",
-            schema=delta_schema,
-            partition_by=self.partition_cols or None,
-            commit_properties=commit_properties,
-        )
 
     def _collect_write_results(
         self, write_result: WriteResult[DeltaWriteResult]
