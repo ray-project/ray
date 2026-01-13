@@ -340,8 +340,8 @@ class MixManagerCallback(RLlibCallback):
                 local_env_runner=True,
             )
             # Update algorithm's config to maintain consistency
-            algorithm.config.multi_agent(policy_mapping_fn=new_mapping_fn)
             algorithm.config._is_frozen = False
+            algorithm.config.multi_agent(policy_mapping_fn=new_mapping_fn)
             algorithm.config.freeze()
 
             # Update the current mix list
