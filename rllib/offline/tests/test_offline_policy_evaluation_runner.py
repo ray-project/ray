@@ -70,7 +70,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         ray.shutdown()
 
     def test_offline_evaluation_runner_setup(self):
+        """Test the setup of the `OfflinePolicyEvaluationRunner`.
 
+        Checks that after instantiation, the runner has a valid config and
+        a `MultiRLModule`.
+        """
         # Create an `OfflinePolicyEvaluationRunner` instance.
         offline_policy_eval_runner = OfflinePolicyEvaluationRunner(config=self.config)
 
@@ -82,7 +86,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         self.assertIsInstance(offline_policy_eval_runner.module, MultiRLModule)
 
     def test_offline_evaluation_runner_dataset_iterator(self):
+        """Test setting the dataset iterator in the `OfflinePolicyEvaluationRunner`.
 
+        Ensures that after setting the iterator, the internal `_dataset_iterator`
+        is not `None`.
+        """
         # Create an algorithm from the config.
         algo = self.config.build()
 
@@ -100,7 +108,13 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         algo.cleanup()
 
     def test_offline_evaluation_runner_run(self):
+        """Test the `OfflinePolicyEvaluationRunner.run()` method.
 
+        Checks, that the correct number of env steps and dataset iterations
+        were sampled. Furthermore, ensures that the returned metrics dict has the
+        correct structure and types. Tests also that the internal `_batch_iterator`
+        was built correctly.
+        """
         # Build an algorithm.
         algo = self.config.build()
         # Build an `OfflinePolicyEvaluationRunner` instance.
@@ -183,7 +197,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         algo.cleanup()
 
     def test_evaluation_in_algorithm_evaluate_offline(self):
+        """Test using the algorithm's `evaluate_offline()` method.
 
+        Checks, that the correct number of env steps and dataset iterations
+        were sampled.
+        """
         # Build an algorithm.
         algo = self.config.build()
 
@@ -242,7 +260,12 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         algo.cleanup()
 
     def test_evaluation_in_algorithm_train(self):
+        """Test using the algorithm's `train()` method with offline evaluation.
 
+        Checks, that the correct number of env steps and dataset iterations
+        were sampled. Furthermore, ensures that offline evaluation is run at the
+        correct interval.
+        """
         # Build an algorithm.
         algo = self.config.build()
 
