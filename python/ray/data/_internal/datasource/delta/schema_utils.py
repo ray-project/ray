@@ -164,6 +164,9 @@ def pyarrow_type_to_delta_type(pa_type: pa.DataType) -> str:
 def infer_partition_type(value: Any) -> pa.DataType:
     """Infer PyArrow type from partition value.
 
+    Delta Lake stores partition values as strings in AddAction.partition_values,
+    so this function must parse string representations to infer the original type.
+
     Args:
         value: Partition value (can be string, int, float, bool, or None).
 
@@ -171,14 +174,14 @@ def infer_partition_type(value: Any) -> pa.DataType:
         Inferred PyArrow data type.
 
     Note:
-        For string values that look like numbers (e.g., "123"), we keep them
-        as strings to preserve the original type intention. Only actual
-        Python numeric types are inferred as numeric.
+        String parsing is intentional here because Delta Lake metadata stores
+        all partition values as strings. For example, an integer partition
+        value 2024 becomes "2024" in the metadata.
     """
     if value is None:
         return pa.string()
 
-    # Check actual Python types first (not string parsing)
+    # Check actual Python types first
     if isinstance(value, bool):
         return pa.bool_()
     if isinstance(value, int):
@@ -186,13 +189,30 @@ def infer_partition_type(value: Any) -> pa.DataType:
     if isinstance(value, float):
         return pa.float64()
 
-    # For string values, try to infer type but be conservative
+    # For string values, parse to infer original type
+    # This is necessary because Delta Lake stores partition values as strings
     if isinstance(value, str):
-        # Only infer bool if explicitly true/false
+        # Check for boolean strings
         if value.lower() in ("true", "false"):
             return pa.bool_()
-        # Keep strings as strings - don't try to parse as numbers
-        # This preserves the original type intention
+
+        # Try to parse as integer
+        try:
+            int(value)
+            # Verify it's a clean integer (no decimal point, no scientific notation)
+            if "." not in value and "e" not in value.lower():
+                return pa.int64()
+        except ValueError:
+            pass
+
+        # Try to parse as float
+        try:
+            float(value)
+            return pa.float64()
+        except ValueError:
+            pass
+
+        # Default to string
         return pa.string()
 
     # Default to string for unknown types

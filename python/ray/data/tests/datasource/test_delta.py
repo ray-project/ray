@@ -535,12 +535,20 @@ def test_delta_schema_conversion():
     assert types_compatible(pa.float64(), pa.float32()) is True
     assert types_compatible(pa.string(), pa.large_string()) is True
 
-    # Test partition type inference
+    # Test partition type inference with actual Python types
     assert infer_partition_type(123) == pa.int64()
     assert infer_partition_type(1.5) == pa.float64()
     assert infer_partition_type(True) == pa.bool_()
     assert infer_partition_type("value") == pa.string()
     assert infer_partition_type(None) == pa.string()
+
+    # Test partition type inference from strings (as stored in Delta metadata)
+    # This is critical because AddAction.partition_values stores all values as strings
+    assert infer_partition_type("2024") == pa.int64()  # Integer string
+    assert infer_partition_type("3.14") == pa.float64()  # Float string
+    assert infer_partition_type("true") == pa.bool_()  # Boolean string
+    assert infer_partition_type("false") == pa.bool_()  # Boolean string
+    assert infer_partition_type("hello") == pa.string()  # Plain string
 
     # Test schema conversion with None
     with pytest.raises(ValueError, match="Cannot convert None"):
