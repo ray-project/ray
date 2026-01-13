@@ -607,8 +607,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """Phase 2: Commit all files in single ACID transaction.
 
         Collects results from all workers, validates file actions, and commits
-        to the Delta transaction log. For UPSERT mode, deletes matching rows
-        before appending new data.
+        to the Delta transaction log.
+
+        Note:
+            APPEND and OVERWRITE modes use atomic transactions.
+            UPSERT mode uses two separate transactions (delete then append) and is
+            NOT fully atomic. If a failure occurs between delete and append, data
+            loss may occur. For atomic upsert operations, consider using deltalake's
+            native merge() API directly.
         """
         all_file_actions, upsert_keys = self._collect_write_results(write_result)
         existing_table = try_get_deltatable(self.table_uri, self.storage_options)
@@ -644,23 +650,30 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self._create_empty_table()
             return
 
-        self._validate_file_actions(all_file_actions)
+        # Wrap commit phase in try/except to ensure cleanup on failure
+        # (files were written by workers, so _written_files is empty on driver)
+        try:
+            self._validate_file_actions(all_file_actions)
 
-        # Commit based on mode
-        if self._table_existed_at_start:
-            if self.mode == SaveMode.IGNORE:
-                self._cleanup_written_files(all_file_actions)
-                return
-            if existing_table is None and self.mode == SaveMode.OVERWRITE:
-                self._create_table_with_files(all_file_actions)
-            elif existing_table is not None:
-                self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+            # Commit based on mode
+            if self._table_existed_at_start:
+                if self.mode == SaveMode.IGNORE:
+                    self._cleanup_written_files(all_file_actions)
+                    return
+                if existing_table is None and self.mode == SaveMode.OVERWRITE:
+                    self._create_table_with_files(all_file_actions)
+                elif existing_table is not None:
+                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+                else:
+                    raise ValueError(
+                        f"Delta table was deleted at {self.table_uri} after write started."
+                    )
             else:
-                raise ValueError(
-                    f"Delta table was deleted at {self.table_uri} after write started."
-                )
-        else:
-            self._create_table_with_files(all_file_actions)
+                self._create_table_with_files(all_file_actions)
+        except Exception:
+            # Clean up orphaned files on commit failure
+            self._cleanup_written_files(all_file_actions)
+            raise
 
         self._written_files.clear()
 
@@ -689,15 +702,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ) -> None:
         """Commit upsert using copy-on-write pattern: delete matching rows, then append.
 
-        This implements upsert semantics without requiring Delta Lake's merge API:
+        WARNING: This operation is NOT fully atomic. It performs two separate
+        Delta transactions:
         1. Delete rows from existing table that match upsert keys
         2. Append all new data files
+
+        If the process crashes between these operations, the delete will be committed
+        but the append will not, causing data loss. For atomic upsert operations,
+        use deltalake's native merge() API directly.
 
         Args:
             table: Existing DeltaTable to upsert into.
             file_actions: AddAction objects for new files to append.
             upsert_keys: PyArrow table with key columns from new data.
         """
+        logger.warning(
+            "UPSERT mode uses two separate transactions (delete then append) and is "
+            "not fully atomic. If a failure occurs between operations, data loss may "
+            "occur. For atomic upsert, use deltalake's native merge() API directly."
+        )
         import functools
 
         import pyarrow.compute as pc
