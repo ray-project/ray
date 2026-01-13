@@ -1,7 +1,7 @@
 import collections
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, HashLinkedQueue
+from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -36,7 +36,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
-        self._input_buffers: List["BaseBundleQueue"] = [
+        self._input_buffers: List[HashLinkedQueue] = [
             HashLinkedQueue() for _ in range(len(input_ops))
         ]
 

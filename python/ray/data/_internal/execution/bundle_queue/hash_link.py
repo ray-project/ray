@@ -111,7 +111,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
             node.prev.next = node.next
             node.next.prev = node.prev
 
-        self._on_dequeue(node.value)
+        self._on_dequeue_bundle(node.value)
 
         assert self._nbytes >= 0, (
             "Expected the total size of objects in the queue to be non-negative, but "
@@ -119,10 +119,6 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
         )
 
         return node
-
-    @override
-    def finalize(self, key: Optional[int] = None):
-        pass
 
     def __iter__(self) -> Iterator[RefBundle]:
         curr = self._head
