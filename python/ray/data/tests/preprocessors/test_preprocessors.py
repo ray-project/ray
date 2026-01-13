@@ -9,8 +9,7 @@ import pyarrow
 import pytest
 
 import ray
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     Categorizer,
@@ -33,6 +32,7 @@ from ray.data.preprocessors import (
     Tokenizer,
     TorchVisionPreprocessor,
 )
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 @pytest.fixture
@@ -237,26 +237,34 @@ def test_transform_all_formats(create_dummy_preprocessors, dataset_format):
     with patcher as mock_map_batches:
         with_pandas.transform(ds)
         mock_map_batches.assert_called_once_with(
-            with_pandas._transform_pandas, batch_format=BatchFormat.PANDAS
+            with_pandas._transform_pandas,
+            batch_format=BatchFormat.PANDAS,
+            zero_copy_batch=True,
         )
 
     with patcher as mock_map_batches:
         with_numpy.transform(ds)
         mock_map_batches.assert_called_once_with(
-            with_numpy._transform_numpy, batch_format=BatchFormat.NUMPY
+            with_numpy._transform_numpy,
+            batch_format=BatchFormat.NUMPY,
+            zero_copy_batch=True,
         )
 
     # Pandas preferred by default.
     with patcher as mock_map_batches:
         with_pandas_and_numpy.transform(ds)
     mock_map_batches.assert_called_once_with(
-        with_pandas_and_numpy._transform_pandas, batch_format=BatchFormat.PANDAS
+        with_pandas_and_numpy._transform_pandas,
+        batch_format=BatchFormat.PANDAS,
+        zero_copy_batch=True,
     )
 
     with patcher as mock_map_batches:
         with_pandas_and_numpy_preferred.transform(ds)
     mock_map_batches.assert_called_once_with(
-        with_pandas_and_numpy_preferred._transform_numpy, batch_format=BatchFormat.NUMPY
+        with_pandas_and_numpy_preferred._transform_numpy,
+        batch_format=BatchFormat.NUMPY,
+        zero_copy_batch=True,
     )
 
 

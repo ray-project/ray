@@ -19,7 +19,6 @@ from ray.data._internal.execution.interfaces.execution_options import ExecutionR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = getLogger(__name__)
 
@@ -87,7 +86,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def __init__(
         self,
-        topology: "Topology",
         resource_manager: "ResourceManager",
         execution_id: str,
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
@@ -118,18 +116,37 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
-        super().__init__(topology, resource_manager, execution_id)
 
-    def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
-        """Get the unique node resource specs and their count in the cluster."""
-        # Filter out the head node.
+    def get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
+        """Get node types from cluster config and count alive nodes.
+
+        Enables scaling from zero by discovering node types from cluster config
+        even when no worker nodes are running.
+        """
+        nodes_resource_spec_count = defaultdict(int)
+
+        # Discover node types from cluster config
+        cluster_config = ray._private.state.state.get_cluster_config()
+        if cluster_config and cluster_config.node_group_configs:
+            for node_group_config in cluster_config.node_group_configs:
+                # Skip if no resources or max_count=0 (cannot scale)
+                if not node_group_config.resources or node_group_config.max_count == 0:
+                    continue
+
+                node_resource_spec = _NodeResourceSpec.of(
+                    cpu=node_group_config.resources.get("CPU", 0),
+                    gpu=node_group_config.resources.get("GPU", 0),
+                    mem=node_group_config.resources.get("memory", 0),
+                )
+                nodes_resource_spec_count[node_resource_spec] = 0
+
+        # Count alive worker nodes
         node_resources = [
             node["Resources"]
             for node in ray.nodes()
             if node["Alive"] and "node:__internal_head__" not in node["Resources"]
         ]
 
-        nodes_resource_spec_count = defaultdict(int)
         for r in node_resources:
             node_resource_spec = _NodeResourceSpec.of(
                 cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
@@ -171,7 +188,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             return
 
         resource_request = []
-        node_resource_spec_count = self._get_node_resource_spec_and_count()
+        node_resource_spec_count = self.get_node_resource_spec_and_count()
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (

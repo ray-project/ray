@@ -9,7 +9,6 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 
-from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
@@ -108,13 +107,6 @@ class AnyscaleJobManager:
 
     @last_job_result.setter
     def last_job_result(self, value):
-        cluster_id = value.state.cluster_id
-        # Set this only once.
-        if self.cluster_manager.cluster_id is None and cluster_id:
-            self.cluster_manager.cluster_id = value.state.cluster_id
-            self.cluster_manager.cluster_name = get_cluster_name(
-                value.state.cluster_id, self.sdk
-            )
         self._last_job_result = value
 
     @property
