@@ -100,8 +100,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param cluster_lease_manager The task manager that queues and schedules actor.
-  /// creation tasks.
   /// \param schedule_failure_handler Invoked when there are no available
   /// nodes to schedule actors.
   /// \param schedule_success_handler Invoked when actors are
@@ -124,8 +122,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ~GcsActorScheduler() override = default;
 
   /// Schedule the specified actor.
-  /// If there is no available nodes then the actor would be queued in the
-  /// `cluster_lease_manager_`.
   ///
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor) override;
