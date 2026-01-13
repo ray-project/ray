@@ -37,15 +37,6 @@ def teardown_autoscaling_coordinator():
     kill_autoscaling_coordinator()
 
 
-MOCKED_TIME = 0
-
-
-def mock_time():
-    global MOCKED_TIME
-
-    return MOCKED_TIME
-
-
 CLUSTER_NODES_WITH_HEAD = [
     # Head node should be included if it has non-zero CPUs or GPUs.
     {
@@ -94,12 +85,11 @@ CLUSTER_NODES_WITHOUT_HEAD = [
     ],
 )
 def test_basic(cluster_nodes):
-    global MOCKED_TIME
-    MOCKED_TIME = 0
+    mocked_time = 0
 
     mock_request_resources = Mock()
     as_coordinator = _AutoscalingCoordinatorActor(
-        get_current_time=mock_time,
+        get_current_time=lambda: mocked_time,
         send_resources_request=mock_request_resources,
         get_cluster_nodes=lambda: cluster_nodes,
     )
@@ -162,7 +152,7 @@ def test_basic(cluster_nodes):
     assert res2 == req2 + [{"CPU": 4, "GPU": 2, "object_store_memory": 600}]
 
     # After req1_timeout, req1 should be expired.
-    MOCKED_TIME = req1_timeout + 0.1
+    mocked_time = req1_timeout + 0.1
     as_coordinator.tick()
     mock_request_resources.assert_called_with(req2)
     res1 = as_coordinator.get_allocated_resources("requester1")
@@ -173,7 +163,7 @@ def test_basic(cluster_nodes):
     assert res2 == req2 + [{"CPU": 8, "GPU": 4, "object_store_memory": 900}]
 
     # After req2_timeout, req2 should be expired.
-    MOCKED_TIME = req2_timeout + 0.1
+    mocked_time = req2_timeout + 0.1
     as_coordinator.tick()
     mock_request_resources.assert_called_with([])
     res1 = as_coordinator.get_allocated_resources("requester1")
@@ -203,9 +193,10 @@ def test_double_allocation_with_multiple_request_remaining():
         }
     ]
 
+    mocked_time = 0
     mock_request_resources = Mock()
     coordinator = _AutoscalingCoordinatorActor(
-        get_current_time=mock_time,
+        get_current_time=lambda: mocked_time,
         send_resources_request=mock_request_resources,
         get_cluster_nodes=lambda: cluster_nodes,
     )
