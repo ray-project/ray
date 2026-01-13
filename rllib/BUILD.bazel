@@ -209,7 +209,6 @@ py_test(
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
-        "--num-aggregator-actors-per-learner=0",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
