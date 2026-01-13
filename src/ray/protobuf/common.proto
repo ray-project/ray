@@ -192,7 +192,6 @@ enum ErrorType {
   // system error. We use this error when lineage reconstruction is enabled,
   // but this object is not reconstructable (created by actor, ray.put, or a
   // borrowed ObjectRef).
-  OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
   // Indicates that the object has been placed in plasma. This error shouldn't
@@ -206,8 +205,8 @@ enum ErrorType {
   ACTOR_CREATION_FAILED = 6;
   // Indicates that the runtime_env failed to be created.
   RUNTIME_ENV_SETUP_FAILED = 7;
-  // This object was lost from distributed memory to a node failure or system
-  // error. We use this error when lineage reconstruction is disabled.
+  // Generic object lost error. Used as a fallback for unexpected error
+  // conditions during object recovery.
   OBJECT_LOST = 8;
   // This object is unreachable because its owner has died.
   OWNER_DIED = 9;
@@ -259,6 +258,27 @@ enum ErrorType {
   // An executing generator needed to be resubmitted because an object that dependended on
   // an intermediate value needed to be recovered.
   GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION = 26;
+  // The object cannot be reconstructed because it was created by ray.put().
+  // Objects created with ray.put() have no task lineage to replay.
+  OBJECT_UNRECONSTRUCTABLE_PUT = 27;
+  // The object cannot be reconstructed because the task was created with
+  // max_retries=0, so automatic retries are disabled.
+  OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED = 28;
+  // The object cannot be reconstructed because it was borrowed from another
+  // worker and we are not the owner.
+  OBJECT_UNRECONSTRUCTABLE_BORROWED = 29;
+  // The object cannot be reconstructed because local mode does not support
+  // object reconstruction.
+  OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE = 30;
+  // The object cannot be reconstructed because the reference has gone out of
+  // scope (no longer tracked by the reference counter).
+  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 31;
+  // The object cannot be reconstructed because the task that would produce it
+  // was cancelled.
+  OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 32;
+  // The object cannot be reconstructed because lineage reconstruction is
+  // disabled system-wide (lineage_pinning_enabled=false).
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 33;
 }
 
 // The user error information.
@@ -761,6 +781,9 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
+  // The direct transport metadata for the object that is needed to trigger
+  // a transfer (if RDT object).
+  optional bytes direct_transport_metadata = 7;
 }
 
 // Task spec of an actor creation task.
@@ -966,8 +989,8 @@ message CoreWorkerStats {
   bytes actor_id = 5;
   // A map from the resource name (e.g. "CPU") to its allocation.
   map<string, ResourceAllocations> used_resources = 6;
-  // A string displayed on Dashboard.
-  map<string, string> webui_display = 7;
+  // Field 7 was webui_display, now removed.
+  reserved 7;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.
   int32 num_in_plasma = 8;
   // Number of objects stored in local memory.
