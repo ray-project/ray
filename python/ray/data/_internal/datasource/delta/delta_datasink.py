@@ -768,12 +768,32 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             commit_properties=commit_properties,
         )
 
+    def _quote_identifier(self, name: str) -> str:
+        """Quote a column name for use in SQL predicates.
+
+        Uses backticks to handle reserved words, spaces, and special characters.
+        Escapes any backticks within the name by doubling them.
+
+        Delta Lake SQL syntax: https://github.com/delta-io/delta-rs/issues/2167
+
+        Args:
+            name: Column name to quote.
+
+        Returns:
+            Quoted column name safe for SQL predicates.
+        """
+        # Escape any backticks in the name by doubling them
+        escaped = name.replace("`", "``")
+        return f"`{escaped}`"
+
     def _build_delete_predicate(
         self, keys_table: pa.Table, upsert_cols: List[str]
     ) -> Optional[str]:
         """Build SQL-like delete predicate from key values.
 
-        Creates a predicate like: (col1 = 'val1' AND col2 = 'val2') OR ...
+        Creates a predicate like: (`col1` = 'val1' AND `col2` = 'val2') OR ...
+        Column names are quoted with backticks to handle reserved words and
+        special characters.
 
         Args:
             keys_table: Table with unique key values.
@@ -788,6 +808,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # For efficiency with large key sets, use IN clause for single column
         if len(upsert_cols) == 1:
             col = upsert_cols[0]
+            quoted_col = self._quote_identifier(col)
             values = keys_table.column(col).unique().to_pylist()
             if not values:
                 return None
@@ -802,7 +823,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
             # Format values for SQL (filter out NaN which can't be compared)
             formatted_vals = ", ".join(self._format_sql_value(v) for v in values)
-            return f"{col} IN ({formatted_vals})"
+            return f"{quoted_col} IN ({formatted_vals})"
 
         # For compound keys, build OR of ANDed conditions
         # Limit to avoid extremely long predicates that cause data corruption
@@ -818,8 +839,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         for i in range(len(keys_table)):
             row_conditions = []
             for col in upsert_cols:
+                quoted_col = self._quote_identifier(col)
                 val = keys_table.column(col)[i].as_py()
-                row_conditions.append(f"{col} = {self._format_sql_value(val)}")
+                row_conditions.append(f"{quoted_col} = {self._format_sql_value(val)}")
             conditions.append(f"({' AND '.join(row_conditions)})")
 
         return " OR ".join(conditions)
