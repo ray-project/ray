@@ -52,14 +52,26 @@ class _NodeResourceSpec:
 
 def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
     """Get the unique node resource specs and their count in the cluster."""
+    nodes_resource_spec_count = defaultdict(int)
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    if cluster_config and cluster_config.node_group_configs:
+        for node_group_config in cluster_config.node_group_configs:
+            if not node_group_config.resources or node_group_config.max_count == 0:
+                continue
+            node_resource_spec = _NodeResourceSpec.of(
+                cpu=node_group_config.resources.get("CPU", 0),
+                gpu=node_group_config.resources.get("GPU", 0),
+                mem=node_group_config.resources.get("memory", 0),
+            )
+            nodes_resource_spec_count[node_resource_spec] = 0
+
     # Filter out the head node.
     node_resources = [
         node["Resources"]
         for node in ray.nodes()
         if node["Alive"] and "node:__internal_head__" not in node["Resources"]
     ]
-
-    nodes_resource_spec_count = defaultdict(int)
     for r in node_resources:
         node_resource_spec = _NodeResourceSpec.of(
             cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
@@ -187,7 +199,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # TODO(hchen): We scale up all nodes by the same delta for now.
         # We may want to distinguish different node types based on their individual
         # utilization.
-        node_resource_spec_count = self._get_node_counts()
+        node_resource_spec_count = self.get_node_resource_spec_and_count()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
             num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))
@@ -218,6 +230,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS} seconds."
             )
             logger.warning(msg, exc_info=True)
+
+    def get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
+        return self._get_node_counts()
 
     def get_total_resources(self) -> ExecutionResources:
         resources = self._autoscaling_coordinator.get_allocated_resources(

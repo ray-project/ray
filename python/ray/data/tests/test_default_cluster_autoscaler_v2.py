@@ -108,14 +108,19 @@ class TestClusterAutoscaling:
             ): 1,
         }
 
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            execution_id="test_execution_id",
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+        )
+
         # Patch cluster config to return None
-        with patch("ray.nodes", return_value=node_table):
+        with patch("ray.nodes", return_value=node_table), patch(
+            "ray._private.state.state.get_cluster_config",
+            return_value=None,
+        ):
             assert _get_node_resource_spec_and_count() == expected
-            with patch(
-                "ray._private.state.state.get_cluster_config",
-                return_value=None,
-            ):
-                assert autoscaler.get_node_resource_spec_and_count() == expected
+            assert autoscaler.get_node_resource_spec_and_count() == expected
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -181,6 +186,7 @@ class TestClusterAutoscaling:
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
         )
 
         # Simulate a cluster with only head node (no worker nodes)
@@ -250,6 +256,7 @@ class TestClusterAutoscaling:
                 resource_spec2: 0,  # Zero nodes of this type
             },
         )
+        autoscaler._last_request_time = 0
 
         autoscaler.try_trigger_scaling()
 
@@ -285,6 +292,7 @@ class TestClusterAutoscaling:
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
         )
 
         # Simulate a cluster with only head node (no worker nodes)
