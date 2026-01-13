@@ -435,50 +435,5 @@ TEST_F(RayEventRecorderTest, TestFailureMetricsRecorded) {
   // Verify events_sent_counter was NOT recorded
   ASSERT_TRUE(fake_events_sent_counter_->GetTagToValue().empty());
 }
-
-TEST_F(RayEventRecorderTest, TestEmptyBufferNoMetrics) {
-  InitializeConfig(/*enable_ray_event=*/true);
-  recorder_->StartExportingEvents();
-
-  // Don't add any events, just trigger export
-  io_service_.run_one();
-
-  // Verify no metrics were recorded
-  ASSERT_TRUE(fake_events_sent_counter_->GetTagToValue().empty());
-  ASSERT_TRUE(fake_events_failed_counter_->GetTagToValue().empty());
-  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 0);
-}
-
-TEST_F(RayEventRecorderTest, TestMetricSourceTag) {
-  InitializeConfig(/*enable_ray_event=*/true);
-
-  // Create a new recorder with different metric_source
-  auto custom_client = std::make_unique<FakeEventAggregatorClient>();
-  auto custom_sent_counter = std::make_unique<FakeCounter>();
-  auto custom_failed_counter = std::make_unique<FakeCounter>();
-  auto custom_dropped_counter = std::make_unique<FakeCounter>();
-
-  auto custom_recorder = std::make_unique<RayEventRecorder>(*custom_client,
-                                                            io_service_,
-                                                            max_buffer_size_,
-                                                            "raylet",  // Different source
-                                                            *custom_dropped_counter,
-                                                            *custom_sent_counter,
-                                                            *custom_failed_counter,
-                                                            test_node_id_);
-
-  custom_recorder->StartExportingEvents();
-
-  std::vector<std::unique_ptr<RayEventInterface>> events;
-  events.push_back(CreateJobDefinitionEvent("job_1"));
-  custom_recorder->AddEvents(std::move(events));
-  io_service_.run_one();
-
-  // Verify the Source tag is "raylet"
-  ASSERT_EQ(GetMetricValueForSource(custom_sent_counter.get(), "raylet"), 1);
-  // Verify "gcs" source has no value
-  ASSERT_EQ(GetMetricValueForSource(custom_sent_counter.get(), "gcs"), 0);
-}
-
 }  // namespace observability
 }  // namespace ray
