@@ -88,7 +88,9 @@ class TestHashShuffleAggregator:
             # Thresholds are now per-partition in PartitionBucket
             return {
                 part_id: bucket.compaction_threshold
-                for part_id, bucket in aggregator._input_seq_partition_buckets[0].items()
+                for part_id, bucket in aggregator._input_seq_partition_buckets[
+                    0
+                ].items()
                 if bucket.compaction_threshold is not None
             }
 
