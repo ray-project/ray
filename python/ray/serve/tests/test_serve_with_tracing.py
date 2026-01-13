@@ -5,6 +5,7 @@ import shutil
 import sys
 
 import pytest
+from opentelemetry import trace
 
 import ray
 from ray import serve
@@ -37,6 +38,11 @@ def ray_serve_with_tracing(cleanup_spans):
     ray.init(_tracing_startup_hook=setup_tracing_path)
     yield
     serve.shutdown()
+    # Shutdown the tracer provider to close file handles before cleanup_spans
+    # tries to delete the spans directory.
+    tracer_provider = trace.get_tracer_provider()
+    if hasattr(tracer_provider, "shutdown"):
+        tracer_provider.shutdown()
     ray.shutdown()
 
 
