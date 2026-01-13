@@ -206,13 +206,11 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
         For each pending checkpoint file:
         - Read the data_file_path from its metadata
-        - For exact paths (single file outputs):
-          - If the data file exists → commit the checkpoint
-          - If the data file doesn't exist → delete the pending checkpoint
-        - For pattern paths (multi-file outputs like Parquet):
-          - We can't determine if all files were written (partial vs complete)
-          - Conservative approach: delete pending checkpoint AND any partial data files
-          - This ensures consistency at the cost of re-doing work on retry
+        - Delete any corresponding data files (partial or complete)
+        - Delete the pending checkpoint
+
+        This is a conservative approach: always clean up and let retry handle it.
+        The data will be rewritten on retry anyway.
         """
         from pyarrow.fs import FileSelector, FileType
 
@@ -242,46 +240,16 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
                 # Read metadata from pending checkpoint to get data file path
                 data_file_path = self._read_data_file_path_from_checkpoint(file_path)
 
-                if data_file_path is None:
-                    logger.warning(
-                        f"Pending checkpoint {file_path} has no data_file_path metadata, "
-                        "deleting it."
-                    )
-                    self._delete_pending_checkpoint(file_path)
-                    continue
-
-                # Handle based on path type (exact vs pattern)
-                if self._is_pattern_path(data_file_path):
-                    # Pattern path (multi-file output like Parquet)
-                    # We can't determine if write was complete or partial
-                    # Conservative: delete pending checkpoint + any partial data files
-                    logger.info(
-                        f"Pattern-based path {data_file_path}: deleting pending "
-                        f"checkpoint and any partial data files for consistency"
-                    )
+                if data_file_path is not None:
+                    # Delete any corresponding data files
                     deleted_count = self._delete_matching_data_files(data_file_path)
                     if deleted_count > 0:
                         logger.info(
-                            f"Deleted {deleted_count} partial data file(s) "
-                            f"matching pattern {data_file_path}"
+                            f"Deleted {deleted_count} data file(s) for {data_file_path}"
                         )
-                    self._delete_pending_checkpoint(file_path)
-                else:
-                    # Exact path (single file output)
-                    if self._data_file_exists(data_file_path):
-                        # Data was written successfully, commit the checkpoint
-                        logger.info(
-                            f"Data file {data_file_path} exists, "
-                            f"committing pending checkpoint {file_path}"
-                        )
-                        self._commit_pending_checkpoint(file_path)
-                    else:
-                        # Data write failed, delete the pending checkpoint
-                        logger.info(
-                            f"Data file {data_file_path} does not exist, "
-                            f"deleting pending checkpoint {file_path}"
-                        )
-                        self._delete_pending_checkpoint(file_path)
+
+                # Delete the pending checkpoint
+                self._delete_pending_checkpoint(file_path)
 
             except Exception as e:
                 logger.warning(
@@ -372,10 +340,6 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
                 return file_info.type == FileType.File
         except Exception:
             return False
-
-    def _is_pattern_path(self, data_file_path: str) -> bool:
-        """Check if a data file path is a pattern (multi-file) path."""
-        return data_file_path.startswith(DATA_FILE_PATH_PATTERN_PREFIX)
 
     def _delete_matching_data_files(self, data_file_path: str) -> int:
         """Delete all data files matching a pattern.
