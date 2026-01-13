@@ -227,7 +227,7 @@ class TransformerBlock(nnx.Module):
                                           dtype=dtype,
                                           param_dtype=param_dtype,
                                           rngs=rngs)
-        self.dropout1 = nnx.Dropout(rate=dropout_rate)
+        self.dropout1 = nnx.Dropout(rate=dropout_rate, rngs=rngs)
         self.layer_norm2 = nnx.LayerNorm(epsilon=1e-6,
                                          num_features=embed_dim,
                                          scale_init=nnx.with_partitioning(nnx.initializers.ones_init(), ('model',)),
@@ -249,7 +249,7 @@ class TransformerBlock(nnx.Module):
                                   dtype=dtype,
                                   param_dtype=param_dtype,
                                   rngs=rngs)
-        self.dropout2 = nnx.Dropout(rate=dropout_rate)
+        self.dropout2 = nnx.Dropout(rate=dropout_rate, rngs=rngs)
 
     def __call__(self, inputs, training: bool = False):
         input_shape = inputs.shape
@@ -290,7 +290,7 @@ class GPT2(nnx.Module):
         rngs: nnx.Rngs,
     ):
         self.embedding_layer = TokenAndPositionEmbedding(seqlen, vocab_size, embed_dim, rngs=rngs)
-        self.dropout = nnx.Dropout(rate=dropout_rate)
+        self.dropout = nnx.Dropout(rate=dropout_rate, rngs=rngs)
         self.transformer_blocks = nnx.List([
             TransformerBlock(embed_dim, num_heads, feed_forward_dim, dropout_rate, rngs=rngs)
             for _ in range(num_transformer_blocks)
@@ -328,19 +328,28 @@ def create_model(*, rngs: nnx.Rngs, config: TrainingConfig):
     )
 ```
 
-Next, define the `loss_fn` and `train_step` functions.
+Next, define the `loss_fn_train`, `loss_fn_eval`, and `train_step` functions.
 
 `train_step()` computes the loss, takes gradients, and updates model parameters through the optimizer. The training loop will call this function repeatedly.
 
-For performance, this notebook JIT-compiles both functions with `@nnx.jit`.
+For performance, this notebook JIT-compiles these functions with `@nnx.jit`.
 
 
 
 ```python
 
 @nnx.jit
-def loss_fn(model, batch):
-    logits = model(batch[0])
+def loss_fn_train(model, batch):
+    logits = model(batch[0], training=True)
+    loss = optax.softmax_cross_entropy_with_integer_labels(
+        logits=logits, labels=batch[1]
+    ).mean()
+    return loss, logits
+
+
+@nnx.jit
+def loss_fn_eval(model, batch):
+    logits = model(batch[0], training=False)
     loss = optax.softmax_cross_entropy_with_integer_labels(
         logits=logits, labels=batch[1]
     ).mean()
@@ -348,7 +357,7 @@ def loss_fn(model, batch):
 
 @nnx.jit
 def train_step(model, optimizer, metrics, batch):
-    grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+    grad_fn = nnx.value_and_grad(loss_fn_train, has_aux=True)
     (loss, logits), grads = grad_fn(model, batch)
     metrics.update(loss=loss, logits=logits, labels=batch[1])
     optimizer.update(model, grads)
@@ -386,7 +395,8 @@ def train_loop_per_worker(config_dict: dict) -> None:
 
 
     # Initialize the model locally.
-    model = create_model(rngs=nnx.Rngs(0), config=config)
+    # Include a dropout RNG stream so nnx.Dropout can run when training=True.
+    model = create_model(rngs=nnx.Rngs(params=0, dropout=1), config=config)
 
 
     # We use Ray data to load the training and validation datasets.
@@ -443,15 +453,15 @@ def train_loop_per_worker(config_dict: dict) -> None:
                 drop_last=True,
             ))
             local_batch = next(train_batches)
-    
+
         global_x, global_y = make_global_batch(local_batch["x"], local_batch["y"], global_input_shape)
 
-        loss = train_step(model, optimizer, train_metrics, (global_x, global_y))
+        train_loss = train_step(model, optimizer, train_metrics, (global_x, global_y))
 
         if (step + 1) % config.log_every_n_steps == 0:
             elapsed = time.time() - start_time
             # Report metrics through Ray Train.
-            ray.train.report({"step": step + 1, "train_loss": float(loss), "elapsed_s": elapsed})
+            ray.train.report({"step": step + 1, "train_loss": float(train_loss), "elapsed_s": elapsed})
             start_time = time.time()
         
         if (step + 1) % config.val_every_n_steps == 0:
@@ -472,10 +482,10 @@ def train_loop_per_worker(config_dict: dict) -> None:
                 global_input_shape
             )
             
-            loss, logits = loss_fn(model, (global_val_input, global_val_target))
-            val_metrics.update(val_loss=loss, logits=logits)
+            eval_loss, logits = loss_fn_eval(model, (global_val_input, global_val_target))
+            val_metrics.update(val_loss=eval_loss, logits=logits)
             val_loss = float(val_metrics.compute())
-            metrics = {"step": step + 1, "train_loss": float(loss),"val_loss": float(val_loss)}
+            metrics = {"step": step + 1, "train_loss": float(train_loss), "val_loss": float(val_loss)}
             
             checkpoint = None
             if (step + 1) % config.checkpoint_every_n_steps == 0:
@@ -515,7 +525,8 @@ def make_bin_xy_dataset(
     seqlen: int,
     *,
     # How many sequences to generate per epoch-like pass.
-    # You can make this very large and then .repeat() downstream.
+    # You can make this very large and then re-iterate over batches in the
+    # training loop.
     num_sequences: int,
     seed: int = 0,
     dtype=np.uint16,
