@@ -71,18 +71,17 @@ class ProgressBar(BaseProgressBar):
 
         if not enabled:
             self._bar = None
+        elif use_ray_tqdm:
+            self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
+            self._bar.set_description(self._desc)
         elif tqdm:
-            # TODO (kyuds): rename to use_tqdm_in_worker for clarity.
-            if use_ray_tqdm:
-                self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
-            else:
-                self._bar = tqdm.tqdm(
-                    total=total or 0,
-                    position=position,
-                    dynamic_ncols=True,
-                    unit=unit,
-                    unit_scale=True,
-                )
+            self._bar = tqdm.tqdm(
+                total=total or 0,
+                position=position,
+                dynamic_ncols=True,
+                unit=unit,
+                unit_scale=True,
+            )
             self._bar.set_description(self._desc)
         else:
             global needs_warning

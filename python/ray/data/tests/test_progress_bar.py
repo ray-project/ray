@@ -130,6 +130,7 @@ def test_progress_bar_non_interactive_terminal(enable_tqdm_ray):
         # On driver with non-interactive terminal, always falls back to logging
         pb = ProgressBar("test", total, "unit", enabled=True)
         assert pb._bar is None
+        assert pb._use_logging is True
 
     # Mock non-interactive terminal in Ray worker with tqdm_ray
     with patch("sys.stdout.isatty", return_value=False), patch.object(
@@ -143,12 +144,14 @@ def test_progress_bar_non_interactive_terminal(enable_tqdm_ray):
         else:
             # Without tqdm_ray, falls back to logging even in worker
             assert pb._bar is None
+            assert pb._use_logging is True
 
     # Mock interactive terminal
     with patch("sys.stdout.isatty", return_value=True):
         # With enabled=True, progress bar should be enabled in interactive terminal
         pb = ProgressBar("test", total, "unit", enabled=True)
         assert pb._bar is not None
+        assert pb._use_logging is False
 
 
 @patch("ray.data._internal.progress.progress_bar.logger")
@@ -199,6 +202,30 @@ def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_log
         assert mock_logger.info.call_count == 2
         mock_logger.info.assert_any_call("=== Ray Data Progress {test2} ===")
         mock_logger.info.assert_any_call("test2: Progress Completed 3 / ?")
+
+
+def test_progress_bar_disabled():
+    """Test that progress bar is disabled when enabled=False."""
+    with patch("sys.stdout.isatty", return_value=True):
+        pb = ProgressBar("test", 100, "unit", enabled=False)
+        assert pb._bar is None
+        assert pb._use_logging is False
+
+
+def test_progress_bar_tqdm_not_installed(enable_tqdm_ray):
+    """Test behavior when tqdm package is not installed."""
+    with patch("sys.stdout.isatty", return_value=True):
+        # Mock tqdm not being installed
+        with patch("ray.data._internal.progress.progress_bar.tqdm", None):
+            pb = ProgressBar("test", 100, "unit", enabled=True)
+            if enable_tqdm_ray:
+                # tqdm_ray still works (part of Ray, no tqdm dependency)
+                assert pb._bar is not None
+                assert pb._use_logging is False
+            else:
+                # No progress bar available
+                assert pb._bar is None
+                assert pb._use_logging is True
 
 
 if __name__ == "__main__":
