@@ -43,7 +43,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "release/ray_release/byod/ray_base_deps_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix}}.lock"
 
   - name: raycpubaseextra-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
