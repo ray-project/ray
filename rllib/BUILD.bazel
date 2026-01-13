@@ -220,7 +220,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_footsies_appo_no_aggregators",
+    name = "learning_tests_multi_agent_footsies_appo_no_aggregator_actors",
     size = "large",
     srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
     args = [
