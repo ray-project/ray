@@ -181,6 +181,9 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.remove(obj_id)
                 raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
 
+        if not tensors:
+            return []
+
         local_descs = None
         remote_name = None
         xfer_handle = None

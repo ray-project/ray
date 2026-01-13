@@ -86,6 +86,6 @@ ref2 = sender.send_dict2.remote()
 result2 = receiver.sum_dict.remote(ref2)
 try:
     print(ray.get(result2))
-except ray.exceptions.RayDirectTransportError as e:
+except ValueError as e:
     print("Error caught:", e)
 # __nixl_limitations_end__
