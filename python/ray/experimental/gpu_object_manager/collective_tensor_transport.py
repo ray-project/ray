@@ -128,14 +128,14 @@ class CollectiveTensorTransport(TensorTransportManager):
         communicator_metadata: CommunicatorMetadata,
     ):
         from ray.experimental.gpu_object_manager.util import (
-            create_empty_tensors_with_metadata,
+            create_empty_tensors_from_metadata,
         )
         from ray.util.collective.collective import recv
 
         assert isinstance(tensor_transport_metadata, CollectiveTransportMetadata)
         assert isinstance(communicator_metadata, CollectiveCommunicatorMetadata)
 
-        tensors = create_empty_tensors_with_metadata(tensor_transport_metadata)
+        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
         for tensor in tensors:
             recv(
                 tensor,

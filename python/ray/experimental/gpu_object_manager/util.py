@@ -174,7 +174,7 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
         )
 
 
-def create_empty_tensors_with_metadata(
+def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
 ) -> List["torch.Tensor"]:
     import torch
