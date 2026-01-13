@@ -517,6 +517,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
           simultaneously (as required by Join operator for ex).
     """
 
+    _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
+
     def __init__(
         self,
         name_factory: Callable[[int], str],
@@ -704,7 +706,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
-                "num_cpus": 1.0,
+                "num_cpus": self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
                 "memory": self._estimate_shuffling_memory_req(
                     block_metadata,
                     target_max_block_size=(
@@ -1060,9 +1062,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
-            # TODO fix (this hack is currently to force Ray to spin up more tasks when
-            #      shuffling to autoscale hardware capacity)
-            cpu=0.01,
+            cpu=self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
             # cpu=self._shuffle_block_ray_remote_args.get("num_cpus", 0),
             # TODO estimate (twice avg block size)
             object_store_memory=0,
