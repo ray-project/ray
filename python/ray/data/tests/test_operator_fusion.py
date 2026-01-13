@@ -852,17 +852,14 @@ def test_combine_repartition_aggregate(
 
     ds.explain()
 
-    captured = capsys.readouterr().out.strip()
-    # Check that in the Logical Plan (before optimization), both Repartition and Aggregate appear
-    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
-    assert "Repartition[Repartition]" in logical_plan
-    assert "Aggregate[Aggregate]" in logical_plan
-    # Check that in the Logical Plan (Optimized), Repartition is removed (combined)
-    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
-        1
-    ].split("-------- Physical Plan --------")[0]
-    assert "Repartition[Repartition]" not in optimized_logical
-    assert "Aggregate[Aggregate]" in optimized_logical
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (Repartition) was dropped and Aggregate connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Aggregate[Aggregate]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
 
 
 def test_combine_streaming_repartition_to_shuffle_repartition(
@@ -876,17 +873,14 @@ def test_combine_streaming_repartition_to_shuffle_repartition(
 
     ds.explain()
 
-    captured = capsys.readouterr().out.strip()
-    # Check that in the Logical Plan (before optimization), both operators appear
-    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
-    assert "StreamingRepartition[StreamingRepartition" in logical_plan
-    assert "Repartition[Repartition]" in logical_plan
-    # Check that in the Logical Plan (Optimized), StreamingRepartition is removed
-    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
-        1
-    ].split("-------- Physical Plan --------")[0]
-    assert "StreamingRepartition[StreamingRepartition" not in optimized_logical
-    assert "Repartition[Repartition]" in optimized_logical
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (StreamingRepartition) was dropped and Repartition connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Repartition[Repartition]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
 
 
 def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
@@ -899,15 +893,14 @@ def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
 
     ds.explain()
 
-    captured = capsys.readouterr().out.strip()
-    # Check that in the Logical Plan (before optimization), both Sorts appear
-    logical_plan = captured.split("-------- Logical Plan (Optimized) --------")[0]
-    assert logical_plan.count("Sort[Sort]") >= 2
-    # Check that in the Logical Plan (Optimized), only one Sort remains
-    optimized_logical = captured.split("-------- Logical Plan (Optimized) --------")[
-        1
-    ].split("-------- Physical Plan --------")[0]
-    assert optimized_logical.count("Sort[Sort]") == 1
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (first Sort) was dropped and only the second Sort remains
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Sort[Sort]\n"
+        "+- FromItems[FromItems]"
+    )
+    assert expected_optimized_plan in captured
 
 
 if __name__ == "__main__":
