@@ -1,10 +1,9 @@
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.transform_pyarrow import _is_pa_extension_type
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
@@ -17,6 +16,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 )
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block
 from ray.data.context import DataContext
 
@@ -111,7 +111,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         self._right_input_seq_partition_builders: Dict[int, ArrowBlockBuilder] = {
             partition_id: ArrowBlockBuilder() for partition_id in target_partition_ids
         }
-        self.data_context = data_context
+        self._data_context = data_context
 
     def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         assert 0 <= input_seq_id < 2
@@ -123,7 +123,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         partition_builder.add_block(partition_shard)
 
-    def finalize(self, partition_id: int) -> Block:
+    def finalize(self, partition_id: int) -> Iterator[Block]:
 
         left_on, right_on = list(self._left_key_col_names), list(
             self._right_key_col_names
@@ -153,7 +153,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             preprocess_result_r.unsupported_projection,
         )
 
-        return supported
+        yield supported
 
     def _preprocess(
         self,

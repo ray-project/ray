@@ -1,5 +1,8 @@
 name: ray-dashboard
-froms: ["cr.ray.io/rayproject/manylinux"]
+froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
 dockerfile: ci/docker/ray-dashboard.Dockerfile
 srcs:
   - python/ray/dashboard/client/
+build_args:
+  - HOSTTYPE
+  - MANYLINUX_VERSION=260103.868e54c

@@ -233,22 +233,25 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
 
 
 @pytest.mark.parametrize("streaming_repartition_first", [True, False])
+@pytest.mark.parametrize("n_target_num_rows", [1, 5])
 def test_streaming_repartition_write_with_operator_fusion(
     ray_start_regular_shared_2_cpus,
     tmp_path,
     disable_fallback_to_object_extension,
     streaming_repartition_first,
+    n_target_num_rows,
 ):
     """Test that write with streaming repartition produces exact partitions
     with operator fusion.
     This test verifies:
     * StreamingRepartition and MapBatches operators are fused, with both orders
     """
+    target_num_rows = 20
 
     def fn(batch):
         # Get number of rows from the first column (batch is a dict of column_name -> array)
         num_rows = len(batch["id"])
-        assert num_rows == 20, f"Expected batch size 20, got {num_rows}"
+        assert num_rows == b_s, f"Expected batch size {b_s}, got {num_rows}"
         return batch
 
     # Configure shuffle strategy
@@ -270,12 +273,13 @@ def test_streaming_repartition_write_with_operator_fusion(
     ds = ds.repartition(target_num_rows_per_block=30)
 
     # Verify fusion of StreamingRepartition and MapBatches operators
+    b_s = target_num_rows * n_target_num_rows
     if streaming_repartition_first:
-        ds = ds.repartition(target_num_rows_per_block=20)
-        ds = ds.map_batches(fn, batch_size=20)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.map_batches(fn, batch_size=b_s)
     else:
-        ds = ds.map_batches(fn, batch_size=20)
-        ds = ds.repartition(target_num_rows_per_block=20)
+        ds = ds.map_batches(fn, batch_size=b_s)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -286,7 +290,7 @@ def test_streaming_repartition_write_with_operator_fusion(
     else:
         assert (
             physical_op.name
-            == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
         )
 
     # Write output to local Parquet files partitioned by key
@@ -446,6 +450,31 @@ def test_streaming_repartition_with_partial_last_block(
     assert all(
         count == 20 for count in block_row_counts[:-1]
     ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+
+
+@pytest.mark.timeout(60)
+def test_streaming_repartition_empty_dataset(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test streaming repartition with empty dataset (0 rows).
+
+    This test reproduces the scenario where:
+    1. Upstream produces empty results (e.g., filter, map, etc.)
+    2. Repartition with target_num_rows_per_block is applied
+
+    The test ensures that operation completes without hanging.
+    Previously, empty bundles would get stuck in _pending_bundles.
+    """
+    # Create empty dataset via filter, then repartition
+    ds = (
+        ray.data.range(10)
+        .filter(lambda x: x["id"] > 100)
+        .repartition(target_num_rows_per_block=8)
+    )
+
+    # Verify dataset is empty
+    assert ds.count() == 0, "Expected empty dataset"
 
 
 if __name__ == "__main__":

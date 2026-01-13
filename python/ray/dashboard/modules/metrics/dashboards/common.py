@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 
@@ -92,7 +92,7 @@ HEATMAP_TEMPLATE = {
         "exemplars": {"color": "rgba(255,0,255,0.7)"},
         "filterValues": {"le": 1e-9},
         "legend": {"show": True},
-        "rowsFrame": {"layout": "auto", "value": "Request count"},
+        "rowsFrame": {"layout": "auto", "value": "Value"},
         "tooltip": {"mode": "single", "showColorScale": False, "yHistogram": True},
         "yAxis": {"axisPlacement": "left", "reverse": False, "unit": "none"},
     },
@@ -461,6 +461,36 @@ BAR_CHART_PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
+TABLE_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "align": "auto",
+                "displayMode": "auto",
+            },
+            "mappings": [],
+        },
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 26,
+    "options": {
+        "showHeader": True,
+        "footer": {
+            "show": False,
+            "reducer": ["sum"],
+            "fields": "",
+        },
+    },
+    "pluginVersion": "7.5.17",
+    "targets": [],
+    "title": "<Title>",
+    "type": "table",
+    "transformations": [{"id": "organize", "options": {}}],
+}
+
 
 @DeveloperAPI
 class PanelTemplate(Enum):
@@ -470,6 +500,7 @@ class PanelTemplate(Enum):
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
     BAR_CHART = BAR_CHART_PANEL_TEMPLATE
+    TABLE = TABLE_PANEL_TEMPLATE
 
 
 @DeveloperAPI
@@ -488,6 +519,26 @@ class Panel:
         targets: List of query targets.
         fill: Whether or not the graph will be filled by a color.
         stack: Whether or not the lines in the graph will be stacked.
+        linewidth: Width of the lines in the graph.
+        grid_pos: Grid position of the panel.
+        template: The panel template to use.
+        hideXAxis: Whether to hide the x-axis.
+        thresholds: Custom threshold configuration for stat/gauge panels.
+            Example: [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 70},
+                {"color": "red", "value": 90}
+            ]
+        value_mappings: Value mappings for displaying text instead of numbers.
+            Used for status panels.
+        color_mode: Color mode for stat panels ("value", "background", "none").
+        legend_mode: Legend display mode ("list", "table", "hidden").
+        min_val: Minimum value for gauge/graph y-axis.
+        max_val: Maximum value for gauge/graph y-axis.
+        reduce_calc: Reduce calculation method for stat panels (default: "lastNotNull").
+        heatmap_color_scheme: Color scheme for heatmap panels (e.g., "Spectral", "RdYlGn").
+        heatmap_color_reverse: Whether to reverse the heatmap color scheme.
+        heatmap_yaxis_label: Y-axis label for heatmap panels.
     """
 
     title: str
@@ -501,6 +552,16 @@ class Panel:
     grid_pos: Optional[GridPos] = None
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
     hideXAxis: bool = False
+    thresholds: Optional[List[Dict[str, Any]]] = None
+    value_mappings: Optional[List[Dict[str, Any]]] = None
+    color_mode: Optional[str] = None
+    legend_mode: Optional[str] = None
+    min_val: Optional[float] = None
+    max_val: Optional[float] = None
+    reduce_calc: Optional[str] = None
+    heatmap_color_scheme: Optional[str] = None
+    heatmap_color_reverse: Optional[bool] = None
+    heatmap_yaxis_label: Optional[str] = None
 
 
 @DeveloperAPI
