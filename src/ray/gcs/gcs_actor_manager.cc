@@ -1977,10 +1977,7 @@ void GcsActorManager::RunAndClearActorCreationCallbacks(
   }
 }
 
-size_t GcsActorManager::GetPendingActorsCount() const {
-  return pending_actors_.size();
-  // return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
-}
+size_t GcsActorManager::GetPendingActorsCount() const { return pending_actors_.size(); }
 
 std::string GcsActorManager::DebugString() const {
   uint64_t num_named_actors = 0;
