@@ -1778,9 +1778,7 @@ class HashShuffleAggregator:
                     result[f"seq_{seq_id}"][f"partition_{partition_id}"] = {
                         # NOTE: qsize() is approximate but sufficient for debug logging
                         "num_blocks": partition.queue.qsize(),
-                        "compaction_threshold": self._current_compaction_thresholds[
-                            partition_id
-                        ],
+                        "compaction_threshold": partition.compaction_threshold,
                     }
 
             logger.debug(
