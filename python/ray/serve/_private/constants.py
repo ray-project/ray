@@ -602,7 +602,9 @@ RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = get_env_float(
     "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", 30.0
 )
 RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
-    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH", -1
+    # Default max message length in gRPC is 4MB, we keep that default
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH",
+    4 * 1024 * 1024,
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
