@@ -858,7 +858,7 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
   } else {
     rpc::events::AddEventsRequest request;
     *request.mutable_events_data() = std::move(*data);
-    event_aggregator_client_->AddEvents(request, on_complete);
+    event_aggregator_client_->AddEvents(std::move(request), on_complete);
   }
 }
 
