@@ -406,8 +406,8 @@ and privileges within the project.
 **Eligibility Criteria:**
 
 - Must be active in the project for at least 6 months
-- Nominated by at least 1 TSC (Technical Steering Committee) member
-- Have demonstrated significant contributions to the project, including:
+- Must be nominated by at least 1 TSC (Technical Steering Committee) member
+- Must have demonstrated significant contributions to the project, including:
 
   - High-quality code contributions
   - Thorough code reviews
