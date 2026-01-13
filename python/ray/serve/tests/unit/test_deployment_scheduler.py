@@ -482,7 +482,7 @@ def test_schedule_replica():
 
     scheduling_strategy = None
 
-    def set_scheduling_strategy(actor_handle, placement_group):
+    def set_scheduling_strategy(actor_handle, placement_group, bundle_indices=None):
         nonlocal scheduling_strategy
         scheduling_strategy = actor_handle._options["scheduling_strategy"]
 
@@ -825,7 +825,7 @@ def test_downscale_single_deployment():
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle, placement_group: actor_handle,
+                    on_scheduled=lambda actor_handle, placement_group, bundle_indices=None: actor_handle,
                 ),
             ]
         },
@@ -929,7 +929,7 @@ class TestCompactScheduling:
 
         assert len(on_scheduled_mock.call_args_list) == 2
         for call in on_scheduled_mock.call_args_list:
-            assert call.kwargs == {"placement_group": None}
+            assert call.kwargs == {"placement_group": None, "bundle_indices": None}
             assert len(call.args) == 1
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
@@ -937,7 +937,7 @@ class TestCompactScheduling:
 
         assert len(on_scheduled_mock2.call_args_list) == 1
         call = on_scheduled_mock2.call_args_list[0]
-        assert call.kwargs == {"placement_group": None}
+        assert call.kwargs == {"placement_group": None, "bundle_indices": None}
         assert len(call.args) == 1
         scheduling_strategy = call.args[0]._options["scheduling_strategy"]
         assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
@@ -1096,7 +1096,7 @@ class TestCompactScheduling:
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_1
-            assert call.kwargs == {"placement_group": None}
+            assert call.kwargs == {"placement_group": None, "bundle_indices": None}
 
     def test_max_replicas_per_node(self):
         """Test that at most `max_replicas_per_node` number of replicas
@@ -1128,7 +1128,7 @@ class TestCompactScheduling:
 
         state = defaultdict(int)
 
-        def on_scheduled(actor_handle, placement_group):
+        def on_scheduled(actor_handle, placement_group, bundle_indices=None):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
                 state[scheduling_strategy.node_id] += 1
@@ -1182,7 +1182,7 @@ class TestCompactScheduling:
 
         # Despite trying to schedule on node that minimizes fragmentation,
         # should respect custom resources and schedule onto node2
-        def on_scheduled(actor_handle, placement_group):
+        def on_scheduled(actor_handle, placement_group, bundle_indices=None):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_2

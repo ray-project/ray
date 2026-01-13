@@ -1827,11 +1827,16 @@ class DeploymentRankManager:
             if not self.has_replica_rank(replica_id):
                 raise RuntimeError(f"Rank for {replica_id} not assigned")
 
-            # Get the node_id from the replica mapping
-            node_id = self._replica_to_node[replica_id]
-
             # Release global rank
             self._replica_rank_manager.release_rank(replica_id)
+
+            # For static placement replicas, they're not in _replica_to_node,
+            # so skip node-level rank release
+            if replica_id not in self._replica_to_node:
+                return
+
+            # Get the node_id from the replica mapping
+            node_id = self._replica_to_node[replica_id]
 
             # Release local rank
             self._local_rank_managers[node_id].release_rank(replica_id)
@@ -1899,17 +1904,19 @@ class DeploymentRankManager:
 
         Returns:
             True if the replica has a rank assigned, False otherwise
-
-        Raises:
-            RuntimeError: If the replica doesn't have ranks assigned
         """
-        if replica_id not in self._replica_to_node:
+        # First check if replica has a global rank
+        if not self._replica_rank_manager.has_rank(replica_id):
             return False
 
+        # For static placement replicas, they only have global rank (not in _replica_to_node)
+        if replica_id not in self._replica_to_node:
+            return True
+
+        # For normal replicas, also check node-level ranks
         node_id = self._replica_to_node[replica_id]
         return (
-            self._replica_rank_manager.has_rank(replica_id)
-            and node_id in self._local_rank_managers
+            node_id in self._local_rank_managers
             and self._node_rank_manager.has_rank(node_id)
             and self._local_rank_managers[node_id].has_rank(replica_id)
         )
@@ -1932,6 +1939,12 @@ class DeploymentRankManager:
                 raise RuntimeError(f"Rank for {replica_id} not assigned")
 
             global_rank = self._replica_rank_manager.get_rank(replica_id)
+
+            # For static placement replicas (not in _replica_to_node),
+            # return placeholder values for node_rank and local_rank
+            if replica_id not in self._replica_to_node:
+                return ReplicaRank(rank=global_rank, node_rank=-1, local_rank=-1)
+
             node_id = self._replica_to_node[replica_id]
             node_rank = self._node_rank_manager.get_rank(node_id)
             local_rank = self._local_rank_managers[node_id].get_rank(replica_id)
