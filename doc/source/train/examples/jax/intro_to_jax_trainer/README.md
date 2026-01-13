@@ -482,7 +482,12 @@ def train_loop_per_worker(config_dict: dict) -> None:
         try:
             local_batch = next(train_batches)
         except StopIteration:
-            train_it.reset()
+            train_batches = iter(train_it.iter_batches(
+                batch_size=local_batch_size,
+                batch_format="numpy",
+                prefetch_batches=2,
+                drop_last=True,
+            ))
             local_batch = next(train_batches)
         global_x, global_y = make_global_batch(local_batch["x"], local_batch["y"], global_input_shape)
 
@@ -498,7 +503,12 @@ def train_loop_per_worker(config_dict: dict) -> None:
             try:
                 local_validation_batch = next(val_batches)
             except StopIteration:
-                val_it.reset()
+                val_batches = iter(val_it.iter_batches(
+                    batch_size=local_batch_size,
+                    batch_format="numpy",
+                    prefetch_batches=2,
+                    drop_last=True,
+                ))
                 local_validation_batch = next(val_batches)
 
             global_val_input, global_val_target = make_global_batch(
