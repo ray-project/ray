@@ -223,9 +223,9 @@ def test_progress_bar_tqdm_not_installed(enable_tqdm_ray):
                 assert pb._bar is not None
                 assert pb._use_logging is False
             else:
-                # No progress bar available
+                # No progress bar available (interactive, so no logging fallback)
                 assert pb._bar is None
-                assert pb._use_logging is True
+                assert pb._use_logging is False
 
 
 if __name__ == "__main__":
