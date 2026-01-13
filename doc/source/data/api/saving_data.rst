@@ -5,70 +5,8 @@ Saving Data API
 
 .. currentmodule:: ray.data
 
-Parquet
--------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_parquet
-
-CSV
----
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_csv
-
-JSON
-----
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_json
-
-Images
-------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_images
-
-TFRecords
----------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_tfrecords
-
-Pandas
-------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.to_pandas
-   Dataset.to_pandas_refs
-
-NumPy
------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_numpy
-   Dataset.to_numpy_refs
+Public APIs
+-----------
 
 Arrow
 -----
@@ -79,15 +17,6 @@ Arrow
 
    Dataset.to_arrow_refs
 
-MongoDB
--------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_mongo
-
 BigQuery
 --------
 
@@ -97,41 +26,14 @@ BigQuery
 
    Dataset.write_bigquery
 
-SQL Databases
--------------
+CSV
+---
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   Dataset.write_sql
-
-Snowflake
----------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_snowflake
-
-Iceberg
--------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_iceberg
-
-Lance
------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.write_lance
+   Dataset.write_csv
 
 ClickHouse
 ----------
@@ -160,23 +62,41 @@ Dask
 
    Dataset.to_dask
 
-Spark
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_iceberg
+
+Images
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_images
+
+JSON
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_json
+
+Lance
 -----
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   Dataset.to_spark
-
-Modin
------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.to_modin
+   Dataset.write_lance
 
 Mars
 ----
@@ -187,6 +107,92 @@ Mars
 
    Dataset.to_mars
 
+Modin
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.to_modin
+
+MongoDB
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_mongo
+
+NumPy
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_numpy
+   Dataset.to_numpy_refs
+
+Pandas
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.to_pandas
+   Dataset.to_pandas_refs
+
+Parquet
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_parquet
+
+SQL Databases
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_sql
+
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_snowflake
+
+Spark
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.to_spark
+
+TFRecords
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_tfrecords
+
+Developer APIs
+--------------
+
 Datasink API
 ------------
 
@@ -194,10 +200,19 @@ Datasink API
    :nosignatures:
    :toctree: doc/
 
-   Dataset.write_datasink
    Datasink
+   Dataset.write_datasink
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
-   datasource.FileBasedDatasource
    datasource.WriteResult
    datasource.WriteReturnType
+
+Datasource API
+--------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   datasource.FilenameProvider
+
