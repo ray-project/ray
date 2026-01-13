@@ -242,9 +242,7 @@ def test_write_delta_decimal_data(ray_start_regular_shared, temp_delta_path):
     """Test writing decimal data."""
     from decimal import Decimal
 
-    schema = pa.schema(
-        [("id", pa.int64()), ("amount", pa.decimal128(10, 2))]
-    )
+    schema = pa.schema([("id", pa.int64()), ("amount", pa.decimal128(10, 2))])
     data = pa.table(
         {"id": [1, 2], "amount": [Decimal("123.45"), Decimal("678.90")]},
         schema=schema,
@@ -364,7 +362,9 @@ def test_delta_write_mode_validation(ray_start_regular_shared):
     assert datasink.mode == SaveMode.APPEND
 
 
-def test_delta_upsert_requires_existing_table(ray_start_regular_shared, temp_delta_path):
+def test_delta_upsert_requires_existing_table(
+    ray_start_regular_shared, temp_delta_path
+):
     """Test that upsert mode requires an existing table."""
     from ray.data._internal.datasource.delta import UPSERT_JOIN_COLS, DeltaDatasink
     from ray.data._internal.savemode import SaveMode
@@ -529,7 +529,9 @@ def test_delta_schema_conversion():
     # Test type compatibility
     assert types_compatible(pa.int64(), pa.int64()) is True
     assert types_compatible(pa.int64(), pa.int32()) is True  # narrower fits wider
-    assert types_compatible(pa.int32(), pa.int64()) is False  # wider doesn't fit narrower
+    assert (
+        types_compatible(pa.int32(), pa.int64()) is False
+    )  # wider doesn't fit narrower
     assert types_compatible(pa.float64(), pa.float32()) is True
     assert types_compatible(pa.string(), pa.large_string()) is True
 

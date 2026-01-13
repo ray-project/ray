@@ -1,7 +1,7 @@
 """Schema utilities for Delta Lake type conversion and validation."""
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import pyarrow as pa
 
@@ -199,19 +199,43 @@ def infer_partition_type(value: Any) -> pa.DataType:
     return pa.string()
 
 
-# Private helpers
+# Type checking helpers - public for reuse in other modules
 
 
-def _is_string(t: pa.DataType) -> bool:
+def is_string_type(t: pa.DataType) -> bool:
+    """Check if type is a string variant."""
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
 
-def _is_binary(t: pa.DataType) -> bool:
+def is_binary_type(t: pa.DataType) -> bool:
+    """Check if type is a binary variant."""
     return pa.types.is_binary(t) or pa.types.is_large_binary(t)
 
 
-def _is_date(t: pa.DataType) -> bool:
+def is_date_type(t: pa.DataType) -> bool:
+    """Check if type is a date variant."""
     return pa.types.is_date32(t) or pa.types.is_date64(t)
+
+
+def is_numeric_type(t: pa.DataType) -> bool:
+    """Check if type is numeric (integer, float, or decimal)."""
+    return pa.types.is_integer(t) or pa.types.is_floating(t) or pa.types.is_decimal(t)
+
+
+def is_temporal_type(t: pa.DataType) -> bool:
+    """Check if type is temporal (date or timestamp)."""
+    return (
+        pa.types.is_date(t)
+        or pa.types.is_date32(t)
+        or pa.types.is_date64(t)
+        or pa.types.is_timestamp(t)
+    )
+
+
+# Private aliases for backwards compatibility
+_is_string = is_string_type
+_is_binary = is_binary_type
+_is_date = is_date_type
 
 
 def _schema_to_json(schema: pa.Schema) -> str:

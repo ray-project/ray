@@ -554,7 +554,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 try:
                     self.filesystem.delete_file(file_path)
                 except Exception as delete_err:
-                    logger.debug(f"Failed to delete empty file {file_path}: {delete_err}")
+                    logger.debug(
+                        f"Failed to delete empty file {file_path}: {delete_err}"
+                    )
                 raise RuntimeError(f"Written file is empty: {file_path}")
             file_size_result[0] = file_info.size
 
@@ -1090,12 +1092,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 parquet_file = pq.ParquetFile(file_obj)
                 schema = parquet_file.schema_arrow
         except Exception as e:
-            raise ValueError(
-                f"Failed to read schema from {first_file}: {e}"
-            ) from e
+            raise ValueError(f"Failed to read schema from {first_file}: {e}") from e
 
         if len(schema) == 0:
-            raise ValueError(f"Cannot infer schema from file with no columns: {first_file}")
+            raise ValueError(
+                f"Cannot infer schema from file with no columns: {first_file}"
+            )
 
         # Add partition columns to schema if not present
         if self.partition_cols:

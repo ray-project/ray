@@ -10,6 +10,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
+from ray.data._internal.datasource.delta.schema_utils import (
+    is_numeric_type,
+    is_string_type,
+    is_temporal_type,
+)
+
 
 def join_delta_path(base: str, relative: str) -> str:
     """Join base path and relative path, handling URI schemes."""
@@ -121,11 +127,11 @@ def compute_parquet_statistics(table: pa.Table) -> str:
             null_counts[name] = null_count
 
         # Min/max for supported types
-        if _is_numeric(col_type):
+        if is_numeric_type(col_type):
             _add_numeric_stats(col, name, min_vals, max_vals)
-        elif _is_string(col_type):
+        elif is_string_type(col_type):
             _add_string_stats(col, name, min_vals, max_vals)
-        elif _is_temporal(col_type):
+        elif is_temporal_type(col_type):
             _add_temporal_stats(col, name, min_vals, max_vals)
 
     if min_vals:
@@ -138,24 +144,7 @@ def compute_parquet_statistics(table: pa.Table) -> str:
     return json.dumps(stats)
 
 
-# Private helpers
-
-
-def _is_numeric(t: pa.DataType) -> bool:
-    return pa.types.is_integer(t) or pa.types.is_floating(t) or pa.types.is_decimal(t)
-
-
-def _is_string(t: pa.DataType) -> bool:
-    return pa.types.is_string(t) or pa.types.is_large_string(t)
-
-
-def _is_temporal(t: pa.DataType) -> bool:
-    return (
-        pa.types.is_date(t)
-        or pa.types.is_date32(t)
-        or pa.types.is_date64(t)
-        or pa.types.is_timestamp(t)
-    )
+# Private helpers for statistics computation
 
 
 def _add_numeric_stats(col: pa.ChunkedArray, name: str, mins: Dict, maxs: Dict) -> None:
@@ -180,12 +169,18 @@ def _add_string_stats(col: pa.ChunkedArray, name: str, mins: Dict, maxs: Dict) -
         maxs[name] = str(max_val)
 
 
-def _add_temporal_stats(col: pa.ChunkedArray, name: str, mins: Dict, maxs: Dict) -> None:
+def _add_temporal_stats(
+    col: pa.ChunkedArray, name: str, mins: Dict, maxs: Dict
+) -> None:
     """Add min/max statistics for date and timestamp columns."""
     min_val = pc.min(col).as_py()
     max_val = pc.max(col).as_py()
     if min_val is not None:
         # Convert to ISO 8601 string for JSON serialization
-        mins[name] = min_val.isoformat() if hasattr(min_val, "isoformat") else str(min_val)
+        mins[name] = (
+            min_val.isoformat() if hasattr(min_val, "isoformat") else str(min_val)
+        )
     if max_val is not None:
-        maxs[name] = max_val.isoformat() if hasattr(max_val, "isoformat") else str(max_val)
+        maxs[name] = (
+            max_val.isoformat() if hasattr(max_val, "isoformat") else str(max_val)
+        )
