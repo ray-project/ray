@@ -1358,9 +1358,11 @@ class Algorithm(Checkpointable, Trainable):
         else:
             self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
-        eval_results = self.metrics.compile()[EVALUATION_RESULTS][
-            OFFLINE_EVAL_RUNNER_RESULTS
-        ]
+        eval_results = (
+            self.metrics.compile()[EVALUATION_RESULTS]
+            .get(EVALUATION_RESULTS, {})
+            .get(OFFLINE_EVAL_RUNNER_RESULTS, {})
+        )
 
         # Trigger `on_evaluate_offline_end` callback.
         make_callback(
@@ -1527,9 +1529,11 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
-                eval_results = self.metrics.compile()[EVALUATION_RESULTS][
-                    ENV_RUNNER_RESULTS
-                ]
+                eval_results = (
+                    self.metrics.compile()
+                    .get(EVALUATION_RESULTS, {})
+                    .get(ENV_RUNNER_RESULTS, {})
+                )
                 if log_once("no_eval_results") and not eval_results:
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
