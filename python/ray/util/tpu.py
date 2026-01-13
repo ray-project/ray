@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Dict, List, Optional, Tuple
 
 import ray
@@ -83,6 +84,47 @@ def get_num_tpu_chips_on_node() -> int:
         The total number of chips on the TPU node. Returns 0 if none are found.
     """
     return TPUAcceleratorManager.get_current_node_num_accelerators()
+
+
+@PublicAPI(stability="alpha")
+def get_tpu_num_slices_for_workers(
+    topology: str,
+    accelerator_type: str,
+    num_workers: int,
+    resources_per_worker: Optional[Dict[str, float]] = None,
+) -> int:
+    """
+    Calculates the number of slices needed to accommodate the specified number of workers.
+
+    Args:
+        topology: The TPU topology string.
+        accelerator_type: The accelerator type string.
+        num_workers: The desired number of workers.
+        resources_per_worker: Optional dict of resources per worker.
+
+    Returns:
+        The number of slices required. Returns 1 if inputs are invalid or incomplete.
+    """
+    if not topology or not accelerator_type:
+        return 1
+
+    try:
+        # Calculate how many workers fit in a single slice (num_slices=1)
+        # given the topology and resources per worker.
+        workers_per_slice, _ = get_tpu_worker_resources(
+            topology=topology,
+            accelerator_type=accelerator_type,
+            resources_per_unit=resources_per_worker,
+            num_slices=1,
+        )
+
+        if workers_per_slice == 0:
+            return 1
+
+        return max(1, math.ceil(num_workers / workers_per_slice))
+    except Exception:
+        # Fallback to 1 if calculation fails.
+        return 1
 
 
 @PublicAPI(stability="alpha")

@@ -36,7 +36,8 @@ def _check_valid_plan_and_result(
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
     """Test basic Limit -> Limit fusion."""
-    ds = ray.data.range(100).limit(5).limit(100)
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = ray.data.range(100, override_num_blocks=1).limit(5).limit(100)
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=5]",
@@ -47,7 +48,8 @@ def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
 
 def test_limit_pushdown_limit_fusion_reversed(ray_start_regular_shared_2_cpus):
     """Test Limit fusion with reversed order."""
-    ds = ray.data.range(100).limit(100).limit(5)
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = ray.data.range(100, override_num_blocks=1).limit(100).limit(5)
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=5]",
@@ -58,7 +60,14 @@ def test_limit_pushdown_limit_fusion_reversed(ray_start_regular_shared_2_cpus):
 
 def test_limit_pushdown_multiple_limit_fusion(ray_start_regular_shared_2_cpus):
     """Test multiple Limit operations fusion."""
-    ds = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = (
+        ray.data.range(100, override_num_blocks=1)
+        .limit(50)
+        .limit(80)
+        .limit(5)
+        .limit(20)
+    )
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=5]",
