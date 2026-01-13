@@ -31,7 +31,20 @@ def try_get_deltatable(
 
 
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
-    """Convert Delta Lake schema to PyArrow schema."""
+    """Convert Delta Lake schema to PyArrow schema.
+
+    Args:
+        delta_schema: Delta Lake schema, PyArrow schema, or schema-like object.
+
+    Returns:
+        PyArrow Schema.
+
+    Raises:
+        ValueError: If delta_schema is None.
+        AttributeError: If delta_schema cannot be converted.
+    """
+    if delta_schema is None:
+        raise ValueError("Cannot convert None to PyArrow schema")
     if isinstance(delta_schema, pa.Schema):
         return delta_schema
     if hasattr(delta_schema, "to_pyarrow"):
@@ -48,15 +61,25 @@ def get_storage_options(
 ) -> Dict[str, str]:
     """Get storage options with auto-detection for cloud paths.
 
-    Attempts to auto-detect credentials for S3 and Azure paths using
-    boto3 and azure.identity respectively.
+    Attempts to auto-detect credentials for S3, Azure, and GCS paths using
+    boto3, azure.identity, and google.auth respectively.
+
+    Args:
+        path: Path to Delta table (local or cloud).
+        provided: User-provided storage options (take precedence).
+
+    Returns:
+        Dict of storage options with auto-detected credentials merged.
     """
     options = dict(provided or {})
+    path_lower = path.lower()
 
-    if path.lower().startswith(("s3://", "s3a://")):
+    if path_lower.startswith(("s3://", "s3a://")):
         options = {**_get_aws_credentials(), **options}
-    elif path.lower().startswith(("abfss://", "abfs://")):
+    elif path_lower.startswith(("abfss://", "abfs://")):
         options = {**_get_azure_credentials(), **options}
+    elif path_lower.startswith(("gs://", "gcs://")):
+        options = {**_get_gcs_credentials(), **options}
 
     return options
 
@@ -90,5 +113,29 @@ def _get_azure_credentials() -> Dict[str, str]:
         credential = DefaultAzureCredential()
         token = credential.get_token("https://storage.azure.com/.default")
         return {"AZURE_STORAGE_TOKEN": token.token}
+    except ImportError:
+        return {}
+    except Exception:
+        return {}
+
+
+def _get_gcs_credentials() -> Dict[str, str]:
+    """Get GCS credentials from google.auth default credentials."""
+    try:
+        import google.auth
+        from google.auth.transport.requests import Request
+
+        credentials, project = google.auth.default()
+        if credentials.expired and credentials.refresh_token:
+            credentials.refresh(Request())
+
+        result = {}
+        if project:
+            result["GOOGLE_CLOUD_PROJECT"] = project
+        if hasattr(credentials, "token") and credentials.token:
+            result["GOOGLE_SERVICE_ACCOUNT_TOKEN"] = credentials.token
+        return result
+    except ImportError:
+        return {}
     except Exception:
         return {}

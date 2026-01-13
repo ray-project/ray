@@ -219,7 +219,7 @@ def test_write_delta_nested_type_unsupported(ray_start_regular_shared, temp_delt
     data = [{"id": 1, "nested": {"a": 1}}, {"id": 2, "nested": {"a": 2}}]
     ds = ray.data.from_items(data)
 
-    with pytest.raises(ValueError, match="unsupported type"):
+    with pytest.raises(ValueError, match="nested type|Nested types"):
         ds.write_delta(temp_delta_path, partition_cols=["nested"])
 
 
@@ -428,6 +428,147 @@ def test_delta_write_result_dataclass():
         schemas=[pa.schema([("id", pa.int64())])],
     )
     assert len(result.schemas) == 1
+
+
+def test_delta_empty_path_validation():
+    """Test that empty paths are rejected."""
+    from ray.data._internal.datasource.delta import DeltaDatasink, DeltaDatasource
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        DeltaDatasink("", mode="append")
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        DeltaDatasink("   ", mode="append")
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        DeltaDatasource("")
+
+
+def test_delta_partition_column_validation():
+    """Test partition column name validation."""
+    from ray.data._internal.datasource.delta.partition_utils import (
+        validate_partition_column_names,
+    )
+
+    # Valid columns
+    assert validate_partition_column_names(["year", "month"]) == ["year", "month"]
+
+    # Empty list is valid
+    assert validate_partition_column_names([]) == []
+
+    # Invalid: contains path separator
+    with pytest.raises(ValueError, match="Invalid characters"):
+        validate_partition_column_names(["year/month"])
+
+    # Invalid: contains equals sign
+    with pytest.raises(ValueError, match="cannot contain '='"):
+        validate_partition_column_names(["year=2024"])
+
+    # Invalid: duplicate columns
+    with pytest.raises(ValueError, match="Duplicate"):
+        validate_partition_column_names(["year", "year"])
+
+    # Invalid: empty string
+    with pytest.raises(ValueError, match="cannot be empty"):
+        validate_partition_column_names([""])
+
+
+def test_delta_partition_value_validation():
+    """Test partition value validation."""
+    from ray.data._internal.datasource.delta.partition_utils import (
+        validate_partition_value,
+    )
+
+    # Valid values
+    validate_partition_value("value")
+    validate_partition_value(123)
+    validate_partition_value(None)
+    validate_partition_value(float("nan"))
+
+    # Invalid: contains path separator
+    with pytest.raises(ValueError, match="contains '/'"):
+        validate_partition_value("a/b")
+
+    # Invalid: contains path traversal
+    with pytest.raises(ValueError, match="contains '..'"):
+        validate_partition_value("a..b")
+
+
+def test_delta_file_path_validation():
+    """Test file path validation."""
+    from ray.data._internal.datasource.delta.file_utils import validate_file_path
+
+    # Valid paths
+    validate_file_path("year=2024/file.parquet")
+
+    # Invalid: empty
+    with pytest.raises(ValueError, match="cannot be empty"):
+        validate_file_path("")
+
+    # Invalid: path traversal
+    with pytest.raises(ValueError, match="contains '..'"):
+        validate_file_path("../file.parquet")
+
+    # Invalid: absolute path
+    with pytest.raises(ValueError, match="Absolute path"):
+        validate_file_path("/absolute/path.parquet")
+
+    # Invalid: Windows-invalid characters
+    with pytest.raises(ValueError, match="invalid character"):
+        validate_file_path("file<name>.parquet")
+
+
+def test_delta_schema_conversion():
+    """Test schema conversion utilities."""
+    from ray.data._internal.datasource.delta.schema_utils import (
+        convert_schema_to_delta,
+        infer_partition_type,
+        types_compatible,
+    )
+
+    # Test type compatibility
+    assert types_compatible(pa.int64(), pa.int64()) is True
+    assert types_compatible(pa.int64(), pa.int32()) is True  # narrower fits wider
+    assert types_compatible(pa.int32(), pa.int64()) is False  # wider doesn't fit narrower
+    assert types_compatible(pa.float64(), pa.float32()) is True
+    assert types_compatible(pa.string(), pa.large_string()) is True
+
+    # Test partition type inference
+    assert infer_partition_type(123) == pa.int64()
+    assert infer_partition_type(1.5) == pa.float64()
+    assert infer_partition_type(True) == pa.bool_()
+    assert infer_partition_type("value") == pa.string()
+    assert infer_partition_type(None) == pa.string()
+
+    # Test schema conversion with None
+    with pytest.raises(ValueError, match="Cannot convert None"):
+        convert_schema_to_delta(None)
+
+
+def test_delta_storage_options_auto_detection():
+    """Test storage options auto-detection."""
+    from ray.data._internal.datasource.delta.utilities import get_storage_options
+
+    # Local paths don't add any options
+    opts = get_storage_options("/local/path")
+    assert opts == {}
+
+    # User-provided options are preserved
+    opts = get_storage_options("/local/path", {"key": "value"})
+    assert opts == {"key": "value"}
+
+
+def test_delta_to_pyarrow_schema():
+    """Test to_pyarrow_schema utility."""
+    from ray.data._internal.datasource.delta.utilities import to_pyarrow_schema
+
+    # Already a PyArrow schema
+    schema = pa.schema([("id", pa.int64())])
+    assert to_pyarrow_schema(schema) == schema
+
+    # None raises error
+    with pytest.raises(ValueError, match="Cannot convert None"):
+        to_pyarrow_schema(None)
 
 
 if __name__ == "__main__":

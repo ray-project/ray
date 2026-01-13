@@ -50,6 +50,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.data._internal.arrow_ops.transform_pyarrow import concat as concat_arrow_tables
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
@@ -132,6 +133,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Expected exactly one path for Delta table, got {len(resolved_paths)} paths"
             )
         self.path = resolved_paths[0]
+
+        # Validate path is not empty
+        if not self.path or not self.path.strip():
+            raise ValueError("Delta table path cannot be empty")
 
         # Get storage options with auto-detection for cloud storage
         self.storage_options = get_storage_options(
@@ -268,8 +273,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         _check_import(self, module="deltalake", package="deltalake")
 
-        # Capture write_uuid from TaskContext
-        self._write_uuid = ctx.kwargs.get("write_uuid")
+        # Capture write_uuid from TaskContext (with safe access to kwargs)
+        ctx_kwargs = getattr(ctx, "kwargs", None) or {}
+        self._write_uuid = ctx_kwargs.get("write_uuid")
 
         all_actions = []
         upsert_keys_tables = []
@@ -288,6 +294,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 table = block_accessor.to_arrow()
                 self._validate_table_schema(table)
                 validate_partition_columns_in_table(self.partition_cols, table)
+                self._validate_partition_column_types(table)
 
                 # Collect schema for validation
                 block_schemas.append(table.schema)
@@ -310,9 +317,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 )
 
             # Combine upsert keys from all blocks
-            from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
-            upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
+            upsert_keys = (
+                concat_arrow_tables(upsert_keys_tables) if upsert_keys_tables else None
+            )
 
             return DeltaWriteResult(
                 add_actions=all_actions,
@@ -344,27 +351,19 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         f"got {table[field.name].type}"
                     )
 
-    def _validate_existing_partition_columns(self, table: pa.Table) -> None:
-        """Validate partition columns against existing table schema."""
+    def _validate_partition_column_types(self, table: pa.Table) -> None:
+        """Validate partition column types are supported (not nested/dictionary)."""
         if not self.partition_cols:
             return
-        missing = [col for col in self.partition_cols if col not in table.column_names]
-        if missing:
-            raise ValueError(
-                f"Partition columns {missing} not found. Available: {table.column_names}"
-            )
-        # Validate partition column types (cannot be nested/complex types)
         for col in self.partition_cols:
+            if col not in table.column_names:
+                continue  # Missing columns are caught by validate_partition_columns_in_table
             col_type = table.schema.field(col).type
             if pa.types.is_nested(col_type) or pa.types.is_dictionary(col_type):
                 raise ValueError(
                     f"Partition column '{col}' has unsupported type {col_type}. "
-                    f"Partition columns must be primitive types (not nested, dictionary, etc.)"
+                    "Partition columns must be primitive types (not nested, dictionary, etc.)"
                 )
-        if self.schema:
-            for col in self.partition_cols:
-                if col not in self.schema.names:
-                    raise ValueError(f"Partition column {col} not in schema")
 
     def _write_table_data(
         self, table: pa.Table, task_idx: int, block_idx: int = 0
@@ -509,7 +508,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         plus per-file UUID for uniqueness.
         """
         unique_id = uuid.uuid4().hex[:16]
-        write_prefix = self._write_uuid[:8] if self._write_uuid else "00000000"
+        # Handle None, empty string, or too-short write_uuid
+        if self._write_uuid and len(self._write_uuid) >= 8:
+            write_prefix = self._write_uuid[:8]
+        elif self._write_uuid:
+            write_prefix = self._write_uuid.ljust(8, "0")
+        else:
+            write_prefix = "00000000"
         return f"part-{write_prefix}-{task_idx:05d}-{block_idx:05d}-{unique_id}.parquet"
 
     def _write_parquet_file(self, table: pa.Table, file_path: str) -> int:
@@ -548,8 +553,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             if file_info.size == 0:
                 try:
                     self.filesystem.delete_file(file_path)
-                except Exception:
-                    pass
+                except Exception as delete_err:
+                    logger.debug(f"Failed to delete empty file {file_path}: {delete_err}")
                 raise RuntimeError(f"Written file is empty: {file_path}")
             file_size_result[0] = file_info.size
 
@@ -568,14 +573,24 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         return table if not self.partition_cols else table.drop(self.partition_cols)
 
     def _ensure_parent_directory(self, file_path: str) -> None:
-        """Create parent directory for file if it doesn't exist."""
+        """Create parent directory for file if it doesn't exist.
+
+        Note: Cloud filesystems often don't require explicit directory creation
+        (they use flat namespaces), so errors are logged but not raised.
+        """
         parent_dir = safe_dirname(file_path)
         if parent_dir:
             try:
                 self.filesystem.create_dir(parent_dir, recursive=True)
-            except Exception:
-                # Some cloud filesystems do not require directory creation; ignore.
+            except FileExistsError:
+                # Directory already exists - this is fine
                 pass
+            except Exception as e:
+                # Cloud filesystems often don't require/support directory creation
+                logger.debug(
+                    f"Could not create directory {parent_dir} (may be expected "
+                    f"for cloud storage): {e}"
+                )
 
     def on_write_complete(self, write_result: WriteResult[DeltaWriteResult]) -> None:
         """Phase 2: Commit all files in single ACID transaction.
@@ -740,7 +755,16 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             values = keys_table.column(col).unique().to_pylist()
             if not values:
                 return None
-            # Format values for SQL
+
+            # Limit single-column IN clause to prevent excessively large predicates
+            max_in_values = 10000
+            if len(values) > max_in_values:
+                raise ValueError(
+                    f"Upsert has {len(values)} unique key values, exceeding limit of "
+                    f"{max_in_values}. Batch your upserts into smaller chunks."
+                )
+
+            # Format values for SQL (filter out NaN which can't be compared)
             formatted_vals = ", ".join(self._format_sql_value(v) for v in values)
             return f"{col} IN ({formatted_vals})"
 
@@ -765,7 +789,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         return " OR ".join(conditions)
 
     def _format_sql_value(self, value: Any) -> str:
-        """Format a Python value for SQL predicate."""
+        """Format a Python value for SQL predicate.
+
+        Handles NULL, bool, string, numeric (including NaN/Inf), datetime,
+        date, and other types. Returns SQL-compatible string representation.
+        """
+        import datetime
+        import math
+
         if value is None:
             return "NULL"
         if isinstance(value, bool):
@@ -773,8 +804,27 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if isinstance(value, str):
             escaped = value.replace("'", "''")
             return f"'{escaped}'"
-        if isinstance(value, (int, float)):
+        if isinstance(value, float):
+            # Handle special float values
+            if math.isnan(value):
+                # NaN != NaN in SQL, so this predicate won't match anything
+                # Caller should filter out NaN values before building predicates
+                raise ValueError(
+                    "Cannot format NaN value for SQL predicate. "
+                    "NaN values should be filtered before building delete predicates."
+                )
+            if math.isinf(value):
+                raise ValueError(
+                    f"Cannot format infinite value ({value}) for SQL predicate."
+                )
             return str(value)
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, datetime.datetime):
+            # ISO 8601 format for timestamps
+            return f"'{value.isoformat()}'"
+        if isinstance(value, datetime.date):
+            return f"'{value.isoformat()}'"
         # Default: stringify and escape
         escaped = str(value).replace("'", "''")
         return f"'{escaped}'"
@@ -786,10 +836,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         Uses delete-then-append pattern for compatibility with deltalake API.
         First deletes all existing rows, then appends the new files.
+
+        Note: This is a two-step operation (delete + append) rather than a single
+        atomic overwrite. The delete() call with no predicate removes all rows.
         """
         from deltalake.transaction import CommitProperties
 
-        # Delete all existing data first
+        # Delete all existing data first (no predicate = delete all rows)
+        # This is intentional for OVERWRITE semantics
         table.delete()
 
         commit_properties = self.write_kwargs.get("commit_properties")
@@ -844,9 +898,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             raise ValueError(f"Duplicate file paths detected: {duplicates}")
 
         # Combine upsert keys from all workers
-        from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
-        upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
+        upsert_keys = (
+            concat_arrow_tables(upsert_keys_tables) if upsert_keys_tables else None
+        )
 
         return all_actions, upsert_keys
 
@@ -1003,6 +1057,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if they're not already present. Partition column types are inferred from
         partition values.
 
+        Args:
+            add_actions: List of AddAction objects with file metadata.
+
+        Returns:
+            Inferred PyArrow schema.
+
+        Raises:
+            ValueError: If schema cannot be inferred.
+
         PyArrow ParquetFile: https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetFile.html
         """
         if self.schema:
@@ -1011,24 +1074,40 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if not add_actions:
             raise ValueError("Cannot infer schema from empty file list")
 
-        first_file = join_delta_path(self.path, add_actions[0].path)
-        with self.filesystem.open_input_file(first_file) as file_obj:
-            parquet_file = pq.ParquetFile(file_obj)
-            schema = parquet_file.schema_arrow
+        # Find first action with a valid path
+        first_action = None
+        for action in add_actions:
+            if action and action.path:
+                first_action = action
+                break
+
+        if not first_action:
+            raise ValueError("No valid file actions found for schema inference")
+
+        first_file = join_delta_path(self.path, first_action.path)
+        try:
+            with self.filesystem.open_input_file(first_file) as file_obj:
+                parquet_file = pq.ParquetFile(file_obj)
+                schema = parquet_file.schema_arrow
+        except Exception as e:
+            raise ValueError(
+                f"Failed to read schema from {first_file}: {e}"
+            ) from e
 
         if len(schema) == 0:
-            raise ValueError(f"Cannot infer schema from empty file: {first_file}")
+            raise ValueError(f"Cannot infer schema from file with no columns: {first_file}")
 
         # Add partition columns to schema if not present
         if self.partition_cols:
             for col in self.partition_cols:
                 if col not in schema.names:
                     # Infer type from first partition value
-                    col_type = pa.string()
+                    col_type = pa.string()  # Default to string
                     for action in add_actions:
                         if action and hasattr(action, "partition_values"):
-                            if col in action.partition_values:
-                                val = action.partition_values[col]
+                            partition_vals = action.partition_values or {}
+                            if col in partition_vals:
+                                val = partition_vals[col]
                                 if val is not None:
                                     col_type = infer_partition_type(val)
                                     break
@@ -1043,7 +1122,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         are tracked in worker processes. Orphaned files may remain and require
         manual cleanup.
         """
-        write_id = self._write_uuid[:8] if self._write_uuid else "unknown"
+        # Get write_id safely handling None, empty, or short strings
+        if self._write_uuid and len(self._write_uuid) >= 8:
+            write_id = self._write_uuid[:8]
+        elif self._write_uuid:
+            write_id = self._write_uuid
+        else:
+            write_id = "unknown"
+
         logger.error(
             f"Delta write failed for {self.table_uri} (write_id={write_id}): {error}. "
             "Attempting cleanup of uncommitted files (may be incomplete in distributed execution)."

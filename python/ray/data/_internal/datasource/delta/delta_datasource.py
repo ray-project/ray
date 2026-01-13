@@ -57,6 +57,8 @@ class DeltaDatasource(Datasource):
             raise ValueError(
                 "Only single Delta table path supported (not list of paths)"
             )
+        if not path or not path.strip():
+            raise ValueError("Delta table path cannot be empty")
 
         self.path = path
         self.version = version
@@ -130,9 +132,20 @@ class DeltaDatasource(Datasource):
                         region=region,
                     )
             elif path_lower.startswith(("abfss://", "abfs://")):
+                # Azure requires account_name for filesystem creation
+                account_name = self.storage_options.get("AZURE_STORAGE_ACCOUNT_NAME")
                 token = self.storage_options.get("AZURE_STORAGE_TOKEN")
-                if token:
-                    filesystem = pa_fs.AzureFileSystem(token=token)
+                if account_name and token:
+                    filesystem = pa_fs.AzureFileSystem(
+                        account_name=account_name,
+                        bearer_token=token,
+                    )
+            elif path_lower.startswith(("gs://", "gcs://")):
+                # GCS uses Application Default Credentials automatically
+                try:
+                    filesystem = pa_fs.GcsFileSystem()
+                except Exception:
+                    pass  # Fall back to default filesystem resolution
 
         parquet_datasource = ParquetDatasource(
             file_paths,
@@ -192,11 +205,17 @@ class DeltaDatasource(Datasource):
         return f"DeltaDatasource({', '.join(parts)})"
 
     def _needs_new_table(self) -> bool:
-        """Return True if cached DeltaTable is stale for current settings."""
+        """Return True if cached DeltaTable is stale for current settings.
+
+        Checks if version or storage options have changed since last load.
+        """
         if self._delta_table is None:
             return True
         if self._delta_table_version != self.version:
             return True
-        if self._delta_table_storage_options != dict(self.storage_options):
+        # Compare storage options by content, not reference
+        current_opts = dict(self.storage_options) if self.storage_options else {}
+        cached_opts = self._delta_table_storage_options or {}
+        if current_opts != cached_opts:
             return True
         return False
