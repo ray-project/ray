@@ -2485,7 +2485,7 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==20.29.1
+virtualenv==20.36.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
