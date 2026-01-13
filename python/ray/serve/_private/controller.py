@@ -184,8 +184,12 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
-        if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            logger.info("Direct ingress is enabled, enabling proxy on head node only.")
+        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        if self._direct_ingress_enabled:
+            logger.info(
+                "Direct ingress is enabled in ServeController, enabling proxy "
+                "on head node only."
+            )
             http_options.location = DeploymentMode.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
@@ -262,7 +266,6 @@ class ServeController:
         ] = []
         self._refresh_autoscaling_deployments_cache()
 
-        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         self._last_broadcasted_target_groups: List[TargetGroup] = []
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
