@@ -149,13 +149,15 @@ class NixlTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-    ):
-        if not tensors:
-            return
+    ) -> List["torch.Tensor"]:
+        from ray.experimental.gpu_object_manager.util import (
+            create_empty_tensors_with_metadata,
+        )
+
+        tensors = create_empty_tensors_with_metadata(tensor_transport_metadata)
 
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
