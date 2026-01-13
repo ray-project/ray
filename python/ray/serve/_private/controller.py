@@ -92,7 +92,6 @@ from ray.serve.schema import (
     gRPCOptionsSchema,
 )
 from ray.util import metrics
-from ray.util.state import list_actors
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -797,6 +796,8 @@ class ServeController:
 
     def _kill_actors_in_serve_subnamespaces(self) -> None:
         """Kill all actors in namespaces that start with 'serve::'."""
+        from ray.util.state import list_actors
+
         try:
             gcs_address = ray.get_runtime_context().gcs_address
             actors = list_actors(
