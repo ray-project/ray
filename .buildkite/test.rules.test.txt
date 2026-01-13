@@ -1,0 +1,80 @@
+# Test cases for Ray CI test rules
+# Based on ci/pipeline/test_conditional_testing.py _TESTS_YAML
+#
+# Format: file: tag1 tag2 tag3
+
+# === CI/Pipeline ===
+
+ci/pipeline/test_conditional_testing.py: tools
+
+# === Ray Libraries ===
+
+python/ray/data/__init__.py: data ml train
+python/ray/air/__init__.py: ml train tune data linux_wheels
+python/ray/llm/llm.py: llm
+python/ray/workflow/workflow.py: workflow
+python/ray/tune/tune.py: ml train tune linux_wheels
+python/ray/train/train.py: ml train linux_wheels
+python/ray/serve/serve.py: serve linux_wheels java
+python/ray/dashboard/dashboard.py: dashboard linux_wheels python
+
+# === Ray Utilities ===
+
+python/ray/util/dask/dask.py: python dask
+python/ray/dag/dag.py: python cgraphs_direct_transport
+python/ray/experimental/gpu_object_manager/gpu_object_manager.py: python cgraphs_direct_transport
+
+# === RLlib ===
+
+rllib/rllib.py: rllib rllib_gpu rllib_directly
+
+# === Python Core ===
+
+python/core.py: ml tune train data python dashboard linux_wheels macos_wheels java
+python/setup.py: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies
+python/requirements/test-requirements.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies
+python/_raylet.pyx: ml tune train data python dashboard linux_wheels macos_wheels java
+
+# === Buildkite Configs ===
+
+.buildkite/ml.rayci.yml: ml train tune
+.buildkite/core.rayci.yml: python core_cpp
+.buildkite/others.rayci.yml: java
+.buildkite/lint.rayci.yml: tools
+.buildkite/macos.rayci.yml: macos_wheels
+.buildkite/base.rayci.yml: docker linux_wheels tools
+
+# === Java/C++ ===
+
+java/ray.java: java
+cpp/ray.cc: cpp
+src/ray.cpp: core_cpp cpp java python linux_wheels macos_wheels dashboard release_tests
+
+# === Docker ===
+
+docker/Dockerfile.ray: docker linux_wheels
+
+# === Documentation ===
+
+doc/code.py: doc
+doc/example.ipynb: doc
+doc/tutorial.rst: doc
+.readthedocs.yaml: doc
+.vale.ini: doc
+.vale/styles/config/vocabularies/Core/accept.txt: doc
+
+# === Release ===
+
+release/requirements.txt: release_tests
+release/requirements_py310.txt: tools
+release/release_tests.yaml: tools
+
+# === CI Scripts ===
+
+ci/lint/lint.sh: tools
+ci/ray_ci/tester.py: tools
+ci/ci.sh: tools
+
+# === Root Files ===
+
+BUILD.bazel: ml tune train data serve core_cpp cpp java python doc linux_wheels macos_wheels dashboard tools release_tests
