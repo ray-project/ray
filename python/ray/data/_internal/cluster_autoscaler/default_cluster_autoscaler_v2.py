@@ -7,10 +7,10 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import ray
+from ray.autoscaler._private.constants import env_float, env_integer
+
 from .base_autoscaling_coordinator import AutoscalingCoordinator
-from .default_autoscaling_coordinator import (
-    DefaultAutoscalingCoordinator,
-)
+from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
 from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
@@ -101,18 +101,30 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """
 
     # Default cluster utilization threshold to trigger scaling up.
-    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.75
+    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = env_float(
+        "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD", 0.75
+    )
     # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = 0.25
+    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = env_float(
+        "RAY_DATA_CLUSTER_UTIL_CHECK_INTERVAL_S", 0.25
+    )
     # Default time window in seconds to calculate the average of cluster utilization.
-    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
+    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
+        "RAY_DATA_CLUSTER_UTIL_AVG_WINDOW_S", 10
+    )
     # Default number of nodes to add per node type.
-    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = 1
+    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = env_integer(
+        "RAY_DATA_CLUSTER_SCALING_UP_DELTA", 1
+    )
 
     # Min number of seconds between two autoscaling requests.
-    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 10
+    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = env_integer(
+        "RAY_DATA_MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS", 10
+    )
     # The time in seconds after which an autoscaling request will expire.
-    AUTOSCALING_REQUEST_EXPIRE_TIME_S = 180
+    AUTOSCALING_REQUEST_EXPIRE_TIME_S = env_integer(
+        "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S", 180
+    )
     # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
     AUTOSCALING_REQUEST_GET_TIMEOUT_S = 5
 
@@ -125,7 +137,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
-        min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
+        min_gap_between_autoscaling_requests_s: float = (
+            MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS
+        ),
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
             _get_node_resource_spec_and_count
@@ -153,9 +167,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         self._requester_id = f"data-{execution_id}"
-        if autoscaling_coordinator is None:
-            autoscaling_coordinator = DefaultAutoscalingCoordinator()
-        self._autoscaling_coordinator = autoscaling_coordinator
+        self._autoscaling_coordinator = (
+            autoscaling_coordinator or DefaultAutoscalingCoordinator()
+        )
         self._get_node_counts = get_node_counts
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
@@ -174,8 +188,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
             self._resource_utilization_calculator.observe()
 
-        # Limit the frequency of autoscaling requests.
-        if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
+        if (
+            now - self._last_request_time
+            < self._min_gap_between_autoscaling_requests_s
+        ):
             return
 
         util = self._resource_utilization_calculator.get()
@@ -232,7 +248,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self._min_gap_between_autoscaling_requests_s} seconds."
+                f" {self.AUTOSCALING_REQUEST_EXPIRE_TIME_S} seconds."
             )
             logger.warning(msg, exc_info=True)
 
