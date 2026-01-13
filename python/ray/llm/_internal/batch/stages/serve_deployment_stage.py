@@ -6,30 +6,25 @@ import time
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ray import serve
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import RayTaskError
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 from ray.llm._internal.batch.stages.common import truncate_str
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 logger = logging.getLogger(__name__)
 
-# Maximum prompt length to include in error messages for debuggability.
 _MAX_PROMPT_LENGTH_IN_ERROR = 200
 
-# Fatal errors that indicate the deployment/replica is dead or unavailable.
-# These should always propagate immediately - continuing would be futile.
-# NOTE: BackPressureError could benefit from retry logic in the future,
-# but for now we treat it as fatal since retries require additional machinery.
-_SERVE_FATAL_ERRORS = (
-    RayActorError,  # Replica crashed (includes ActorDiedError, ActorUnavailableError)
-    BackPressureError,  # System overloaded, requests being dropped
-    DeploymentUnavailableError,  # Deployment failed to deploy
+# Request-level errors safe to catch. Unknown errors are treated as fatal.
+_SERVE_RECOVERABLE_ERRORS = (
+    ValueError,
+    TypeError,
+    ValidationError,
 )
 
 
@@ -133,28 +128,14 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
 
         return request, output_data, time_taken
 
-    def _is_fatal_error(self, exc: Exception) -> bool:
-        """Check if an exception is fatal (deployment/replica level failure).
-
-        Fatal errors indicate the deployment or replica is dead/unavailable,
-        so continuing to process more rows would be futile.
-
-        Args:
-            exc: The exception to check.
-
-        Returns:
-            True if the error is fatal and should always propagate.
-        """
-        # Direct fatal errors
-        if isinstance(exc, _SERVE_FATAL_ERRORS):
+    def _is_recoverable_error(self, exc: Exception) -> bool:
+        """Check if exception is recoverable. Unknown errors are treated as fatal."""
+        if isinstance(exc, _SERVE_RECOVERABLE_ERRORS):
             return True
-
-        # RayTaskError wraps exceptions from remote calls. Check if the
-        # underlying cause is a fatal error.
+        # RayTaskError wraps remote exceptions - check the cause
         if isinstance(exc, RayTaskError) and hasattr(exc, "cause"):
-            if isinstance(exc.cause, _SERVE_FATAL_ERRORS):
+            if isinstance(exc.cause, _SERVE_RECOVERABLE_ERRORS):
                 return True
-
         return False
 
     async def _generate_with_error_handling(
@@ -162,17 +143,9 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         row: Dict[str, Any],
         batch_uuid: uuid.UUID,
     ) -> Dict[str, Any]:
-        """Generate output for a row, catching errors if should_continue_on_error is set.
-
-        Args:
-            row: The input row.
-            batch_uuid: The batch UUID for logging.
-
-        Returns:
-            The output dict, with __inference_error__ set if an error occurred.
-        """
+        """Generate output for a row, yielding error row on recoverable failure."""
         idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
-        # Save request_kwargs before generate_async, which pops it from row
+        # Save before generate_async pops it
         original_request_kwargs = row.get("request_kwargs", {})
         try:
             request, output, time_taken = await self.generate_async(row)
@@ -186,8 +159,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
                 "__inference_error__": None,
             }
         except Exception as e:
-            # Fatal errors always propagate - replica/deployment is dead
-            if self._is_fatal_error(e) or not self.should_continue_on_error:
+            # Only recover from known recoverable errors; unknown errors propagate
+            if not self._is_recoverable_error(e) or not self.should_continue_on_error:
                 raise
 
             error_msg = f"{type(e).__name__}: {str(e)}"

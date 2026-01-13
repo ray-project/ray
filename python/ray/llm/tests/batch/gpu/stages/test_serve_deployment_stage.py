@@ -377,6 +377,43 @@ async def test_serve_udf_fatal_errors_always_propagate(
 
 
 @pytest.mark.asyncio
+async def test_serve_udf_unknown_errors_propagate(mock_serve_deployment_handle):
+    """Unknown errors propagate even with should_continue_on_error=True."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            raise RuntimeError("unexpected system error")
+            yield
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="unexpected system error"):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_serve_udf_success_with_continue_on_error_includes_none_error(
     mock_serve_deployment_handle,
 ):
