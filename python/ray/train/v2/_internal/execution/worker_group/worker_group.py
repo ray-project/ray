@@ -36,7 +36,6 @@ from ray.train.v2._internal.execution.callback import (
     WorkerCallback,
     WorkerGroupCallback,
 )
-from ray.train.v2._internal.execution.callback_manager import CallbackManager
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -69,7 +68,6 @@ from ray.train.v2._internal.util import (
     time_monotonic,
 )
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
@@ -164,7 +162,6 @@ class WorkerGroup(BaseWorkerGroup):
         callbacks = callbacks or []
         # Group of callbacks that are specific to worker group itself.
         self._callbacks = [c for c in callbacks if isinstance(c, WorkerGroupCallback)]
-        self._worker_group_callback_manager = CallbackManager(self._callbacks)
         # Group of callbacks that will be propagated and called on the worker actors.
         self._worker_callbacks_to_propagate = [
             c
@@ -197,18 +194,6 @@ class WorkerGroup(BaseWorkerGroup):
             COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
             DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
-
-    def _invoke_worker_group_callback(
-        self, hook_name: str, *args, **context
-    ) -> TrainingFailedError | None:
-        return self._worker_group_callback_manager.invoke(hook_name, *args, **context)
-
-    def _raise_if_worker_group_callback_error(
-        self, hook_name: str, *args, **context
-    ) -> None:
-        optional_error = self._invoke_worker_group_callback(hook_name, *args, **context)
-        if optional_error:
-            raise optional_error
 
     ################################################################################
     # Start Worker Group
@@ -291,11 +276,8 @@ class WorkerGroup(BaseWorkerGroup):
         with invoke_context_managers(
             [callback.on_worker_group_start for callback in self._callbacks]
         ):
-            # for callback in self._callbacks:
-            #     callback.before_worker_group_start(worker_group_context)
-            self._raise_if_worker_group_callback_error(
-                "before_worker_group_start", worker_group_context
-            )
+            for callback in self._callbacks:
+                callback.before_worker_group_start(worker_group_context)
 
             pg_handle = self._create_placement_group(
                 self._train_run_context.scaling_config, worker_group_context
@@ -395,11 +377,8 @@ class WorkerGroup(BaseWorkerGroup):
             f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
 
-        # for callback in self._callbacks:
-        #     callback.after_worker_group_training_start(self)
-        self._raise_if_worker_group_callback_error(
-            "after_worker_group_training_start", self
-        )
+        for callback in self._callbacks:
+            callback.after_worker_group_training_start(self)
 
     def _create_workers(
         self,
@@ -541,11 +520,8 @@ class WorkerGroup(BaseWorkerGroup):
 
             logger.debug("Worker group shutdown successful.")
 
-            # for callback in self._callbacks:
-            #     callback.after_worker_group_shutdown(self._worker_group_context)
-            self._worker_group_callback_manager.invoke(
-                "after_worker_group_shutdown", self._worker_group_context
-            )
+            for callback in self._callbacks:
+                callback.after_worker_group_shutdown(self._worker_group_context)
 
     def _clear_state(self):
         self._worker_group_state = None
@@ -554,22 +530,16 @@ class WorkerGroup(BaseWorkerGroup):
     def abort(self):
         """Abort the worker group."""
         self._assert_active()
-        # for callback in self._callbacks:
-        #     callback.before_worker_group_abort(self._worker_group_context)
-        self._worker_group_callback_manager.invoke(
-            "before_worker_group_abort", self._worker_group_context
-        )
+        for callback in self._callbacks:
+            callback.before_worker_group_abort(self._worker_group_context)
 
         # TODO: Add shutdown callback hooks
 
         self._worker_group_state.shutdown()
         self._clear_state()
 
-        # for callback in self._callbacks:
-        #     callback.after_worker_group_abort(self._worker_group_context)
-        self._worker_group_callback_manager.invoke(
-            "after_worker_group_abort", self._worker_group_context
-        )
+        for callback in self._callbacks:
+            callback.after_worker_group_abort(self._worker_group_context)
 
     #####################################################################################
     # Polling Worker Group
@@ -589,11 +559,8 @@ class WorkerGroup(BaseWorkerGroup):
             worker_statuses=dict(enumerate(poll_results)),
         )
 
-        # for callback in self._callbacks:
-        #     callback.after_worker_group_poll_status(worker_group_poll_status)
-        self._worker_group_callback_manager.invoke(
-            "after_worker_group_poll_status", worker_group_poll_status
-        )
+        for callback in self._callbacks:
+            callback.after_worker_group_poll_status(worker_group_poll_status)
 
         self._latest_poll_status = worker_group_poll_status
         return worker_group_poll_status
