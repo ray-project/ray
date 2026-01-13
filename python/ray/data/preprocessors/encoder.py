@@ -198,7 +198,7 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 encode_lists=self.encode_lists,
                 key_gen=key_gen,
             ),
-            post_process_fn=unique_post_fn(),
+            post_process_fn=unique_post_fn(batch_format=self.preferred_batch_format()),
             stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
@@ -446,7 +446,7 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 key_gen=key_gen,
                 max_categories=self.max_categories,
             ),
-            post_process_fn=unique_post_fn(),
+            post_process_fn=unique_post_fn(batch_format=self.preferred_batch_format()),
             stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
@@ -1118,6 +1118,7 @@ def compute_unique_value_indices(
     return unique_values_by_col
 
 
+# FIXME: the arrow format path is broken: https://anyscale1.atlassian.net/browse/DATA-1788
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
@@ -1189,6 +1190,11 @@ def unique_post_fn(
             dict format for columns containing lists. The _transform_arrow method
             handles this by detecting dict-format stats and converting as needed.
         """
+        # Handle Python set/list from compute_unique_value_indices -
+        # fall back to Python-based sorting
+        if isinstance(values, (set, list)):
+            return gen_value_index(list(values))
+
         # Handle ListScalar from aggregation result
         if isinstance(values, pa.ListScalar):
             values = values.values
