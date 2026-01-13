@@ -1338,6 +1338,7 @@ class Algorithm(Checkpointable, Trainable):
 
         # TODO (simon): Check, how we can sync without a local runner. Also,
         # connectors are in the data pipeline not directly in the runner applied.
+        # NOTE (simon): Connector synching must actually happen in the OfflinePreLearner/OfflinePreEvaluation
         # if self.config.broadcast_offline_eval_runner_states:
         #     # TODO (simon): Create offline equivalent.
         #     with self.metrics.log_time(TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER):
@@ -1357,11 +1358,9 @@ class Algorithm(Checkpointable, Trainable):
         else:
             self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
-        eval_results = self.metrics.peek(
-            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
-            default={},
-            latest_merged_only=True,
-        )
+        eval_results = self.metrics.compile()[EVALUATION_RESULTS][
+            OFFLINE_EVAL_RUNNER_RESULTS
+        ]
 
         # Trigger `on_evaluate_offline_end` callback.
         make_callback(
@@ -1528,11 +1527,9 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
-                eval_results = self.metrics.peek(
-                    key=EVALUATION_RESULTS,
-                    default={},
-                    latest_merged_only=True,
-                )
+                eval_results = self.metrics.compile()[EVALUATION_RESULTS][
+                    ENV_RUNNER_RESULTS
+                ]
                 if log_once("no_eval_results") and not eval_results:
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
