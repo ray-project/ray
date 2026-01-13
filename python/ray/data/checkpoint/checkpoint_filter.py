@@ -1,5 +1,6 @@
 import abc
 import logging
+import posixpath
 import time
 from typing import List, Optional
 
@@ -14,6 +15,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schem
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import (
     DATA_FILE_PATH_METADATA_KEY,
+    DATA_FILE_PATH_PATTERN_PREFIX,
     PENDING_CHECKPOINT_SUFFIX,
 )
 from ray.data.datasource import PathPartitionFilter
@@ -296,19 +298,56 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
     def _data_file_exists(self, data_file_path: str) -> bool:
         """Check if a data file exists.
 
+        This method handles two types of paths:
+        1. Exact paths: Check if the specific file exists
+        2. Pattern paths (prefixed with "pattern://"): Check if any file
+           with the given prefix exists (for ParquetDatasink which can
+           write multiple files like "base-0.parquet", "base-1.parquet", etc.)
+
         Args:
-            data_file_path: Path to the data file.
+            data_file_path: Path to the data file, or pattern prefix.
 
         Returns:
-            True if the file exists, False otherwise.
+            True if the file(s) exist, False otherwise.
         """
-        from pyarrow.fs import FileType
+        from pyarrow.fs import FileSelector, FileType
 
         try:
-            # Handle the case where data_file_path might have a protocol prefix
-            unwrapped_path = _unwrap_protocol(data_file_path)
-            file_info = self.filesystem.get_file_info(unwrapped_path)
-            return file_info.type == FileType.File
+            # Check if this is a pattern path
+            if data_file_path.startswith(DATA_FILE_PATH_PATTERN_PREFIX):
+                # Pattern matching mode - check if any file with this prefix exists
+                prefix_path = data_file_path[len(DATA_FILE_PATH_PATTERN_PREFIX) :]
+                unwrapped_prefix = _unwrap_protocol(prefix_path)
+
+                # Get the directory and filename prefix
+                dir_path = posixpath.dirname(unwrapped_prefix)
+                file_prefix = posixpath.basename(unwrapped_prefix)
+
+                # List files in the directory
+                try:
+                    file_infos = self.filesystem.get_file_info(
+                        FileSelector(dir_path, recursive=False)
+                    )
+                except Exception:
+                    return False
+
+                # Check if any file starts with our prefix
+                for file_info in file_infos:
+                    if file_info.type != FileType.File:
+                        continue
+                    filename = posixpath.basename(file_info.path)
+                    if filename.startswith(file_prefix):
+                        logger.debug(
+                            f"Found matching file for pattern '{file_prefix}': "
+                            f"{file_info.path}"
+                        )
+                        return True
+                return False
+            else:
+                # Exact path mode - check if the specific file exists
+                unwrapped_path = _unwrap_protocol(data_file_path)
+                file_info = self.filesystem.get_file_info(unwrapped_path)
+                return file_info.type == FileType.File
         except Exception:
             return False
 

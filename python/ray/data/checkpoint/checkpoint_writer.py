@@ -21,6 +21,12 @@ DATA_FILE_PATH_METADATA_KEY = b"ray.data.checkpoint.data_file_path"
 # Suffix for pending checkpoint files (2-phase commit)
 PENDING_CHECKPOINT_SUFFIX = ".pending"
 
+# Prefix used to mark that a data file path is a pattern (for multi-file writes)
+# Format: "pattern://<prefix>" - any file starting with <prefix> is considered a match
+# This is used by ParquetDatasink which can write multiple files like:
+# "base-0.parquet", "base-1.parquet", etc.
+DATA_FILE_PATH_PATTERN_PREFIX = "pattern://"
+
 
 @dataclass
 class PendingCheckpoint:
