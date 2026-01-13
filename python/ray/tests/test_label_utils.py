@@ -422,7 +422,7 @@ def test_validate_fallback_strategy(fallback_strategy, expected_error):
         ("value", [], False),
         ("value", {}, False),
         # Node value that looks like operator syntax (edge case)
-        ("in(x)", "in(x)", True),
+        ("inference", "inference", True),  # parentheses not allowed in label value
         ("!value", "!value", True),
         # Case sensitivity
         ("A100", "a100", False),

@@ -242,6 +242,9 @@ def match_label_selector_value(node_value: Optional[str], selector_value: str) -
     if not isinstance(selector_value, str):
         return False
 
+    # Trim whitespace
+    selector_value = selector_value.strip()
+
     # !in operator
     if selector_value.startswith("!in(") and selector_value.endswith(")"):
         content = selector_value[4:-1]
