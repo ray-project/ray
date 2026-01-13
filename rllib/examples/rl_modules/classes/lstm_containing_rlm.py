@@ -7,6 +7,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.rl_module.apis import (
     TARGET_NETWORK_ACTION_DIST_INPUTS,
+    InferenceOnlyAPI,
     TargetNetworkAPI,
 )
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -161,7 +162,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
 
 class LSTMContainingRLModuleWithTargetNetwork(
-    LSTMContainingRLModule, TargetNetworkAPI, abc.ABC
+    LSTMContainingRLModule, TargetNetworkAPI, InferenceOnlyAPI, abc.ABC
 ):
     """LSTMContainingRLModule with TargetNetworkAPI support for use with APPO.
 
@@ -274,10 +275,7 @@ class LSTMContainingRLModuleWithTargetNetwork(
 
         return {TARGET_NETWORK_ACTION_DIST_INPUTS: old_action_dist_logits}
 
+    @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
         """Returns attributes that should not be included in inference-only mode."""
-        # LSTMContainingRLModule doesn't implement InferenceOnlyAPI, so we start with empty list
-        ret = []
-        # Add target network attributes (not needed in inference-only mode)
-        ret += ["_old_lstm", "_old_fc_net", "_old_pi_head"]
-        return ret
+        return ["_old_lstm", "_old_fc_net", "_old_pi_head"]
