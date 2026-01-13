@@ -206,8 +206,13 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
         For each pending checkpoint file:
         - Read the data_file_path from its metadata
-        - If the data file exists → commit the checkpoint (rename to committed)
-        - If the data file doesn't exist → delete the pending checkpoint
+        - For exact paths (single file outputs):
+          - If the data file exists → commit the checkpoint
+          - If the data file doesn't exist → delete the pending checkpoint
+        - For pattern paths (multi-file outputs like Parquet):
+          - We can't determine if all files were written (partial vs complete)
+          - Conservative approach: delete pending checkpoint AND any partial data files
+          - This ensures consistency at the cost of re-doing work on retry
         """
         from pyarrow.fs import FileSelector, FileType
 
@@ -245,21 +250,38 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
                     self._delete_pending_checkpoint(file_path)
                     continue
 
-                # Check if the corresponding data file exists
-                if self._data_file_exists(data_file_path):
-                    # Data was written successfully, commit the checkpoint
+                # Handle based on path type (exact vs pattern)
+                if self._is_pattern_path(data_file_path):
+                    # Pattern path (multi-file output like Parquet)
+                    # We can't determine if write was complete or partial
+                    # Conservative: delete pending checkpoint + any partial data files
                     logger.info(
-                        f"Data file {data_file_path} exists, "
-                        f"committing pending checkpoint {file_path}"
+                        f"Pattern-based path {data_file_path}: deleting pending "
+                        f"checkpoint and any partial data files for consistency"
                     )
-                    self._commit_pending_checkpoint(file_path)
-                else:
-                    # Data write failed, delete the pending checkpoint
-                    logger.info(
-                        f"Data file {data_file_path} does not exist, "
-                        f"deleting pending checkpoint {file_path}"
-                    )
+                    deleted_count = self._delete_matching_data_files(data_file_path)
+                    if deleted_count > 0:
+                        logger.info(
+                            f"Deleted {deleted_count} partial data file(s) "
+                            f"matching pattern {data_file_path}"
+                        )
                     self._delete_pending_checkpoint(file_path)
+                else:
+                    # Exact path (single file output)
+                    if self._data_file_exists(data_file_path):
+                        # Data was written successfully, commit the checkpoint
+                        logger.info(
+                            f"Data file {data_file_path} exists, "
+                            f"committing pending checkpoint {file_path}"
+                        )
+                        self._commit_pending_checkpoint(file_path)
+                    else:
+                        # Data write failed, delete the pending checkpoint
+                        logger.info(
+                            f"Data file {data_file_path} does not exist, "
+                            f"deleting pending checkpoint {file_path}"
+                        )
+                        self._delete_pending_checkpoint(file_path)
 
             except Exception as e:
                 logger.warning(
@@ -350,6 +372,69 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
                 return file_info.type == FileType.File
         except Exception:
             return False
+
+    def _is_pattern_path(self, data_file_path: str) -> bool:
+        """Check if a data file path is a pattern (multi-file) path."""
+        return data_file_path.startswith(DATA_FILE_PATH_PATTERN_PREFIX)
+
+    def _delete_matching_data_files(self, data_file_path: str) -> int:
+        """Delete all data files matching a pattern.
+
+        For pattern paths (multi-file outputs), this deletes all files
+        that match the pattern prefix. This is used during recovery to
+        clean up partial writes.
+
+        Args:
+            data_file_path: Path to the data file, or pattern prefix.
+
+        Returns:
+            Number of files deleted.
+        """
+        from pyarrow.fs import FileSelector, FileType
+
+        if not data_file_path.startswith(DATA_FILE_PATH_PATTERN_PREFIX):
+            # Exact path - delete single file if it exists
+            try:
+                unwrapped_path = _unwrap_protocol(data_file_path)
+                file_info = self.filesystem.get_file_info(unwrapped_path)
+                if file_info.type == FileType.File:
+                    self.filesystem.delete_file(unwrapped_path)
+                    logger.info(f"Deleted partial data file: {unwrapped_path}")
+                    return 1
+            except Exception as e:
+                logger.debug(f"Could not delete data file {data_file_path}: {e}")
+            return 0
+
+        # Pattern matching mode - delete all matching files
+        prefix_path = data_file_path[len(DATA_FILE_PATH_PATTERN_PREFIX) :]
+        unwrapped_prefix = _unwrap_protocol(prefix_path)
+
+        dir_path = posixpath.dirname(unwrapped_prefix)
+        file_prefix = posixpath.basename(unwrapped_prefix)
+
+        deleted_count = 0
+        try:
+            file_infos = self.filesystem.get_file_info(
+                FileSelector(dir_path, recursive=False)
+            )
+
+            for file_info in file_infos:
+                if file_info.type != FileType.File:
+                    continue
+                filename = posixpath.basename(file_info.path)
+                if filename.startswith(file_prefix):
+                    try:
+                        self.filesystem.delete_file(file_info.path)
+                        logger.info(f"Deleted partial data file: {file_info.path}")
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to delete partial data file {file_info.path}: {e}"
+                        )
+        except Exception as e:
+            logger.debug(f"Could not list directory for cleanup: {e}")
+
+        return deleted_count
 
     def _commit_pending_checkpoint(self, pending_path: str) -> None:
         """Commit a pending checkpoint by renaming it.
