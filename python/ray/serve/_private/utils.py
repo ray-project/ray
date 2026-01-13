@@ -635,6 +635,10 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
+async def await_deployment_response(deployment_response):
+    return await deployment_response
+
+
 async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
@@ -645,8 +649,17 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     if isinstance(obj, DeploymentResponseGenerator):
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
-        # Launch async task to convert DeploymentResponse to an object ref
-        return asyncio.create_task(obj._to_object_ref())
+        if request_metadata._by_reference and obj.by_reference:
+            # If sending requests by reference, launch async task to
+            # convert DeploymentResponse to an object ref
+            return asyncio.create_task(obj._to_object_ref())
+        else:
+            # Otherwise, resolve DeploymentResponse directly to result
+            return asyncio.create_task(await_deployment_response(obj))
+    elif not request_metadata._by_reference and isinstance(obj, ray.ObjectRef):
+        # If the router is sending requests by value (i.e. using gRPC),
+        # resolve all Ray objects to mirror Ray behavior
+        return asyncio.wrap_future(obj.future())
 
 
 def wait_for_interrupt() -> None:
