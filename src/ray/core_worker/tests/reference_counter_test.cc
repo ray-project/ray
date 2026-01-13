@@ -641,7 +641,7 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   rc->UpdateObjectSize(id1, 200);
 
   rpc::CoreWorkerStats stats;
-  rc->AddObjectRefStats({}, &stats, -1);
+  rc->AddObjectRefStats({}, {}, &stats, -1);
   ASSERT_EQ(stats.object_refs_size(), 1);
   ASSERT_EQ(stats.object_refs(0).object_id(), id1.Binary());
   ASSERT_EQ(stats.object_refs(0).local_ref_count(), 1);
@@ -657,7 +657,7 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
   rpc::CoreWorkerStats stats2;
-  rc->AddObjectRefStats({}, &stats2, -1);
+  rc->AddObjectRefStats({}, {}, &stats2, -1);
   ASSERT_EQ(stats2.object_refs_size(), 1);
   ASSERT_EQ(stats2.object_refs(0).object_id(), id2.Binary());
   ASSERT_EQ(stats2.object_refs(0).local_ref_count(), 1);
@@ -684,7 +684,7 @@ TEST_F(ReferenceCountTest, TestReferenceStatsLimit) {
                      100,
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
-  rc->AddObjectRefStats({}, &stats, 1);
+  rc->AddObjectRefStats({}, {}, &stats, 1);
   ASSERT_EQ(stats.object_refs_size(), 1);
   rc->RemoveLocalReference(id1, nullptr);
   rc->RemoveLocalReference(id2, nullptr);

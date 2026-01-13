@@ -755,24 +755,43 @@ class GPUObjectManager:
 
     def get_rdt_object_infos(self) -> List[Dict[str, Any]]:
         """
-        Get RDT object info for objects in the gpu object store.
+        Get RDT object info for owned RDT objects.
+
+        Returns:
+            A list of dicts containing object_id (bytes), device (str), and
+            object_size (int) for each owned RDT object.
         """
         result: List[Dict[str, Any]] = []
 
-        if self._gpu_object_store is None:
-            return result
+        with self._lock:
+            for (
+                obj_id_hex,
+                gpu_object_meta,
+            ) in self._managed_gpu_object_metadata.items():
+                tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+                if tensor_transport_meta is None:
+                    continue
 
-        store_stats = self._gpu_object_store.get_stats()
+                object_size = 0
+                device = "cpu"
+                tensor_meta = tensor_transport_meta.tensor_meta
+                tensor_device = tensor_transport_meta.tensor_device
 
-        for obj_info in store_stats.get("objects", []):
-            obj_id_hex = obj_info["object_id"]
-            devices = obj_info.get("devices", [])
-            result.append(
-                {
-                    "object_id": bytes.fromhex(obj_id_hex),
-                    "device": devices[0] if devices else "cpu",
-                    "object_size": obj_info.get("size_bytes", 0),
-                }
-            )
+                if tensor_device is not None:
+                    device = str(tensor_device)
+
+                for shape, dtype in tensor_meta:
+                    num_elements = 1
+                    for dim in shape:
+                        num_elements *= dim
+                    object_size += num_elements * dtype.itemsize
+
+                result.append(
+                    {
+                        "object_id": bytes.fromhex(obj_id_hex),
+                        "device": device,
+                        "object_size": object_size,
+                    }
+                )
 
         return result

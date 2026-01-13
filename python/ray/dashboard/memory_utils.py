@@ -343,16 +343,6 @@ def construct_memory_table(
     sort_by=SortingType.OBJECT_SIZE,
 ) -> MemoryTable:
 
-    rdt_info_map = {}
-    for core_worker_stats in workers_stats:
-        for rdt_info in core_worker_stats.get("rdtObjectInfos", []):
-            object_id = decode_object_ref_if_needed(rdt_info.get("objectId", b"")).hex()
-            if object_id not in rdt_info_map:
-                rdt_info_map[object_id] = {
-                    "device": rdt_info.get("device", "cpu"),
-                    "object_size": int(rdt_info.get("objectSize", 0)),
-                }
-
     memory_table_entries = []
     for core_worker_stats in workers_stats:
         pid = core_worker_stats["pid"]
@@ -361,22 +351,11 @@ def construct_memory_table(
         object_refs = core_worker_stats.get("objectRefs", [])
 
         for object_ref in object_refs:
-            is_rdt = False
-            device = "cpu"
-            object_id = decode_object_ref_if_needed(
-                object_ref.get("objectId", b"")
-            ).hex()
-            rdt_info = rdt_info_map.get(object_id)
-            effective_object_ref = object_ref
-            if rdt_info:
-                is_rdt = True
-                device = rdt_info["device"]
-                effective_object_ref = {
-                    **object_ref,
-                    "objectSize": rdt_info["object_size"],
-                }
+            is_rdt = object_ref.get("isRdt", False)
+            device = object_ref.get("device", "cpu") if is_rdt else "cpu"
+
             memory_table_entry = MemoryTableEntry(
-                object_ref=effective_object_ref,
+                object_ref=object_ref,
                 node_address=node_address,
                 is_driver=is_driver,
                 pid=pid,

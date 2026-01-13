@@ -211,6 +211,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
           &pinned_objects,
+      const absl::flat_hash_map<ObjectID, std::pair<std::string, int64_t>> &rdt_objects,
       rpc::CoreWorkerStats *stats,
       const int64_t limit) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
