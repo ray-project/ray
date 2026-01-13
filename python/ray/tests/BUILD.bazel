@@ -563,7 +563,6 @@ py_test_module_list(
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
-        "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
         "test_tpu.py",
@@ -622,6 +621,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "gpu_objects/test_gpu_objects_custom.py",
         "gpu_objects/test_gpu_objects_gloo.py",
     ],
     tags = [
@@ -876,7 +876,7 @@ py_test_module_list(
         "test_placement_group.py",
         "test_ray_get.py",
         "test_state_api_2.py",
-        "test_task_events.py",
+        "test_task_events_3.py",
         "test_unavailable_actors.py",
     ],
     tags = [
@@ -910,6 +910,7 @@ py_test_module_list(
         "test_reconstruction_2.py",
         "test_runtime_env_working_dir_uri.py",
         "test_state_api.py",
+        "test_task_events.py",
         "test_task_events_2.py",
     ],
     tags = [

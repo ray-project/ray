@@ -14,11 +14,15 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
+    TokenizeRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
 )
@@ -267,6 +271,56 @@ class MockVLLMEngine(LLMEngine):
                 "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
+        yield response
+
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
+        """Mock tokenize generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Get prompt text from the request
+        prompt = getattr(request, "prompt", None)
+        if prompt is None:
+            # For TokenizeChatRequest, messages would be used
+            messages = getattr(request, "messages", [])
+            prompt = " ".join(str(getattr(m, "content", "")) for m in messages if m)
+
+        # Generate mock token IDs (simple: use character codes)
+        prompt_str = str(prompt) if prompt else ""
+        tokens = [ord(c) for c in prompt_str]
+
+        # Optionally generate token strings
+        return_token_strs = getattr(request, "return_token_strs", False)
+        token_strs = list(prompt_str) if return_token_strs else None
+
+        response = TokenizeResponse(
+            count=len(tokens),
+            max_model_len=4096,  # Mock max model length
+            tokens=tokens,
+            token_strs=token_strs,
+        )
+        yield response
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
+        """Mock detokenize generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Get tokens from the request
+        tokens = getattr(request, "tokens", [])
+
+        # Convert token IDs back to characters (inverse of our mock tokenize)
+        prompt = "".join(chr(t) if 0 <= t < 0x110000 else "?" for t in tokens)
+
+        response = DetokenizeResponse(prompt=prompt)
         yield response
 
     async def _generate_chat_response(

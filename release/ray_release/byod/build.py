@@ -1,10 +1,10 @@
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 from typing import Dict, List, Optional
 
+from ray_release.byod.build_context import BuildContext, fill_build_context_dir
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
 from ray_release.test import (
@@ -18,8 +18,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 def build_anyscale_custom_byod_image(
     image: str,
     base_image: str,
-    post_build_script: str,
-    python_depset: Optional[str] = None,
+    build_context: BuildContext,
     release_byod_dir: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
@@ -35,32 +34,7 @@ def build_anyscale_custom_byod_image(
             release_byod_dir = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 
     with tempfile.TemporaryDirectory() as build_dir:
-        dockerfile = ["# syntax=docker/dockerfile:1.3-labs"]
-        dockerfile.append("ARG BASE_IMAGE")
-        dockerfile.append("FROM ${BASE_IMAGE}")
-        if python_depset:
-            shutil.copy(
-                os.path.join(release_byod_dir, python_depset),
-                os.path.join(build_dir, "python_depset.lock"),
-            )
-            shutil.copy(
-                os.path.join(release_byod_dir, "install_python_deps.sh"),
-                os.path.join(build_dir, "install_python_deps.sh"),
-            )
-            dockerfile.append("COPY install_python_deps.sh /tmp/install_python_deps.sh")
-            dockerfile.append("COPY python_depset.lock python_depset.lock")
-            dockerfile.append("RUN bash /tmp/install_python_deps.sh python_depset.lock")
-        if post_build_script:
-            shutil.copy(
-                os.path.join(release_byod_dir, post_build_script),
-                os.path.join(build_dir, "post_build_script.sh"),
-            )
-            dockerfile.append("COPY post_build_script.sh /tmp/post_build_script.sh")
-            dockerfile.append("RUN bash /tmp/post_build_script.sh")
-
-        dockerfile_path = os.path.join(build_dir, "Dockerfile")
-        with open(dockerfile_path, "wt") as f:
-            f.write("\n".join(dockerfile) + "\n")
+        fill_build_context_dir(build_context, release_byod_dir, build_dir)
 
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]

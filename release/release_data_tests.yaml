@@ -646,6 +646,31 @@
     timeout: 3600
     script: python text_embedding/main.py {{args}}
 
+# Multi-stage inference pipeline with separate CPU preprocessing and GPU inference.
+# Mimics production ML inference pipeline with:
+# - Separate preprocessing (CPU) and inference (GPU actors) stages
+# - Pandas preprocessing
+# - Metadata column passthrough
+# - Extra output columns
+- name: multi_stage_batch_inference
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+  env: gce
+
+  cluster:
+    cluster_compute: autoscaling_gpu_g2_gce.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python model_inference_pipeline_benchmark.py
+      --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
+      --preprocessing-batch-size 4096
+      --inference-batch-size 1024
+      --inference-min-actors 1
+      --inference-max-actors 300
+
 ##############
 # TPCH Queries
 ##############
@@ -694,7 +719,7 @@
  #         # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
  #         # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
  #         runtime_env:
- #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
  #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
  #       cluster_compute: cross_az_250_350_compute_gce.yaml
  #   - __suffix__: aws_failure_injection
@@ -702,7 +727,7 @@
  #     cluster:
  #       byod:
  #         runtime_env:
- #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
  #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
  #       cluster_compute: cross_az_250_350_compute_aws.yaml
 
