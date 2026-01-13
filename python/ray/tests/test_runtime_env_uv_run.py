@@ -297,6 +297,23 @@ def test_uv_run_runtime_env_hook():
     )
 
     # Check in the case that a module is use for "uv run" and there is
+    # no argument behind it
+    check_uv_run(
+        cmd=[
+            find_uv_bin(),
+            "run",
+            "--no-project",
+            "-m",
+            "ray._private.runtime_env.uv_runtime_env_hook",
+        ],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{find_uv_bin()} run --no-project",
+            "working_dir": os.getcwd(),
+        },
+    )
+
+    # Check in the case that a module is use for "uv run" and there is
     # an argument immediately behind it
     check_uv_run(
         cmd=[
