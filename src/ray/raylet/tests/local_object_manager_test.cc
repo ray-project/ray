@@ -1598,23 +1598,35 @@ TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionC
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
-  EXPECT_CALL(worker_pool, PushSpillWorker(_)).Times(7);
-
+  // Spill all objects and verify the spilled batches.
   const std::vector<int> expected_batches = {6, 6, 6, 6, 6, 6, 4};
-  for (size_t batch_idx = 0; batch_idx < expected_batches.size(); batch_idx++) {
+
+  // Spill may take multiple rounds to complete, so we need to loop until all
+  // batches are spilled.
+  size_t batch_idx = 0;
+  while (batch_idx < expected_batches.size()) {
     manager.SpillObjectUptoMaxThroughput();
 
-    ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
-    ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
-
-    std::vector<std::string> urls;
-    urls.reserve(expected_batches[batch_idx]);
-    for (int i = 0; i < expected_batches[batch_idx]; i++) {
-      urls.push_back(BuildURL("url", static_cast<int>(batch_idx * 100 + i)));
+    // This round may enqueue 0/1/2 pop callbacks (depending on max_io_workers=2).
+    while (worker_pool.FlushPopSpillWorkerCallbacks()) {
     }
-    ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
 
-    while (owner_client->ReplyUpdateObjectLocationBatch()) {
+    // Reply to all in-flight spill RPCs. Each reply consumes one expected batch.
+    while (!worker_pool.io_worker_client->callbacks.empty() &&
+           batch_idx < expected_batches.size()) {
+      const int n = expected_batches[batch_idx];
+
+      std::vector<std::string> urls;
+      urls.reserve(n);
+      for (int i = 0; i < n; i++) {
+        urls.push_back(BuildURL("url", static_cast<int>(batch_idx * 100 + i)));
+      }
+      ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+
+      while (owner_client->ReplyUpdateObjectLocationBatch()) {
+      }
+
+      batch_idx++;
     }
   }
 
