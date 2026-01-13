@@ -396,21 +396,8 @@ link (relative links point to other documentation pages, but direct links starti
 also work). Include the ``contributor: community`` metadata to ensure that the example is correctly
 labeled as a community example in the example gallery.
 
-Becoming a Reviewer and Committer
-----------------------------------
-
-Reviewers
-~~~~~~~~~
-
-We identify reviewers from active contributors. Reviewers are individuals who
-not only actively contribute to the project and are also willing
-to participate in the code review of new contributions.
-A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
-There is currently no formal process, but active contributors to Ray will be
-solicited by current reviewers.
-
-Committers
-~~~~~~~~~~
+Becoming a Committer
+---------------------
 
 Committers are experienced contributors who have demonstrated significant contributions
 to the Ray project over an extended period. Committers have additional responsibilities
