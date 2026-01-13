@@ -92,32 +92,22 @@ def train_func():
     )
 
     # Training
-    for epoch in range(1):
-        if ray.train.get_context().get_world_size() > 1:
-            train_loader.sampler.set_epoch(epoch)
+    for images, labels in train_loader:
+        images, labels = images.to("cuda"), labels.to("cuda")
+        # Do zero_grad first to start quorum early as done in torchft train_ddp example
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
 
-        for images, labels in train_loader:
-            images, labels = images.to("cuda"), labels.to("cuda")
-            # Do zero_grad first to start quorum early as done in torchft train_ddp example
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+        if manager.current_step() >= 200:
+            # complete training
+            exit()
 
-        # [3] Report metrics and checkpoint.
-        metrics = {"loss": loss.item(), "epoch": epoch}
-        if False:
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                torch.save(
-                    model.module.state_dict(),
-                    os.path.join(temp_checkpoint_dir, "model.pt"),
-                )
-                ray.train.report(
-                    metrics,
-                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-                )
-        print(f"Rank {ray.train.get_context().get_world_rank()} metrics: {metrics}")
+    # [3] Print metrics.
+    metrics = {"loss": loss.item()}
+    print(f"Rank {ray.train.get_context().get_world_rank()} metrics: {metrics}")
 
 
 # [4] Configure scaling and resource requirements.
