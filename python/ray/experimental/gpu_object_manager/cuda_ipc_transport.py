@@ -3,10 +3,8 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
-    TensorTransportManager,
-)
-from ray.experimental.gpu_object_manager.types import (
     CommunicatorMetadata,
+    TensorTransportManager,
     TensorTransportMetadata,
 )
 
@@ -35,7 +33,7 @@ class CudaIpcTransportMetadata(TensorTransportMetadata):
 
 
 class CudaIpcTransport(TensorTransportManager):
-    def __init__(self, tensor_transport_backend: str):
+    def __init__(self):
         pass
 
     @property
