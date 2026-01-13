@@ -162,7 +162,7 @@ azure-common==1.1.28
     #   azure-mgmt-network
     #   azure-mgmt-resource
     #   smart-open
-azure-core==1.29.5
+azure-core==1.38.0
     # via
     #   adlfs
     #   azure-identity
