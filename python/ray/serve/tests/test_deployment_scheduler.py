@@ -383,22 +383,87 @@ class TestPackScheduling:
         self, serve_instance_with_labeled_nodes
     ):
         """Verifies multiple bundles with bundle_label_selector are applied correctly."""
-        serve_instance, _, us_east_node_id = serve_instance_with_labeled_nodes
+        (
+            serve_instance,
+            us_west_node_id,
+            us_east_node_id,
+        ) = serve_instance_with_labeled_nodes
+
+        # Helper task to return the node ID it's running on
+        @ray.remote(num_cpus=1)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
 
         @serve.deployment(
             placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
-            placement_group_strategy="STRICT_PACK",
+            placement_group_strategy="SPREAD",
             placement_group_bundle_label_selector=[
-                {"gpu-type": "H100"},
+                {"gpu-type": "H100"},  # matches us-east node
+                {"gpu-type": "A100"},  # matches us-west node
+            ],
+        )
+        class MultiBundleSelector:
+            def get_bundle_0_node_id(self):
+                # The actor should be scheduled on bundle 0.
+                return ray.get_runtime_context().get_node_id()
+
+            async def get_bundle_1_node_id(self):
+                pg = ray.util.get_current_placement_group()
+
+                # Schedule a task to bundle index 1 to get node ID.
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=1,  # Target the second bundle
+                    )
+                ).remote()
+
+        handle = serve.run(MultiBundleSelector.bind(), name="multi_bundle_app")
+
+        # Verify bundles are scheduled to expected nodes based on label selectors.
+        assert await handle.get_bundle_0_node_id.remote() == us_east_node_id
+        assert await handle.get_bundle_1_node_id.remote() == us_west_node_id
+        serve.delete("multi_bundle_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_multiple_bundles_single_bundle_label_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that when only one bundle_label_selector is provided for multiple bundles,
+        the label_selector is applied to each bundle uniformly.
+        """
+        serve_instance, _, us_east_node_id = serve_instance_with_labeled_nodes
+
+        @ray.remote(num_cpus=1)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            # Use SPREAD to verify the label constraint forces them to same node.
+            placement_group_strategy="SPREAD",
+            placement_group_bundle_label_selector=[
                 {"gpu-type": "H100"},
             ],
         )
         class MultiBundleSelector:
-            def get_node_id(self):
+            def get_bundle_0_node_id(self):
+                # Verify actor bundle location.
                 return ray.get_runtime_context().get_node_id()
 
+            async def get_bundle_1_node_id(self):
+                # Verify the second bundle's location
+                pg = ray.util.get_current_placement_group()
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg, placement_group_bundle_index=1
+                    )
+                ).remote()
+
         handle = serve.run(MultiBundleSelector.bind(), name="multi_bundle_app")
-        assert await handle.get_node_id.remote() == us_east_node_id
+        assert await handle.get_bundle_0_node_id.remote() == us_east_node_id
+        assert await handle.get_bundle_1_node_id.remote() == us_east_node_id
         serve.delete("multi_bundle_app")
 
     @pytest.mark.asyncio

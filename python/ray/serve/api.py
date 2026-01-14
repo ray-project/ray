@@ -381,7 +381,8 @@ def deployment(
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
         placement_group_bundle_label_selector: A list of label selectors to apply to the
-            placement group on a per-bundle level.
+            placement group on a per-bundle level. If a single label selector is provided,
+            it is applied to all bundles. Otherwise, the length must match `placement_group_bundles`.
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].

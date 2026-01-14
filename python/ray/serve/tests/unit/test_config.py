@@ -596,15 +596,45 @@ class TestReplicaConfig:
                 placement_group_bundle_label_selector=[{"gpu": "T4"}],
             )
 
-        # Valid config
+        # bundle_label_selector list does not match bundles list length
+        with pytest.raises(
+            ValueError,
+            match="The length of `bundle_label_selector` should equal the length of `bundles`",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}],
+                placement_group_bundle_label_selector=[{"gpu": "T4"}, {"gpu": "L4"}],
+            )
+
+        # Valid config - multiple bundles provided for one bundle_label_selector.
         config = ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
-            placement_group_bundles=[{"CPU": 1}],
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}],
             placement_group_bundle_label_selector=[{"gpu": "T4"}],
         )
-        assert config.placement_group_bundle_label_selector == [{"gpu": "T4"}]
+        assert config.placement_group_bundle_label_selector == [
+            {"gpu": "T4"},
+            {"gpu": "T4"},
+            {"gpu": "T4"},
+        ]
+
+        # Valid config - multiple bundles and an equal number of bundle label selectors.
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_bundle_label_selector=[{"gpu": "T4"}, {"gpu": "L4"}],
+        )
+        assert config.placement_group_bundle_label_selector == [
+            {"gpu": "T4"},
+            {"gpu": "L4"},
+        ]
 
     def test_placement_group_fallback_strategy_validation(self):
         class Class:

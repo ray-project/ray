@@ -514,6 +514,7 @@ class ReplicaConfig:
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        self._normalize()
         self._validate()
 
         # Create resource_dict. This contains info about the replica's resource
@@ -521,6 +522,21 @@ class ReplicaConfig:
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+    def _normalize(self):
+        """Normalizes config values before validation."""
+        # If a single placement_group_bundle_label_selector is provided for multiple bundles,
+        # apply it uniformly to all bundles.
+        if (
+            self.placement_group_bundles
+            and self.placement_group_bundle_label_selector
+            and len(self.placement_group_bundle_label_selector) == 1
+            and len(self.placement_group_bundles) > 1
+        ):
+            self.placement_group_bundle_label_selector = (
+                self.placement_group_bundle_label_selector
+                * len(self.placement_group_bundles)
+            )
 
     def _validate(self):
         self._validate_ray_actor_options()
@@ -556,6 +572,7 @@ class ReplicaConfig:
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        self._normalize()
         self._validate()
 
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
