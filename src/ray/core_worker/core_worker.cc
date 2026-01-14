@@ -99,8 +99,7 @@ ObjectLocation CreateObjectLocation(
   bool is_spilled = !object_info.spilled_url().empty();
   // If the object size is unknown it's unset, and we use -1 to indicate that.
   int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
-  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_size,
+  return ObjectLocation(object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
