@@ -80,6 +80,7 @@ class OfflinePolicyEvaluationTypes(str, Enum):
     """
 
     EVAL_LOSS = "eval_loss"
+    EVAL_LOSS = "eval_loss"
     IS = "is"
     PDIS = "pdis"
 
