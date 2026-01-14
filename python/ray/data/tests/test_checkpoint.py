@@ -785,9 +785,6 @@ def test_with_invalid_checkpoint(checkpoint_path, fs):
         id_column=ID_COL, checkpoint_path=checkpoint_path
     )
 
-    ctx = DataContext.get_current()
-    ctx.checkpoint_config = checkpoint_config
-
     # There is no valid checkpoint under checkpoint_path
     # Test loading Checkpoint from empty dir
     def create_invalid_checkpoint():
@@ -834,9 +831,6 @@ def test_with_valid_checkpoint(checkpoint_path, fs):
     checkpoint_config = CheckpointConfig(
         id_column=ID_COL, checkpoint_path=checkpoint_path
     )
-
-    ctx = DataContext.get_current()
-    ctx.checkpoint_config = checkpoint_config
 
     # There is valid checkpoint under checkpoint_path
     def create_valid_checkpoint():

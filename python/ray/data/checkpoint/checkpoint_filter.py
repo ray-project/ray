@@ -85,7 +85,7 @@ class CheckpointLoader:
         """Loading checkpoint data.
 
         Returns:
-            bool: Is there a valid checkpoint under the checkpoint_path.
+            bool: Whether checkpoint exist in checkpoint_path.
             Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs block
                 if there is a valid checkpoint.
         """
@@ -183,7 +183,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         """Load checkpointed ids as a sorted block.
 
         Returns:
-            bool: Is there a valid checkpoint under the checkpoint_path.
+            bool: Whether checkpoint exist in checkpoint_path.
             Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs block
                 if there is a valid checkpoint.
         """
