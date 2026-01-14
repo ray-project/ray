@@ -636,6 +636,8 @@ Policies are defined **per deployment**. If you don’t provide one, Ray Serve f
 
 The policy function is invoked by the Ray Serve controller every `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` seconds (default **0.1s**), so your logic runs against near-real-time state.
 
+Your policy can return an `int` or a `float` for `target_replicas`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
+
 :::{warning}
 Keep policy functions **fast and lightweight**. Slow logic can block the Serve controller and degrade cluster responsiveness.
 :::
@@ -666,6 +668,8 @@ The following example shows how to use the decorator:
 
 ::::{note}
 The decorator applies the configuration logic **after** the custom policy function returns. Your policy function should return the "raw" desired number of replicas. The decorator then modifies this value based on the `autoscaling_config` settings.
+
+Your policy can return an `int` or a `float` "raw desired" replica count. The decorated policy return an integer decision number after applying the `autoscaling_config` settings.
 ::::
 
 
@@ -707,6 +711,7 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
 The `policy_state` returned from an application-level policy must be a `Dict[DeploymentID, Dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+The per deployment number replicas returned from the policy can be an `int` or a `float`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
 
 Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled except for internal keys that are used when default parameters are applied to custom autoscaling policies.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
@@ -768,6 +773,8 @@ The YAML configuration file shows the default parameters applied to the applicat
 :language: yaml
 ```
 The decorator ensures that these standard parameters are applied consistently on top of your application level policy's decisions.
+
+Your application level policy can return per deployment desired replicas as `int` or `float` values. With the decorator, Ray Serve applies the autoscaling config parameters per deployment and returns integer decisions.
 :::{warning}
 ### Gotchas and limitations
 

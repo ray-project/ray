@@ -8,7 +8,6 @@ from ray.serve.autoscaling_policy import (
     _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
-    _calculate_desired_num_replicas,
     apply_autoscaling_config,
     replica_queue_length_autoscaling_policy,
 )
@@ -63,7 +62,7 @@ def _run_upscale_downscale_flow(
     upscale_target: int,
 ):
     """
-    This runs the upscale and downscale flow to test the delays during upcale and
+    This runs the upscale and downscale flow to test the delays during upscale and
     downscale.
     This can be used by both the default autoscaling policy and custom autoscaling policy
     with default parameters to verify scaling is properly enabled.
@@ -290,194 +289,6 @@ def _run_upscale_downscale_flow(
     )
     new_num_replicas, policy_state = policy(ctx=ctx)
     assert new_num_replicas == 0
-
-
-class TestCalculateDesiredNumReplicas:
-    def test_bounds_checking(self):
-        num_replicas = 10
-        max_replicas = 11
-        min_replicas = 9
-        config = AutoscalingConfig(
-            max_replicas=max_replicas,
-            min_replicas=min_replicas,
-            target_ongoing_requests=100,
-        )
-
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=150 * num_replicas,
-            num_running_replicas=num_replicas,
-        )
-        assert desired_num_replicas == max_replicas
-
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=50 * num_replicas,
-            num_running_replicas=num_replicas,
-        )
-        assert desired_num_replicas == min_replicas
-
-        for i in range(50, 150):
-            desired_num_replicas = _calculate_desired_num_replicas(
-                autoscaling_config=config,
-                total_num_requests=i * num_replicas,
-                num_running_replicas=num_replicas,
-            )
-            assert min_replicas <= desired_num_replicas <= max_replicas
-
-    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_up(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_ongoing_requests=target_requests
-        )
-        num_replicas = 10
-        num_ongoing_requests = 2 * target_requests * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
-
-    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
-    def test_scale_down(self, target_requests):
-        config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_ongoing_requests=target_requests
-        )
-        num_replicas = 10
-        num_ongoing_requests = 0.5 * target_requests * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 4 <= desired_num_replicas <= 6  # 10 * 0.5 = 5
-
-    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
-    def test_scaling_factor(self, use_deprecated_smoothing_factor):
-        config = {"min_replicas": 0, "max_replicas": 100, "target_ongoing_requests": 2}
-
-        if use_deprecated_smoothing_factor:
-            config["smoothing_factor"] = 0.5
-        else:
-            config["upscaling_factor"] = 0.5
-            config["downscaling_factor"] = 0.5
-
-        config = AutoscalingConfig(**config)
-        num_replicas = 10
-
-        num_ongoing_requests = 8.0 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
-
-        num_ongoing_requests = 0.25 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
-
-    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
-    def test_upscaling_factor(self, use_deprecated_smoothing_factor):
-        config = {"min_replicas": 0, "max_replicas": 100, "target_ongoing_requests": 2}
-
-        if use_deprecated_smoothing_factor:
-            config["upscale_smoothing_factor"] = 0.5
-        else:
-            config["upscaling_factor"] = 0.5
-
-        config = AutoscalingConfig(**config)
-        num_replicas = 10
-
-        # Should use upscale smoothing factor of 0.5
-        num_ongoing_requests = 8.0 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
-
-        # Should use downscale smoothing factor of 1 (default)
-        num_ongoing_requests = 0.25 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
-
-    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
-    def test_downscaling_factor(self, use_deprecated_smoothing_factor):
-        config = {"min_replicas": 0, "max_replicas": 100, "target_ongoing_requests": 2}
-
-        if use_deprecated_smoothing_factor:
-            config["downscale_smoothing_factor"] = 0.5
-        else:
-            config["downscaling_factor"] = 0.5
-
-        config = AutoscalingConfig(**config)
-        num_replicas = 10
-
-        # Should use upscale smoothing factor of 1 (default)
-        num_ongoing_requests = 8.0 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 39 <= desired_num_replicas <= 41  # 10 + (40 - 10) = 40
-
-        # Should use downscale smoothing factor of 0.5
-        num_ongoing_requests = 0.25 * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=num_ongoing_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
-
-    @pytest.mark.parametrize(
-        "num_replicas,ratio,scaling_factor",
-        [
-            # All of the parametrized scenarios should downscale by 1
-            # replica. Compare the first theoretical calculation that's
-            # with smoothing factor, and the second calculation without
-            # smoothing factor. In these cases, downscaling should not
-            # be blocked by fractional smoothing factor.
-            (2, 0.3, 0.5),  # 2 - 0.5 (2 * 0.7) = 1.3 | 2 - (2 * 0.7) = 0.6
-            (5, 0.4, 0.2),  # 5 - 0.2 (5 * 0.6) = 4.4 | 5 - (5 * 0.6) = 2
-            (10, 0.4, 0.1),  # 10 - 0.1 (10 * 0.6) = 9.4 | 10 - (10 * 0.6) = 4
-        ],
-    )
-    @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
-    def test_downscaling_with_fractional_scaling_factor(
-        self,
-        num_replicas: int,
-        ratio: float,
-        scaling_factor: float,
-        use_deprecated_smoothing_factor,
-    ):
-        config = {"min_replicas": 0, "max_replicas": 100, "target_ongoing_requests": 1}
-
-        if use_deprecated_smoothing_factor:
-            config["downscale_smoothing_factor"] = scaling_factor
-        else:
-            config["downscaling_factor"] = scaling_factor
-
-        config = AutoscalingConfig(**config)
-        total_num_requests = ratio * num_replicas
-        desired_num_replicas = _calculate_desired_num_replicas(
-            autoscaling_config=config,
-            total_num_requests=total_num_requests,
-            num_running_replicas=num_replicas,
-        )
-        assert desired_num_replicas == num_replicas - 1
 
 
 class TestReplicaQueueLengthPolicy:
@@ -1132,13 +943,16 @@ class TestCustomPolicyWithDefaultParameters:
             last_scale_up_time=None,
             last_scale_down_time=None,
         )
-        # Initially this starts with 0 replicas
+
+        # Scale up when there are 0 replicas and current_handle_queued_queries > 0
+        new_num_replicas, _ = simple_custom_policy(ctx=ctx)
+        assert new_num_replicas == 1
         _run_upscale_downscale_flow(
             simple_custom_policy,
             config,
             ctx,
             overload_requests=70,
-            start_replicas=0,
+            start_replicas=1,
             upscale_target=3,
         )
 

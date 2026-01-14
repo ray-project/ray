@@ -1,7 +1,8 @@
 import logging
+import math
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -48,7 +49,9 @@ class DeploymentAutoscalingState:
         self._deployment_info = None
         self._config = None
         self._policy: Optional[
-            Callable[[AutoscalingContext], Tuple[int, Optional[Dict[str, Any]]]]
+            Callable[
+                [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
+            ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
         # content of the dictionary is determined by the user defined policy
@@ -240,6 +243,9 @@ class DeploymentAutoscalingState:
             raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        # The policy can return a float value.
+        if not isinstance(decision_num_replicas, int):
+            decision_num_replicas = math.ceil(float(decision_num_replicas))
         if _skip_bound_check:
             return decision_num_replicas
 
@@ -668,7 +674,10 @@ class ApplicationAutoscalingState:
         self._policy: Optional[
             Callable[
                 [Dict[DeploymentID, AutoscalingContext]],
-                Tuple[Dict[DeploymentID, int], Optional[Dict[DeploymentID, Dict]]],
+                Tuple[
+                    Dict[DeploymentID, Union[int, float]],
+                    Optional[Dict[DeploymentID, Dict]],
+                ],
             ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
@@ -814,10 +823,10 @@ class ApplicationAutoscalingState:
             return {
                 deployment_id: (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
-                        num_replicas
+                        math.ceil(float(num_replicas))
                     )
                     if not _skip_bound_check
-                    else num_replicas
+                    else math.ceil(float(num_replicas))
                 )
                 for deployment_id, num_replicas in decisions.items()
             }
