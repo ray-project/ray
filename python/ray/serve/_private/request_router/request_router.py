@@ -503,6 +503,9 @@ class RequestRouter(ABC):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
+        # Cached list of replicas to avoid O(n) dict-to-list conversion on every
+        # routing iteration. Updated only when replicas change via `update_replicas`.
+        self._replicas_list: List[RunningReplica] = []
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -695,6 +698,7 @@ class RequestRouter(ABC):
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
+        self._replicas_list = list(self._replicas.values())
         self._replica_id_set.discard(replica_id)
         if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
             self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
@@ -802,6 +806,7 @@ class RequestRouter(ABC):
         replicas_to_ping = [new_replicas.get(id) for id in new_ids]
 
         self._replicas = new_replicas
+        self._replicas_list = list(new_replicas.values())
         self._replica_id_set = new_replica_id_set
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
@@ -1062,11 +1067,10 @@ class RequestRouter(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                replica_ranks = list(self._replicas.values())
                 chosen_replicas: List[
                     List[RunningReplica]
                 ] = await self.choose_replicas(
-                    candidate_replicas=replica_ranks,
+                    candidate_replicas=self._replicas_list,
                     pending_request=pending_request,
                 )
                 for replicas in chosen_replicas:
@@ -1260,7 +1264,7 @@ class RequestRouter(ABC):
         If input candidates is `None`, all replicas are considered.
         """
         if candidates is None:
-            candidates = list(self._replicas.values())
+            candidates = self._replicas_list
 
         available_replicas = []
         for r in candidates:

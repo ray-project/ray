@@ -83,7 +83,4 @@ class PowerOfTwoChoicesRequestRouter(
             list(candidate_replica_ids),
             k=min(2, len(candidate_replica_ids)),
         )
-        replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in candidate_replicas
-        }
-        return [[replica_id_to_replica_map[chosen_id] for chosen_id in chosen_ids]]
+        return [[self._replicas[chosen_id] for chosen_id in chosen_ids]]
