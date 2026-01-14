@@ -244,8 +244,8 @@ class DeploymentAutoscalingState:
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
         # The policy can return a float value.
-        if not isinstance(decision_num_replicas, int):
-            decision_num_replicas = math.ceil(float(decision_num_replicas))
+        if isinstance(decision_num_replicas, float):
+            decision_num_replicas = math.ceil(decision_num_replicas)
         if _skip_bound_check:
             return decision_num_replicas
 
@@ -823,10 +823,10 @@ class ApplicationAutoscalingState:
             return {
                 deployment_id: (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
-                        math.ceil(float(num_replicas))
+                        math.ceil(num_replicas)
                     )
                     if not _skip_bound_check
-                    else math.ceil(float(num_replicas))
+                    else math.ceil(num_replicas)
                 )
                 for deployment_id, num_replicas in decisions.items()
             }
