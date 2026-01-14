@@ -81,12 +81,22 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     To backpressure a given operator, use queue size build up / downstream capacity ratio.
     This ratio represents the upper limit of buffering in object store between pipeline stages
     to optimize for throughput.
+
+    When preserve_order is enabled:
+    - Limits the task submission gap (scheduling priority for earlier tasks)
+    - Dynamically lowers the backpressure threshold based on active task count
     """
 
     # Threshold for per-Op object store budget utilization vs total
     # (utilization / total) ratio to enable downstream capacity backpressure.
     OBJECT_STORE_BUDGET_UTIL_THRESHOLD = env_float(
         "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_THRESHOLD", 0.9
+    )
+
+    # Threshold for per-Op object store budget utilization vs total
+    # (utilization / total) ratio to record baseline task index gap.
+    OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD = env_float(
+        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD", 0.1
     )
 
     @property
@@ -103,6 +113,9 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         self._backpressure_capacity_ratio = (
             self._data_context.downstream_capacity_backpressure_ratio
         )
+        self._preserve_order = self._data_context.execution_options.preserve_order
+        # Per-operator baseline task index gap recorded when budget threshold first hit
+        self._baseline_task_index_gap: dict["PhysicalOperator", int] = {}
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
                 f"DownstreamCapacityBackpressurePolicy enabled with backpressure capacity ratio: {self._backpressure_capacity_ratio}"
@@ -176,6 +189,25 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return 0
         return queue_size_bytes / downstream_capacity_size_bytes
 
+    def _get_effective_threshold(self, op: "PhysicalOperator") -> float:
+        """Get the effective backpressure threshold.
+
+        When preserve_order is enabled, dynamically lowers the threshold based on
+        gap growth relative to baseline. The baseline is recorded when budget
+        threshold is first hit. If gap grows beyond baseline, threshold is reduced
+        exponentially.
+        """
+        threshold = self._backpressure_capacity_ratio
+        if self._preserve_order:
+            gap = self._get_task_index_gap(op)
+            baseline = self._baseline_task_index_gap.get(op, 0)
+            if gap > baseline and baseline >= 0:
+                # Gap has grown beyond baseline: reduce threshold exponentially
+                # gap_growth=1: threshold / 2, gap_growth=2: threshold / 4, etc.
+                gap_growth = gap - baseline
+                threshold = threshold / (2 ** gap_growth)
+        return threshold
+
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
         """Check if backpressure should be applied for the operator.
 
@@ -187,6 +219,16 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
+
+        if (
+            self._preserve_order and
+            op not in self._baseline_task_index_gap
+            and utilized_budget_fraction is not None
+            and utilized_budget_fraction > self.OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD
+        ):
+            # Record baseline task index gap.
+            self._baseline_task_index_gap[op] = self._get_task_index_gap(op)
+
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -195,18 +237,69 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return False
 
         queue_ratio = self._get_queue_ratio(op)
+        queue_ratio_threshold = self._get_effective_threshold(op)
         # Apply backpressure if queue ratio exceeds the threshold.
-        return queue_ratio > self._backpressure_capacity_ratio
+        return queue_ratio > queue_ratio_threshold
+
+    def _get_task_index_gap(self, op: "PhysicalOperator") -> int:
+        """Get the gap between the earliest and latest active task.
+
+        Returns 0 if no active tasks.
+        """
+        active_tasks = op.get_active_tasks()
+        if not active_tasks:
+            return 0
+        min_idx = max_idx = active_tasks[0].task_index()
+        for task in active_tasks[1:]:
+            idx = task.task_index()
+            if idx < min_idx:
+                min_idx = idx
+            elif idx > max_idx:
+                max_idx = idx
+        return max_idx - min_idx
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Determine if we can add input to the operator based on
         downstream capacity.
+
+        When preserve_order is enabled, the dynamic threshold in
+        _should_apply_backpressure scales with task gap, creating a feedback
+        loop that naturally limits the gap.
         """
         return not self._should_apply_backpressure(op)
 
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit."""
-        if self._should_apply_backpressure(op):
+        the given operator. None means no limit.
+
+        When preserve_order is enabled and backpressure is applied, returns a
+        reduced limit (not 0) to allow earlier tasks to make progress. Earlier
+        tasks must complete for their outputs to be consumed, so blocking
+        completely would prevent progress.
+        """
+        backpressure = self._should_apply_backpressure(op)
+        downstream_capacity = self._get_downstream_capacity_size_bytes(op)
+
+        if self._preserve_order:
+            if backpressure:
+                # Under backpressure: allow limited reading for earlier tasks.
+                # Scale exponentially by gap growth (relative to baseline).
+                gap = self._get_task_index_gap(op)
+                baseline = self._baseline_task_index_gap.get(op, 0)
+                gap_growth = max(0, gap - baseline)
+                if gap_growth > 0 and downstream_capacity > 0:
+                    # Reduce capacity exponentially: growth=1 → 50%, growth=2 → 25%
+                    return int(max(1, downstream_capacity // (2 ** gap_growth)))
+                # No gap growth or no capacity info: allow full downstream capacity
+                return int(downstream_capacity) if downstream_capacity > 0 else None
+            else:
+                # No backpressure: still limit to downstream capacity
+                if downstream_capacity > 0:
+                    return int(downstream_capacity)
+                return None
+
+        # Non-preserve_order: block completely when backpressure applied
+        if backpressure:
             return 0
+
         return None
