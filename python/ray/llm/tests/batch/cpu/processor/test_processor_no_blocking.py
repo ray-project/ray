@@ -4,6 +4,8 @@ Test that Ray Data LLM does not override wait_for_min_actors_s.
 With default settings (wait_for_min_actors_s <= 0), processing starts
 as soon as any actor is ready, regardless of concurrency config.
 """
+import sys
+
 import pytest
 
 from ray.data import DataContext
@@ -90,3 +92,7 @@ class TestConcurrencyConfigPassthrough:
         assert (
             compute.max_size == expected_max_size
         ), f"Expected max_size={expected_max_size}, got {compute.max_size}"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
