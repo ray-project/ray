@@ -1,11 +1,11 @@
+from io import BytesIO
 from typing import Any
 
+import datasets
+from PIL import Image
 from pprint import pprint
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-import datasets
-from PIL import Image
-from io import BytesIO
 
 # Dataset limit for this example.
 DATASET_LIMIT = 1_000_000

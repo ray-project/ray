@@ -9,6 +9,6 @@ compute_config:
       min_nodes: 0
       max_nodes: 10
 requirements: # Python dependencies - can be list or path to requirements.txt
-  - datasets==4.4.1
+  - datasets==4.4.2
 working_dir: .
 max_retries: 2

@@ -1,10 +1,11 @@
+from io import BytesIO
 from typing import Any
 
-import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 import datasets
 from PIL import Image
-from io import BytesIO
+from pprint import pprint
+import ray
+from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
 DATASET_LIMIT = 10_000
 
@@ -103,8 +104,6 @@ processor = build_llm_processor(
     preprocess=preprocess,
     postprocess=postprocess,
 )
-
-from pprint import pprint
 
 # Filter out invalid images before processing.
 ds_small_filtered = ds_small.filter(is_valid_image)

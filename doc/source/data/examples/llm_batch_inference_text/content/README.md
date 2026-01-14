@@ -21,9 +21,9 @@ This example shows you how to run batch inference for large language models (LLM
 Offline (batch) inference optimizes for throughput over latency. Unlike online inference, which processes requests one at a time in real-time, batch inference processes thousands or millions of inputs together, maximizing GPU utilization and reducing per-inference costs.
 
 Choose batch inference when:
-- You have a fixed dataset to process (such as daily reports or data migrations)
-- Throughput matters more than immediate results
-- You want to take advantage of fault tolerance for long-running jobs
+- You have a fixed dataset to process (such as daily reports or data migrations).
+- Throughput matters more than immediate results.
+- You want to take advantage of fault tolerance for long-running jobs.
 
 On the contrary, if you are more interested in optimizing for latency, consider [deploying your LLM with Ray Serve LLM for online inference](https://docs.ray.io/en/latest/serve/llm/index.html).
 
