@@ -3,7 +3,6 @@ from typing import Any
 from pprint import pprint
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-from vllm.sampling_params import StructuredOutputsParams
 
 DATASET_LIMIT = 10_000
 
@@ -16,7 +15,7 @@ print("Loading dataset from remote URL...")
 ds = ray.data.read_csv(path)
 
 # Limit the dataset. If DATASET_LIMIT > dataset size, the entire dataset will be processed.
-print(f"Limiting dataset to {DATASET_LIMIT} images for initial processing.")
+print(f"Limiting dataset to {DATASET_LIMIT} rows for initial processing.")
 ds_small = ds.limit(DATASET_LIMIT)
 
 # Repartition the dataset to enable parallelism across multiple workers (GPUs).
@@ -62,7 +61,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
                 "role": "system",
                 "content": "You are a helpful assistant that infers company industries. "
                            "Based on the company name provided, output only the industry category. "
-                           "Choose from: Law Firm, Healthcare, Technology, Retail, Consulting, Manufacturing, Finance, Real Estate, Other."
+                           f"Choose from: {', '.join(CHOICES)}."
             },
             {
                 "role": "user",
@@ -95,7 +94,6 @@ processor = build_llm_processor(
 processed_small = processor(ds_small)
 
 # Materialize the dataset to memory.
-# You can also use writing APIs such as write_parquet() or write_csv() to persist the dataset.
 processed_small = processed_small.materialize()
 
 print(f"\nProcessed {processed_small.count()} rows successfully.")

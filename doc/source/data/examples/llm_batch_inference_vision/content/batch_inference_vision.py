@@ -113,7 +113,6 @@ ds_small_filtered = ds_small.filter(is_valid_image)
 processed_small = processor(ds_small_filtered)
 
 # Materialize the dataset to memory.
-# You can also use writing APIs such as write_parquet() or write_json() to persist the dataset.
 processed_small = processed_small.materialize()
 
 print(f"\nProcessed {processed_small.count()} rows successfully.")

@@ -103,8 +103,10 @@ processor_large = build_llm_processor(
 # Filter out invalid images before processing.
 ds_large_filtered = ds_large.filter(is_valid_image)
 
-# Run the compute-scaled processor on the larger dataset.
+# Run the processor on the filtered dataset.
 processed_large = processor_large(ds_large_filtered)
+
+# Materialize the dataset to memory.
 processed_large = processed_large.materialize()
 
 print(f"\nProcessed {processed_large.count()} rows successfully.")

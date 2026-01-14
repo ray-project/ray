@@ -196,7 +196,6 @@ from pprint import pprint
 processed_small = processor(ds_small)
 
 # Materialize the dataset to memory.
-# You can also use writing APIs such as write_parquet() or write_csv() to persist the dataset.
 processed_small = processed_small.materialize()
 
 print(f"\nProcessed {processed_small.count()} rows successfully.")
