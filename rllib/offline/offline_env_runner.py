@@ -57,8 +57,19 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Set the output base path.
         self.output_path = self.config.output
-        # Set the subdir (environment specific).
-        self.subdir_path = self.config.env.lower()
+
+        if self.env:
+            # Set the subdir (environment specific).
+            self.subdir_path = self._get_subdir_path()
+        elif not self.env and (
+            (self.config.create_env_on_local_worker and self.worker_index == 0)
+            or self.worker_index > 0
+        ):
+            raise ValueError(
+                "To set up the output path, the environment "
+                "`env` must be provided when creating the "
+                "`OfflineSingleAgentEnvRunner`."
+            )
         # Set the worker-specific path name. Note, this is
         # specifically to enable multi-threaded writing into
         # the same directory.
@@ -119,6 +130,32 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Define the buffer for experiences stored until written to disk.
         self._samples = []
+
+    def _get_subdir_path(self) -> str:
+        """Returns the subdir path for storing data.
+
+        Returns:
+            The subdir path as a string.
+        """
+        # Set the subdir (environment specific).
+        if isinstance(self.env, str):
+            # `env` is a string.
+            return self.env.lower()
+        else:
+            # `env` is a class or callable we use its class name.
+            if self.config.gym_env_vectorize_mode == "sync":
+                return self.env.unwrapped.envs[0].unwrapped.__class__.__name__.lower()
+            elif self.config.gym_env_vectorize_mode == "async":
+                return self.env.unwrapped.get_attr("unwrapped")[
+                    0
+                ].__class__.__name__.lower()
+            elif self.config.gym_env_vectorize_mode == "vector_entry_point":
+                return self.env.unwrapped.__class__.__name__.lower()
+            else:
+                raise ValueError(
+                    f"Unknown `gym_env_vectorize_mode`: "
+                    f"{self.config.gym_env_vectorize_mode}"
+                )
 
     @override(SingleAgentEnvRunner)
     @OverrideToImplementCustomLogic
