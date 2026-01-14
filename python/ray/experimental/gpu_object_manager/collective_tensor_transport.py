@@ -123,22 +123,26 @@ class CollectiveTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
+        from ray.experimental.gpu_object_manager.util import (
+            create_empty_tensors_from_metadata,
+        )
         from ray.util.collective.collective import recv
 
         assert isinstance(tensor_transport_metadata, CollectiveTransportMetadata)
         assert isinstance(communicator_metadata, CollectiveCommunicatorMetadata)
 
+        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
         for tensor in tensors:
             recv(
                 tensor,
                 communicator_metadata.src_rank,
                 communicator_metadata.communicator_name,
             )
+        return tensors
 
     def send_multiple_tensors(
         self,
