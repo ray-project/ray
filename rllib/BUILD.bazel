@@ -1833,7 +1833,7 @@ py_test(
         "--num-learners=0",
         "--stop-reward=200.0",
     ],
-    main = "examples/algorithms/sac/cartpole_dreamerv3.py",
+    main = "examples/algorithms/dreamerv3/cartpole_dreamerv3.py",
     tags = [
         "exclusive",
         "learning_tests",
