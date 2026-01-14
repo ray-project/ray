@@ -490,7 +490,7 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 500 MiB, (2) a local existing zipped file with total unzipped size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 500 MiB, (2) a local existing compressed archive (``.zip``, ``.tar``, ``.tar.gz``, ``.tgz``, ``.tar.zst``, ``.tzst``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
 
   - Examples
@@ -806,7 +806,7 @@ Remote URIs
 The ``working_dir`` and ``py_modules`` arguments in the ``runtime_env`` dictionary can specify either local path(s) or remote URI(s).
 
 A local path must be a directory path. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
-A remote URI must be a link directly to a zip file or a wheel file (only for ``py_module``). **The zip file must contain only a single top-level directory.**
+A remote URI must be a link directly to a zip or tar archive (or a wheel file for ``py_module``). **The archive must contain only a single top-level directory.**
 The contents of this directory will be directly accessed as the ``working_dir`` or a ``py_module``.
 
 For example, suppose you want to use the contents in your local ``/some_path/example_dir`` directory as your ``working_dir``.
@@ -818,25 +818,29 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
   runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 
 Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
-You would need to first compress the ``example_dir`` directory into a zip file.
+You would need to first compress the ``example_dir`` directory into a zip or tar archive.
 
-There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
+There should be no other files or directories at the top level of the archive, other than ``example_dir``.
 You can use the following command in the Terminal to do this:
 
 .. code-block:: bash
 
     cd /some_path
     zip -r zip_file_name.zip example_dir
+    tar -cf tar_file_name.tar example_dir
+    tar -I zstd -cf tar_file_name.tar.zst example_dir
 
-Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting zip file contains a single top-level directory.
-In general, the zip file's name and the top-level directory's name can be anything.
+Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting archive contains a single top-level directory.
+In general, the archive's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
 
-You can check that the zip file contains a single top-level directory by running the following command in the Terminal:
+You can check that the archive contains a single top-level directory by running the following command in the Terminal:
 
 .. code-block:: bash
 
   zipinfo -1 zip_file_name.zip
+
+For tar archives, you can use ``tar -tf archive.tar`` (or ``tar -tf archive.tar.gz`` / ``archive.tar.zst``) to inspect the top-level entries.
   # example_dir/
   # example_dir/my_file_1.txt
   # example_dir/subdir/my_file_2.txt
