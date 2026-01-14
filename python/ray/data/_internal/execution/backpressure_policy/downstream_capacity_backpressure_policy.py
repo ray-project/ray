@@ -115,7 +115,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         )
         self._preserve_order = self._data_context.execution_options.preserve_order
         # Per-operator baseline task index gap recorded when budget threshold first hit
-        self._baseline_task_index_gap: dict["PhysicalOperator", int] = {}
+        self._baseline_task_index_gap: Dict["PhysicalOperator", int] = {}
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
                 f"DownstreamCapacityBackpressurePolicy enabled with backpressure capacity ratio: {self._backpressure_capacity_ratio}"
@@ -201,7 +201,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if self._preserve_order:
             gap = self._get_task_index_gap(op)
             baseline = self._baseline_task_index_gap.get(op, 0)
-            if gap > baseline and baseline >= 0:
+            if gap > baseline:
                 # Gap has grown beyond baseline: reduce threshold exponentially
                 # gap_growth=1: threshold / 2, gap_growth=2: threshold / 4, etc.
                 gap_growth = gap - baseline
@@ -287,11 +287,11 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 gap = self._get_task_index_gap(op)
                 baseline = self._baseline_task_index_gap.get(op, 0)
                 gap_growth = max(0, gap - baseline)
-                if gap_growth > 0 and downstream_capacity > 0:
+                if gap_growth > 0:
                     # Reduce capacity exponentially: growth=1 → 50%, growth=2 → 25%
                     return int(max(1, downstream_capacity // (2 ** gap_growth)))
                 # No gap growth or no capacity info: allow full downstream capacity
-                return int(downstream_capacity) if downstream_capacity > 0 else None
+                return int(downstream_capacity)
             else:
                 # No backpressure: still limit to downstream capacity
                 if downstream_capacity > 0:
