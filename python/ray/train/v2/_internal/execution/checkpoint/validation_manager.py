@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import OrderedDict, deque
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import ray
 from ray.train._checkpoint import Checkpoint
@@ -32,7 +32,7 @@ MAX_IN_FLIGHT_VALIDATIONS = 1
 @ray.remote
 def run_validate_fn(
     validation_config: ValidationConfig,
-    validation_task_config: ValidationTaskConfig,
+    validation_task_config: Union[bool, ValidationTaskConfig],
     checkpoint: Checkpoint,
 ) -> Dict:
     """Run the user-defined validation function.
@@ -41,10 +41,13 @@ def run_validate_fn(
     func_kwargs from validation_task_config (per-report overrides).
     """
     # Merge kwargs: defaults from validation_config, overrides from validation_task_config
-    merged_kwargs = {
-        **validation_config.func_kwargs,
-        **validation_task_config.func_kwargs,
-    }
+    if validation_task_config is True:
+        merged_kwargs = validation_config.func_kwargs
+    else:
+        merged_kwargs = {
+            **validation_config.func_kwargs,
+            **validation_task_config.func_kwargs,
+        }
     metrics_dict = validation_config.validate_fn(
         checkpoint,
         **merged_kwargs,

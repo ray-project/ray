@@ -107,7 +107,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=high_initial_low_final_training_result.metrics,
             checkpoint=high_initial_low_final_training_result.checkpoint,
-            validation=ValidationTaskConfig(),
+            validation=True,
         ),
         metrics={},
     )
@@ -197,7 +197,7 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
         training_report=_TrainingReport(
             metrics=timing_out_training_result.metrics,
             checkpoint=timing_out_training_result.checkpoint,
-            validation=ValidationTaskConfig(),
+            validation=True,
         ),
         metrics={},
     )

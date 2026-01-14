@@ -27,7 +27,7 @@ def report(
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
-    validation: Optional[Union[bool, ValidationTaskConfig]] = None,
+    validation: Union[bool, ValidationTaskConfig] = False,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -104,7 +104,7 @@ def report(
             utility for copying to the destination `storage_path`.
         validation: If True, triggers validation with default kwargs from validation_config.
             If a ValidationTaskConfig, triggers validation with the specified func_kwargs
-            (merged with defaults from validation_config). If None or False, no validation.
+            (merged with defaults from validation_config). If False, no validation.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (

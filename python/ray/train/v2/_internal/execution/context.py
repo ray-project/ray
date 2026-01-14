@@ -230,7 +230,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Optional["ValidationTaskConfig"] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -249,7 +249,7 @@ class TrainContext:
         """
 
         if not checkpoint:
-            return _TrainingReport(checkpoint=None, metrics=metrics, validation=None)
+            return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
         # Persist the checkpoint to the remote storage path.
         try:
@@ -327,7 +327,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Optional[Union[bool, ValidationTaskConfig]] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -349,12 +349,6 @@ class TrainContext:
                     "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
                     "or save tensors as part of the checkpoint files instead."
                 )
-
-        # Convert bool to ValidationTaskConfig if needed
-        if validation is True:
-            validation = ValidationTaskConfig()
-        elif validation is False:
-            validation = None
 
         if validation and not self.has_validation_fn:
             raise ValueError(
