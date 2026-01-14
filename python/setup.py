@@ -773,43 +773,19 @@ if __name__ == "__main__":
             return True
 
     class RayCppBdistWheel(bdist_wheel):
-        """Custom bdist_wheel that produces Python-agnostic wheels for ray-cpp.
+        """Build a Python-agnostic wheel for ray-cpp.
 
-        PROBLEM
-        -------
-        The ray-cpp wheel contains only C++ files (headers, libraries, executables)
-        with NO Python-specific code. It should work with any Python 3.x version.
-        However, by default, setuptools/bdist_wheel generates wheels tagged with
-        the specific Python interpreter used to build, e.g.:
-
-            ray_cpp-3.0.0-cp310-cp310-manylinux2014_x86_64.whl
-                          ^^^^^-^^^^^
-                          Python 3.10 specific!
-
-        This class forces the wheel tag to be:
-
-            ray_cpp-3.0.0-py3-none-manylinux2014_x86_64.whl
-                          ^^^-^^^^
-                          Works with ANY Python 3!
-
-        Tag meanings:
-        - "py3" = compatible with any Python 3.x
-        - "none" = no Python ABI dependency (no compiled .so using Python.h)
-        - "manylinux2014_x86_64" = platform tag (still needed for C++ binaries)
-
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
         """
 
         def finalize_options(self):
             super().finalize_options()
-            # Mark as non-pure to ensure we get a platform tag (e.g., manylinux2014).
-            # Pure wheels get "any" as the platform tag, which is wrong for ray-cpp
-            # since it contains platform-specific C++ binaries.
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
             self.root_is_pure = False
 
         def get_tag(self):
-            # Get the platform tag from parent (e.g., "manylinux2014_x86_64")
             _, _, platform_tag = super().get_tag()
-            # Force Python-agnostic tags: ("py3", "none", platform_tag)
             return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.
