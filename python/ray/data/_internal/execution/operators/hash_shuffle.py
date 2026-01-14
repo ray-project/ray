@@ -373,41 +373,6 @@ class _PartitionStats:
         )
 
 
-class HashShuffleProgressBarMixin(SubProgressBarMixin):
-    @property
-    @abc.abstractmethod
-    def shuffle_name(self) -> str:
-        ...
-
-    @property
-    @abc.abstractmethod
-    def reduce_name(self) -> str:
-        ...
-
-    def _validate_sub_progress_bar_names(self):
-        assert self.shuffle_name is not None, "shuffle_name should not be None"
-        assert self.reduce_name is not None, "reduce_name should not be None"
-
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        self._validate_sub_progress_bar_names()
-
-        # shuffle
-        self.shuffle_bar = None
-        self.shuffle_metrics = OpRuntimeMetrics(self)
-
-        # reduce
-        self.reduce_bar = None
-        self.reduce_metrics = OpRuntimeMetrics(self)
-
-        return [self.shuffle_name, self.reduce_name]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        if self.shuffle_name is not None and self.shuffle_name == name:
-            self.shuffle_bar = pg
-        elif self.reduce_name is not None and self.reduce_name == name:
-            self.reduce_bar = pg
-
-
 def _derive_max_shuffle_aggregators(
     total_cluster_resources: ExecutionResources,
     data_context: DataContext,
@@ -435,7 +400,7 @@ def _derive_max_shuffle_aggregators(
     )
 
 
-class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
+class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
 
@@ -605,6 +570,12 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         self._health_monitoring_started: bool = False
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
+
+        # sub-progress bar initializations
+        self.shuffle_bar = None
+        self.shuffle_metrics = OpRuntimeMetrics(self)
+        self.reduce_bar = None
+        self.reduce_metrics = OpRuntimeMetrics(self)
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -1179,6 +1150,17 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
     @classmethod
     def _gen_op_name(cls, num_partitions: int) -> str:
         raise NotImplementedError()
+
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        assert self.shuffle_name is not None, "shuffle_name should not be None"
+        assert self.reduce_name is not None, "reduce_name should not be None"
+        return [self.shuffle_name, self.reduce_name]
+
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
+        if self.shuffle_name is not None and self.shuffle_name == name:
+            self.shuffle_bar = pg
+        elif self.reduce_name is not None and self.reduce_name == name:
+            self.reduce_bar = pg
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
