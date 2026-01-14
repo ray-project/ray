@@ -8,7 +8,7 @@ import ray._common.usage.usage_lib as ray_usage_lib
 from ray._common.test_utils import TelemetryCallsite, check_library_usage_telemetry
 from ray.train import Checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import CheckpointUploadMode, ValidationConfig
 
 
 @pytest.fixture
@@ -54,10 +54,12 @@ def test_used_on_trainer_fit(reset_usage_lib, callsite: TelemetryCallsite):
                 {},
                 checkpoint=Checkpoint.from_directory(tmpdir),
                 checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
-                validate_fn=lambda x, y: {},
+                validation=True,
             )
 
-        trainer = DataParallelTrainer(train_fn)
+        trainer = DataParallelTrainer(
+            train_fn, validation_config=ValidationConfig(validate_fn=lambda x: {})
+        )
         trainer.fit()
 
     check_library_usage_telemetry(
