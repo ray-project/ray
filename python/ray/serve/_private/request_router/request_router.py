@@ -654,8 +654,17 @@ class RequestRouter(ABC):
 
     @property
     def num_pending_requests(self) -> int:
-        """Current number of requests pending assignment."""
-        return len(self._pending_requests_by_id)
+        """Current number of requests pending assignment.
+
+        This uses the deque length rather than the dict length because the deque
+        uses lazy cleanup - fulfilled requests are only removed from the front
+        of the deque, not immediately when fulfilled. This intentionally keeps
+        the count higher, which keeps routing tasks alive longer to handle
+        incoming requests without the overhead of constantly stopping/restarting
+        tasks. Maybe it is possible to use the dict length instead, but it would
+        require rethinking the routing task termination logic.
+        """
+        return len(self._pending_requests_to_fulfill)
 
     @property
     def curr_num_routing_tasks(self) -> int:
