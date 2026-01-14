@@ -29,29 +29,51 @@ steps:
     tags:
       - release_wheels
       - java
-      - oss
     env:
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "260103.868e54c"
 
-  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
-    key: linux_wheels
+  - name: ray-wheel-build
+    label: "wanda: wheel py{{matrix}} (x86_64)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
       - oss
-    instance_type: large
+    depends_on:
+      - ray-core-build
+      - ray-java-build
+      - ray-dashboard-build
+
+  # Upload wheels to S3
+  - label: ":s3: upload: wheel py{{matrix}} (x86_64)"
+    key: linux_wheels_upload
+    instance_type: small
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      - ./ci/build/extract_wanda_wheels.sh ray-wheel-py{{matrix}}
+      - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-x86_64
-      - forge
+      - ray-wheel-build
+    tags:
+      - release_wheels
+      - skip-on-premerge
+      - oss
 
   - label: ":tapioca: build: jar"
     key: java_wheels
