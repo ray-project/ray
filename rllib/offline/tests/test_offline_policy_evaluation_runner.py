@@ -278,6 +278,9 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         self.assertEqual(self.config.offline_evaluation_interval, 2)
         self.assertIn(EVALUATION_RESULTS, results[1])
         self.assertIn(EVALUATION_RESULTS, results[3])
+        # Also ensure we did not evaluate at other iterations.
+        self.assertNotIn(EVALUATION_RESULTS, results[0])
+        self.assertNotIn(EVALUATION_RESULTS, results[2])
 
         # Get evaluation metrics.
         eval_metrics = results[3][EVALUATION_RESULTS]

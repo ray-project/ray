@@ -66,20 +66,19 @@ if TYPE_CHECKING:
 
 torch, _ = try_import_torch()
 
-TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
-
 
 # TODO (simon): Implement more ...
 class OfflinePolicyEvaluationTypes(str, Enum):
     """Defines the offline policy evaluation types.
 
+    EVAL_LOSS: Evaluates the policy by computing the loss on a held-out
+        validation dataset.
     IS: Importance Sampling.
     PDIS: Per-Decision Importance Sampling. In contrast to IS this method
         weighs each reward and not the return as a whole. As a result it
         usually exhibits lower variance.
     """
 
-    EVAL_LOSS = "eval_loss"
     EVAL_LOSS = "eval_loss"
     IS = "is"
     PDIS = "pdis"
