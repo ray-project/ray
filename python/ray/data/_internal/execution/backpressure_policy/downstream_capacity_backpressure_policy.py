@@ -189,15 +189,15 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return 0
         return queue_size_bytes / downstream_capacity_size_bytes
 
-    def _get_effective_threshold(self, op: "PhysicalOperator") -> float:
-        """Get the effective backpressure threshold.
+    def _get_effective_queue_ratio_threshold(self, op: "PhysicalOperator") -> float:
+        """Get the effective queue ratio threshold.
 
         When preserve_order is enabled, dynamically lowers the threshold based on
         gap growth relative to baseline. The baseline is recorded when budget
         threshold is first hit. If gap grows beyond baseline, threshold is reduced
         exponentially.
         """
-        threshold = self._backpressure_capacity_ratio
+        queue_ratio_threshold = self._backpressure_capacity_ratio
         if self._preserve_order:
             gap = self._get_task_index_gap(op)
             baseline = self._baseline_task_index_gap.get(op, 0)
@@ -205,8 +205,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 # Gap has grown beyond baseline: reduce threshold exponentially
                 # gap_growth=1: threshold / 2, gap_growth=2: threshold / 4, etc.
                 gap_growth = gap - baseline
-                threshold = threshold / (2**gap_growth)
-        return threshold
+                queue_ratio_threshold = queue_ratio_threshold / (2**gap_growth)
+        return queue_ratio_threshold
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
         """Check if backpressure should be applied for the operator.
@@ -238,7 +238,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return False
 
         queue_ratio = self._get_queue_ratio(op)
-        queue_ratio_threshold = self._get_effective_threshold(op)
+        queue_ratio_threshold = self._get_effective_queue_ratio_threshold(op)
         # Apply backpressure if queue ratio exceeds the threshold.
         return queue_ratio > queue_ratio_threshold
 
@@ -295,9 +295,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 return int(downstream_capacity)
             else:
                 # No backpressure: still limit to downstream capacity
-                if downstream_capacity > 0:
-                    return int(downstream_capacity)
-                return None
+                return int(downstream_capacity)
 
         # Non-preserve_order: block completely when backpressure applied
         if backpressure:

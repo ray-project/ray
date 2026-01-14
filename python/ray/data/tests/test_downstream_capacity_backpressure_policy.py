@@ -71,6 +71,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Set up eligibility methods (used by ResourceManager.is_op_eligible)
         mock_operator.throttling_disabled.return_value = throttling_disabled
         mock_operator.has_execution_finished.return_value = has_execution_finished
+        # For preserve_order: get_active_tasks returns empty list by default
+        mock_operator.get_active_tasks.return_value = []
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -90,6 +92,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         mock_operator.output_dependencies = []
         mock_operator.throttling_disabled.return_value = False
         mock_operator.has_execution_finished.return_value = False
+        mock_operator.get_active_tasks.return_value = []
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -150,10 +153,16 @@ class TestDownstreamCapacityBackpressurePolicy:
             resource_manager=rm,
         )
 
-    def _create_context(self, backpressure_ratio=2.0):
+    @pytest.fixture(params=[False, True], ids=["order=False", "order=True"])
+    def preserve_order(self, request):
+        """Fixture to run tests with preserve_order False and True."""
+        return request.param
+
+    def _create_context(self, backpressure_ratio=2.0, preserve_order=False):
         """Helper to create DataContext with backpressure ratio."""
         context = DataContext()
         context.downstream_capacity_backpressure_ratio = backpressure_ratio
+        context.execution_options.preserve_order = preserve_order
         return context
 
     def _mock_resource_manager(
@@ -442,13 +451,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.max_task_output_bytes_to_read(op) is None
 
-    def test_max_bytes_returns_zero_for_high_utilization(self):
-        """Test max_task_output_bytes_to_read returns 0 for high utilization."""
+    def test_max_bytes_returns_zero_for_high_utilization(self, preserve_order):
+        """Test max_task_output_bytes_to_read under backpressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
         topology = {op: op_state, downstream_op: downstream_op_state}
-        context = self._create_context(backpressure_ratio=2.0)
+        context = self._create_context(
+            backpressure_ratio=2.0, preserve_order=preserve_order
+        )
         rm = self._mock_resource_manager()
 
         # High utilized budget fraction = apply backpressure
@@ -465,15 +476,23 @@ class TestDownstreamCapacityBackpressurePolicy:
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
-        assert policy.max_task_output_bytes_to_read(op) == 0
+        result = policy.max_task_output_bytes_to_read(op)
+        if preserve_order:
+            # preserve_order: returns downstream_capacity (not 0)
+            assert result == 200
+        else:
+            # non-preserve_order: blocks completely
+            assert result == 0
 
-    def test_max_bytes_returns_zero_for_high_queue_ratio(self):
-        """Test max_task_output_bytes_to_read returns 0 for high queue ratio."""
+    def test_max_bytes_returns_zero_for_high_queue_ratio(self, preserve_order):
+        """Test max_task_output_bytes_to_read under backpressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
         topology = {op: op_state, downstream_op: downstream_op_state}
-        context = self._create_context(backpressure_ratio=2.0)
+        context = self._create_context(
+            backpressure_ratio=2.0, preserve_order=preserve_order
+        )
         rm = self._mock_resource_manager()
 
         # High utilized budget fraction = check queue ratio
@@ -490,15 +509,23 @@ class TestDownstreamCapacityBackpressurePolicy:
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
-        assert policy.max_task_output_bytes_to_read(op) == 0
+        result = policy.max_task_output_bytes_to_read(op)
+        if preserve_order:
+            # preserve_order: returns downstream_capacity (not 0)
+            assert result == 200
+        else:
+            # non-preserve_order: blocks completely
+            assert result == 0
 
-    def test_max_bytes_returns_none_when_no_backpressure(self):
-        """Test max_task_output_bytes_to_read returns None when no backpressure."""
+    def test_max_bytes_returns_none_when_no_backpressure(self, preserve_order):
+        """Test max_task_output_bytes_to_read when no backpressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
         topology = {op: op_state, downstream_op: downstream_op_state}
-        context = self._create_context(backpressure_ratio=2.0)
+        context = self._create_context(
+            backpressure_ratio=2.0, preserve_order=preserve_order
+        )
         rm = self._mock_resource_manager()
 
         # High utilized budget fraction = check queue ratio
@@ -516,8 +543,12 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         result = policy.max_task_output_bytes_to_read(op)
-        # Queue ratio is below threshold, so no backpressure limit.
-        assert result is None
+        if preserve_order:
+            # preserve_order: returns downstream_capacity
+            assert result == 1000
+        else:
+            # non-preserve_order: no limit
+            assert result is None
 
     def test_backpressure_applied_fast_producer_slow_consumer(self):
         """Test backpressure IS applied when producer is faster than consumer.
