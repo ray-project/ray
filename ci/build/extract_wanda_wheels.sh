@@ -21,6 +21,13 @@ WANDA_IMAGE="${RAYCI_WORK_REPO}:${RAYCI_BUILD_ID}-${WANDA_IMAGE_NAME}"
 
 echo "Extracting wheels from: ${WANDA_IMAGE}"
 
+# Login to ECR if not already authenticated
+if ! crane manifest "${WANDA_IMAGE}" &>/dev/null; then
+  ECR_REGISTRY="$(echo "${RAYCI_WORK_REPO}" | cut -d'/' -f1)"
+  aws ecr get-login-password --region us-west-2 | \
+    crane auth login --username AWS --password-stdin "${ECR_REGISTRY}"
+fi
+
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir" || true' EXIT
 

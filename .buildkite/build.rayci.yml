@@ -70,6 +70,7 @@ steps:
       - "3.13"
     depends_on:
       - ray-wheel-build
+      - forge
     tags:
       - release_wheels
       - skip-on-premerge
@@ -114,6 +115,7 @@ steps:
       - ./ci/build/copy_build_artifacts.sh wheel
     depends_on:
       - ray-cpp-wheel-build
+      - forge
     tags:
       - release_wheels
       - skip-on-premerge
