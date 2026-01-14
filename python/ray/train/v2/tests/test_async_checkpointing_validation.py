@@ -318,7 +318,9 @@ def test_report_validate_fn_overrides_default_kwargs():
         train_fn,
         validation_config=ValidationConfig(
             validate_fn=validate_fn,
-            func_kwargs={"validation_score": 1, "other_key": "other_value"},
+            validation_task_config=ValidationTaskConfig(
+                func_kwargs={"validation_score": 1, "other_key": "other_value"}
+            ),
         ),
         scaling_config=ScalingConfig(num_workers=1),
     )
@@ -489,7 +491,10 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
     trainer = DataParallelTrainer(
         train_fn,
         validation_config=ValidationConfig(
-            validate_fn=validate_fn, func_kwargs={"validation_score": 100}
+            validate_fn=validate_fn,
+            validation_task_config=ValidationTaskConfig(
+                func_kwargs={"validation_score": 100}
+            ),
         ),
         scaling_config=ScalingConfig(num_workers=2),
         train_loop_config={"signal_actor": signal_actor},

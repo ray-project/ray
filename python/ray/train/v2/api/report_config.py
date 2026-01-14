@@ -58,16 +58,17 @@ class ValidationConfig:
         validate_fn: The validation function to run on checkpoints.
             This function should accept a checkpoint as the first argument
             and return a dictionary of metrics.
-        func_kwargs: Default keyword arguments to pass to the validation function.
-            These can be overridden by ValidationTaskConfig in report().
+        validation_task_config: Default configuration for validation tasks.
+            The func_kwargs in this config can be overridden by
+            ValidationTaskConfig passed to report().
     """
 
     validate_fn: ValidateFn
-    func_kwargs: Dict[str, Any] = None
+    validation_task_config: "ValidationTaskConfig" = None
 
     def __post_init__(self):
-        if self.func_kwargs is None:
-            self.func_kwargs = {}
+        if self.validation_task_config is None:
+            self.validation_task_config = ValidationTaskConfig()
 
 
 @dataclass

@@ -80,7 +80,8 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
-            validate_fn=validate_fn, func_kwargs={"score": 100}
+            validate_fn=validate_fn,
+            validation_task_config=ValidationTaskConfig(func_kwargs={"score": 100}),
         ),
     )
     (
