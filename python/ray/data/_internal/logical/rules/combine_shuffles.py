@@ -72,11 +72,6 @@ class CombineShuffles(Rule):
                 keys=op._keys,
                 sort=op._sort,
             )
-        elif isinstance(input_op, Repartition) and isinstance(op, StreamingRepartition):
-            return StreamingRepartition(
-                input_op.input_dependencies[0],
-                target_num_rows_per_block=op._target_num_rows_per_block,
-            )
         elif isinstance(input_op, Sort) and isinstance(op, Sort):
             return Sort(
                 input_op.input_dependencies[0],
