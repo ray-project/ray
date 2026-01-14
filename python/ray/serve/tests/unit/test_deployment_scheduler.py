@@ -1064,6 +1064,36 @@ def test_build_pack_placement_candidates():
     assert strategies[0][1] == [{"accelerator-type": "A100"}]
 
 
+def test_build_pack_placement_candidates_pg_fallback_error():
+    """
+    Test that providing placement_group_fallback_strategy raises NotImplementedError.
+    """
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="head_node",
+        create_placement_group_fn_override=None,
+    )
+
+    # Create a request with placement_group_fallback_strategy defined.
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        # Raises NotImplementedError since not added to placement group options yet.
+        placement_group_fallback_strategy=[{"label_selector": {"zone": "us-east-1a"}}],
+    )
+
+    # Verify the scheduler raises the expected error
+    with pytest.raises(NotImplementedError, match="not yet supported"):
+        scheduler._build_pack_placement_candidates(req)
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )

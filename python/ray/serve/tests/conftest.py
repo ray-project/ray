@@ -355,7 +355,7 @@ def _get_node_id():
 
 # Test fixture to start a Serve instance in a RayCluster with two labeled nodes
 @pytest.fixture
-def serve_instance_with_labeled_nodes():
+def serve_instance_with_labeled_nodes(ray_shutdown):
     cluster = Cluster()
     # Unlabeled default node.
     node0_config = {
@@ -382,7 +382,3 @@ def serve_instance_with_labeled_nodes():
 
     serve.start()
     yield _get_global_client(), node_1_id, node_2_id
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()

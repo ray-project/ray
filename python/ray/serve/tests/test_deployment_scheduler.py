@@ -135,6 +135,24 @@ class TestSpreadScheduling:
         scheduler.on_replica_stopping(r2_id)
         scheduler.on_deployment_deleted(dep_id)
 
+    @pytest.mark.asyncio
+    async def test_spread_serve_strict_spread_pg(self, serve_instance):
+        """
+        Verifies STRICT_SPREAD PG strategy runs successfully in the Spread Scheduler.
+        """
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_SPREAD",
+        )
+        class StrictSpread:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        handle = serve.run(StrictSpread.bind(), name="strict_spread_app")
+        assert await handle.get_node_id.remote()
+        serve.delete("strict_spread_app")
+
 
 @serve.deployment
 def A():
@@ -285,13 +303,138 @@ class TestPackScheduling:
 
         serve.shutdown()
 
+    @pytest.mark.asyncio
+    async def test_e2e_serve_fallback_strategy(self, serve_instance_with_labeled_nodes):
+        """
+        Verifies that fallback strategies allow scheduling on alternative nodes when
+        primary constraints fail. Fallbacks are currently only supported in the Pack Scheduler.
+        """
+        serve_instance, _, h100_node_id = serve_instance_with_labeled_nodes
+
+        # Fallback strategy specified for Ray Actor in Serve deployment.
+        @serve.deployment(
+            ray_actor_options={
+                "label_selector": {"region": "unavailable"},
+                "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
+            }
+        )
+        class FallbackDeployment:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
+        # when support is added.
+
+        handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
+        assert await handle.get_node_id.remote() == h100_node_id
+        serve.delete("fallback_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_strict_pack_pg_label_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies STRICT_PACK strategy with placement_group_bundle_label_selector in Pack Scheduling Mode.
+        """
+        serve_instance, _, us_east_node_id = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+        )
+        class StrictPackSelector:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        handle = serve.run(StrictPackSelector.bind(), name="strict_pack_app")
+        assert await handle.get_node_id.remote() == us_east_node_id
+        serve.delete("strict_pack_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_pack_pg_forces_spread(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that using non-strict PACK PG strategy with label selectors works.
+
+        STRICT_PACK throws NotImplementedError for selectors. However, 'PACK' is considered a
+        'Non-Strict' strategy which forces the scheduler to fall back to 'Spread Mode'.
+        """
+        serve_instance, _, us_east_node_id = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+            placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+        )
+        class PackSelector:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        # If this stayed in the Pack Scheduler, it would raise NotImplementedError.
+        # Because it forces Spread Mode, it succeeds.
+        handle = serve.run(PackSelector.bind(), name="pack_selector_app")
+        assert await handle.get_node_id.remote() == us_east_node_id
+        serve.delete("pack_selector_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_multiple_bundles_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """Verifies multiple bundles with bundle_label_selector are applied correctly."""
+        serve_instance, _, us_east_node_id = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            placement_group_bundle_label_selector=[
+                {"gpu-type": "H100"},
+                {"gpu-type": "H100"},
+            ],
+        )
+        class MultiBundleSelector:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        handle = serve.run(MultiBundleSelector.bind(), name="multi_bundle_app")
+        assert await handle.get_node_id.remote() == us_east_node_id
+        serve.delete("multi_bundle_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_actor_multiple_fallbacks(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that the scheduler can iterate through a label selector and multiple fallback options.
+        """
+        serve_instance, us_west_node_id, _ = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            ray_actor_options={
+                "label_selector": {"region": "invalid-label-1"},
+                "fallback_strategy": [
+                    {"label_selector": {"region": "invalid-label-2"}},
+                    {"label_selector": {"region": "us-west"}},  # Should match
+                ],
+            }
+        )
+        class MultiFallbackActor:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        handle = serve.run(MultiFallbackActor.bind(), name="multi_fallback_app")
+        assert await handle.get_node_id.remote() == us_west_node_id
+        serve.delete("multi_fallback_app")
+
 
 @pytest.mark.asyncio
 async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
     """
     Verifies that label selectors work correctly for both Actors and Placement Groups.
     This test also verifies that label selectors are respected when scheduling with a
-    preferred node ID for resource compaction.
+    preferred node ID for resource compaction. This test verifies both the Pack and
+    Spread scheduler paths.
     """
     serve_instance, us_west_node_id, us_east_node_id = serve_instance_with_labeled_nodes
 
@@ -334,33 +477,6 @@ async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
     handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
     assert await handle_spread.get_node_id.remote() == us_east_node_id
     serve.delete("pg_spread_app")
-
-
-@pytest.mark.asyncio
-async def test_e2e_serve_fallback_strategy(serve_instance_with_labeled_nodes):
-    """
-    Verifies that fallback strategies allow scheduling on alternative nodes when
-    primary constraints fail.
-    """
-    serve_instance, _, h100_node_id = serve_instance_with_labeled_nodes
-
-    # Fallback strategy specified for Ray Actor in Serve deployment.
-    @serve.deployment(
-        ray_actor_options={
-            "label_selector": {"region": "unavailable"},
-            "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
-        }
-    )
-    class FallbackDeployment:
-        def get_node_id(self):
-            return ray.get_runtime_context().get_node_id()
-
-    # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
-    # when support is added.
-
-    handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
-    assert await handle.get_node_id.remote() == h100_node_id
-    serve.delete("fallback_app")
 
 
 if __name__ == "__main__":
