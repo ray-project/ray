@@ -258,6 +258,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             resp.resource_table.CopyFrom(
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(table=float_resources)
             )
+        elif (
+            request.type == ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES_PER_NODE
+        ):
+            with disable_client_hook():
+                resources = ray._private.state.available_resources_per_node()
+            resp.json = json.dumps(resources)
         elif request.type == ray_client_pb2.ClusterInfoType.RUNTIME_CONTEXT:
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():

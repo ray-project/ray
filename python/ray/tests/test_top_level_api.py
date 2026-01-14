@@ -30,6 +30,7 @@ def test_api_functions():
         "timeline",
         "cluster_resources",
         "available_resources",
+        "available_resources_per_node",
         "java_function",
         "java_actor_class",
         "client",

@@ -1089,6 +1089,7 @@ def available_resources():
 
 
 @DeveloperAPI
+@client_mode_hook
 def available_resources_per_node():
     """Get the current available resources of each live node.
 
