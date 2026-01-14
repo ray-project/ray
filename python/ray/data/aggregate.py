@@ -471,10 +471,12 @@ class Sum(AggregateFunction[Union[int, float], Union[int, float]]):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         super().__init__(
             alias_name if alias_name else f"sum({str(on)})",
             on=on,
@@ -529,11 +531,13 @@ class Min(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonTy
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("+inf"),
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         super().__init__(
             alias_name if alias_name else f"min({str(on)})",
             on=on,
@@ -590,11 +594,13 @@ class Max(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonTy
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("-inf"),
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         super().__init__(
             alias_name if alias_name else f"max({str(on)})",
             on=on,
@@ -647,10 +653,12 @@ class Mean(AggregateFunction[List[Union[int, float]], float]):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         super().__init__(
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
@@ -734,11 +742,13 @@ class Std(AggregateFunction[List[Union[int, float]], float]):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         ddof: int = 1,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         super().__init__(
             alias_name if alias_name else f"std({str(on)})",
             on=on,
@@ -905,11 +915,13 @@ class Quantile(AggregateFunction[List[Any], List[Any]]):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: str,
         q: float = 0.5,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
+        if on is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{on}')")
         self._q = q
 
         super().__init__(
@@ -1298,11 +1310,11 @@ def _select_column_from_batch(
         A batch of the same type containing only the specified column.
     """
     if batch_format == "pyarrow":
-        return batch.select([column])  # Returns Table with single column
+        return batch.select([column])
     elif batch_format == "pandas":
-        return batch[[column]]  # Returns DataFrame with single column
+        return batch[[column]]
     elif batch_format == "numpy":
-        return {column: batch[column]}  # Returns dict with single key
+        return {column: batch[column]}
     else:
         # For None or other formats, return as-is
         return batch
