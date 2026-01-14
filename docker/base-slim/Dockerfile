@@ -99,7 +99,7 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled_py${PYTHON_VERSION}.txt /home/ray/requirements_compiled.txt
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
