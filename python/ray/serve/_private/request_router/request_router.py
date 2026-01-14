@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
+    RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -498,6 +499,7 @@ class RequestRouter(ABC):
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
+        self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
@@ -509,6 +511,10 @@ class RequestRouter(ABC):
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
+
+        # Throttle state for router queue length gauge updates.
+        # Maps replica_id -> last update timestamp to avoid excessive metric updates.
+        self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -620,8 +626,26 @@ class RequestRouter(ABC):
             }
         )
 
-    def _update_router_queue_len_gauge(self, replica_id: ReplicaID, queue_len: int):
-        """Update the router queue length gauge for a specific replica."""
+    def _update_router_queue_len_gauge(
+        self, replica_id: ReplicaID, queue_len: int, *, force: bool = False
+    ) -> None:
+        """Update the router queue length gauge for a specific replica.
+
+        Updates are throttled to reduce metrics overhead on the hot path.
+        Set RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0 to disable throttling.
+
+        Args:
+            replica_id: The replica to update the gauge for.
+            queue_len: The current queue length.
+            force: If True, bypass throttling and always update.
+        """
+        if not force and RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S > 0:
+            curr_time = self._get_curr_time_s()
+            last_update = self._queue_len_gauge_last_update.get(replica_id, 0)
+            if curr_time - last_update < RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S:
+                return
+            self._queue_len_gauge_last_update[replica_id] = curr_time
+
         self.router_queue_len_gauge.set(
             queue_len,
             tags={"replica_id": replica_id.unique_id},
@@ -820,6 +844,10 @@ class RequestRouter(ABC):
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
+        # Clean up throttle state for removed replicas.
+        for replica_id in list(self._queue_len_gauge_last_update.keys()):
+            if replica_id not in new_replica_id_set:
+                del self._queue_len_gauge_last_update[replica_id]
         # Populate cache for new replicas
         self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
