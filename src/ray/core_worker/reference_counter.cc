@@ -232,7 +232,7 @@ void ReferenceCounter::AddOwnedObject(
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
-    bool is_reconstructable,
+    LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport) {
@@ -242,7 +242,7 @@ void ReferenceCounter::AddOwnedObject(
                                    owner_address,
                                    call_site,
                                    object_size,
-                                   is_reconstructable,
+                                   lineage_eligibility,
                                    add_local_ref,
                                    pinned_at_node_id,
                                    tensor_transport))
@@ -272,7 +272,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     owner_address,
                                     outer_it->second.call_site_,
                                     /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable_,
+                                    outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/false,
                                     std::optional<NodeID>(),
                                     /*tensor_transport=*/std::nullopt));
@@ -308,7 +308,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     owner_address,
                                     outer_it->second.call_site_,
                                     /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable_,
+                                    outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/true,
                                     std::optional<NodeID>(),
                                     /*tensor_transport=*/std::nullopt));
@@ -358,7 +358,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
-    bool is_reconstructable,
+    LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport) {
@@ -381,7 +381,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                          Reference(owner_address,
                                    call_site,
                                    object_size,
-                                   is_reconstructable,
+                                   lineage_eligibility,
                                    pinned_at_node_id,
                                    tensor_transport))
                 .first;
@@ -585,9 +585,9 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
     if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
-        ref->second.is_reconstructable_) {
-      ref->second.lineage_evicted = true;
-      ref->second.is_reconstructable_ = false;
+        ref->second.lineage_eligibility_ == LineageReconstructionEligibility::ELIGIBLE) {
+      ref->second.lineage_eligibility_ =
+          LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED;
     }
   }
 
@@ -1639,18 +1639,17 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
-                                               bool *lineage_evicted) const {
+LineageReconstructionEligibility ReferenceCounter::GetLineageReconstructionEligibility(
+    const ObjectID &object_id) const {
   if (!lineage_pinning_enabled_) {
-    return false;
+    return LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED;
   }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return false;
+    return LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND;
   }
-  *lineage_evicted = it->second.lineage_evicted;
-  return it->second.is_reconstructable_;
+  return it->second.lineage_eligibility_;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,

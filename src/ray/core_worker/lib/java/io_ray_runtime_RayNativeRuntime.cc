@@ -118,7 +118,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jobject gcsClientOptions,
                                                       jstring logDir,
                                                       jbyteArray jobConfig,
-                                                      jint startupToken,
+                                                      jbyteArray workerId,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
       [](const rpc::Address &caller_address,
@@ -304,7 +304,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
-  options.startup_token = startupToken;
+  options.worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
   options.runtime_env_hash = runtimeEnvHash;
   options.object_allocator =
       [](const ray::RayObject &object,

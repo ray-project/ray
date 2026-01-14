@@ -33,11 +33,6 @@ cdef class Config:
                 .raylet_client_connect_timeout_milliseconds())
 
     @staticmethod
-    def raylet_fetch_timeout_milliseconds():
-        return (RayConfig.instance()
-                .raylet_fetch_timeout_milliseconds())
-
-    @staticmethod
     def kill_worker_timeout_milliseconds():
         return RayConfig.instance().kill_worker_timeout_milliseconds()
 

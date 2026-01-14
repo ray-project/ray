@@ -17,7 +17,7 @@ Reading files
 
 Ray Data reads files from local disk or cloud storage in a variety of file formats.
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -157,7 +157,7 @@ Reading files from local disk
 To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
 specify paths with the ``local://`` schema. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tip::
 
@@ -190,7 +190,7 @@ To read files in cloud storage, authenticate all nodes with your cloud service p
 Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
 appropriate schema. URIs can point to buckets, folders, or objects.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -302,7 +302,7 @@ Reading files from NFS
 To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
 and specify files on the mounted filesystem. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. testcode::
     :skipif: True

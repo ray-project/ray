@@ -198,6 +198,13 @@ def job_cli_group():
     "separately from any tasks or actors that are launched by it",
 )
 @click.option(
+    "--entrypoint-label-selector",
+    required=False,
+    type=str,
+    help="a JSON-serialized dictionary mapping label keys to selector strings "
+    "describing placement constraints for the entrypoint command",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     type=bool,
@@ -221,6 +228,7 @@ def submit(
     entrypoint_num_gpus: Optional[Union[int, float]],
     entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
+    entrypoint_label_selector: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
     headers: Optional[str],
@@ -232,6 +240,24 @@ def submit(
 
     Example:
         `ray job submit -- python my_script.py --arg=val`
+
+    Args:
+        address: Job submission server address.
+        job_id: DEPRECATED. Use submission_id instead.
+        submission_id: Submission ID for the job.
+        runtime_env: Path to a runtime_env YAML file.
+        runtime_env_json: JSON-serialized runtime_env dictionary.
+        metadata_json: JSON-serialized metadata dictionary.
+        working_dir: Working directory for the job.
+        entrypoint: Entrypoint command.
+        entrypoint_num_cpus: CPU cores to reserve.
+        entrypoint_num_gpus: GPUs to reserve.
+        entrypoint_memory: Memory to reserve.
+        entrypoint_resources: JSON-serialized custom resources dict.
+        entrypoint_label_selector: JSON-serialized label selector dict.
+        no_wait: Do not wait for job completion.
+        verify: TLS verification flag or path.
+        headers: JSON-serialized headers.
     """
     if job_id:
         cli_logger.warning(
@@ -240,6 +266,13 @@ def submit(
     if entrypoint_resources is not None:
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
+        )
+    if entrypoint_label_selector is not None:
+        entrypoint_label_selector = parse_resources_json(
+            entrypoint_label_selector,
+            cli_logger,
+            cf,
+            command_arg="entrypoint-label-selector",
         )
     if metadata_json is not None:
         metadata_json = parse_metadata_json(
@@ -263,6 +296,7 @@ def submit(
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            entrypoint_label_selector=entrypoint_label_selector,
             no_wait=no_wait,
         )
 
@@ -284,6 +318,7 @@ def submit(
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_memory=entrypoint_memory,
         entrypoint_resources=entrypoint_resources,
+        entrypoint_label_selector=entrypoint_label_selector,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")

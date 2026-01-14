@@ -27,7 +27,8 @@ PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
 
 # HTTP Publisher specific configurations
 # Comma-separated list of event types that are allowed to be exposed to external HTTP services
-# Valid values: TASK_DEFINITION_EVENT, TASK_LIFECYCLE_EVENT, ACTOR_TASK_DEFINITION_EVENT
+# Valid values: TASK_DEFINITION_EVENT, TASK_LIFECYCLE_EVENT, ACTOR_TASK_DEFINITION_EVENT, etc.
+# Set to "ALL" to allow all event types.
 # The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES = (
@@ -37,7 +38,7 @@ DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES = (
     "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT,"
 )
 HTTP_EXPOSABLE_EVENT_TYPES = os.environ.get(
-    f"{env_var_prefix}_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES",
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES",
     DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES,
 )
 

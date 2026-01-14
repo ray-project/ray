@@ -223,17 +223,23 @@ def request_resources(
             selector = bundle_label_selectors[i] if bundle_label_selectors else {}
             to_request.append({"resources": bundle, "label_selector": selector})
 
-    _internal_kv_put(
-        AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
-    )
-
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
+        # For v2 autoscaler: use new format with label_selectors via GCS RPC
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
         gcs_address = internal_kv_get_gcs_client().address
         request_cluster_resources(gcs_address, to_request)
+    else:
+        # For v1 autoscaler: write old format (ResourceDict) to KV
+        # Extract resources field for backward compatibility
+        to_request_v1 = [req["resources"] for req in to_request]
+        _internal_kv_put(
+            AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+            json.dumps(to_request_v1),
+            overwrite=True,
+        )
 
 
 def create_or_update_cluster(

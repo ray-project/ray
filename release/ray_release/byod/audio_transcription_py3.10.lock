@@ -182,9 +182,8 @@ anyio==3.7.1 \
     #   jupyter-server
     #   starlette
     #   watchfiles
-anyscale==0.26.58 \
-    --hash=sha256:30d19f3a191281ddbcd22ab220ea1e58f4aedd4ced6dc62ee51abe1765d6194f \
-    --hash=sha256:cca4ef1e514623ca4723a4000614d8b0932fe104c4c76bf033a5e60e4da91d2d
+anyscale==0.26.74 \
+    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
     # via -r docker/base-extra/requirements.in
 argcomplete==3.6.3 \
     --hash=sha256:62e8ed4fd6a45864acc8235409461b72c9a28ee785a2011cc5eb78318786c89c \

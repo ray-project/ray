@@ -96,6 +96,7 @@ config = (
     .evaluation(
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
+        evaluation_config=BCConfig.overrides(explore=False),
         offline_evaluation_interval=1,
         offline_evaluation_type="eval_loss",
         num_offline_eval_runners=args.num_offline_eval_runners,

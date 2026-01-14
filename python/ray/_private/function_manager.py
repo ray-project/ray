@@ -34,6 +34,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
 )
 from ray.remote_function import RemoteFunction
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -544,6 +545,16 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+
+            # Re-inject tracing into the loaded class. This is necessary because
+            # cloudpickle doesn't preserve __signature__ attributes on module-level
+            # functions. When a class is pickled and unpickled, user-defined methods
+            # are looked up from the module, losing the __signature__ that was set by
+            # _inject_tracing_into_class during actor creation. Re-injecting tracing
+            # ensures the method signatures include _ray_trace_ctx when tracing is
+            # enabled, matching the behavior expected by _tracing_actor_method_invocation.
+            _inject_tracing_into_class(actor_class)
+
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 

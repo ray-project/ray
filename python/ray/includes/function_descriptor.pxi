@@ -326,7 +326,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         return module_name
 
     def is_actor_method(self):
-        """Wether this function descriptor is an actor method.
+        """Whether this function descriptor is an actor method.
 
         Returns:
             True if it's an actor method, False if it's a normal function.

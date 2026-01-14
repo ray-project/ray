@@ -54,18 +54,11 @@ hedron_compile_commands_setup()
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python3_9",
-    python_version = "3.9",
-    register_toolchains = False,
-)
-
-python_register_toolchains(
     name = "python3_10",
     python_version = "3.10",
     register_toolchains = False,
 )
 
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
@@ -88,7 +81,6 @@ register_toolchains("//bazel:py310_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//bazel:py39_platform",
     "//bazel:py310_platform",
 )
 

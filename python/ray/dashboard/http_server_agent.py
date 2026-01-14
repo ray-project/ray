@@ -8,10 +8,19 @@ from packaging.version import Version
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._common.network_utils import build_address, is_localhost
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardAgentRouteTable
+
+# Health check endpoints should remain public (no auth required)
+PUBLIC_EXACT_PATHS = [
+    "/api/healthz",
+    "/api/local_raylet_healthz",
+]
 
 
 class HttpServerAgent:
@@ -95,7 +104,9 @@ class HttpServerAgent:
         for c in modules:
             dashboard_optional_utils.DashboardAgentRouteTable.bind(c)
 
-        app = aiohttp.web.Application()
+        app = aiohttp.web.Application(
+            middlewares=[get_token_auth_middleware(aiohttp, PUBLIC_EXACT_PATHS)]
+        )
         app.add_routes(routes=routes.bound_routes())
 
         # Enable CORS on all routes.

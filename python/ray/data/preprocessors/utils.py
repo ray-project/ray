@@ -1,10 +1,14 @@
 import hashlib
 from collections import deque
-from typing import Any, Callable, Deque, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
 
-from ray.data import Dataset
+import ray
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.aggregate import AggregateFnV2
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @DeveloperAPI
@@ -30,11 +34,9 @@ class BaseStatSpec:
         *,
         stat_fn: Union[AggregateFnV2, Callable],
         post_process_fn: Callable = lambda x: x,
-        post_key_fn: Callable[[str], str],
     ):
         self.stat_fn = stat_fn
         self.post_process_fn = post_process_fn
-        self.post_key_fn = post_key_fn
 
 
 class AggregateStatSpec(BaseStatSpec):
@@ -45,15 +47,15 @@ class AggregateStatSpec(BaseStatSpec):
         *,
         aggregator_fn: Union[AggregateFnV2, Callable[[str], AggregateFnV2]],
         post_process_fn: Callable = lambda x: x,
-        post_key_fn: Callable[[str], str],
         column: Optional[str] = None,
+        batch_format: Optional[BatchFormat] = None,
     ):
         super().__init__(
             stat_fn=aggregator_fn,
             post_process_fn=post_process_fn,
-            post_key_fn=post_key_fn,
         )
         self.column = column
+        self.batch_format = batch_format
 
 
 class CallableStatSpec(BaseStatSpec):
@@ -69,10 +71,12 @@ class CallableStatSpec(BaseStatSpec):
         columns: List[str],
     ):
         super().__init__(
-            stat_fn=stat_fn, post_process_fn=post_process_fn, post_key_fn=post_key_fn
+            stat_fn=stat_fn,
+            post_process_fn=post_process_fn,
         )
         self.columns = columns
         self.stat_key_fn = stat_key_fn
+        self.post_key_fn = post_key_fn
 
 
 class StatComputationPlan:
@@ -96,17 +100,20 @@ class StatComputationPlan:
         *,
         aggregator_fn: Callable[[str], AggregateFnV2],
         post_process_fn: Callable = lambda x: x,
-        post_key_fn: Optional[Callable[[str], str]] = None,
         columns: List[str],
+        batch_format: Optional[BatchFormat] = None,
     ) -> None:
         """
         Registers an AggregateFnV2 factory for one or more columns.
 
         Args:
             aggregator_fn: A callable (typically a lambda or class) that accepts a column name and returns an instance of AggregateFnV2.
+                          The aggregator should set its name using alias_name parameter to control the output key.
             post_process_fn: Function to post-process the aggregated result.
-            post_key_fn: Optional key generator to use to save aggregation results after post-processing.
             columns: List of column names to aggregate.
+            batch_format: The batch format for aggregation results. If ARROW, results
+                         are kept in Arrow format for post_process_fn. Otherwise,
+                         results are converted to Python/pandas format.
         """
         for column in columns:
             agg_instance = aggregator_fn(column)
@@ -114,8 +121,8 @@ class StatComputationPlan:
                 AggregateStatSpec(
                     aggregator_fn=agg_instance,
                     post_process_fn=post_process_fn,
-                    post_key_fn=post_key_fn,
                     column=column,
+                    batch_format=batch_format,
                 )
             )
 
@@ -123,9 +130,9 @@ class StatComputationPlan:
         self,
         *,
         stat_fn: Callable[[], Any],
-        post_process_fn: Callable = lambda x: x,
         stat_key_fn: Callable[[str], str],
         post_key_fn: Optional[Callable[[str], str]] = None,
+        post_process_fn: Callable = lambda x: x,
         columns: List[str],
     ) -> None:
         """
@@ -136,10 +143,10 @@ class StatComputationPlan:
 
         Args:
             stat_fn: A zero-argument callable that returns the stat.
-            post_process_fn: Function to apply to the result.
-            stat_key_fn:
-            post_key_fn:
-            columns:
+            stat_key_fn: A callable that takes a column name and returns the key for the stat.
+            post_key_fn: Optional; a callable to post-process the key. If not provided, stat_key_fn is used.
+            post_process_fn: Function to post-process the result.
+            columns: List of column names to compute the stat for.
         """
         self._aggregators.append(
             CallableStatSpec(
@@ -151,7 +158,7 @@ class StatComputationPlan:
             )
         )
 
-    def compute(self, dataset: Dataset) -> Dict[str, Any]:
+    def compute(self, dataset: "Dataset") -> Dict[str, Any]:
         """
         Executes all registered aggregators and stat functions.
 
@@ -168,15 +175,23 @@ class StatComputationPlan:
         # Run batched aggregators (AggregateFnV2)
         aggregators = self._get_aggregate_fn_list()
         if aggregators:
-            raw_result = dataset.aggregate(*aggregators)
+            agg_ds = dataset.groupby(None).aggregate(*aggregators)
+            arrow_refs = agg_ds.to_arrow_refs()
+            if not arrow_refs:
+                raise ValueError("Aggregation returned no results")
+            arrow_table = ray.get(arrow_refs[0])
             for spec in self._get_aggregate_specs():
                 stat_key = spec.stat_fn.name
-                post_key = (
-                    spec.post_key_fn(spec.column)
-                    if spec.post_key_fn is not None
-                    else stat_key
-                )
-                stats[post_key] = spec.post_process_fn(raw_result[stat_key])
+                # Aggregation returns single row - extract the scalar value
+                # ChunkedArray[0] handles multi-chunk arrays automatically
+                agg_result = arrow_table.column(stat_key)[0]
+                # Convert to appropriate format based on batch_format
+                if spec.batch_format == BatchFormat.ARROW:
+                    # Pass Arrow scalar (e.g., ListScalar) for Arrow-optimized post-processing
+                    stats[stat_key] = spec.post_process_fn(agg_result)
+                else:
+                    # Convert to Python for pandas-style post-processing
+                    stats[stat_key] = spec.post_process_fn(agg_result.as_py())
 
         # Run sequential stat functions
         for spec in self._get_custom_stat_fn_specs():

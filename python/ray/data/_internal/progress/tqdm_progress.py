@@ -5,7 +5,11 @@ from typing import Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+from ray.data._internal.progress.base_progress import (
+    BaseExecutionProgressManager,
+    BaseProgressBar,
+    NoopSubProgressBar,
+)
 from ray.data._internal.progress.progress_bar import ProgressBar
 
 if typing.TYPE_CHECKING:
@@ -49,16 +53,16 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     # it will be truncated.
     MAX_NAME_LENGTH = 100
 
-    def __init__(self, dataset_id: str, topology: "Topology"):
-        from ray.data.context import DataContext
-
+    def __init__(
+        self,
+        dataset_id: str,
+        topology: "Topology",
+        show_op_progress: bool,
+        verbose_progress: bool,
+    ):
         self._dataset_id = dataset_id
 
-        ctx = DataContext.get_current()
-        self._enabled = ctx.enable_progress_bars
-        self._show_op_progress = self._enabled and ctx.enable_operator_progress_bars
-
-        self._sub_progress_bars: List[TqdmSubProgressBar] = []
+        self._sub_progress_bars: List[BaseProgressBar] = []
         self._op_display: Dict[uuid.UUID, TqdmSubProgressBar] = {}
 
         num_progress_bars = 0
@@ -69,7 +73,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             unit="row",
             position=num_progress_bars,
             max_name_length=self.MAX_NAME_LENGTH,
-            enabled=self._enabled,
+            enabled=True,
         )
         num_progress_bars += 1
 
@@ -78,8 +82,15 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             if isinstance(op, InputDataBuffer):
                 continue
             total = op.num_output_rows_total() or 1
-            if self._show_op_progress:
-                uid = uuid.uuid4()
+
+            contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
+            sub_progress_bar_enabled = show_op_progress and (
+                contains_sub_progress_bars or verbose_progress
+            )
+
+            # create operator progress bar
+            uid = uuid.uuid4()
+            if sub_progress_bar_enabled:
                 pg = TqdmSubProgressBar(
                     name=f"- {op.name}",
                     total=total,
@@ -91,21 +102,29 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
                 state.progress_manager_uuid = uid
                 self._op_display[uid] = pg
                 self._sub_progress_bars.append(pg)
-            if not isinstance(op, SubProgressBarMixin):
+
+            if not contains_sub_progress_bars:
                 continue
+
             sub_pg_names = op.get_sub_progress_bar_names()
             if sub_pg_names is None:
                 continue
             for name in sub_pg_names:
-                pg = TqdmSubProgressBar(
-                    name=f"  *- {name}",
-                    total=total,
-                    unit="row",
-                    position=num_progress_bars,
-                    max_name_length=self.MAX_NAME_LENGTH,
-                    enabled=self._show_op_progress,
-                )
-                num_progress_bars += 1
+                if sub_progress_bar_enabled:
+                    pg = TqdmSubProgressBar(
+                        name=f"  *- {name}",
+                        total=total,
+                        unit="row",
+                        position=num_progress_bars,
+                        max_name_length=self.MAX_NAME_LENGTH,
+                        enabled=True,
+                    )
+                    num_progress_bars += 1
+                else:
+                    pg = NoopSubProgressBar(
+                        name=f"  *- {name}",
+                        max_name_length=self.MAX_NAME_LENGTH,
+                    )
                 op.set_sub_progress_bar(name, pg)
                 self._sub_progress_bars.append(pg)
 
@@ -138,12 +157,9 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        if self._show_op_progress:
-            pg = self._op_display[opstate.progress_manager_uuid]
-
-            # progress
+        pg = self._op_display.get(opstate.progress_manager_uuid)
+        if pg is not None:
             pg.update_absolute(
                 opstate.output_row_count, opstate.op.num_output_rows_total()
             )
-            # stats
             pg.set_description(opstate.summary_str(resource_manager))

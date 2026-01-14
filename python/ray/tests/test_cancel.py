@@ -14,6 +14,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import DeferSigint
 from ray.exceptions import (
     GetTimeoutError,
+    ObjectReconstructionFailedError,
     RayTaskError,
     TaskCancelledError,
     WorkerCrashedError,
@@ -617,9 +618,9 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    # Test that the retry task fails with a TaskCancelledError because it was previously
-    # cancelled.
-    with pytest.raises(TaskCancelledError):
+    # Test that the retry task fails with a ObjectReconstructionFailedError because
+    # it was previously cancelled.
+    with pytest.raises(ObjectReconstructionFailedError):
         ray.get(consumer.remote([producer_ref]))
 
 

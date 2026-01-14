@@ -798,8 +798,10 @@ class MultiAgentEpisode:
         """Adds the given `other` MultiAgentEpisode to the right side of `self`.
 
         In order for this to work, both chunks (`self` and `other`) must fit
-        together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        together that are split through `cut`. For sequential multi-agent environments
+        using slice might cause problems from hanging observation/actions.
+        This is checked by the IDs (must be identical), the time step counters
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos of the individual agents at the concatenation boundaries.
         Also, `self.is_done` must not be True, meaning `self.is_terminated` and
         `self.is_truncated` are both False.
@@ -842,23 +844,6 @@ class MultiAgentEpisode:
             # If the agent has data in both chunks, concatenate on the single-agent
             # level, thereby making sure the hanging values (begin and end) match.
             elif agent_id in other.agent_episodes:
-                # If `other` has hanging (end) values -> Add these to `self`'s agent
-                # SingleAgentEpisode (as a new timestep) and only then concatenate.
-                # Otherwise, the concatentaion would fail b/c of missing data.
-                if agent_id in self._hanging_actions_end:
-                    assert agent_id in self._hanging_extra_model_outputs_end
-                    sa_episode.add_env_step(
-                        observation=other.agent_episodes[agent_id].get_observations(0),
-                        infos=other.agent_episodes[agent_id].get_infos(0),
-                        action=self._hanging_actions_end[agent_id],
-                        reward=(
-                            self._hanging_rewards_end[agent_id]
-                            + other._hanging_rewards_begin[agent_id]
-                        ),
-                        extra_model_outputs=(
-                            self._hanging_extra_model_outputs_end[agent_id]
-                        ),
-                    )
                 sa_episode.concat_episode(other.agent_episodes[agent_id])
                 # Override `self`'s hanging (end) values with `other`'s hanging (end).
                 if agent_id in other._hanging_actions_end:

@@ -122,5 +122,33 @@ TEST_F(MetricsAgentClientTest, ConcurrentCallbacksCallInitExporterFnOnlyOnce) {
   ASSERT_TRUE(deferred_client->exporter_initialized_.load());
 }
 
+// Test that documents the expected behavior when all retries fail.
+// This test validates that the callback receives a failure status when max retries
+// are exhausted. In minimal installs, the fix is to check port > 0 BEFORE creating
+// the client (in main.cc and core_worker_process.cc), so this code path won't be hit.
+TEST_F(MetricsAgentClientTest, ExhaustedRetriesReturnsFailure) {
+  // Create a client that always fails health checks (count_to_return_ok = INT_MAX)
+  auto always_fail_client = std::make_unique<TestableMetricsAgentClientImpl>(
+      "127.0.0.1", 8000, io_service_, *client_call_manager_, INT_MAX);
+
+  bool callback_called = false;
+  Status final_status;
+  always_fail_client->WaitForServerReadyWithRetry(
+      [&callback_called, &final_status](const Status &status) {
+        callback_called = true;
+        final_status = status;
+      },
+      0,
+      2,  // max_retry = 2, exhaust retries
+      kRetryIntervalMs);
+
+  io_service_.run_for(std::chrono::milliseconds(kRetryIntervalMs * 5));
+
+  // After exhausting retries, callback should be called with failure status.
+  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(final_status.ok());
+  ASSERT_FALSE(always_fail_client->exporter_initialized_.load());
+}
+
 }  // namespace rpc
 }  // namespace ray

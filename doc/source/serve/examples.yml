@@ -155,3 +155,13 @@ examples:
       - generative ai
     link: tutorials/asynchronous-inference/content/README
     related_technology: integrations
+  - title: Video Analysis Inference Pipeline
+    skill_level: advanced
+    use_cases:
+      - computer vision
+    link: tutorials/video-analysis/README
+    related_technology: ml applications
+  - title: Integrate with MLflow Model Registry
+    skill_level: intermediate
+    link: mlflow-serving-intig
+    related_technology: integrations

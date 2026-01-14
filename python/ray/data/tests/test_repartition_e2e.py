@@ -452,6 +452,31 @@ def test_streaming_repartition_with_partial_last_block(
     ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
 
 
+@pytest.mark.timeout(60)
+def test_streaming_repartition_empty_dataset(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test streaming repartition with empty dataset (0 rows).
+
+    This test reproduces the scenario where:
+    1. Upstream produces empty results (e.g., filter, map, etc.)
+    2. Repartition with target_num_rows_per_block is applied
+
+    The test ensures that operation completes without hanging.
+    Previously, empty bundles would get stuck in _pending_bundles.
+    """
+    # Create empty dataset via filter, then repartition
+    ds = (
+        ray.data.range(10)
+        .filter(lambda x: x["id"] > 100)
+        .repartition(target_num_rows_per_block=8)
+    )
+
+    # Verify dataset is empty
+    assert ds.count() == 0, "Expected empty dataset"
+
+
 if __name__ == "__main__":
     import sys
 

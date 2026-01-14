@@ -43,6 +43,38 @@ def test_read_sql(temp_database: str):
     assert sorted(actual_values) == sorted(expected_values)
 
 
+@pytest.mark.parametrize(
+    "sql, sql_params",
+    [
+        ("SELECT * FROM movie WHERE year >= ?", (1975,)),
+        ("SELECT * FROM movie WHERE year >= ?", [1975]),
+        ("SELECT * FROM movie WHERE year >= :year", {"year": 1975}),
+    ],
+)
+def test_read_sql_with_params(temp_database: str, sql: str, sql_params):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE movie(title, year, score)")
+    expected_values = [
+        ("Monty Python and the Holy Grail", 1975, 8.2),
+        ("And Now for Something Completely Different", 1971, 7.5),
+        ("Monty Python's Life of Brian", 1979, 8.0),
+    ]
+    connection.executemany("INSERT INTO movie VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    dataset = ray.data.read_sql(
+        sql,
+        lambda: sqlite3.connect(temp_database),
+        sql_params=sql_params,
+    )
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+
+    assert sorted(actual_values) == sorted(
+        [row for row in expected_values if row[1] >= 1975]
+    )
+
+
 def test_read_sql_with_parallelism_fallback(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE grade(name, id, score)")

@@ -150,7 +150,7 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
                                       caller_address,
                                       call_site,
                                       /*object_size*/ -1,
-                                      /*is_reconstructable=*/true,
+                                      LineageReconstructionEligibility::ELIGIBLE,
                                       /*add_local_ref=*/true);
   }
 

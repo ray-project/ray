@@ -13,7 +13,10 @@ import requests
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.profiling import chrome_tracing_dump
-from ray._private.test_utils import check_call_subprocess
+from ray._private.test_utils import (
+    check_call_subprocess,
+    wait_for_aggregator_agent_if_enabled,
+)
 from ray.util.state import (
     get_actor,
     list_actors,
@@ -21,6 +24,13 @@ from ray.util.state import (
     list_tasks,
     list_workers,
 )
+
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 
 def test_timeline(shutdown_only):
@@ -257,6 +267,10 @@ def test_actor_repr_name(shutdown_only):
 
 
 def test_experimental_import_deprecation():
+    for name in list(sys.modules):
+        if name.startswith("ray.experimental.state"):
+            sys.modules.pop(name, None)
+
     with pytest.warns(DeprecationWarning):
         from ray.experimental.state.api import list_tasks  # noqa: F401
 
@@ -282,6 +296,10 @@ def test_experimental_import_deprecation():
 
 
 def test_actor_task_with_repr_name(ray_start_with_dashboard):
+    wait_for_aggregator_agent_if_enabled(
+        ray_start_with_dashboard["gcs_address"], ray_start_with_dashboard["node_id"]
+    )
+
     @ray.remote
     class ReprActor:
         def __init__(self, x) -> None:
@@ -345,8 +363,12 @@ def test_actor_task_with_repr_name(ray_start_with_dashboard):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Release test not expected to work on non-linux."
 )
-def test_state_api_scale_smoke(shutdown_only):
-    ray.init()
+def test_state_api_scale_smoke(shutdown_only, monkeypatch):
+    address_info = ray.init()
+    wait_for_aggregator_agent_if_enabled(
+        address_info["gcs_address"], address_info["node_id"]
+    )
+    monkeypatch.setenv("RAY_ADDRESS", address_info["gcs_address"])
     release_test_file_path = (
         "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
     )

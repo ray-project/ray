@@ -132,6 +132,29 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
+    # Check resource compatibility before attempting fusion
+    # This ensures with_column respects resource boundaries like map_batches does
+    from ray.data._internal.logical.rules.operator_fusion import (
+        FuseOperators,
+        are_remote_args_compatible,
+    )
+
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible
+    if not are_remote_args_compatible(
+        upstream_project._ray_remote_args or {},
+        downstream_project._ray_remote_args or {},
+    ):
+        # Resources don't match - cannot fuse
+        return downstream_project
+
+    # Check if compute strategies are compatible
+    fused_compute = FuseOperators._fuse_compute_strategy(
+        upstream_project._compute, downstream_project._compute
+    )
+    if fused_compute is None:
+        # Compute strategies incompatible - cannot fuse
+        return downstream_project
+
     upstream_has_star: bool = upstream_project.has_star_expr()
 
     # TODO add validations that
@@ -236,6 +259,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     return Project(
         upstream_project.input_dependency,
         exprs=new_exprs,
+        compute=fused_compute,
         ray_remote_args=downstream_project._ray_remote_args,
     )
 
@@ -378,6 +402,7 @@ class ProjectionPushdown(Rule):
                 return Project(
                     projected_input_op,
                     exprs=current_project.exprs,
+                    compute=current_project._compute,
                     ray_remote_args=current_project._ray_remote_args,
                 )
 

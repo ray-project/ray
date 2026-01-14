@@ -49,8 +49,6 @@ T = TypeVar("T")
 
 # todo: remove for the '3.0.0' release.
 _wrong_names_white_list = {
-    "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    "MAX_PER_REPLICA_RETRY_COUNT",
     "REQUEST_LATENCY_BUCKETS_MS",
     "MODEL_LOAD_LATENCY_BUCKETS_MS",
     "MAX_CACHED_HANDLES",

@@ -3,6 +3,7 @@ import sys
 import time
 from typing import Optional
 
+import ray._private.worker
 from ray.data._internal.progress.base_progress import BaseProgressBar
 from ray.data._internal.progress.utils import truncate_operator_name
 from ray.experimental import tqdm_ray
@@ -47,15 +48,20 @@ class ProgressBar(BaseProgressBar):
 
         self._use_logging = False
 
+        from ray.data.context import DataContext
+
         if enabled is None:
             # When enabled is None (not explicitly set by the user),
             # check DataContext setting
-            from ray.data.context import DataContext
-
             enabled = DataContext.get_current().enable_progress_bars
 
-        # If enabled, and in non-interactive terminal, use logging instead of tqdm
-        if enabled and not sys.stdout.isatty():
+        use_ray_tqdm = DataContext.get_current().use_ray_tqdm
+
+        # If enabled and in non-interactive terminal, use logging instead of tqdm.
+        # Exception: tqdm_ray works in Ray workers by sending JSON to driver.
+        worker = ray._private.worker
+        in_ray_worker = worker.global_worker.mode == worker.WORKER_MODE
+        if enabled and not sys.stdout.isatty() and not (use_ray_tqdm and in_ray_worker):
             self._use_logging = True
             enabled = False
             if log_once("progress_bar_disabled"):
@@ -65,20 +71,17 @@ class ProgressBar(BaseProgressBar):
 
         if not enabled:
             self._bar = None
+        elif use_ray_tqdm:
+            self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
+            self._bar.set_description(self._desc)
         elif tqdm:
-            from ray.data.context import DataContext
-
-            # TODO (kyuds): rename to use_tqdm_in_worker for clarity.
-            if DataContext.get_current().use_ray_tqdm:
-                self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
-            else:
-                self._bar = tqdm.tqdm(
-                    total=total or 0,
-                    position=position,
-                    dynamic_ncols=True,
-                    unit=unit,
-                    unit_scale=True,
-                )
+            self._bar = tqdm.tqdm(
+                total=total or 0,
+                position=position,
+                dynamic_ncols=True,
+                unit=unit,
+                unit_scale=True,
+            )
             self._bar.set_description(self._desc)
         else:
             global needs_warning

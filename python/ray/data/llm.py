@@ -58,8 +58,9 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
         concurrency: The number of concurrent requests to send. Default to 1.
-            If ``concurrency`` is a ``tuple`` ``(m, n)``,
-            autoscaling strategy is used (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
@@ -313,6 +314,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             not provided, the serve deployment is expected to accept a dict as the request.
         concurrency: The number of workers for data parallelism. Default to 1. Note that this is
             not the concurrency of the underlying serve deployment.
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
 

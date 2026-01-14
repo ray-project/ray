@@ -520,7 +520,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
                               pid_t pid,
-                              const StartupToken &worker_startup_token,
                               std::function<void(Status, int)> send_reply_callback = {});
   // Register a new driver into worker pool.
   Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
@@ -701,6 +700,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
                            rpc::GetWorkerPIDsReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GetAgentPIDs` request.
+  void HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                          rpc::GetAgentPIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),

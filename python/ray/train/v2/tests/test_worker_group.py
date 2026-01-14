@@ -30,8 +30,10 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
     WorkerGroupState,
 )
-from ray.train.v2.api.config import RunConfig
+from ray.train.v2._internal.util import ObjectRefWrapper
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
+from ray.util.state import list_actors
 
 pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
@@ -159,6 +161,75 @@ def test_start_timeout(monkeypatch):
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
         wg._start()
+
+
+def test_zombie_actor_termination(ray_start_4_cpus):
+    """This test checks that RayTrainWorker actors are terminated correctly even if python garbage collection hangs on actor shutdown."""
+    NUM_WORKERS = 4
+
+    def is_process_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        else:
+            return True
+
+    class Node:
+        def __init__(self, name):
+            self.name = name
+            self.other = None
+
+        def __del__(self):
+            # Simulate hang during garbage collection
+            while True:
+                time.sleep(1)
+
+    def train_fn():
+        # Create a circular reference to delay garbage collection
+        a, b = Node("a"), Node("b")
+        a.other = b
+        b.other = a
+
+    train_fn_ref = ObjectRefWrapper(train_fn)
+
+    train_run_context = create_dummy_run_context(
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS)
+    )
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=train_fn_ref,
+        num_workers=NUM_WORKERS,
+    )
+
+    # Starts the worker group and runs the train function
+    worker_group = WorkerGroup.create(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+        callbacks=[],
+    )
+
+    train_worker_pids = [
+        actor.pid
+        for actor in list_actors()
+        if actor.class_name == RayTrainWorker.__name__ and actor.state == "ALIVE"
+    ]
+
+    assert len(train_worker_pids) == NUM_WORKERS
+
+    worker_group.shutdown()
+
+    # ray.kill is async, allow some time for the processes to terminate
+    TIMEOUT_S = 5
+    deadline = time.monotonic() + TIMEOUT_S
+    remaining = set(train_worker_pids)
+    while remaining and time.monotonic() < deadline:
+        remaining = {pid for pid in remaining if is_process_alive(pid)}
+        if remaining:
+            time.sleep(0.1)
+
+    assert not remaining
 
 
 def test_insufficient_cluster_resources_startup_failure(monkeypatch):

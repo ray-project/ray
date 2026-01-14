@@ -47,11 +47,15 @@ if TYPE_CHECKING:
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
+        DetokenizeRequest,
+        DetokenizeResponse,
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
         ScoreRequest,
         ScoreResponse,
+        TokenizeRequest,
+        TokenizeResponse,
         TranscriptionRequest,
         TranscriptionResponse,
     )
@@ -447,6 +451,52 @@ class LLMServer(LLMServerProtocol):
         return await self._run_request(
             request,
             engine_method="score",
+            batch_output_stream=False,
+            raw_request_info=raw_request_info,
+        )
+
+    async def tokenize(
+        self,
+        request: "TokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["TokenizeResponse", "ErrorResponse"], None]:
+        """Tokenize the input text.
+
+        Args:
+            request: A TokenizeRequest object (TokenizeCompletionRequest or TokenizeChatRequest).
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator over the TokenizeResponse object.
+        """
+        # NOTE: Tokenize does not need batching.
+        return await self._run_request(
+            request,
+            engine_method="tokenize",
+            batch_output_stream=False,
+            raw_request_info=raw_request_info,
+        )
+
+    async def detokenize(
+        self,
+        request: "DetokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["DetokenizeResponse", "ErrorResponse"], None]:
+        """Detokenize the input token IDs.
+
+        Args:
+            request: A DetokenizeRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator over the DetokenizeResponse object.
+        """
+        # NOTE: Detokenize does not need batching.
+        return await self._run_request(
+            request,
+            engine_method="detokenize",
             batch_output_stream=False,
             raw_request_info=raw_request_info,
         )

@@ -1,6 +1,7 @@
 import itertools
 import math
 import random
+import threading
 import time
 from typing import Any, List, Tuple
 from unittest.mock import patch
@@ -957,6 +958,80 @@ def test_streaming_train_test_split_wrong_params(
             hash_column=hash_column,
             seed=seed,
         )
+
+
+@pytest.mark.parametrize("prefetch_batches", [0, 2])
+def test_streaming_split_reports_and_clears_prefetched_bytes(
+    ray_start_regular_shared_2_cpus, prefetch_batches
+):
+    """Test streaming_split reports and clears prefetched bytes.
+
+    Verifies that:
+    1. Prefetched bytes are tracked during iteration
+    2. When StopIteration is raised in SplitCoordinator.get(), the
+       prefetched bytes are cleared to avoid stale backpressure data
+    """
+    ds = ray.data.range(20, override_num_blocks=4)
+    splits = ds.streaming_split(2, equal=True)
+
+    # Get the coordinator actor to check prefetched bytes
+    coord = splits[0]._coord_actor
+
+    results = []
+
+    def consume(split, idx):
+        count = 0
+        for batch in split.iter_batches(
+            batch_size=5, prefetch_batches=prefetch_batches
+        ):
+            count += len(batch["id"])
+        results.append((idx, count))
+
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Verify both splits consumed all data (epoch completed via StopIteration)
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Expected 20 total rows, got {total_rows}"
+
+    # Verify client prefetched bytes are cleared after epoch end
+    # (cleared when StopIteration is raised in SplitCoordinator.get())
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} has stale prefetched bytes: {bytes_val}"
+
+    # Run a second epoch to verify cleared bytes don't cause issues
+    results.clear()
+
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Second epoch should also consume all data
+    total_rows = sum(r[1] for r in results)
+    assert total_rows == 20, f"Second epoch: expected 20 rows, got {total_rows}"
+
+    # Verify prefetched bytes cleared again after second epoch
+    client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+    for split_idx, bytes_val in client_bytes.items():
+        assert (
+            bytes_val == 0
+        ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
 
 
 if __name__ == "__main__":

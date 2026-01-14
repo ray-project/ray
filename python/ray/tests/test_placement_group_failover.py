@@ -4,8 +4,7 @@ import time
 import pytest
 
 import ray
-import ray.cluster_utils
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import get_other_nodes
 from ray.util import placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -275,6 +274,49 @@ def test_gcs_restart_when_pg_committing(
     assert pg.wait()
     assert placement_group_table(pg)["state"] == "CREATED"
     ray.get([actor.ready.remote() for actor in actors])
+
+
+def test_tasks_keep_running_on_partial_placement_group(ray_start_cluster):
+    """
+    1. Start a cluster with 3 nodes, head node with 0 CPU, and 2 workers with 1 CPU + 2 CPUs
+    2. Schedule a PG with a bundle on each worker node (1 CPU + 2 CPUs).
+    2. Create 2 actors, one for each bundle.
+    3. Start a task on the 2 CPU actor.
+    4. Kill the 1 CPU node.
+    5. Assert the task on the 2 CPU actor can finish on the partial placement group without retries or restarts.
+    6. Add a 1 CPU node back and assert that the 1 CPU actor is restarted and can complete a task on the new node.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    node_to_kill = cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=2)
+    pg = ray.util.placement_group([{"CPU": 2}, {"CPU": 1}])
+    ray.get(pg.ready())
+
+    @ray.remote(scheduling_strategy=PlacementGroupSchedulingStrategy(pg))
+    class Actor:
+        def f(self, signal_actor):
+            ray.get(signal_actor.wait.remote())
+            return True
+
+    signal_actor = SignalActor.options(resources={"node:__internal_head__": 1}).remote()
+
+    actor_that_will_live = Actor.options(num_cpus=2).remote()
+    actor_to_restart = Actor.options(
+        num_cpus=1, max_restarts=1, max_task_retries=1
+    ).remote()
+    ray.get(actor_that_will_live.__ray_ready__.remote())
+    ray.get(actor_to_restart.__ray_ready__.remote())
+
+    alive_actor_task_ref = actor_that_will_live.f.remote(signal_actor)
+    cluster.remove_node(node_to_kill, allow_graceful=True)
+    ray.get(signal_actor.send.remote())
+    assert ray.get(alive_actor_task_ref)
+
+    cluster.add_node(num_cpus=1)
+    assert ray.get(actor_to_restart.f.remote(signal_actor))
 
 
 if __name__ == "__main__":
