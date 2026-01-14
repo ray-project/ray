@@ -224,6 +224,9 @@ class _ListNamespace:
             null_mask = arr.is_null() if arr.null_count else None
             sort_arr = arr
             if pyarrow.types.is_fixed_size_list(arr_type):
+                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
+                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child> for sort,
+                # then cast back to fixed_size to preserve schema.
                 child_type = arr_type.value_type
                 list_size = arr_type.list_size
                 if null_mask is not None:
@@ -281,6 +284,10 @@ class _ListNamespace:
                 counts = pyarrow.array(np.repeat(0, n_rows), type=pyarrow.int64())
                 offsets = _counts_to_offsets(counts)
             else:
+                # Example: arr = [[[1,2],[3]], [[4], None], None]
+                # inner_lists = [[1,2],[3],[4],None], all_scalars = [1,2,3,4]
+                # parent(arr)=[0,0,1,1], parent(inner)=[0,0,1,2] -> row_indices=[0,0,0,1]
+                # counts=[3,1,0] -> offsets=[0,3,4,4]
                 row_indices: pyarrow.Array = pc.take(
                     pc.list_parent_indices(arr),
                     pc.list_parent_indices(inner_lists),
