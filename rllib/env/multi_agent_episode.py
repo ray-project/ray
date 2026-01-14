@@ -2,6 +2,7 @@ import copy
 import time
 import uuid
 from collections import defaultdict
+from pprint import pprint
 from typing import (
     Any,
     Callable,
@@ -2183,8 +2184,6 @@ class MultiAgentEpisode:
                 current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count
             else:
                 current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count + 1
-        print(f"DEBUG _init_single_agent_episodes: env_t_started={self.env_t_started}, env_t={self.env_t}, _len_lookback_buffers={self._len_lookback_buffers}, num_observations={len(observations)}")
-        print(f"DEBUG _init_single_agent_episodes: {lookback_obs_count_per_agent=}, {total_obs_count_per_agent=}, {current_agent_t=}, {self.agent_t_started=}")
 
         # Step through all observations and interpret these as the (global) env steps.
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
@@ -2251,7 +2250,6 @@ class MultiAgentEpisode:
                 if agent_id not in current_agent_t:
                     current_agent_t[agent_id] = 0
                 self.env_t_to_agent_t[agent_id].append(current_agent_t[agent_id])
-                print(f"DEBUG env_t_to_agent_t: {agent_id=}, {data_idx=}, appending agent_t={current_agent_t[agent_id]}")
                 current_agent_t[agent_id] += 1
 
             # Those agents that did NOT step:
@@ -2333,8 +2331,12 @@ class MultiAgentEpisode:
             # and store it.
             self.agent_episodes[agent_id] = sa_episode
 
-        output = {agent_id: f'get={buffer.get()}, lookback={buffer.lookback}, data={buffer.data}' for agent_id, buffer in self.env_t_to_agent_t.items()}
-        print(output)
+        print("_init_single_agent_episode")
+        output = {
+            agent_id: f"get={buffer.get()}, lookback={buffer.lookback}, data={buffer.data}"
+            for agent_id, buffer in self.env_t_to_agent_t.items()
+        }
+        pprint(output)
 
     def _get(
         self,
@@ -2516,6 +2518,8 @@ class MultiAgentEpisode:
                 filter_for_skip_indices=agent_indices,
             )
             if isinstance(agent_indices, list):
+                agent_indices = [index - self.agent_t_started[agent_id] if agent_indices != self.SKIP_ENV_TS_TAG else index for index in agent_indices]
+
                 agent_values = self._get_single_agent_data_by_env_step_indices(
                     what=what,
                     agent_id=agent_id,
@@ -2528,6 +2532,10 @@ class MultiAgentEpisode:
                 if len(agent_values) > 0:
                     ret[agent_id] = agent_values
             else:
+                if agent_indices != self.SKIP_ENV_TS_TAG:
+                    agent_indices = agent_indices - self.agent_t_started[agent_id]
+
+                print(f'{agent_id}: {inf_lookback_buffer=}, {agent_indices=}')
                 agent_values = self._get_single_agent_data_by_index(
                     what=what,
                     inf_lookback_buffer=inf_lookback_buffer,
