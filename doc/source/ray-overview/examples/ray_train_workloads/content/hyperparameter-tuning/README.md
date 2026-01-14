@@ -5,14 +5,14 @@ jupyter nbconvert "05a_ray_tune_pytorch_example.ipynb" --to markdown --output "R
 -->
 
 # Hyperparameter tuning with Ray Tune and PyTorch  
-This notebook runs **hyperparameter tuning experiments** on a PyTorch CNN using **Ray Tune**, a scalable library for experiment management and search. The workload runs on the driver, but it sets the stage for the next tutorial where you’ll combine **Ray Tune with Ray Train** for distributed training.  
+This notebook runs **hyperparameter tuning experiments** on a PyTorch CNN using **Ray Tune**, a scalable library for experiment management and search. The workload runs on the driver, but it sets the stage for the next tutorial where you'll combine **Ray Tune with Ray Train** for distributed training.  
 
 ## Learning objectives  
-* How to define a **search space** for model hyperparameters using Ray Tune’s sampling APIs  
-* How to run **multiple training trials in parallel** with Ray’s orchestration  
-* How to add **checkpointing and resume** logic to your training function with `tune.get_checkpoint()`  
-* How to use **schedulers like Asynchronous Successive Halving (ASHA)** to early stop under-performing trials and speed up search  
-* How to retrieve and test the **best model checkpoint** at the end of tuning  
+* How to define a **search space** for model hyperparameters using Ray Tune's sampling APIs.  
+* How to run **multiple training trials in parallel** with Ray's orchestration.  
+* How to add **checkpointing and resume** logic to your training function with `tune.get_checkpoint()`.  
+* How to use **schedulers like Asynchronous Successive Halving (ASHA)** to early stop under-performing trials and speed up search.  
+* How to retrieve and test the **best model checkpoint** at the end of tuning.  
 
 ## What problem are you solving? (hyperparameter tuning for image classification)  
 
@@ -865,11 +865,11 @@ In this tutorial, you used **Ray Tune with PyTorch** to run hyperparameter searc
 
 You should now feel confident:  
 
-* Defining **hyperparameter search spaces** with Ray Tune’s sampling APIs  
-* Writing a **training loop with checkpointing and resume** logic  
-* Running multiple **trials in parallel with `ASHAScheduler`** to prune under-performers  
-* Retrieving the **best model checkpoint** and evaluating on a held-out test set  
-* Visualizing and analyzing **trial results** across hyperparameter configurations  
+* Defining **hyperparameter search spaces** with Ray Tune's sampling APIs.  
+* Writing a **training loop with checkpointing and resume** logic.  
+* Running multiple **trials in parallel with `ASHAScheduler`** to prune under-performers.  
+* Retrieving the **best model checkpoint** and evaluating on a held-out test set.  
+* Visualizing and analyzing **trial results** across hyperparameter configurations.  
 
 ---
 

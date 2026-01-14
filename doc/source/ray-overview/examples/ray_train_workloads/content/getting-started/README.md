@@ -29,7 +29,7 @@ Use Ray Train when you face one of the following challenges:
 |Ensure reliable training| Training jobs can fail due to hardware failures, network issues, or other unexpected events | Ray Train provides fault tolerance through checkpointing, automatic retries, and the ability to resume training from the last checkpoint |
 |Avoid significant code rewrite| You might need to fully rewrite your training loop to support distributed training | Ray Train provides a suite of integrations with the PyTorch ecosystem, Tree-based methods (XGB, LGBM), and more to minimize the amount of code changes needed |
 
-# How Distributed Data Parallel (DDP) Works  
+# How distributed data parallel (DDP) works  
 
 The preceding diagram shows the **lifecycle of a single training step** in PyTorch DistributedDataParallel (DDP) when orchestrated by Ray Train:
 
@@ -51,9 +51,9 @@ The preceding diagram shows the **lifecycle of a single training step** in PyTor
 6. **Checkpointing & Metrics**  
    By convention, only the **rank 0 worker** saves checkpoints and logs metrics to persistent storage. This avoids duplication while preserving progress and results.  
 
-With Ray Train, you don’t need to manage process groups or samplers manually—utilities like `prepare_model()` and `prepare_data_loader()` wrap these details so your code works out of the box in a distributed setting.
+With Ray Train, you don't need to manage process groups or samplers manually—utilities like `prepare_model()` and `prepare_data_loader()` wrap these details so your code works out of the box in a distributed setting.
 
-|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy">|
+|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy" alt="Diagram showing the DDP training workflow: model replication from GPU rank 0, data sharding across workers, gradient averaging during backward pass, and checkpoint saving from rank 0 to persistent storage">|
 |:--|
 |Schematic overview of DistributedDataParallel (DDP) training: (1) Ray Train replicates the model from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, Ray Train averages gradients across GPUs; (4) checkpoint and metrics from rank 0 GPU save to the persistent storage.|
 
@@ -123,7 +123,7 @@ from ray.train.torch import TorchTrainer            # Multi-GPU PyTorch trainer 
 
 ```
 
-## 02 · Download MNIST Dataset  
+## 02 · Download MNIST dataset  
 
 Next, download the **MNIST dataset** using `torchvision.datasets.MNIST`.  
 - This automatically fetches the dataset (if not already present) into a local `./data` directory.  
@@ -156,12 +156,12 @@ In this example, this tutorial stores the MNIST dataset under <code>/mnt/cluster
 Read more about available <a href="https://docs.anyscale.com/configuration/storage" target="_blank">storage</a> options.
 </div>
 
-## 03 · Visualize Sample Digits  
+## 03 · Visualize sample digits  
 
-Before training, let’s take a quick look at the dataset.  
-- Random sample of **9 images** from the MNIST training set.  
+Before training, take a quick look at the dataset.  
+- Random sample of **nine images** from the MNIST training set.  
 - Each image is a **28×28 grayscale digit**, with its ground-truth label preceding the plot.  
-- This simple visualization is a good sanity check to confirm that the dataset downloaded correctly and that labels align with the images.  
+- This visualization is a good sanity check to confirm that the dataset downloaded correctly and that labels align with the images.
 
 
 ```python
@@ -184,9 +184,9 @@ for i in range(1, cols * rows + 1):
     plt.imshow(img, cmap="gray")  # display as grayscale image
 ```
 
-## 04 · Define ResNet-18 Model for MNIST  
+## 04 · Define ResNet-18 model for MNIST  
 
-Now let’s define the **ResNet-18** architecture to use for classification.  
+Now define the **ResNet-18** architecture to use for classification.  
 
 - `torchvision.models.resnet18` is pre-configured for **3-channel RGB input** and **ImageNet classes**.  
 - Since MNIST digits are **1-channel grayscale** images with **10 output classes**, you need two adjustments:  
@@ -244,11 +244,11 @@ Ray Train is built around [four key concepts](https://docs.ray.io/en/latest/trai
 1. **Scaling config**: specifies number of workers and compute resources (CPUs or GPUs, TPUs).
 1. **Trainer**: A Python class (Ray Actor) that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
-|<img src="https://docs.ray.io/en/latest/_images/overview.png" width="60%" loading="lazy">|
+|<img src="https://docs.ray.io/en/latest/_images/overview.png" width="60%" loading="lazy" alt="High-level Ray Train architecture diagram showing the Trainer coordinating multiple Workers, each running the training function with access to scaling and run configurations">|
 |:--|
 |High-level architecture of how Ray Train|
 
-## 05 · Define the Ray Train Loop (DDP per-worker)
+## 05 · Define the Ray Train loop (DDP per-worker)
 
 This is the **per-worker training function** that Ray executes on each process/GPU. It keeps your PyTorch code intact while Ray handles **process launch, device placement, and data sharding**.
 
@@ -373,16 +373,16 @@ train_loop_config = {
 
 ```
 
-## 07 · Configure Scaling with `ScalingConfig`  
+## 07 · Configure scaling with `ScalingConfig`  
 
 The `ScalingConfig` tells Ray Train **how many workers to launch** and **what resources each worker should use**.  
 
 - **`num_workers=8`** → Run the training loop on 8 parallel workers. Each worker runs the same code on a different shard of the data.  
 - **`use_gpu=True`** → Assign one GPU per worker. If you set this to `False`, each worker would train on CPU instead.  
 
-This declarative config is what allows Ray to handle cluster orchestration for you — you don’t need to manually start processes or set CUDA devices.  
+This declarative config is what allows Ray to handle cluster orchestration for you—you don't need to manually start processes or set CUDA devices.  
 
-Later, you can pass this `scaling_config` into the `TorchTrainer` to launch distributed training.  
+Later, you can pass this `scaling_config` into the `TorchTrainer` to launch distributed training.
 
 
 ```python
@@ -406,7 +406,7 @@ Docs on <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.ScalingCo
 See docs on configuring <a href="https://docs.ray.io/en/latest/train/user-guides/using-gpus.html" target="_blank">scale and GPUs</a> for more details.
 </div>
 
-## 08 · Wrap the Model with `prepare_model()`  
+## 08 · Wrap the model with `prepare_model()`  
 
 Next, define a helper function to build and prepare the model for Ray Train.  
 
@@ -417,8 +417,7 @@ Next, define a helper function to build and prepare the model for Ray Train.
     - Wraps it in DDP or FSDP.  
     - Ensures gradients are synchronized across workers.  
 
-This means the same code works whether you’re training on **1 GPU or 100 GPUs** — no manual device placement or DDP boilerplate required.  
-
+This means the same code works whether you're training on **1 GPU or 100 GPUs**—no manual device placement or DDP boilerplate required.
 
 
 ```python
@@ -450,7 +449,7 @@ def load_model_ray_train() -> torch.nn.Module:
 
 ## 09 · Build the DataLoader with `prepare_data_loader()`  
 
-Now let’s define a helper that builds the **MNIST DataLoader** and makes it Ray Train–ready.  
+Now define a helper that builds the **MNIST DataLoader** and makes it Ray Train–ready.  
 
 - Apply standard preprocessing:  
   * `ToTensor()` → convert PIL images to PyTorch tensors  
@@ -463,7 +462,7 @@ Now let’s define a helper that builds the **MNIST DataLoader** and makes it Ra
   * Copies data from host memory to device memory as needed.  
   * Injects a PyTorch [`DistributedSampler`](https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler) when running with multiple workers, so that each worker processes a unique shard of the dataset.  
 
-This utility lets you use the **same DataLoader code** whether you’re training on one GPU or many — Ray handles the distributed sharding and device placement for you.  
+This utility lets you use the **same DataLoader code** whether you're training on one GPU or many—Ray handles the distributed sharding and device placement for you.
 
 
 ```python
@@ -498,14 +497,14 @@ def build_data_loader_ray_train(batch_size: int) -> torch.utils.data.DataLoader:
 This step isn't necessary if you are integrating your Ray Train workload with Ray Data. It's especially useful if preprocessing is CPU-heavly and user wants to run preprocessing and training of separate instances.
 </div>
 
-## 10 · Report Training Metrics  
+## 10 · Report training metrics  
 
-During training, it’s important to log metrics like loss values so you can monitor progress.  
+During training, it's important to log metrics like loss values so you can monitor progress.  
 
 This helper function prints metrics from **every worker**:  
 - Collects the current **loss** and **epoch** into a dictionary.  
 - Uses `ray.train.get_context().get_world_rank()` to identify which worker is reporting.  
-- Prints the metrics along with the worker’s rank for debugging and visibility.   
+- Prints the metrics along with the worker's rank for debugging and visibility.
 
 
 ```python
@@ -532,7 +531,7 @@ def print_metrics_ray_train(loss: torch.Tensor, epoch: int) -> None:
 
 </div>
 
-## 11 · Save Checkpoints and Report Metrics  
+## 11 · Save checkpoints and report metrics  
 
 Report intermediate metrics and checkpoints using the [`ray.train.report`](https://docs.ray.io/en/latest/train/api/doc/ray.train.report.html#ray-train-report) utility function.  
 
@@ -544,7 +543,7 @@ This helper function:
   * Log the current metrics (for example, loss, epoch).  
   * Attach a `Checkpoint` object created from the staged directory.  
 
-This way, each epoch produces both **metrics for monitoring** and a **checkpoint for recovery or inference**.  
+This way, each epoch produces both **metrics for monitoring** and a **checkpoint for recovery or inference**.
 
 
 ```python
@@ -583,21 +582,20 @@ def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[
   </ul>
 </div>
 
-## Note on the Checkpoint Lifecycle  
+## Note on the checkpoint lifecycle  
 
 The preceding diagram shows how a checkpoint moves from **local storage** (temporary directory on a worker) to **persistent cluster or cloud storage**.  
 
 Key points to remember:  
-- Since the model is identical across all workers, it’s enough to **write the checkpoint only on the rank-0 worker**.  
+- Since the model is identical across all workers, it's enough to **write the checkpoint only on the rank-0 worker**.  
   * However, you still need to call [`ray.train.report`](https://docs.ray.io/en/latest/train/api/doc/ray.train.report.html#ray-train-report) on **all workers** to keep the training loop synchronized.  
 - Ray Train expects every worker to have access to the **same persistent storage location** for writing files.  
 - For production jobs, **cloud storage** (for example, S3, GCS, Azure Blob) is the recommended target for checkpoints.  
 
 
-<img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" width=800>
+<img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" width=800 alt="Diagram showing the checkpoint lifecycle: temporary checkpoint directory on worker, upload to persistent storage, and retrieval during training resumption">
 
-
-## 12 · Save Checkpoints on Rank-0 Only  
+## 12 · Save checkpoints on rank-0 only  
 
 To avoid redundant writes, update the checkpointing function so that **only the rank-0 worker** saves the model weights.  
 
@@ -608,7 +606,7 @@ To avoid redundant writes, update the checkpointing function so that **only the 
 This pattern is the recommended best practice:  
 - Avoids unnecessary duplicate checkpoints from multiple workers.  
 - Still guarantees that metrics are reported from every worker.  
-- Ensures checkpoints are cleanly written once per epoch to persistent storage.  
+- Ensures checkpoints are cleanly written once per epoch to persistent storage.
 
 
 ```python
@@ -639,7 +637,7 @@ def save_checkpoint_and_metrics_ray_train(model: torch.nn.Module, metrics: dict[
 
 Check the guide on [saving and loading checkpoints](https://docs.ray.io/en/latest/train/user-guides/checkpoints.html) for more details and best practices.
 
-## 13 · Configure Persistent Storage with `RunConfig`  
+## 13 · Configure persistent storage with `RunConfig`  
 
 To tell Ray Train **where to store results, checkpoints, and logs**, use a [`RunConfig`](https://docs.ray.io/en/latest/train/api/doc/ray.train.RunConfig.html).  
 
@@ -648,7 +646,7 @@ To tell Ray Train **where to store results, checkpoints, and logs**, use a [`Run
   * This ensures checkpoints and metrics remain available even after the cluster shuts down.  
 - **`name`** → A human-readable name for the run (for example, `"distributed-mnist-resnet18"`). This is used to namespace output files.  
 
-Together, the `RunConfig` defines how Ray organizes and persists all artifacts from your training job.  
+Together, the `RunConfig` defines how Ray organizes and persists all artifacts from your training job.
 
 
 ```python
@@ -661,7 +659,7 @@ run_config = RunConfig(
 )
 ```
 
-## Distributed Data-Parallel Training with Ray Train  
+## Distributed data-parallel training with Ray Train  
 
 This diagram shows the same DDP workflow as before, but now with **Ray Train utilities** highlighted:  
 
@@ -679,16 +677,15 @@ This diagram shows the same DDP workflow as before, but now with **Ray Train uti
    - Centralized way to report metrics and attach checkpoints.  
    - Keeps the training loop synchronized across all workers, even if only rank-0 saves the actual checkpoint.  
 
-By combining these helpers, Ray Train takes care of the **data sharding, model replication, gradient synchronization, and checkpoint lifecycle** — letting you keep your training loop clean and close to standard PyTorch.  
+By combining these helpers, Ray Train takes care of the **data sharding, model replication, gradient synchronization, and checkpoint lifecycle**—letting you keep your training loop clean and close to standard PyTorch.
 
-
-|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_annotated_v5.png" width="70%" loading="lazy">|
+|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_annotated_v5.png" width="70%" loading="lazy" alt="Annotated DDP training diagram highlighting Ray Train utilities: prepare_data_loader for data sharding, prepare_model for DDP wrapping, and ray.train.report for metrics and checkpoint synchronization">|
 |:--|
 ||
 
 ## 14 · Create the `TorchTrainer`  
 
-Now, bring everything together with a [`TorchTrainer`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html).  
+Now bring everything together with a [`TorchTrainer`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html).  
 
 The `TorchTrainer` is the high-level Ray Train class that:  
 - Launches the per-worker training loop (`train_loop_ray_train`) across the cluster.  
@@ -696,7 +693,7 @@ The `TorchTrainer` is the high-level Ray Train class that:
 - Uses `run_config` to decide where results and checkpoints are stored.  
 - Passes `train_loop_config` (hyperparameters like `num_epochs` and `global_batch_size`) into the training loop.  
 
-This object encapsulates the **distributed orchestration**, so you can start training with a simple call to `trainer.fit()`.  
+This object encapsulates the **distributed orchestration**, so you can start training with a call to `trainer.fit()`.
 
 
 ```python
@@ -710,18 +707,18 @@ trainer = TorchTrainer(
 )
 ```
 
-## 15 · Launch Training with `trainer.fit()`  
+## 15 · Launch training with `trainer.fit()`  
 
 Calling `trainer.fit()` starts the distributed training job and blocks until it completes.  
 
-When the job launches, you’ll see logs that confirm:  
+When the job launches, you'll see logs that confirm:  
 - **Process group setup** → Ray initializes a distributed worker group and assigns ranks (for example, `world_rank=0` and `world_rank=1`).  
 - **Worker placement** → Each worker is launched on a specific node and device. The logs show IP addresses, process IDs, and rank assignments.  
 - **Model preparation** → Each worker moves the model to its GPU (`cuda:0`) and wraps it in **DistributedDataParallel (DDP)**.  
 
-These logs are a quick sanity check that Ray Train is correctly orchestrating multi-GPU training across your cluster.  
+These logs are a quick sanity check that Ray Train is correctly orchestrating multi-GPU training across your cluster.
 
-|<img src="https://assets-training.s3.us-west-2.amazonaws.com/ray-intro/ray-train-intro-logs.png" width="80%" loading="lazy">|
+|<img src="https://assets-training.s3.us-west-2.amazonaws.com/ray-intro/ray-train-intro-logs.png" width="80%" loading="lazy" alt="Screenshot of Ray Train logs showing process group initialization, worker placement with IP addresses and ranks, and model preparation on GPUs">|
 |:--|
 ||
 
@@ -736,7 +733,7 @@ These logs are a quick sanity check that Ray Train is correctly orchestrating mu
 result = trainer.fit()
 ```
 
-## 16 · Inspect the Training Results  
+## 16 · Inspect the training results  
 
 When `trainer.fit()` finishes, it returns a [`Result`](https://docs.ray.io/en/latest/train/api/doc/ray.train.Result.html) object.  
 
@@ -751,7 +748,7 @@ In the preceding output, you can see:
 - The location where checkpoints are stored (`/mnt/cluster_storage/training/distributed-mnist-resnet18/...`).  
 - A list of best checkpoints with their corresponding metrics.  
 
-This makes it easy to both **analyze training performance** and **restore the trained model** later for inference.  
+This makes it easy to both **analyze training performance** and **restore the trained model** later for inference.
 
 
 ```python
@@ -760,7 +757,7 @@ This makes it easy to both **analyze training performance** and **restore the tr
 result  # contains metrics, checkpoints, and run history
 ```
 
-## 17 · View Metrics as a DataFrame  
+## 17 · View metrics as a DataFrame  
 
 The `Result` object also includes a `metrics_dataframe`, which stores the full history of metrics reported during training.  
 
@@ -768,7 +765,7 @@ The `Result` object also includes a `metrics_dataframe`, which stores the full h
 - The columns show the metrics you logged in the training loop (for example, `loss`, `epoch`).  
 - This makes it easy to plot learning curves or further analyze training progress.  
 
-In the example below, you can see the training loss steadily decreasing across two epochs.  
+In the example below, you can see the training loss steadily decreasing across two epochs.
 
 
 ```python
@@ -786,7 +783,7 @@ result.metrics_dataframe
   </p>
 </div>
 
-## 18 · Load a Checkpoint for Inference  
+## 18 · Load a checkpoint for inference  
 
 After training, you can reload the model and use it for predictions.  
 Define a **Ray actor** (`ModelWorker`) that loads the checkpointed ResNet-18 onto a GPU and serves inference requests.  
@@ -803,7 +800,7 @@ Define a **Ray actor** (`ModelWorker`) that loads the checkpointed ResNet-18 ont
   * Returns the predicted class indices as a Python list.  
 
 Finally, launch the actor with `ModelWorker.remote(result.checkpoint)`.  
-This spawns a dedicated process with **1 GPU** attached that can serve predictions using the trained model.  
+This spawns a dedicated process with **1 GPU** attached that can serve predictions using the trained model.
 
 
 ```python
@@ -845,7 +842,7 @@ class ModelWorker:
 worker = ModelWorker.remote(result.checkpoint)
 ```
 
-## 19 · Run Inference and Visualize Predictions  
+## 19 · Run inference and visualize predictions  
 
 With the `ModelWorker` actor running on GPU, you can now generate predictions on random samples from the MNIST dataset and plot them.  
 
@@ -864,7 +861,7 @@ Steps in this cell:
    - Display a 3×3 grid of random MNIST samples.  
    - Each subplot shows the **true label** and the **predicted label** from the trained ResNet-18.  
 
-This demonstrates a simple but practical workflow: **CPU-based preprocessing + GPU-based inference in a Ray actor**.  
+This demonstrates a practical workflow: **CPU-based preprocessing + GPU-based inference in a Ray actor**.
 
 
 ```python
@@ -908,14 +905,14 @@ plt.tight_layout()
 plt.show()
 ```
 
-## 20 · Clean Up the Ray Actor  
+## 20 · Clean up the Ray actor  
 
-Once you’re done running inference, it’s a good practice to free up resources:  
+Once you're done running inference, it's a good practice to free up resources:  
 
 - **`ray.kill(worker, no_restart=True)`** → stops the `ModelWorker` actor and releases its GPU.  
-- **`del worker` + `gc.collect()`** → drop local references so Python’s garbage collector can clean up.  
+- **`del worker` + `gc.collect()`** → drop local references so Python's garbage collector can clean up.  
 
-This ensures the GPU is no longer pinned by the actor and becomes available for other jobs.  
+This ensures the GPU is no longer pinned by the actor and becomes available for other jobs.
 
 
 ```python
@@ -938,17 +935,17 @@ gc.collect()
 
 
 # 02 · Integrating Ray Train with Ray Data  
-In this module you’ll extend distributed training with **Ray Train** by adding **Ray Data** to the pipeline. Instead of relying on a local PyTorch DataLoader, you’ll stream batches directly from a distributed **Ray Dataset**, enabling scalable preprocessing and just-in-time data loading across the cluster.  
+In this module you'll extend distributed training with **Ray Train** by adding **Ray Data** to the pipeline. Instead of relying on a local PyTorch DataLoader, you'll stream batches directly from a distributed **Ray Dataset**, enabling scalable preprocessing and just-in-time data loading across the cluster.  
 
-## What you’ll learn & take away  
-* When to integrate **Ray Data** with Ray Train — for example, for CPU-heavy preprocessing, online augmentations, or multi-format data ingestion  
-* How to replace `DataLoader` with **`iter_torch_batches()`** to stream batches into your training loop  
-* How to shard, shuffle, and preprocess data in parallel across the cluster before feeding it into GPUs  
-* How to define a **training loop** that consumes Ray Dataset shards instead of DataLoader tuples  
-* How to prepare datasets (For example, Parquet format) so they can be efficiently read and transformed with Ray Data  
-* How to pass Ray Datasets into the `TorchTrainer` with the `datasets` parameter  
+## What you'll learn and take away  
+* When to integrate **Ray Data** with Ray Train—for example, for CPU-heavy preprocessing, online augmentations, or multi-format data ingestion.  
+* How to replace `DataLoader` with **`iter_torch_batches()`** to stream batches into your training loop.  
+* How to shard, shuffle, and preprocess data in parallel across the cluster before feeding it into GPUs.  
+* How to define a **training loop** that consumes Ray Dataset shards instead of DataLoader tuples.  
+* How to prepare datasets (for example, Parquet format) so they can be efficiently read and transformed with Ray Data.  
+* How to pass Ray Datasets into the `TorchTrainer` with the `datasets` parameter.  
 
-> With Ray Data, you can scale preprocessing and training independently — CPUs handle input pipelines, GPUs focus on training — ensuring **higher utilization and throughput** in your distributed workloads.  
+> With Ray Data, you can scale preprocessing and training independently—CPUs handle input pipelines, GPUs focus on training—ensuring **higher utilization and throughput** in your distributed workloads.  
 
 Note that the code blocks for this module depends on the previous module, **Introduction to Ray Train**.
 
@@ -961,7 +958,7 @@ Use both Ray Train and Ray Data when you face one of the following challenges:
 | Need to improve hardware utilization | Training and data processing need to be scaled independently to keep GPUs fully utilized, especially when preprocessing is CPU-intensive. | Ray Data can distribute data processing across multiple CPU nodes, while Ray Train runs the training loop on GPUs. |
 | Need a consistent interface for loading data | The training process may need to load data from various sources, such as Parquet, CSV, or lakehouses. | Ray Data provides a consistent interface for loading, shuffling, sharding, and batching data for training loops. |
 
-## 01 · Define Training Loop with Ray Data  
+## 01 · Define training loop with Ray Data  
 
 Reimplement the training loop, but this time using **Ray Data** instead of a PyTorch `DataLoader`.  
 
@@ -972,7 +969,7 @@ Key differences from the previous version:
 
 The rest of the loop (forward pass, loss computation, backward pass, optimizer step, metric logging, and checkpointing) stays the same.  
 
-This pattern shows how seamlessly **Ray Data integrates with Ray Train**, replacing `DataLoader` while keeping the training logic identical.  
+This pattern shows how seamlessly **Ray Data integrates with Ray Train**, replacing `DataLoader` while keeping the training logic identical.
 
 
 ```python
@@ -1039,7 +1036,7 @@ def build_data_loader_ray_train_ray_data(batch_size: int, prefetch_batches: int 
     return data_loader
 ```
 
-## 03 · Prepare Dataset for Ray Data  
+## 03 · Prepare dataset for Ray Data  
 
 Ray Data works best with data in **tabular formats** such as Parquet.  
 In this step:  
@@ -1049,7 +1046,7 @@ In this step:
   * `"label"` → digit class (0–9)  
 - Write the DataFrame to disk in **Parquet format** under `/mnt/cluster_storage/`.  
 
-Parquet is efficient for both reading and distributed processing, making it a good fit for Ray Data pipelines.  
+Parquet is efficient for both reading and distributed processing, making it a good fit for Ray Data pipelines.
 
 
 ```python
@@ -1065,7 +1062,7 @@ df = pd.DataFrame({
 df.to_parquet("/mnt/cluster_storage/MNIST.parquet")
 ```
 
-## 04 · Load Dataset into Ray Data  
+## 04 · Load dataset into Ray Data  
 
 Now that the training data is stored as Parquet, you can load it back into a **Ray Dataset**:  
 
@@ -1073,8 +1070,7 @@ Now that the training data is stored as Parquet, you can load it back into a **R
 - Each row has two columns: `"image"` (raw pixel array) and `"label"` (digit class).  
 - The dataset is automatically **sharded across the Ray cluster**, so multiple workers can read and process it in parallel.  
 
-This Ray Dataset can be passed to the `TorchTrainer` for distributed training.  
-
+This Ray Dataset can be passed to the `TorchTrainer` for distributed training.
 
 
 ```python
@@ -1085,7 +1081,7 @@ train_ds = ray.data.read_parquet("/mnt/cluster_storage/MNIST.parquet")
 
 ```
 
-## 05 · Define Image Transformation  
+## 05 · Define image transformation  
 
 To make the dataset usable by PyTorch, preprocess the raw image arrays with the same steps that PyTorch data loader does.  
 
@@ -1096,8 +1092,7 @@ To make the dataset usable by PyTorch, preprocess the raw image arrays with the 
     - `Normalize((0.5,), (0.5,))` → scales pixel values to the range [-1, 1].  
   * Replaces the `"image"` entry in the row with the transformed tensor.  
 
-This function is applied in parallel across the Ray Dataset.  
-
+This function is applied in parallel across the Ray Dataset.
 
 
 ```python
@@ -1126,7 +1121,7 @@ The data is passed to training workers through the ray object store (a distribut
 
 <div>
 
-## 06 · Apply Transformations with Ray Data  
+## 06 · Apply transformations with Ray Data  
 
 Apply the preprocessing function to the dataset using `map()`:  
 
@@ -1136,7 +1131,7 @@ Apply the preprocessing function to the dataset using `map()`:
   * `"image"` → normalized PyTorch tensors  
   * `"label"` → unchanged integer labels  
 
-This makes the dataset ready to be streamed into the training loop.  
+This makes the dataset ready to be streamed into the training loop.
 
 
 ```python
@@ -1180,7 +1175,7 @@ trainer = TorchTrainer(
 )
 ```
 
-## 08 · Launch Training with Ray Data  
+## 08 · Launch training with Ray Data  
 
 Finally, call `trainer.fit()` to start the distributed training job.  
 
@@ -1190,7 +1185,7 @@ Finally, call `trainer.fit()` to start the distributed training job.
   * Run the training loop (`train_loop_ray_train_ray_data`) on every worker in parallel.  
   * Report metrics and save checkpoints to the configured storage path.  
 
-With this call, you now have a fully **end-to-end distributed pipeline** where **Ray Data handles ingestion + preprocessing** and **Ray Train handles multi-GPU training**.  
+With this call, you now have a fully **end-to-end distributed pipeline** where **Ray Data handles ingestion + preprocessing** and **Ray Train handles multi-GPU training**.
 
 
 ```python
@@ -1202,26 +1197,24 @@ With this call, you now have a fully **end-to-end distributed pipeline** where *
 trainer.fit()
 ```
 
-## End of Module 02 · Integrating Ray Train with Ray Data  
+## End of module 02 · Integrating Ray Train with Ray Data
 
+# 03 · Fault tolerance in Ray Train  
+In this module you'll learn how **Ray Train** handles failures and how to make your training jobs **resilient** with checkpointing and recovery. You'll see both **automatic retries** and **manual restoration**, and how to modify the training loop so it can safely resume from the latest checkpoint.  
 
-# 03 · Fault Tolerance in Ray Train  
-In this module you’ll learn how **Ray Train** handles failures and how to make your training jobs **resilient** with checkpointing and recovery. You’ll see both **automatic retries** and **manual restoration**, and how to modify the training loop so it can safely resume from the latest checkpoint.  
+## What you'll learn and take away  
+* How Ray Train uses **automatic retries** to restart failed workers without losing progress.  
+* How to modify the training loop with **`get_checkpoint()`** to enable checkpoint loading.  
+* How to save additional state (for example, optimizer and epoch) alongside the model for full recovery.  
+* How to configure **`FailureConfig`** to set retry behavior.  
+* How to perform a **manual restoration** if retries are exhausted, resuming training from the last checkpoint.  
+* Why checkpointing to **persistent storage** is essential for reliable recovery.  
 
-## What you’ll learn & take away  
-* How Ray Train uses **automatic retries** to restart failed workers without losing progress  
-* How to modify the training loop with **`get_checkpoint()`** to enable checkpoint loading  
-* How to save additional state (for example, optimizer and epoch) alongside the model for full recovery  
-* How to configure **`FailureConfig`** to set retry behavior  
-* How to perform a **manual restoration** if retries are exhausted, resuming training from the last checkpoint  
-* Why checkpointing to **persistent storage** is essential for reliable recovery  
+> With fault tolerance enabled, you can run long, large-scale training jobs confidently—knowing they can recover from failures without starting over.  
 
-> With fault tolerance enabled, you can run long, large-scale training jobs confidently — knowing they can recover from failures without starting over.  
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/stable-diffusion/diagrams/fault_tolerant_cropped_v2.png" width=800 alt="Diagram showing Ray Train fault tolerance: automatic worker restart after failure, checkpoint restoration from persistent storage, and training resumption from the last saved epoch">
 
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/stable-diffusion/diagrams/fault_tolerant_cropped_v2.png" width=800>
-
-
-## 01 · Modify Training Loop to Enable Checkpoint Loading  
+## 01 · Modify training loop to enable checkpoint loading  
 
 To support fault tolerance, extend the training loop so it can **resume from a previously saved checkpoint**.  
 
@@ -1233,7 +1226,7 @@ Key additions:
   * The **last completed epoch** (`extra_state.pt`)  
 - Update `start_epoch` so training resumes from the correct place.  
 
-The rest of the loop (forward pass, backward pass, optimizer step, and metrics reporting) is the same, except it now starts from `start_epoch` instead of 0.  
+The rest of the loop (forward pass, backward pass, optimizer step, and metrics reporting) is the same, except it now starts from `start_epoch` instead of 0.
 
 
 ```python
@@ -1291,7 +1284,7 @@ def train_loop_ray_train_with_checkpoint_loading(config: dict):
         )
 ```
 
-## 02 · Save Full Checkpoint with Extra State  
+## 02 · Save full checkpoint with extra state  
 
 To support fault-tolerant recovery, extend checkpoint saving to include not just the model, but also the **optimizer state** and the **current epoch**.  
 
@@ -1301,7 +1294,7 @@ To support fault-tolerant recovery, extend checkpoint saving to include not just
 
 Only the **rank-0 worker** writes the checkpoint to avoid duplication, but all workers still call `ray.train.report()` to keep the loop synchronized.  
 
-This ensures that if training is interrupted, Ray Train can restore **model weights, optimizer progress, and the correct epoch** before continuing.  
+This ensures that if training is interrupted, Ray Train can restore **model weights, optimizer progress, and the correct epoch** before continuing.
 
 
 ```python
@@ -1341,18 +1334,18 @@ def save_checkpoint_and_metrics_ray_train_with_extra_state(
             )    
 ```
 
-## 03 · Configure Automatic Retries with `FailureConfig`  
+## 03 · Configure automatic retries with `FailureConfig`  
 
 Now that the training loop can load from checkpoints, enable **automatic retries** in case of worker or node failures.  
 
-- **`FailureConfig(max_failures=3)`** → allows the job to retry up to 3 times before giving up.  
+- **`FailureConfig(max_failures=3)`** → allows the job to retry up to three times before giving up.  
 - Pass this `failure_config` into `RunConfig` so Ray Train knows how to handle failures.  
 - When a failure happens, Ray automatically:  
   1. Restart the failed workers.  
   2. Reload the latest checkpoint.  
   3. Resume training from the last saved epoch.  
 
-This setup makes training jobs resilient to transient hardware or cluster issues without requiring manual intervention.  
+This setup makes training jobs resilient to transient hardware or cluster issues without requiring manual intervention.
 
 
 ```python
@@ -1379,7 +1372,7 @@ trainer = TorchTrainer(
 )
 ```
 
-## 04 · Launch Fault-Tolerant Training  
+## 04 · Launch fault-tolerant training  
 
 Finally, call `trainer.fit()` to start the training job.  
 
@@ -1388,7 +1381,7 @@ With the **fault-tolerant loop** and **`FailureConfig`** in place, Ray Train can
 - If a failure occurs (for example, worker crash, node preemption), automatically restart workers.  
 - Reload the latest checkpoint and continue training without losing progress.  
 
-This makes your training job robust against transient infrastructure failures.  
+This makes your training job robust against transient infrastructure failures.
 
 
 ```python
@@ -1399,7 +1392,7 @@ This makes your training job robust against transient infrastructure failures.
 trainer.fit()
 ```
 
-## 05 · Manual Restoration from Checkpoints  
+## 05 · Manual restoration from checkpoints  
 
 If the maximum number of retries is reached, you can still **manually restore training** by creating a new `TorchTrainer` with the same configuration:  
 
@@ -1407,7 +1400,7 @@ If the maximum number of retries is reached, you can still **manually restore tr
 - Provide the same `run_config` (name, storage path, and failure config).  
 - Pass in the same dataset and scaling configuration.  
 
-Ray Train detects the latest checkpoint in the specified `storage_path` and resume training from that point.  
+Ray Train detects the latest checkpoint in the specified `storage_path` and resume training from that point.
 
 
 ```python
@@ -1429,13 +1422,13 @@ restored_trainer = TorchTrainer(
 )
 ```
 
-## 06 · Resume Training from the Last Checkpoint  
+## 06 · Resume training from the last checkpoint  
 
 Calling `restored_trainer.fit()` continues training from the most recent checkpoint found in the specified storage path.  
 
 - If all epochs are already completed in the previous run, the trainer terminates immediately.  
 - If training is interrupted mid-run, it resumes from the saved epoch, restoring both the **model** and **optimizer** state.  
-- The returned `Result` object confirms that training picked up correctly and contains metrics, checkpoints, and logs.  
+- The returned `Result` object confirms that training picked up correctly and contains metrics, checkpoints, and logs.
 
 
 ```python
@@ -1449,7 +1442,7 @@ result = restored_trainer.fit()
 result
 ```
 
-## 07 · Clean Up Cluster Storage  
+## 07 · Clean up cluster storage  
 
 Finally, remove any tutorial artifacts from **persistent cluster storage**:  
 
@@ -1458,7 +1451,7 @@ Finally, remove any tutorial artifacts from **persistent cluster storage**:
 - Deletes the **Parquet dataset** used for Ray Data (`/mnt/cluster_storage/MNIST.parquet`).  
 
 This keeps your shared storage clean and avoids leftover data or files from occupying space.  
-Run this only when you’re sure you no longer need the data, checkpoints, or Parquet files.  
+Run this only when you're sure you no longer need the data, checkpoints, or Parquet files.
 
 
 ```python
@@ -1483,33 +1476,33 @@ for path in paths_to_delete:
         print(f"Not found: {path}")
 ```
 
-# Wrapping Up & Next Steps  
+# Wrapping up and next steps  
 
-You completed a full, production-style workflow with **Ray Train on Anyscale**, then extended it with **Ray Data**, and finally added **fault tolerance**. Here’s what you accomplished across the three modules:
+You completed a full, production-style workflow with **Ray Train on Anyscale**, then extended it with **Ray Data**, and finally added **fault tolerance**. Here's what you accomplished across the three modules:
 
 ---
 
 ## Introduction to Ray Train  
-- Scaled PyTorch DDP with **`TorchTrainer`** using **`ScalingConfig`** and **`RunConfig`**  
-- Wrapped code for multi-GPU with **`prepare_model()`** and **`prepare_data_loader()`**  
-- Reported **metrics** and saved **checkpoints** with `ray.train.report(...)` (rank-0 checkpointing best practice)  
-- Inspected results from the **`Result`** object and served **GPU inference** with a Ray actor  
+- Scaled PyTorch DDP with **`TorchTrainer`** using **`ScalingConfig`** and **`RunConfig`**.  
+- Wrapped code for multi-GPU with **`prepare_model()`** and **`prepare_data_loader()`**.  
+- Reported **metrics** and saved **checkpoints** with `ray.train.report(...)` (rank-0 checkpointing best practice).  
+- Inspected results from the **`Result`** object and served **GPU inference** with a Ray actor.  
 
 ---
 
 ## Module 02 · Integrating Ray Train with Ray Data  
-- Prepared MNIST as **Parquet** and loaded it as a **Ray Dataset**  
-- Streamed batches with **`iter_torch_batches()`** and consumed dict batches in the training loop  
-- Passed datasets to the trainer with **`datasets={"train": ...}`**  
-- Decoupled CPU preprocessing from GPU training for **better utilization and throughput**  
+- Prepared MNIST as **Parquet** and loaded it as a **Ray Dataset**.  
+- Streamed batches with **`iter_torch_batches()`** and consumed dict batches in the training loop.  
+- Passed datasets to the trainer with **`datasets={"train": ...}`**.  
+- Decoupled CPU preprocessing from GPU training for **better utilization and throughput**.  
 
 ---
 
-## Module 03 · Fault Tolerance in Ray Train  
-- Enabled resume-from-checkpoint using **`ray.train.get_checkpoint()`**  
-- Saved full state (model, **optimizer**, **epoch**) for robust restoration  
-- Configured **`FailureConfig(max_failures=...)`** for automatic retries  
-- Performed **manual restoration** by re-creating a trainer with the same `RunConfig`  
+## Module 03 · Fault tolerance in Ray Train  
+- Enabled resume-from-checkpoint using **`ray.train.get_checkpoint()`**.  
+- Saved full state (model, **optimizer**, **epoch**) for robust restoration.  
+- Configured **`FailureConfig(max_failures=...)`** for automatic retries.  
+- Performed **manual restoration** by re-creating a trainer with the same `RunConfig`.  
 
 ---
 
@@ -1522,11 +1515,11 @@ You completed a full, production-style workflow with **Ray Train on Anyscale**, 
 
 ---
 
-## Next Tutorials in the Course  
-In the next tutorials, you’ll find **end-to-end workload examples** for using Ray Train on Anyscale (for example, recommendation systems, vision, NLP, generative models).  
+## Next tutorials in the course  
+In the next tutorials, you'll find **end-to-end workload examples** for using Ray Train on Anyscale (for example, recommendation systems, vision, NLP, generative models).  
 
-You only need to pick **one** of these workloads to work through in the course — but feel free to explore more.  
+You only need to pick **one** of these workloads to work through in the course—but feel free to explore more.  
 
 ---
 
-> With these patterns—**distributed training**, **scalable data ingestion**, and **resilient recovery**—you’re ready to run larger, longer, and more reliable training jobs on Anyscale.  
+> With these patterns—**distributed training**, **scalable data ingestion**, and **resilient recovery**—you're ready to run larger, longer, and more reliable training jobs on Anyscale.
