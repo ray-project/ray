@@ -4,9 +4,10 @@ import logging
 import os
 import shutil
 import sys
+import tarfile
 import time
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
@@ -51,6 +52,14 @@ RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
 # The name of the hidden top-level directory that appears when files are
 # zipped on MacOS.
 MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
+_WORKING_DIR_SUPPORTED_ARCHIVE_EXTENSIONS = (
+    ".zip",
+    ".tar",
+    ".tar.gz",
+    ".tgz",
+    ".tar.zst",
+    ".tzst",
+)
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -277,15 +286,30 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # for more information.
             package_name = uri.path.split("/")[-1]
         else:
-            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+            raw_package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+            extension = ""
+            for ext in [
+                ".tar.zst",
+                ".tar.gz",
+                ".tar",
+                ".tgz",
+                ".tzst",
+                ".zip",
+                ".jar",
+            ]:
+                if raw_package_name.endswith(ext):
+                    extension = ext
+                    raw_package_name = raw_package_name[: -len(ext)]
+                    break
 
+            package_name = raw_package_name
             disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
-            # Remove all periods except the last, which is part of the
-            # file extension
-            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            # Remove all periods from base; extensions are added back below.
+            package_name = package_name.replace(".", "_")
+            package_name += extension
     else:
         package_name = uri.netloc
     return (protocol, package_name)
@@ -316,6 +340,41 @@ def is_jar_uri(uri: str) -> bool:
         return False
 
     return Path(path).suffix == ".jar"
+
+
+def _get_package_extension(path: Path) -> str:
+    suffixes = path.suffixes
+    if not suffixes:
+        return ""
+    if suffixes[-1] in [".whl", ".zip", ".jar", ".tgz", ".tzst", ".tar"]:
+        return suffixes[-1]
+    if len(suffixes) >= 2 and suffixes[-2:] == [".tar", ".gz"]:
+        return ".tar.gz"
+    if len(suffixes) >= 2 and suffixes[-2:] == [".tar", ".zst"]:
+        return ".tar.zst"
+    return suffixes[-1]
+
+
+def _is_tar_extension(extension: str) -> bool:
+    return extension in {
+        ".tar",
+        ".tar.gz",
+        ".tgz",
+        ".tar.zst",
+        ".tzst",
+    }
+
+
+def is_tar_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+    return _is_tar_extension(_get_package_extension(Path(path)))
+
+
+def is_supported_working_dir_package(path: Path) -> bool:
+    return _get_package_extension(path) in _WORKING_DIR_SUPPORTED_ARCHIVE_EXTENSIONS
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -562,8 +621,13 @@ def get_uri_for_package(package: Path) -> str:
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
-        return "{protocol}://{pkg_name}.zip".format(
-            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        extension = _get_package_extension(package)
+        if extension not in [".zip", ".jar"] and not _is_tar_extension(extension):
+            extension = ".zip"
+        return "{protocol}://{pkg_name}{extension}".format(
+            protocol=Protocol.GCS.value,
+            pkg_name=RAY_PKG_PREFIX + hash_val,
+            extension=extension,
         )
 
 
@@ -871,6 +935,14 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
+                elif is_tar_uri(pkg_uri):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_archive=True,
+                        logger=logger,
+                    )
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
@@ -882,6 +954,14 @@ async def download_and_unpack_package(
                         target_dir=local_dir,
                         remove_top_level_directory=True,
                         unlink_zip=True,
+                        logger=logger,
+                    )
+                elif _is_tar_extension(_get_package_extension(pkg_file)):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_archive=True,
                         logger=logger,
                     )
                 elif pkg_file.suffix == ".whl":
@@ -1071,6 +1151,128 @@ def unzip_package(
             remove_dir_from_filepaths(extended_target_dir, top_level_directory)
 
     if unlink_zip:
+        Path(package_path).unlink()
+
+
+def _normalize_tar_member_name(name: str) -> str:
+    return name[2:] if name.startswith("./") else name
+
+
+def get_top_level_dir_from_tar(package_path: str):
+    """
+    If compressed tar package at package_path contains a single top-level
+    directory, returns the name of the top-level directory. Otherwise,
+    returns None.
+    """
+    with tarfile.open(package_path, "r:*") as tar:
+        top_level_directory = None
+        for member in tar.getmembers():
+            name = _normalize_tar_member_name(member.name)
+            if not name or name == ".":
+                continue
+            parts = name.split("/", 1)
+            if len(parts) == 1:
+                return None
+            dir_name = parts[0]
+            if dir_name == MAC_OS_ZIP_HIDDEN_DIR_NAME:
+                continue
+            if top_level_directory is None:
+                top_level_directory = dir_name
+            elif dir_name not in [top_level_directory, MAC_OS_ZIP_HIDDEN_DIR_NAME]:
+                return None
+        return top_level_directory
+
+
+def _is_within_directory(directory: str, target: str) -> bool:
+    try:
+        directory = os.path.abspath(directory)
+        target = os.path.abspath(target)
+        return os.path.commonpath([directory, target]) == directory
+    except ValueError:
+        return False
+
+
+def _safe_extract_tar(
+    tar: tarfile.TarFile,
+    target_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    for member in tar.getmembers():
+        name = _normalize_tar_member_name(member.name)
+        if not name:
+            continue
+        member_path = os.path.join(target_dir, name)
+        if not _is_within_directory(target_dir, member_path):
+            logger.warning(f"Skipping unsafe path in tar: {member.name}")
+            continue
+        tar.extract(member, _to_extended_length_path(target_dir))
+
+
+def _maybe_decompress_zst(package_path: Path) -> Optional[str]:
+    if _get_package_extension(package_path) not in [".tar.zst", ".tzst"]:
+        return None
+    try:
+        import zstandard as zstd
+    except ImportError as e:
+        raise RuntimeError(
+            "zstandard is required to extract .tar.zst archives. "
+            "Please install the zstandard package."
+        ) from e
+
+    tmp_path = None
+    try:
+        with open(package_path, "rb") as src, NamedTemporaryFile(
+            suffix=".tar", delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(src) as reader:
+                shutil.copyfileobj(reader, tmp)
+        return tmp_path
+    except Exception:
+        if tmp_path is not None:
+            Path(tmp_path).unlink(missing_ok=True)
+        raise
+
+
+def untar_package(
+    package_path: str,
+    target_dir: str,
+    remove_top_level_directory: bool,
+    unlink_archive: bool,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    extended_target_dir = _to_extended_length_path(target_dir)
+
+    try:
+        os.mkdir(extended_target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+
+    logger.debug(f"Unpacking {package_path} to {extended_target_dir}")
+
+    package_path = str(package_path)
+    temp_tar_path = _maybe_decompress_zst(Path(package_path))
+    tar_path = temp_tar_path or package_path
+
+    try:
+        with tarfile.open(tar_path, "r:*") as tar:
+            _safe_extract_tar(tar, target_dir, logger=logger)
+
+        if remove_top_level_directory:
+            top_level_directory = get_top_level_dir_from_tar(tar_path)
+            if top_level_directory is not None:
+                macos_dir = _to_extended_length_path(
+                    os.path.join(target_dir, MAC_OS_ZIP_HIDDEN_DIR_NAME)
+                )
+                if os.path.isdir(macos_dir):
+                    shutil.rmtree(macos_dir)
+                remove_dir_from_filepaths(extended_target_dir, top_level_directory)
+    finally:
+        if temp_tar_path is not None:
+            Path(temp_tar_path).unlink(missing_ok=True)
+
+    if unlink_archive:
         Path(package_path).unlink()
 
 
