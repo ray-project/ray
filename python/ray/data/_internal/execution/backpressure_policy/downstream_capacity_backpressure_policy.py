@@ -99,12 +99,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD", 0.1
     )
 
-    # Threshold for per-Op object store budget utilization vs total
-    # (utilization / total) ratio to record baseline task index gap.
-    OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD = env_float(
-        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD", 0.1
-    )
-
     @property
     def name(self) -> str:
         return "DownstreamCapacity"
