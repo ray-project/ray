@@ -192,11 +192,33 @@ class DashboardHead:
         ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
 
         # Verify modules are loaded as expected.
-        if modules_to_load is not None and all_names != modules_to_load:
-            assert False, (
-                f"Actual loaded modules {all_names}, doesn't match the requested modules "
-                f"to load, {modules_to_load}."
-            )
+        if modules_to_load is not None:
+            # Filter out subprocess modules that are disabled via environment variables
+            # since they won't be loaded even if requested in modules_to_load
+            from ray.dashboard.subprocesses.module import SubprocessModule
+
+            if not self.minimal:
+                available_subprocess_modules = {
+                    cls.__name__ for cls in dashboard_utils.get_all_modules(SubprocessModule)
+                }
+                expected_modules = set()
+                for module_name in modules_to_load:
+                    # If it's a subprocess module, check if it's enabled
+                    if module_name in available_subprocess_modules:
+                        if SubprocessModule.is_enabled(module_name):
+                            expected_modules.add(module_name)
+                    else:
+                        # For non-subprocess modules (DashboardHeadModule), always include
+                        expected_modules.add(module_name)
+            else:
+                # In minimal mode, no subprocess modules are loaded
+                expected_modules = modules_to_load
+
+            if all_names != expected_modules:
+                assert False, (
+                    f"Actual loaded modules {all_names}, doesn't match the requested modules "
+                    f"to load (excluding disabled modules), {expected_modules}."
+                )
 
         self._modules_loaded = True
         return dashboard_head_modules, subprocess_module_handles
