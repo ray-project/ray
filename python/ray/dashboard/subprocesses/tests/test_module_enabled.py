@@ -20,7 +20,7 @@ class TestModuleEnabled(unittest.TestCase):
         """Test that by default, all modules are enabled when no environment variable is set."""
         # Confirm no environment variable is set
         self.assertNotIn("RAY_DASHBOARD_DISABLED_MODULES", os.environ)
-        
+
         # Test that a sample module name returns True
         self.assertTrue(SubprocessModule.is_enabled("TestModule"))
         self.assertTrue(SubprocessModule.is_enabled("AnotherModule"))
@@ -30,7 +30,7 @@ class TestModuleEnabled(unittest.TestCase):
         """Test that modules can be disabled via environment variable."""
         # Set environment variable to disable specific modules
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "TestModule1"
-        
+
         # Test that the disabled module returns False
         self.assertFalse(SubprocessModule.is_enabled("TestModule1"))
         # Test that other modules still return True
@@ -40,7 +40,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_multiple_modules_disabled_via_environment_variable(self):
         """Test that multiple modules can be disabled via environment variable."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "TestModule1,TestModule2"
-        
+
         # Test that the disabled modules return False
         self.assertFalse(SubprocessModule.is_enabled("TestModule1"))
         self.assertFalse(SubprocessModule.is_enabled("TestModule2"))
@@ -50,8 +50,10 @@ class TestModuleEnabled(unittest.TestCase):
 
     def test_whitespace_handling_in_environment_variable(self):
         """Test that whitespace is properly handled in the environment variable."""
-        os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = " TestModule1 , TestModule2 , TestModule3 "
-        
+        os.environ[
+            "RAY_DASHBOARD_DISABLED_MODULES"
+        ] = " TestModule1 , TestModule2 , TestModule3 "
+
         # Test that the disabled modules return False (whitespace should be trimmed)
         self.assertFalse(SubprocessModule.is_enabled("TestModule1"))
         self.assertFalse(SubprocessModule.is_enabled("TestModule2"))
@@ -62,7 +64,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_empty_strings_in_environment_variable(self):
         """Test that empty strings in environment variable are handled correctly."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = ",TestModule1,,TestModule2,"
-        
+
         # Empty strings should be ignored, TestModule1 and TestModule2 should be disabled
         self.assertFalse(SubprocessModule.is_enabled("TestModule1"))
         self.assertFalse(SubprocessModule.is_enabled("TestModule2"))
@@ -72,7 +74,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_case_sensitive_matching(self):
         """Test that module name matching is case-sensitive."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "TestModule"
-        
+
         # Exact match should be disabled
         self.assertFalse(SubprocessModule.is_enabled("TestModule"))
         # Case variations should still be enabled
@@ -83,7 +85,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_inheritance_works_correctly(self):
         """Test that subclasses inherit the is_enabled functionality correctly."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "BaseTestModule"
-        
+
         # Since BaseTestModule inherits from SubprocessModule, it should use the same logic
         self.assertFalse(BaseTestModule.is_enabled("BaseTestModule"))
         self.assertTrue(BaseTestModule.is_enabled("OtherModule"))
@@ -91,7 +93,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_none_module_name(self):
         """Test behavior when None is passed as module name (though this shouldn't normally happen)."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "None"
-        
+
         # This tests the edge case where "None" string is in the disabled list
         self.assertFalse(SubprocessModule.is_enabled("None"))
         self.assertTrue(SubprocessModule.is_enabled("SomeOtherModule"))
@@ -99,7 +101,7 @@ class TestModuleEnabled(unittest.TestCase):
     def test_empty_environment_variable(self):
         """Test behavior when environment variable is set but empty."""
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = ""
-        
+
         # An empty environment variable should behave like it's not set (all enabled)
         self.assertTrue(SubprocessModule.is_enabled("AnyModule"))
         self.assertTrue(SubprocessModule.is_enabled("AnotherModule"))
@@ -109,12 +111,12 @@ class TestModuleEnabled(unittest.TestCase):
         # When module_name is None, it should not crash
         # In practice, DashboardHead always passes the module name explicitly
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "SubprocessModule"
-        
+
         # When None is passed, the method should still work
         # None is not in the disabled list, so it should return True
         result = SubprocessModule.is_enabled(None)
         self.assertTrue(result)
-        
+
         # Test with empty disabled list
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = ""
         result = SubprocessModule.is_enabled(None)
@@ -124,11 +126,11 @@ class TestModuleEnabled(unittest.TestCase):
         """Test with real module names that might be used in production."""
         # Test with some common module names that might exist
         os.environ["RAY_DASHBOARD_DISABLED_MODULES"] = "ServeHead,JobHead"
-        
+
         # These should be disabled
         self.assertFalse(SubprocessModule.is_enabled("ServeHead"))
         self.assertFalse(SubprocessModule.is_enabled("JobHead"))
-        
+
         # These should still be enabled
         self.assertTrue(SubprocessModule.is_enabled("DataHead"))
         self.assertTrue(SubprocessModule.is_enabled("StateHead"))

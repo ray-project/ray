@@ -314,8 +314,7 @@ class DashboardHead:
 
         # Filter out modules that are disabled via environment variables
         subprocess_cls_list = [
-            cls for cls in subprocess_cls_list 
-            if cls.is_enabled(cls.__name__)
+            cls for cls in subprocess_cls_list if cls.is_enabled(cls.__name__)
         ]
 
         # Select modules to load.

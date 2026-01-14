@@ -10,12 +10,11 @@ from dataclasses import dataclass
 
 import aiohttp
 
-from ray._private.ray_constants import RAY_DASHBOARD_DISABLED_MODULES
-
 import ray
 from ray import ray_constants
 from ray._private import logging_utils
 from ray._private.gcs_utils import GcsChannel
+from ray._private.ray_constants import RAY_DASHBOARD_DISABLED_MODULES
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.dashboard.subprocesses.utils import (
@@ -117,10 +116,12 @@ class SubprocessModule(abc.ABC):
         """
         # Get the environment variable for disabled modules
         # Read directly from os.environ to get the latest value at runtime
-        disabled_modules_env = os.environ.get(RAY_DASHBOARD_DISABLED_MODULES,"")
+        disabled_modules_env = os.environ.get(RAY_DASHBOARD_DISABLED_MODULES, "")
         if disabled_modules_env:
             # Split the environment variable by commas and strip spaces
-            disabled_modules = [name.strip() for name in disabled_modules_env.split(",") if name.strip()]
+            disabled_modules = [
+                name.strip() for name in disabled_modules_env.split(",") if name.strip()
+            ]
             # Check if the current module name is in the disabled list
             return module_name not in disabled_modules
 
