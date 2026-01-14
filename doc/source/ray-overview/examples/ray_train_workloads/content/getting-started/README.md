@@ -59,14 +59,14 @@ With Ray Train, you don't need to manage process groups or samplers manually—u
 
 ## 01 · Imports  
 
-Start by importing all the libraries you’ll need for this tutorial.  
+Start by importing all the libraries you need for this tutorial.  
 
 - **Standard utilities**: `os`, `datetime`, `tempfile`, `csv`, `shutil`, and `gc` help with file paths, checkpointing, cleanup, and general housekeeping.  
 - **Data and visualization**: `pandas`, `numpy`, `matplotlib`, and `PIL` help you inspect the dataset and plot sample images.  
 - **PyTorch**: core deep learning components (`torch`, `CrossEntropyLoss`, `Adam`) plus `torchvision` for loading MNIST and building a ResNet-18 model.  
 - **Ray Train**: the key imports for distributed training—`ScalingConfig`, `RunConfig`, and `TorchTrainer`. These components handle cluster scaling, experiment output storage, and execution of your training loop across GPUs.  
 
-This notebook assumes Ray is already running (for example, inside an Anyscale cluster), so you don’t need to call `ray.init()` manually.
+This notebook assumes Ray is already running (for example, inside an Anyscale cluster), so you don't need to call `ray.init()` manually.
 
 
 ```python
@@ -130,7 +130,7 @@ Next, download the **MNIST dataset** using `torchvision.datasets.MNIST`.
 - MNIST consists of **60,000 grayscale images of handwritten digits (0–9)**, each sized **28×28 pixels**.  
 - By setting `train=True`, this loads the training split of the dataset.  
 
-After downloading, wrap this dataset in a `DataLoader` and apply normalization for use for model training.
+After downloading, wrap this dataset in a `DataLoader` and apply normalization for use in model training.
 
 
 ```python
@@ -353,7 +353,7 @@ In this example:
 - **`num_epochs`** → how many full passes through the dataset to run.  
 - **`global_batch_size`** → the total batch size across all workers (Ray splits this evenly across GPUs).  
 
-You can add other parameters here (like `learning_rate`, `embedding_dim`, etc.) and they’ll automatically be accessible in your training loop through `config["param_name"]`.  
+You can add other parameters here (like `learning_rate`, `embedding_dim`, etc.) and they can automatically be accessible in your training loop through `config["param_name"]`.  
 
 
 
@@ -711,7 +711,7 @@ trainer = TorchTrainer(
 
 Calling `trainer.fit()` starts the distributed training job and blocks until it completes.  
 
-When the job launches, you'll see logs that confirm:  
+When the job launches, you can see logs that confirm:  
 - **Process group setup** → Ray initializes a distributed worker group and assigns ranks (for example, `world_rank=0` and `world_rank=1`).  
 - **Worker placement** → Each worker is launched on a specific node and device. The logs show IP addresses, process IDs, and rank assignments.  
 - **Model preparation** → Each worker moves the model to its GPU (`cuda:0`) and wraps it in **DistributedDataParallel (DDP)**.  
@@ -935,9 +935,9 @@ gc.collect()
 
 
 # 02 · Integrating Ray Train with Ray Data  
-In this module you'll extend distributed training with **Ray Train** by adding **Ray Data** to the pipeline. Instead of relying on a local PyTorch DataLoader, you'll stream batches directly from a distributed **Ray Dataset**, enabling scalable preprocessing and just-in-time data loading across the cluster.  
+In this module you extend distributed training with **Ray Train** by adding **Ray Data** to the pipeline. Instead of relying on a local PyTorch DataLoader, you stream batches directly from a distributed **Ray Dataset**, enabling scalable preprocessing and just-in-time data loading across the cluster.  
 
-## What you'll learn and take away  
+## What you learn and take away  
 * When to integrate **Ray Data** with Ray Train—for example, for CPU-heavy preprocessing, online augmentations, or multi-format data ingestion.  
 * How to replace `DataLoader` with **`iter_torch_batches()`** to stream batches into your training loop.  
 * How to shard, shuffle, and preprocess data in parallel across the cluster before feeding it into GPUs.  
@@ -1200,9 +1200,9 @@ trainer.fit()
 ## End of module 02 · Integrating Ray Train with Ray Data
 
 # 03 · Fault tolerance in Ray Train  
-In this module you'll learn how **Ray Train** handles failures and how to make your training jobs **resilient** with checkpointing and recovery. You'll see both **automatic retries** and **manual restoration**, and how to modify the training loop so it can safely resume from the latest checkpoint.  
+In this module you learn how **Ray Train** handles failures and how to make your training jobs **resilient** with checkpointing and recovery. You see both **automatic retries** and **manual restoration**, and how to modify the training loop so it can safely resume from the latest checkpoint.  
 
-## What you'll learn and take away  
+## What you learn and take away  
 * How Ray Train uses **automatic retries** to restart failed workers without losing progress.  
 * How to modify the training loop with **`get_checkpoint()`** to enable checkpoint loading.  
 * How to save additional state (for example, optimizer and epoch) alongside the model for full recovery.  
@@ -1516,7 +1516,7 @@ You completed a full, production-style workflow with **Ray Train on Anyscale**, 
 ---
 
 ## Next tutorials in the course  
-In the next tutorials, you'll find **end-to-end workload examples** for using Ray Train on Anyscale (for example, recommendation systems, vision, NLP, generative models).  
+In the next tutorials, you can find **end-to-end workload examples** for using Ray Train on Anyscale (for example, recommendation systems, vision, NLP, generative models).  
 
 You only need to pick **one** of these workloads to work through in the course—but feel free to explore more.  
 
