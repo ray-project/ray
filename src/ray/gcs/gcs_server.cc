@@ -267,7 +267,6 @@ void GcsServer::GetOrGenerateClusterId(
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
-  InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
   InitGcsHealthCheckManager(gcs_init_data);
   InitRaySyncer(gcs_init_data);
@@ -311,14 +310,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       [this] { PrintDebugState(); },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
-
-  global_gc_throttler_ =
-      std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
-
-  periodical_runner_->RunFnPeriodically(
-      [this] { TryGlobalGC(); },
-      /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
-      "GCSServer.deadline_timer.gcs_global_gc");
 
   // If the metrics agent port is already known (not dynamically assigned),
   // initialize the metrics exporter now. Otherwise, it will be initialized
@@ -393,13 +384,11 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(cluster_resource_scheduler_ && cluster_lease_manager_);
   gcs_resource_manager_ = std::make_unique<GcsResourceManager>(
       io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
-      kGCSNodeID,
-      cluster_lease_manager_.get());
+      kGCSNodeID);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -453,19 +442,6 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_local_node_with_raylet=*/false);
 }
 
-void GcsServer::InitClusterLeaseManager() {
-  RAY_CHECK(cluster_resource_scheduler_);
-  cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
-      kGCSNodeID,
-      *cluster_resource_scheduler_,
-      /*get_node_info=*/
-      [this](const NodeID &node_id) {
-        return gcs_node_manager_->GetAliveNodeAddress(node_id);
-      },
-      /*announce_infeasible_task=*/nullptr,
-      /*local_lease_manager=*/local_lease_manager_);
-}
-
 void GcsServer::InitGcsJobManager(
     const GcsInitData &gcs_init_data,
     ray::observability::MetricInterface &running_job_gauge,
@@ -515,12 +491,10 @@ void GcsServer::InitGcsActorManager(
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  RAY_CHECK(gcs_resource_manager_ && cluster_lease_manager_);
   scheduler =
       std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
                                           gcs_table_storage_->ActorTable(),
                                           *gcs_node_manager_,
-                                          *cluster_lease_manager_,
                                           schedule_failure_handler,
                                           schedule_success_handler,
                                           raylet_client_pool_,
@@ -862,7 +836,6 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
-        cluster_lease_manager_->ScheduleAndGrantLeases();
       },
       io_context_provider_.GetDefaultIOContext());
   gcs_node_manager_->AddNodeRemovedListener(
@@ -981,32 +954,6 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
           << "Exporter agent status: " << server_status.ToString();
     }
   });
-}
-
-void GcsServer::TryGlobalGC() {
-  if (cluster_lease_manager_->GetPendingQueueSize() == 0) {
-    task_pending_schedule_detected_ = 0;
-    return;
-  }
-  // Trigger global gc to solve task pending.
-  // To avoid spurious triggers, only those after two consecutive
-  // detections and under throttling are sent out (similar to
-  // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 &&
-      global_gc_throttler_->CheckAndUpdateIfPossible()) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.set_should_global_gc(true);
-
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
-    std::string serialized_msg;
-    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
-
-    ray_syncer_->BroadcastMessage(std::move(msg));
-  }
 }
 
 }  // namespace gcs

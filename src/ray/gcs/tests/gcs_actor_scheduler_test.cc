@@ -33,12 +33,13 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
-using raylet::NoopLocalLeaseManager;
 namespace gcs {
 
 class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
@@ -116,16 +117,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
-    local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
-    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
-        local_node_id_,
-        *cluster_resource_scheduler_,
-        /*get_node_info=*/
-        [this](const NodeID &node_id) {
-          return gcs_node_manager_->GetAliveNodeAddress(node_id);
-        },
-        /*announce_infeasible_task=*/nullptr,
-        /*local_lease_manager=*/*local_lease_manager_);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_context_->GetIoService(),
         cluster_resource_scheduler_->GetClusterResourceManager(),
@@ -137,7 +128,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
-        *cluster_lease_manager_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -209,9 +199,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
-  std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::shared_ptr<MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;

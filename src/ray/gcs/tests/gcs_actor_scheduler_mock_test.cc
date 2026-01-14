@@ -28,6 +28,7 @@
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
@@ -66,14 +67,6 @@ class GcsActorSchedulerMockTest : public Test {
         [](auto) { return true; },
         fake_resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
-    local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
-    cluster_lease_manager = std::make_unique<ClusterLeaseManager>(
-        local_node_id,
-        *cluster_resource_scheduler,
-        /*get_node_info=*/
-        [this](const NodeID &nid) { return gcs_node_manager->GetAliveNodeAddress(nid); },
-        /*announce_infeasible_lease=*/nullptr,
-        *local_lease_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
@@ -82,7 +75,6 @@ class GcsActorSchedulerMockTest : public Test {
         io_context,
         *actor_table,
         *gcs_node_manager,
-        *cluster_lease_manager,
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
@@ -101,8 +93,6 @@ class GcsActorSchedulerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
-  std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
