@@ -282,6 +282,12 @@ class DashboardHead:
             socket_dir=str(Path(self.session_dir) / "sockets"),
         )
 
+        # Filter out modules that are disabled via environment variables
+        subprocess_cls_list = [
+            cls for cls in subprocess_cls_list 
+            if cls.is_enabled(cls.__name__)
+        ]
+
         # Select modules to load.
         if modules_to_load is not None:
             subprocess_cls_list = [
