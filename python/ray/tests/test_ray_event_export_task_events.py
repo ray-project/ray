@@ -119,7 +119,7 @@ def get_job_id_and_driver_script_task_id_from_events(
 
 
 def check_task_event_base_fields(
-    event: json, preserve_proto_field_name: bool, head_node_id: str = None
+    event: json, preserve_proto_field_name: bool, head_node_id: str
 ):
     assert event["timestamp"] is not None
     assert event["severity"] == "INFO"
@@ -127,16 +127,14 @@ def check_task_event_base_fields(
         assert event["event_id"] is not None
         assert event["source_type"] == "CORE_WORKER"
         assert event["session_name"] is not None
-        if head_node_id is not None:
-            assert "node_id" in event
-            assert base64.b64decode(event["node_id"]).hex() == head_node_id
+        assert "node_id" in event
+        assert base64.b64decode(event["node_id"]).hex() == head_node_id
     else:
         assert event["eventId"] is not None
         assert event["sourceType"] == "CORE_WORKER"
         assert event["sessionName"] is not None
-        if head_node_id is not None:
-            assert "nodeId" in event
-            assert base64.b64decode(event["nodeId"]).hex() == head_node_id
+        assert "nodeId" in event
+        assert base64.b64decode(event["nodeId"]).hex() == head_node_id
 
 
 def check_task_lifecycle_event_states_and_error_info(
@@ -1775,7 +1773,7 @@ class TestActorTaskEvents:
 
         actor_creation_task_id = None
 
-        def validate_actor_creation(events: json):
+        def validate_actor_creation(events: json, head_node_id):
             nonlocal actor_creation_task_id
             (
                 driver_script_job_id,
@@ -1789,7 +1787,9 @@ class TestActorTaskEvents:
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(event, preserve_proto_field_name)
+                        check_task_event_base_fields(
+                            event, preserve_proto_field_name, head_node_id
+                        )
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1856,7 +1856,9 @@ class TestActorTaskEvents:
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(event, preserve_proto_field_name)
+                        check_task_event_base_fields(
+                            event, preserve_proto_field_name, head_node_id
+                        )
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             driver_task_definition_received = True
