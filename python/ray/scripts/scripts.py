@@ -1612,7 +1612,7 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
 @click.option(
-    "--ip",
+    "--node-ip",
     required=False,
     type=str,
     help="IP address of the node to attach to. If not specified, attaches to head node.",
@@ -1628,7 +1628,7 @@ def attach(
     no_config_cache,
     new,
     port_forward,
-    ip,
+    node_ip,
 ):
     """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
@@ -1641,7 +1641,7 @@ def attach(
         no_config_cache=no_config_cache,
         new=new,
         port_forward=port_forward,
-        ip=ip,
+        node_ip=node_ip,
     )
 
 

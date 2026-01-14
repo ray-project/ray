@@ -1117,7 +1117,7 @@ def attach_cluster(
     no_config_cache: bool = False,
     new: bool = False,
     port_forward: Optional[Port_forward] = None,
-    ip: Optional[str] = None,
+    node_ip: Optional[str] = None,
 ) -> None:
     """Attaches to a screen for the specified cluster.
 
@@ -1130,7 +1130,7 @@ def attach_cluster(
         no_config_cache: whether to skip the config cache
         new: whether to force a new screen
         port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
-        ip: IP address of the node to attach to
+        node_ip: IP address of the node to attach to
     """
 
     if use_tmux:
@@ -1160,7 +1160,7 @@ def attach_cluster(
         no_config_cache=no_config_cache,
         port_forward=port_forward,
         _allow_uninitialized_state=True,
-        ip=ip,
+        node_ip=node_ip,
     )
 
 
@@ -1179,7 +1179,7 @@ def exec_cluster(
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
     extra_screen_args: Optional[str] = None,
-    ip: Optional[str] = None,
+    node_ip: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1199,7 +1199,7 @@ def exec_cluster(
         _allow_uninitialized_state: whether to execute on an uninitialized head
             node.
         extra_screen_args: optional custom additional args to screen command
-        ip: IP address of the node to execute on
+        node_ip: IP address of the node to execute on
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
@@ -1215,14 +1215,16 @@ def exec_cluster(
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
-    if ip:
+    if node_ip:
         # IP specified by user, find the node with the IP
         use_internal_ip = config.get("provider", {}).get("use_internal_ips", False)
         try:
-            target_node = provider.get_node_id(ip, use_internal_ip=use_internal_ip)
-            cli_logger.print("Attaching to node with IP: {}", cf.bold(ip))
+            target_node = provider.get_node_id(node_ip, use_internal_ip=use_internal_ip)
+            cli_logger.print("Attaching to node with IP: {}", cf.bold(node_ip))
         except ValueError as e:
-            cli_logger.abort("Could not find node with IP {}. {}", cf.bold(ip), str(e))
+            cli_logger.abort(
+                "Could not find node with IP {}. {}", cf.bold(node_ip), str(e)
+            )
 
         is_head_node = (
             provider.node_tags(target_node)[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
@@ -1285,8 +1287,8 @@ def exec_cluster(
             attach_command_parts.append(
                 "--cluster-name={}".format(override_cluster_name)
             )
-        if ip is not None:
-            attach_command_parts.append("--ip={}".format(ip))
+        if node_ip is not None:
+            attach_command_parts.append("--node-ip={}".format(node_ip))
         if tmux:
             attach_command_parts.append("--tmux")
         elif screen:
