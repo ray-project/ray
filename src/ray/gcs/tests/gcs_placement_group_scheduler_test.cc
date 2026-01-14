@@ -1650,5 +1650,60 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyInfeasible) {
   CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::FAILURE);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyWithDifferentStrategy) {
+  auto node1 = GenNodeInfo(0);
+  (*node1->mutable_resources_total())["CPU"] = 1;
+  AddNode(node1, 1);
+
+  auto node2 = GenNodeInfo(1);
+  (*node2->mutable_resources_total())["CPU"] = 1;
+  AddNode(node2, 1);
+
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // Primary Request: STRICT_PACK, 2 bundles of 1 CPU.
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK, 2, 1);
+
+  // Fallback Option: SPREAD, 2 bundles of 1 CPU. This option succeeds.
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  fallback_option->set_strategy(rpc::PlacementStrategy::SPREAD);
+
+  for (int i = 0; i < 2; i++) {
+    auto *bundle = fallback_option->add_bundles();
+    bundle->mutable_unit_resources()->insert({"CPU", 1.0});
+    bundle->mutable_bundle_id()->set_bundle_index(i);
+    bundle->mutable_bundle_id()->set_placement_group_id(
+        request.placement_group_spec().placement_group_id());
+  }
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group,
+                        [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          failure_placement_groups_.emplace_back(std::move(pg));
+                        },
+                        [this](std::shared_ptr<GcsPlacementGroup> pg) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          success_placement_groups_.emplace_back(std::move(pg));
+                        }});
+
+  // Validate SPREAD strategy is respected since fallback was selected.
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+
+  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+  CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::SUCCESS);
+}
+
 }  // namespace gcs
 }  // namespace ray

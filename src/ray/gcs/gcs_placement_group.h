@@ -79,8 +79,15 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
 
-    placement_group_table_data_.mutable_fallback_strategy()->CopyFrom(
+    // Construct scheduling strategy list. Index 0 contains the primary request.
+    auto *primary_option = placement_group_table_data_.add_scheduling_strategy();
+    primary_option->mutable_bundles()->CopyFrom(placement_group_spec.bundles());
+    primary_option->set_strategy(placement_group_spec.strategy());
+
+    // Index 1..N: fallback strategies.
+    placement_group_table_data_.mutable_scheduling_strategy()->MergeFrom(
         placement_group_spec.fallback_options());
+
     SetupStates();
   }
 
@@ -160,10 +167,9 @@ class GcsPlacementGroup {
   rpc::PlacementGroupStats *GetMutableStats();
 
   const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
-      &GetFallbackStrategy() const;
+      &GetSchedulingStrategy() const;
 
-  void UpdateBundlesFromFallback(
-      const rpc::PlacementGroupSchedulingOption &fallback_option);
+  void UpdateActiveBundles(const rpc::PlacementGroupSchedulingOption &selected_option);
 
  private:
   // XXX.

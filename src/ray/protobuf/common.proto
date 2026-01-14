@@ -668,6 +668,7 @@ message Bundle {
 // Each option defines a complete set of bundles that replaces the primary set.
 message PlacementGroupSchedulingOption {
   repeated Bundle bundles = 1;
+  PlacementStrategy strategy = 2;
 }
 
 message PlacementGroupSpec {

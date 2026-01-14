@@ -480,7 +480,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   // Returns the scheduling result (success/failure and selected nodes).
   raylet_scheduling_policy::SchedulingResult TrySchedule(
       const std::shared_ptr<GcsPlacementGroup> &placement_group,
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const rpc::PlacementStrategy strategy);
 
   instrumented_io_context &io_context_;
 
