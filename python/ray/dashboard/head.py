@@ -198,14 +198,22 @@ class DashboardHead:
             from ray.dashboard.subprocesses.module import SubprocessModule
 
             if not self.minimal:
-                available_subprocess_modules = {
-                    cls.__name__ for cls in dashboard_utils.get_all_modules(SubprocessModule)
+                # Get all subprocess module classes to find the correct subclass
+                # for each module name, so we can call is_enabled on the subclass
+                # (which may override the method) rather than the base class
+                subprocess_module_classes = {
+                    cls.__name__: cls
+                    for cls in dashboard_utils.get_all_modules(SubprocessModule)
                 }
+                available_subprocess_modules = set(subprocess_module_classes.keys())
                 expected_modules = set()
                 for module_name in modules_to_load:
-                    # If it's a subprocess module, check if it's enabled
+                    # If it's a subprocess module, check if it's enabled using the subclass
                     if module_name in available_subprocess_modules:
-                        if SubprocessModule.is_enabled(module_name):
+                        # Use the subclass's is_enabled method, not the base class's
+                        # This ensures consistency with _load_subprocess_module_handles
+                        module_cls = subprocess_module_classes[module_name]
+                        if module_cls.is_enabled(module_name):
                             expected_modules.add(module_name)
                     else:
                         # For non-subprocess modules (DashboardHeadModule), always include
