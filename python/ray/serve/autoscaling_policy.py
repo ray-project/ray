@@ -1,7 +1,7 @@
 import functools
 import logging
 import math
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -207,7 +207,10 @@ def apply_autoscaling_config(
 def apply_app_level_autoscaling_config(
     policy_func: Callable[
         [Dict[DeploymentID, AutoscalingContext]],
-        Tuple[Dict[DeploymentID, Union[int, float]], Dict[DeploymentID, Dict]],
+        Tuple[
+            Dict[DeploymentID, Union[int, float]],
+            Optional[Dict[DeploymentID, Dict]],
+        ],
     ]
 ) -> Callable[
     [Dict[DeploymentID, AutoscalingContext]],
@@ -231,22 +234,25 @@ def apply_app_level_autoscaling_config(
             state_per_deployment[dep_id] = ctx.policy_state.copy()
 
         # Send to the actual policy
-        desired_num_replicas, updated_custom_policy_state = policy_func(contexts)
+        desired_num_replicas_dict, updated_custom_policy_state = policy_func(contexts)
+        updated_custom_policy_state = updated_custom_policy_state or {}
 
-        # Build per-deployment replicas count and state dictionary
-        final_state = {}
+        # Build per-deployment replicas count and state dictionary.
+        final_decisions: Dict[DeploymentID, int] = {}
+        final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
+            if dep_id not in desired_num_replicas_dict:
+                final_state[dep_id] = state_per_deployment[dep_id]
+                continue
             final_num_replicas, final_dep_state = _apply_default_params_and_merge_state(
                 state_per_deployment[dep_id],
                 updated_custom_policy_state.get(dep_id, {}),
-                desired_num_replicas[dep_id],
+                desired_num_replicas_dict[dep_id],
                 ctx,
             )
-            desired_num_replicas[dep_id], final_state[dep_id] = (
-                final_num_replicas,
-                final_dep_state,
-            )
-        return desired_num_replicas, final_state
+            final_decisions[dep_id] = final_num_replicas
+            final_state[dep_id] = final_dep_state
+        return final_decisions, final_state
 
     return wrapped_policy
 

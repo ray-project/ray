@@ -2615,6 +2615,21 @@ def app_level_policy_with_decorator(contexts):
     return decisions, {}
 
 
+def partial_app_level_policy(contexts):
+    """Policy that returns decisions for only a subset of deployments."""
+    decisions = {}
+    for deployment_id in contexts.keys():
+        if deployment_id.name == "d1":
+            decisions[deployment_id] = 4
+    return decisions, {}
+
+
+@apply_app_level_autoscaling_config
+def partial_app_level_policy_with_decorator(contexts):
+    """Same as `partial_app_level_policy` but wrapped with default autoscaling params."""
+    return partial_app_level_policy(contexts)
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -2782,6 +2797,78 @@ class TestApplicationLevelAutoscaling:
 
         # Verify policy was executed (scales to 3 replicas)
         assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    @pytest.mark.parametrize(
+        "policy_import_path",
+        [
+            "ray.serve.tests.unit.test_application_state:partial_app_level_policy",
+            "ray.serve.tests.unit.test_application_state:partial_app_level_policy_with_decorator",
+        ],
+    )
+    def test_app_level_autoscaling_policy_can_return_partial_decisions(
+        self, mocked_application_state_manager, policy_import_path
+    ):
+        """Omitted deployments from decisions should not be autoscaled."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config with two deployments and override to use the partial policy.
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.0,
+                    "downscale_delay_s": 0.0,
+                    "metrics_interval_s": 0.1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.0,
+                    "downscale_delay_s": 0.0,
+                    "metrics_interval_s": 0.1,
+                },
+            ),
+        ]
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {"policy_function": policy_import_path}
+
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Create replicas so autoscaling runs.
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        # Add a previous decision for both depoloyments
+        deployment_state_manager._scaling_decisions[d1_id] = 2
+        deployment_state_manager._scaling_decisions[d2_id] = 99
+
+        app_state_manager.update()
+
+        assert deployment_state_manager._scaling_decisions[d1_id] == 4
+        assert deployment_state_manager._scaling_decisions[d2_id] == 99
 
     def test_app_level_autoscaling_policy_recovery(
         self, mocked_application_state_manager
