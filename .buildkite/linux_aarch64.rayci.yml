@@ -22,7 +22,6 @@ steps:
     tags:
       - release_wheels
       - java
-      - oss
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"

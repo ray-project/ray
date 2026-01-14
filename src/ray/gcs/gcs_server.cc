@@ -846,7 +846,7 @@ void GcsServer::InstallEventListeners() {
         // Initialize the metrics exporter when the head node registers,
         // but only if we haven't already initialized it (i.e., when using
         // dynamic port assignment where config_.metrics_agent_port was 0).
-        if (node->is_head_node() && !metrics_exporter_initialized_) {
+        if (node->is_head_node() && !metrics_exporter_initialized_.load()) {
           int actual_port = node->metrics_agent_port();
           if (actual_port > 0) {
             InitMetricsExporter(actual_port);
@@ -984,10 +984,10 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {
-  RAY_CHECK(!metrics_exporter_initialized_)
-      << "InitMetricsExporter should only be called once.";
-  metrics_exporter_initialized_ = true;
-
+  if (metrics_exporter_initialized_.exchange(true, std::memory_order_acquire)) {
+    // Exit early as exporter has been initialized
+    return;
+  }
   event_aggregator_client_->Connect(metrics_agent_port);
 
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
