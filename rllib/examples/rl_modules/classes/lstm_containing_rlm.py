@@ -278,4 +278,4 @@ class LSTMContainingRLModuleWithTargetNetwork(
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
         """Returns attributes that should not be included in inference-only mode."""
-        return ["_old_lstm", "_old_fc_net", "_old_pi_head"]
+        return ["_old_lstm", "_old_fc_net", "_old_pi_head", "_values"]
