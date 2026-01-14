@@ -53,7 +53,7 @@ The preceding diagram shows the **lifecycle of a single training step** in PyTor
 
 With Ray Train, you don't need to manage process groups or samplers manually—utilities like `prepare_model()` and `prepare_data_loader()` wrap these details so your code works out of the box in a distributed setting.
 
-|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy" alt="Diagram showing the DDP training workflow: model replication from GPU rank 0, data sharding across workers, gradient averaging during backward pass, and checkpoint saving from rank 0 to persistent storage">|
+|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy">|
 |:--|
 |Schematic overview of DistributedDataParallel (DDP) training: (1) Ray Train replicates the model from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, Ray Train averages gradients across GPUs; (4) checkpoint and metrics from rank 0 GPU save to the persistent storage.|
 
@@ -244,7 +244,7 @@ Ray Train is built around [four key concepts](https://docs.ray.io/en/latest/trai
 1. **Scaling config**: specifies number of workers and compute resources (CPUs or GPUs, TPUs).
 1. **Trainer**: A Python class (Ray Actor) that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
-|<img src="https://docs.ray.io/en/latest/_images/overview.png" width="60%" loading="lazy" alt="High-level Ray Train architecture diagram showing the Trainer coordinating multiple Workers, each running the training function with access to scaling and run configurations">|
+|<img src="https://docs.ray.io/en/latest/_images/overview.png" width="60%" loading="lazy">|
 |:--|
 |High-level architecture of how Ray Train|
 
@@ -593,7 +593,7 @@ Key points to remember:
 - For production jobs, **cloud storage** (for example, S3, GCS, Azure Blob) is the recommended target for checkpoints.  
 
 
-<img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" width=800 alt="Diagram showing the checkpoint lifecycle: temporary checkpoint directory on worker, upload to persistent storage, and retrieval during training resumption">
+<img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" width=800>
 
 ## 12 · Save checkpoints on rank-0 only  
 
@@ -679,7 +679,7 @@ This diagram shows the same DDP workflow as before, but now with **Ray Train uti
 
 By combining these helpers, Ray Train takes care of the **data sharding, model replication, gradient synchronization, and checkpoint lifecycle**—letting you keep your training loop clean and close to standard PyTorch.
 
-|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_annotated_v5.png" width="70%" loading="lazy" alt="Annotated DDP training diagram highlighting Ray Train utilities: prepare_data_loader for data sharding, prepare_model for DDP wrapping, and ray.train.report for metrics and checkpoint synchronization">|
+|<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_annotated_v5.png" width="70%" loading="lazy">|
 |:--|
 ||
 
@@ -718,7 +718,7 @@ When the job launches, you'll see logs that confirm:
 
 These logs are a quick sanity check that Ray Train is correctly orchestrating multi-GPU training across your cluster.
 
-|<img src="https://assets-training.s3.us-west-2.amazonaws.com/ray-intro/ray-train-intro-logs.png" width="80%" loading="lazy" alt="Screenshot of Ray Train logs showing process group initialization, worker placement with IP addresses and ranks, and model preparation on GPUs">|
+|<img src="https://assets-training.s3.us-west-2.amazonaws.com/ray-intro/ray-train-intro-logs.png" width="80%" loading="lazy">|
 |:--|
 ||
 
@@ -1212,7 +1212,7 @@ In this module you'll learn how **Ray Train** handles failures and how to make y
 
 > With fault tolerance enabled, you can run long, large-scale training jobs confidently—knowing they can recover from failures without starting over.  
 
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/stable-diffusion/diagrams/fault_tolerant_cropped_v2.png" width=800 alt="Diagram showing Ray Train fault tolerance: automatic worker restart after failure, checkpoint restoration from persistent storage, and training resumption from the last saved epoch">
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/stable-diffusion/diagrams/fault_tolerant_cropped_v2.png" width=800>
 
 ## 01 · Modify training loop to enable checkpoint loading  
 
