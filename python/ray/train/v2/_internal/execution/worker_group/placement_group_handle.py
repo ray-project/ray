@@ -35,7 +35,6 @@ class PlacementGroupHandle(ABC):
         """Release all resources associated with this placement group.
 
         After calling this method, the placement group should no longer be used.
-        This method should be idempotent (safe to call multiple times).
         """
         ...
 
@@ -54,9 +53,7 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
         return self._pg.ready()
 
     def shutdown(self) -> None:
-        if self._pg:
-            remove_placement_group(self._pg)
-            self._pg = None
+        remove_placement_group(self._pg)
 
 
 class SlicePlacementGroupHandle(PlacementGroupHandle):
@@ -73,6 +70,4 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
         return self._spg.placement_group.ready()
 
     def shutdown(self) -> None:
-        if self._spg:
-            self._spg.shutdown()  # Cleans up worker PG + head PGs
-            self._spg = None
+        self._spg.shutdown()

@@ -58,23 +58,6 @@ def test_default_handle_shutdown():
 
     handle.shutdown()
 
-    # After shutdown, the internal pg should be None
-    assert handle._pg is None
-
-
-def test_default_handle_shutdown_idempotent():
-    """Calling shutdown() twice should not error."""
-    pg = placement_group([{"CPU": 1}])
-    handle = DefaultPlacementGroupHandle(pg)
-
-    ray.get(handle.ready(), timeout=10)
-
-    handle.shutdown()
-    # Second call should not raise
-    handle.shutdown()
-
-    assert handle._pg is None
-
 
 # SlicePlacementGroupHandle tests
 
@@ -124,23 +107,6 @@ def test_slice_handle_shutdown():
     handle.shutdown()
 
     mock_spg.shutdown.assert_called_once()
-    assert handle._spg is None
-
-
-def test_slice_handle_shutdown_idempotent():
-    """Calling shutdown() twice should not error."""
-    mock_spg = MagicMock()
-    mock_pg = MagicMock()
-    mock_spg.placement_group = mock_pg
-
-    handle = SlicePlacementGroupHandle(mock_spg)
-    handle.shutdown()
-    # Second call should not raise
-    handle.shutdown()
-
-    # shutdown should only be called once on the mock
-    mock_spg.shutdown.assert_called_once()
-    assert handle._spg is None
 
 
 if __name__ == "__main__":
