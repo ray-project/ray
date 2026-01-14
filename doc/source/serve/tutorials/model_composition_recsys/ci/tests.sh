@@ -1,7 +1,7 @@
 #!/bin/bash
 set -exo pipefail
 
-python ci/nb2py.py "content/notebook.ipynb" "content/notebook.py"
-python "content/notebook.py"
-rm "content/notebook.py"
+python ci/nb2py.py "content/README.ipynb" "content/README.py"
+python "content/README.py"
+rm "content/README.py"
 
