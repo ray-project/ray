@@ -22,7 +22,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         self._config = config
 
         self._ckpt_filter = self._create_checkpoint_filter(config)
-        self._checkpoint_existed = True
+        self._checkpoint_existed = False
         self._checkpoint_ref: Optional[ObjectRef[Block]] = None
 
     def _create_checkpoint_filter(
