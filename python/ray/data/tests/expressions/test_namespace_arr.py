@@ -49,8 +49,12 @@ def test_arr_to_list_fixed_size(ray_start_regular_shared):
 def test_arr_to_list_invalid_dtype_raises(ray_start_regular_shared):
     ds = ray.data.from_items([{"value": 1}, {"value": 2}])
 
-    with pytest.raises(pa.ArrowInvalid):
+    with pytest.raises(
+        (ray.exceptions.RayTaskError, ray.exceptions.UserCodeException)
+    ) as exc_info:
         ds.with_column("value_list", col("value").arr.to_list()).to_pandas()
+
+    assert "to_list() can only be called on list-like columns" in str(exc_info.value)
 
 
 if __name__ == "__main__":
