@@ -66,14 +66,13 @@ def test_different_devices(ray_start_regular):
     # Trigger tensor transfer from src to dst actor. Since CUDA IPC transport does not
     # support cross-device tensor transfers, this should raise a ValueError.
     with pytest.raises(
-        ValueError, match="CUDA IPC transport only supports tensors on the same GPU.*"
+        ValueError, match="CUDA IPC transport only supports tensors on the same GPU*"
     ):
         ray.get(dst_actor.double.remote(gpu_ref))
 
 
 def test_different_nodes(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets
-    # in a roughly equal manner.
+    # Test that inter-node CUDA IPC transfers throw an error.
     cluster = ray_start_cluster
     num_nodes = 2
     num_cpus = 1
