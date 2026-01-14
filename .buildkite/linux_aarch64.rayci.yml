@@ -22,7 +22,6 @@ steps:
     tags:
       - release_wheels
       - java
-      - oss
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
@@ -43,7 +42,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix}}.lock"
 
   - name: raycpubaseextra-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
@@ -57,7 +56,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase-aarch64
 
   - name: raycudabase-aarch64
@@ -87,7 +86,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix.python}}.lock"
 
   - name: raycudabaseextra-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
@@ -114,7 +113,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase-aarch64
 
   - name: ray-core-build-aarch64
