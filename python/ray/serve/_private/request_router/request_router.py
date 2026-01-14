@@ -217,17 +217,36 @@ class MultiplexMixin:
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        """Matching pending request based on the request metadata."""
+        """Matching pending request based on the request metadata.
+
+        Uses dict index for O(1) lookup by multiplexed_model_id.
+        Also performs lazy cleanup of done futures to prevent memory leaks.
+        """
         if request_metadata is None or not request_metadata.multiplexed_model_id:
             return None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
+        model_id = request_metadata.multiplexed_model_id
+        candidates = self._pending_requests_by_model_id.get(model_id)
+        if candidates is None:
+            return None
+
+        # Clean done entries from front using O(1) popleft.
+        # Since fulfillment is roughly FIFO, done entries accumulate at the front.
+        while candidates and candidates[0].future.done():
+            candidates.popleft()
+
+        if len(candidates) == 0:
+            # Clean up empty deques to prevent memory leak.
+            self._pending_requests_by_model_id.pop(model_id, None)
+            return None
+
+        # Find first non-done request. Usually at front after cleanup,
+        # but there may be done entries in the middle from out-of-order fulfillment.
+        for pr in candidates:
+            if not pr.future.done():
                 return pr
+
+        return None
 
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -412,13 +431,15 @@ class FIFOMixin:
         and not assigned.
         """
         # First try to match a pending request based on the request metadata.
+        # Uses O(1) dict lookup instead of O(n) deque scan.
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
         if matched_pending_request is not None:
             self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
-            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
+            self._remove_pending_request_from_indices(matched_pending_request)
             return
 
         # If no pending request matches the request metadata, fulfill the next in the
@@ -428,6 +449,7 @@ class FIFOMixin:
             if not pr.future.done():
                 self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
+                self._remove_pending_request_from_indices(pr)
                 break
 
 
@@ -507,6 +529,15 @@ class RequestRouter(ABC):
         # should be trying to get replicas for.
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_route: Deque[PendingRequest] = deque()
+
+        # Dict indices for O(1) lookups of pending requests.
+        # Maps internal_request_id -> PendingRequest for fast lookup by request ID.
+        self._pending_requests_by_id: Dict[str, PendingRequest] = {}
+        # Maps multiplexed_model_id -> deque of PendingRequests for fast lookup by model.
+        # Using deque allows O(1) popleft for cleaning done entries at the front.
+        self._pending_requests_by_model_id: DefaultDict[
+            str, Deque[PendingRequest]
+        ] = defaultdict(deque)
 
         # Prepare request router metrics.
         self.num_routing_tasks_gauge = metrics.Gauge(
@@ -621,7 +652,7 @@ class RequestRouter(ABC):
     @property
     def num_pending_requests(self) -> int:
         """Current number of requests pending assignment."""
-        return len(self._pending_requests_to_fulfill)
+        return len(self._pending_requests_by_id)
 
     @property
     def curr_num_routing_tasks(self) -> int:
@@ -671,6 +702,46 @@ class RequestRouter(ABC):
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
         self._replica_queue_len_cache.invalidate_key(replica_id)
+
+    def _add_pending_request_to_indices(self, pending_request: PendingRequest):
+        """Add a pending request to the dict indices for O(1) lookups."""
+        internal_id = pending_request.metadata.internal_request_id
+        self._pending_requests_by_id[internal_id] = pending_request
+        model_id = pending_request.metadata.multiplexed_model_id
+        if model_id:
+            self._pending_requests_by_model_id[model_id].append(pending_request)
+
+    def _remove_pending_request_from_indices(self, pending_request: PendingRequest):
+        """Remove a pending request from the dict indices."""
+        internal_id = pending_request.metadata.internal_request_id
+        self._pending_requests_by_id.pop(internal_id, None)
+        # Note: We don't eagerly remove from _pending_requests_by_model_id here
+        # because finding the item in the list would be O(n). Instead, we use lazy
+        # cleanup in _get_pending_request_matching_multiplexed_model_id() which
+        # removes done entries during lookup, amortizing the cleanup cost.
+
+    def _insert_pending_request_sorted(
+        self, queue: Deque[PendingRequest], pending_request: PendingRequest
+    ):
+        """Insert a pending request into the queue maintaining sorted order by created_at.
+
+        Optimized for the common case where retries have recent timestamps and belong
+        near the end of the queue. Uses O(1) append when possible, otherwise O(n) insert.
+        """
+        # Fast path: if queue is empty or request is newer than the last item, append.
+        # This is O(1) and handles the common case where retries are recent.
+        if len(queue) == 0 or pending_request.created_at >= queue[-1].created_at:
+            queue.append(pending_request)
+            return
+
+        # Slow path: linear scan to find insertion point. This is O(n) but retries
+        # requiring mid-queue insertion are rare, so we keep the simple approach.
+        index = 0
+        for pr in queue:
+            if pending_request.created_at < pr.created_at:
+                break
+            index += 1
+        queue.insert(index, pending_request)
 
     def on_new_queue_len_info(
         self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
@@ -908,19 +979,17 @@ class RequestRouter(ABC):
     ) -> Optional[PendingRequest]:
         """Get the pending request that matches on the internal request id.
 
+        Uses dict index for O(1) lookup by internal_request_id.
+
         If no request metadata is provided or no request is found that matches
         the internal request ID, return None.
         """
         if request_metadata is None:
             return None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.internal_request_id
-                == request_metadata.internal_request_id
-            ):
-                return pr
+        pr = self._pending_requests_by_id.get(request_metadata.internal_request_id)
+        if pr is not None and not pr.future.done():
+            return pr
 
         return None
 
@@ -940,14 +1009,15 @@ class RequestRouter(ABC):
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # Find the pending request that matches exactly.
+        # Find the pending request that matches exactly using O(1) dict lookup.
         matched_pending_request = (
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
             self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
-            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
+            self._remove_pending_request_from_indices(matched_pending_request)
             return
 
     def _get_next_pending_request_to_route(
@@ -1134,30 +1204,25 @@ class RequestRouter(ABC):
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_route.append(pending_request)
+                self._add_pending_request_to_indices(pending_request)
             else:
+                # Retry path: insert at correct position to maintain sorted order by
+                # created_at. Uses optimized helper that is O(1) for common case (recent
+                # retries) and O(n) for older retries requiring mid-queue insertion.
                 pending_request.reset_future()
-                index = 0
-                for pr in self._pending_requests_to_fulfill:
-                    if pending_request.created_at < pr.created_at:
-                        break
-
-                    index += 1
-
-                self._pending_requests_to_fulfill.insert(index, pending_request)
-
-                index = 0
-                for pr in self._pending_requests_to_route:
-                    if pending_request.created_at < pr.created_at:
-                        break
-
-                    index += 1
-
-                self._pending_requests_to_route.insert(index, pending_request)
+                self._insert_pending_request_sorted(
+                    self._pending_requests_to_fulfill, pending_request
+                )
+                self._insert_pending_request_sorted(
+                    self._pending_requests_to_route, pending_request
+                )
+                self._add_pending_request_to_indices(pending_request)
 
             self._maybe_start_routing_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
+            self._remove_pending_request_from_indices(pending_request)
 
             raise e from None
 
