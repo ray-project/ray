@@ -199,7 +199,7 @@ class VerificationActor:
 
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
-    reason="Current jax version is not supported in python 3.12+",
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
 )
 def test_tpu_single_host(ray_tpu_single_host, tmp_path):
     """
@@ -244,7 +244,7 @@ def test_tpu_single_host(ray_tpu_single_host, tmp_path):
 
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
-    reason="Current jax version is not supported in python 3.12+",
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
 )
 def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
@@ -292,6 +292,10 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
         assert r.get("MEGASCALE_COORDINATOR_ADDRESS") is None
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
 def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices. The
@@ -348,6 +352,10 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
 def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices when
@@ -405,6 +413,10 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
 def test_tpu_multi_slice_uneven_workers(ray_tpu_multi_host, tmp_path):
     """
     Tests that ScalingConfig raises a ValueError if the requested num_workers

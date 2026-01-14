@@ -8,7 +8,7 @@ Examples
 .. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
-`examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
+`examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
 of RLlib, demonstrating the different use cases and features of the library.
 
 .. note::
@@ -26,7 +26,7 @@ of RLlib, demonstrating the different use cases and features of the library.
 
 Folder structure
 ----------------
-The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ has
+The `examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__ has
 several sub-directories described in detail below.
 
 
@@ -347,15 +347,11 @@ Multi-agent RL
 - `PettingZoo parameter sharing <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
    Uses `PettingZoo <https://pettingzoo.farama.org/>`__ for an environment where all agents share a single policy.
 
-- `PettingZoo shared value function <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_shared_value_function.py>`__:
-   Also using PettingZoo, this example explores shared value functions among agents.
-   It demonstrates collaborative learning scenarios where agents collectively estimate a value function rather than individual policies.
-
 - `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__:
    Simulates a rock-paper-scissors game with one heuristic-driven agent and one learning agent.
    It provides insights into performance when combining fixed and adaptive strategies in adversarial games.
 
-- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
+- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/tree/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
    Sets up a rock-paper-scissors game where you train both agents to learn strategies on how to play against each other.
    Useful for evaluating performance in simple adversarial settings.
 
@@ -363,7 +359,7 @@ Multi-agent RL
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
 
-- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/multi_agent_footsies_ppo.py>`__:
     Implements self-play with the Footsies environment (two player zero-sum game).
     This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
     setting up a multi-agent self-play training scenario.
@@ -420,7 +416,7 @@ RLModules
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional
    feature extraction tailored to the environment's visual observations.
 
-- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
+- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/tree/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
    Uses a custom LSTM within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, allowing for temporal sequence processing,
    beneficial for partially observable environments with sequential dependencies.
 
@@ -442,17 +438,17 @@ RLModules
 Tuned examples
 --------------
 
-The `tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__ folder
+The `tuned examples <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__ folder
 contains python config files that you can execute analogously to all other example scripts described
 here to run tuned learning experiments for the different algorithms and environment types.
 
-For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
+For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py>`__,
 which learns to solve the Pong environment in roughly 5 minutes. You can run it as follows on a single
 g5.24xlarge or g6.24xlarge machine with 4 GPUs and 96 CPUs:
 
 .. code-block:: bash
 
-    $ cd ray/rllib/tuned_examples/ppo
+    $ cd ray/rllib/examples/algorithms/ppo
     $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
 Note that RLlib's daily or weekly release tests use some of the files in this folder as well.

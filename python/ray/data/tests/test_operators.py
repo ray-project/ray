@@ -15,7 +15,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.progress.rich_progress import RichSubProgressBar
+from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import (
@@ -91,12 +91,9 @@ def test_all_to_all_operator():
 
     # Initialize progress bar.
     for name in op.get_sub_progress_bar_names():
-        pg = RichSubProgressBar(
+        pg = NoopSubProgressBar(
             name=name,
-            total=op.num_output_rows_total(),
-            enabled=False,
-            progress=None,
-            tid=None,
+            max_name_length=100,
         )
         op.set_sub_progress_bar(name, pg)
 
