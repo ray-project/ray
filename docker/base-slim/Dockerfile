@@ -98,7 +98,7 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled_py${PYTHON_VERSION}.txt /home/ray/requirements_compiled.txt
+COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 
 RUN <<EOF
 #!/bin/bash
