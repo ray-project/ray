@@ -26,7 +26,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     # Threshold for per-Op object store budget utilization vs total
     # (utilization / total) ratio to enable downstream capacity backpressure.
     OBJECT_STORE_BUDGET_UTIL_THRESHOLD = env_float(
-        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_THRESHOLD", 0.9
+        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_THRESHOLD", 0.75
     )
 
     @property
