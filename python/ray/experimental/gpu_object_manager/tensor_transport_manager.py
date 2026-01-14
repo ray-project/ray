@@ -116,20 +116,20 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def recv_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-    ):
+    ) -> List["torch.Tensor"]:
         """
         Receive multiple tensors from the source actor. This is called on the destination actor.
 
         Args:
-            tensors: The pre-allocated tensor space to receive the tensors.
             obj_id: The object ID for related GPU object.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
 
+        Returns:
+            List[torch.Tensor]: The received tensors.
         """
 
     @abstractmethod
