@@ -106,26 +106,10 @@ def test_ordinal_encoder_arrow_transform():
 
     encoder = OrdinalEncoder(["B", "C"])
 
-    # Manually set stats in Arrow tuple format (keys_array, values_array)
     # B: sorted unique = [cold, hot, warm] -> indices [0, 1, 2]
     # C: sorted unique = [1, 5, 10] -> indices [0, 1, 2]
-    encoder.stats_ = {
-        "unique_values(B)": (
-            pa.array(["cold", "hot", "warm"]),
-            pa.array([0, 1, 2], type=pa.int64()),
-        ),
-        "unique_values(C)": (
-            pa.array([1, 5, 10]),
-            pa.array([0, 1, 2], type=pa.int64()),
-        ),
-    }
-    encoder._fitted = True
-
-    # Verify stats are in Arrow tuple format
-    assert isinstance(encoder.stats_["unique_values(B)"], tuple)
-    keys_b, values_b = encoder.stats_["unique_values(B)"]
-    assert isinstance(keys_b, pa.Array)
-    assert isinstance(values_b, pa.Array)
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"], "C": [1, 5, 10]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Create Arrow table for transformation
     table = pa.Table.from_pandas(in_df)
@@ -162,15 +146,9 @@ def test_ordinal_encoder_arrow_transform_append_mode():
 
     encoder = OrdinalEncoder(["B"], output_columns=["B_encoded"])
 
-    # Manually set stats in Arrow tuple format
     # B: sorted unique = [cold, hot, warm] -> indices [0, 1, 2]
-    encoder.stats_ = {
-        "unique_values(B)": (
-            pa.array(["cold", "hot", "warm"]),
-            pa.array([0, 1, 2], type=pa.int64()),
-        ),
-    }
-    encoder._fitted = True
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     table = pa.Table.from_pandas(in_df)
     result_table = encoder._transform_arrow(table)
@@ -190,15 +168,10 @@ def test_ordinal_encoder_arrow_transform_unknown_values():
     """Test the OrdinalEncoder _transform_arrow method with unknown values."""
     encoder = OrdinalEncoder(["B"])
 
-    # Manually set stats with only "warm" and "cold"
+    # Fit encoder with only "warm" and "cold" (not "unknown")
     # B: sorted unique = [cold, warm] -> indices [0, 1]
-    encoder.stats_ = {
-        "unique_values(B)": (
-            pa.array(["cold", "warm"]),
-            pa.array([0, 1], type=pa.int64()),
-        ),
-    }
-    encoder._fitted = True
+    fit_df = pd.DataFrame({"B": ["cold", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Transform data with an unknown value
     test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
@@ -228,13 +201,15 @@ def test_ordinal_encoder_transform_scalars(batch_format):
 
     encoder = OrdinalEncoder(["B", "C"])
 
-    # Create stats in the appropriate format
-    unique_values = {"B": ["cold", "hot", "warm"], "C": [1, 5, 10]}
+    # B: sorted unique = [cold, hot, warm] -> indices [0, 1, 2]
+    # C: sorted unique = [1, 5, 10] -> indices [0, 1, 2]
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"], "C": [1, 5, 10]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
+    # For pandas batch_format test, convert Arrow stats to pandas format
     if batch_format == "pandas":
+        unique_values = {"B": ["cold", "hot", "warm"], "C": [1, 5, 10]}
         encoder.stats_ = _create_pandas_stats(unique_values)
-    else:
-        encoder.stats_ = _create_arrow_stats(unique_values)
-    encoder._fitted = True
 
     # Transform using the appropriate method
     if batch_format == "pandas":
@@ -268,13 +243,13 @@ def test_ordinal_encoder_transform_append_mode(batch_format):
 
     encoder = OrdinalEncoder(["B"], output_columns=["B_encoded"])
 
-    # Create stats in the appropriate format
-    unique_values = {"B": ["cold", "hot", "warm"]}
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
+    # For pandas batch_format test, convert Arrow stats to pandas format
     if batch_format == "pandas":
+        unique_values = {"B": ["cold", "hot", "warm"]}
         encoder.stats_ = _create_pandas_stats(unique_values)
-    else:
-        encoder.stats_ = _create_arrow_stats(unique_values)
-    encoder._fitted = True
 
     # Transform using the appropriate method
     if batch_format == "pandas":
@@ -299,13 +274,14 @@ def test_ordinal_encoder_transform_unknown_values(batch_format):
     """Test OrdinalEncoder with unknown values using both pandas and arrow."""
     encoder = OrdinalEncoder(["B"])
 
-    # Create stats with only "warm" and "cold" (not "unknown")
-    unique_values = {"B": ["cold", "warm"]}
+    # Fit encoder with only "warm" and "cold" (not "unknown")
+    fit_df = pd.DataFrame({"B": ["cold", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
+    # For pandas batch_format test, convert Arrow stats to pandas format
     if batch_format == "pandas":
+        unique_values = {"B": ["cold", "warm"]}
         encoder.stats_ = _create_pandas_stats(unique_values)
-    else:
-        encoder.stats_ = _create_arrow_stats(unique_values)
-    encoder._fitted = True
 
     # Transform data with an unknown value
     test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
@@ -336,16 +312,23 @@ def test_ordinal_encoder_transform_multiple_columns(batch_format):
 
     encoder = OrdinalEncoder(["color", "size", "count"])
 
-    unique_values = {
-        "color": ["blue", "green", "red"],
-        "size": ["large", "medium", "small"],
-        "count": [1, 2, 3],
-    }
+    fit_df = pd.DataFrame(
+        {
+            "color": ["blue", "green", "red"],
+            "size": ["large", "medium", "small"],
+            "count": [1, 2, 3],
+        }
+    )
+    encoder.fit(ray.data.from_pandas(fit_df))
+
+    # For pandas batch_format test, convert Arrow stats to pandas format
     if batch_format == "pandas":
+        unique_values = {
+            "color": ["blue", "green", "red"],
+            "size": ["large", "medium", "small"],
+            "count": [1, 2, 3],
+        }
         encoder.stats_ = _create_pandas_stats(unique_values)
-    else:
-        encoder.stats_ = _create_arrow_stats(unique_values)
-    encoder._fitted = True
 
     if batch_format == "pandas":
         result_df = encoder._transform_pandas(in_df.copy())
@@ -370,12 +353,13 @@ def test_ordinal_encoder_transform_integers(batch_format):
 
     encoder = OrdinalEncoder(["values"])
 
-    unique_values = {"values": [50, 100, 200]}
+    fit_df = pd.DataFrame({"values": [50, 100, 200]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
+    # For pandas batch_format test, convert Arrow stats to pandas format
     if batch_format == "pandas":
+        unique_values = {"values": [50, 100, 200]}
         encoder.stats_ = _create_pandas_stats(unique_values)
-    else:
-        encoder.stats_ = _create_arrow_stats(unique_values)
-    encoder._fitted = True
 
     if batch_format == "pandas":
         result_df = encoder._transform_pandas(in_df.copy())
@@ -395,9 +379,14 @@ def test_ordinal_encoder_list_fallback_to_pandas():
     in_df = pd.DataFrame({"D": col_d})
 
     encoder = OrdinalEncoder(["D"], encode_lists=True)
+
+    # Fit encoder on data with list values containing all unique elements
+    fit_df = pd.DataFrame({"D": [["cold", "hot", "warm"]]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
     # For list columns with fallback, we need pandas-format stats
+    # (Arrow transform will fall back to pandas for list columns)
     encoder.stats_ = {"unique_values(D)": {"cold": 0, "hot": 1, "warm": 2}}
-    encoder._fitted = True
 
     # Create Arrow table with list column
     table = pa.Table.from_pandas(in_df)
@@ -423,8 +412,9 @@ def test_ordinal_encoder_list_fallback_to_pandas():
 def test_ordinal_encoder_arrow_array_caching():
     """Test that _get_arrow_arrays caches results correctly."""
     encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b", "c"]})
-    encoder._fitted = True
+
+    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # First call should create the cache
     keys1, values1 = encoder._get_arrow_arrays("col")
@@ -446,26 +436,19 @@ def test_ordinal_encoder_cache_invalidation_on_refit():
     encoder = OrdinalEncoder(["col"])
 
     # First fit: a=0, b=1
-    encoder.stats_ = {
-        "unique_values(col)": (pa.array(["a", "b"]), pa.array([0, 1], type=pa.int64()))
-    }
-    encoder._fitted = True
+    fit_df1 = pd.DataFrame({"col": ["a", "b"]})
+    encoder.fit(ray.data.from_pandas(fit_df1))
 
     table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
     result1 = encoder._transform_arrow(table1)
     assert result1.column("col").to_pylist() == [0, 1]
     assert "_arrow_arrays_col" in encoder._cache
 
-    # Simulate re-fit by calling _clear_arrow_cache (called by _fit)
-    encoder._clear_arrow_cache()
+    # Re-fit with completely different values: x=0, y=1, z=2
+    # This should clear the cache automatically
+    fit_df2 = pd.DataFrame({"col": ["x", "y", "z"]})
+    encoder.fit(ray.data.from_pandas(fit_df2))
     assert "_arrow_arrays_col" not in encoder._cache
-
-    encoder.stats_ = {
-        "unique_values(col)": (
-            pa.array(["x", "y", "z"]),
-            pa.array([0, 1, 2], type=pa.int64()),
-        )
-    }
 
     # Transform with new values should use fresh stats, not stale cache
     table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
@@ -476,8 +459,9 @@ def test_ordinal_encoder_cache_invalidation_on_refit():
 def test_ordinal_encoder_encode_column_vectorized():
     """Test _encode_column_vectorized method directly."""
     encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b", "c"]})
-    encoder._fitted = True
+
+    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Create a chunked array to encode
     column = pa.chunked_array([["b", "a", "c", "a", "b"]])
@@ -491,8 +475,10 @@ def test_ordinal_encoder_encode_column_vectorized():
 def test_ordinal_encoder_encode_column_with_unknown_values():
     """Test encoding handles unknown values correctly."""
     encoder = OrdinalEncoder(["col"])
-    encoder.stats_ = _create_arrow_stats({"col": ["a", "b"]})
-    encoder._fitted = True
+
+    # Fit encoder with only "a" and "b" (not "c")
+    fit_df = pd.DataFrame({"col": ["a", "b"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Column with unknown value "c"
     column = pa.chunked_array([["a", "b", "c"]])
@@ -512,11 +498,9 @@ def test_ordinal_encoder_vectorized_multiple_columns():
     in_df = pd.DataFrame({"A": col_a, "B": col_b})
 
     encoder = OrdinalEncoder(["A", "B"])
-    encoder.stats_ = {
-        **_create_arrow_stats({"A": ["x", "y"]}),
-        **_create_arrow_stats({"B": [1, 2, 3]}),
-    }
-    encoder._fitted = True
+
+    fit_df = pd.DataFrame({"A": ["x", "y", "x"], "B": [1, 2, 3]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     table = pa.Table.from_pandas(in_df)
     result_table = encoder._transform_arrow(table)
@@ -744,14 +728,10 @@ def test_one_hot_encoder_arrow_transform():
 
     encoder = OneHotEncoder(["B", "C"])
 
-    # Manually set stats in dict format (pandas-style)
     # B: cold=0, hot=1, warm=2
     # C: 1=0, 5=1, 10=2
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-        "unique_values(C)": {1: 0, 5: 1, 10: 2},
-    }
-    encoder._fitted = True
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"], "C": [1, 5, 10]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Create Arrow table for transformation
     table = pa.Table.from_pandas(in_df)
@@ -784,11 +764,8 @@ def test_one_hot_encoder_arrow_transform_append_mode():
 
     encoder = OneHotEncoder(["B"], output_columns=["B_encoded"])
 
-    # Manually set stats
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-    }
-    encoder._fitted = True
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     table = pa.Table.from_pandas(in_df)
     result_table = encoder._transform_arrow(table)
@@ -807,11 +784,9 @@ def test_one_hot_encoder_arrow_transform_unknown_values():
     """Test the OneHotEncoder _transform_arrow method with unknown values."""
     encoder = OneHotEncoder(["B"])
 
-    # Manually set stats with only "warm" and "cold"
-    encoder.stats_ = {
-        "unique_values(B)": {"cold": 0, "warm": 1},
-    }
-    encoder._fitted = True
+    # Fit encoder with only "warm" and "cold" (not "unknown")
+    fit_df = pd.DataFrame({"B": ["cold", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Transform data with an unknown value
     test_df = pd.DataFrame({"B": ["warm", "cold", "unknown"]})
@@ -829,9 +804,14 @@ def test_one_hot_encoder_list_fallback_to_pandas():
     in_df = pd.DataFrame({"D": col_d})
 
     encoder = OneHotEncoder(["D"])
+
+    # Fit encoder on data with list values (lists are treated as categories)
+    fit_df = pd.DataFrame({"D": [["cold"], ["hot"], ["warm"]]})
+    encoder.fit(ray.data.from_pandas(fit_df))
+
     # For list columns with fallback, we need pandas-format stats
-    encoder.stats_ = {"unique_values(D)": {"cold": 0, "hot": 1, "warm": 2}}
-    encoder._fitted = True
+    # (Arrow transform will fall back to pandas for list columns)
+    encoder.stats_ = {"unique_values(D)": {("cold",): 0, ("hot",): 1, ("warm",): 2}}
 
     # Create Arrow table with list column
     table = pa.Table.from_pandas(in_df)
@@ -856,8 +836,9 @@ def test_one_hot_encoder_list_fallback_to_pandas():
 def test_one_hot_encoder_arrow_array_caching():
     """Test that _get_arrow_arrays caches results correctly."""
     encoder = OneHotEncoder(["col"])
-    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1, "c": 2}}
-    encoder._fitted = True
+
+    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # First call should create the cache
     keys1, values1 = encoder._get_arrow_arrays("col")
@@ -879,8 +860,8 @@ def test_one_hot_encoder_cache_invalidation_on_refit():
     encoder = OneHotEncoder(["col"])
 
     # First fit: a=0, b=1
-    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1}}
-    encoder._fitted = True
+    fit_df1 = pd.DataFrame({"col": ["a", "b"]})
+    encoder.fit(ray.data.from_pandas(fit_df1))
 
     # Transform to populate cache
     table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
@@ -891,12 +872,11 @@ def test_one_hot_encoder_cache_invalidation_on_refit():
     result_df1 = result1.to_pandas()
     _assert_one_hot_equal(result_df1["col"], [[1, 0], [0, 1]])
 
-    # Simulate re-fit by calling _clear_arrow_cache (called by _fit)
-    encoder._clear_arrow_cache()
+    # Re-fit with completely different values: x=0, y=1, z=2
+    # This should clear the cache automatically
+    fit_df2 = pd.DataFrame({"col": ["x", "y", "z"]})
+    encoder.fit(ray.data.from_pandas(fit_df2))
     assert "_arrow_arrays_col" not in encoder._cache
-
-    # Update stats with completely different values: x=0, y=1, z=2
-    encoder.stats_ = {"unique_values(col)": {"x": 0, "y": 1, "z": 2}}
 
     # Transform with new values should use fresh stats, not stale cache
     table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
@@ -914,8 +894,9 @@ def test_one_hot_encoder_multi_chunk_column():
     compatibility across PyArrow versions.
     """
     encoder = OneHotEncoder(["col"])
-    encoder.stats_ = {"unique_values(col)": {"a": 0, "b": 1, "c": 2}}
-    encoder._fitted = True
+
+    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Create a table with a multi-chunk column (simulates partitioned/concatenated data)
     chunk1 = pa.array(["a", "b", "c"])
@@ -958,9 +939,8 @@ def test_one_hot_encoder_transform_scalars(batch_format):
 
     encoder = OneHotEncoder(["B"])
 
-    # Use dict stats format (works for both paths)
-    encoder.stats_ = {"unique_values(B)": {"cold": 0, "hot": 1, "warm": 2}}
-    encoder._fitted = True
+    fit_df = pd.DataFrame({"B": ["cold", "hot", "warm"]})
+    encoder.fit(ray.data.from_pandas(fit_df))
 
     # Transform using the appropriate method
     if batch_format == "pandas":
@@ -1133,7 +1113,6 @@ def test_multi_hot_encoder():
 
     encoder = MultiHotEncoder(["B", "C", "D"])
 
-    # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
         encoder.transform(ds)
 
