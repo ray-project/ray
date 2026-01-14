@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from .backpressure_policy import BackpressurePolicy
 from ray._private.ray_constants import env_float
@@ -90,7 +90,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     # Threshold for per-Op object store budget utilization vs total
     # (utilization / total) ratio to enable downstream capacity backpressure.
     OBJECT_STORE_BUDGET_UTIL_THRESHOLD = env_float(
-        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_THRESHOLD", 0.75
+        "RAY_DATA_DOWNSTREAM_CAPACITY_OBJECT_STORE_BUDGET_UTIL_THRESHOLD", 0.9
     )
 
     # Threshold for per-Op object store budget utilization vs total
@@ -205,7 +205,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 # Gap has grown beyond baseline: reduce threshold exponentially
                 # gap_growth=1: threshold / 2, gap_growth=2: threshold / 4, etc.
                 gap_growth = gap - baseline
-                threshold = threshold / (2 ** gap_growth)
+                threshold = threshold / (2**gap_growth)
         return threshold
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
@@ -221,10 +221,11 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         )
 
         if (
-            self._preserve_order and
-            op not in self._baseline_task_index_gap
+            self._preserve_order
+            and op not in self._baseline_task_index_gap
             and utilized_budget_fraction is not None
-            and utilized_budget_fraction > self.OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD
+            and utilized_budget_fraction
+            > self.OBJECT_STORE_BUDGET_UTIL_BASELINE_THRESHOLD
         ):
             # Record baseline task index gap.
             self._baseline_task_index_gap[op] = self._get_task_index_gap(op)
@@ -289,7 +290,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 gap_growth = max(0, gap - baseline)
                 if gap_growth > 0:
                     # Reduce capacity exponentially: growth=1 → 50%, growth=2 → 25%
-                    return int(max(1, downstream_capacity // (2 ** gap_growth)))
+                    return int(max(1, downstream_capacity // (2**gap_growth)))
                 # No gap growth or no capacity info: allow full downstream capacity
                 return int(downstream_capacity)
             else:
