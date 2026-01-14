@@ -1226,14 +1226,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         return None
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        assert self.shuffle_name is not None, "shuffle_name should not be None"
-        assert self.reduce_name is not None, "reduce_name should not be None"
         return [self.shuffle_name, self.reduce_name]
 
     def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        if self.shuffle_name is not None and self.shuffle_name == name:
+        if self.shuffle_name == name:
             self.shuffle_bar = pg
-        elif self.reduce_name is not None and self.reduce_name == name:
+        elif self.reduce_name == name:
             self.reduce_bar = pg
 
 
