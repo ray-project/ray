@@ -59,7 +59,6 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-
 class ReportHead(SubprocessModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -477,9 +476,7 @@ class ReportHead(SubprocessModule):
         )
 
         reply = await reporter_stub.GpuProfiling(
-            reporter_pb2.GpuProfilingRequest(
-                pid=pid, num_iterations=num_iterations
-            )
+            reporter_pb2.GpuProfilingRequest(pid=pid, num_iterations=num_iterations)
         )
 
         """
