@@ -409,53 +409,6 @@ def test_ordinal_encoder_list_fallback_to_pandas():
 # =============================================================================
 
 
-def test_ordinal_encoder_arrow_array_caching():
-    """Test that _get_arrow_arrays caches results correctly."""
-    encoder = OrdinalEncoder(["col"])
-
-    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
-    encoder.fit(ray.data.from_pandas(fit_df))
-
-    # First call should create the cache
-    keys1, values1 = encoder._get_arrow_arrays("col")
-    assert "_arrow_arrays_col" in encoder._cache
-
-    # Second call should return cached values
-    keys2, values2 = encoder._get_arrow_arrays("col")
-
-    # Should be the same objects (cached)
-    assert keys1 is keys2
-    assert values1 is values2
-
-    assert keys1.to_pylist() == ["a", "b", "c"]
-    assert values1.to_pylist() == [0, 1, 2]
-
-
-def test_ordinal_encoder_cache_invalidation_on_refit():
-    """Test that Arrow array cache is invalidated when encoder is re-fitted."""
-    encoder = OrdinalEncoder(["col"])
-
-    # First fit: a=0, b=1
-    fit_df1 = pd.DataFrame({"col": ["a", "b"]})
-    encoder.fit(ray.data.from_pandas(fit_df1))
-
-    table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
-    result1 = encoder._transform_arrow(table1)
-    assert result1.column("col").to_pylist() == [0, 1]
-    assert "_arrow_arrays_col" in encoder._cache
-
-    # Re-fit with completely different values: x=0, y=1, z=2
-    # This should clear the cache automatically
-    fit_df2 = pd.DataFrame({"col": ["x", "y", "z"]})
-    encoder.fit(ray.data.from_pandas(fit_df2))
-    assert "_arrow_arrays_col" not in encoder._cache
-
-    # Transform with new values should use fresh stats, not stale cache
-    table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
-    result2 = encoder._transform_arrow(table2)
-    assert result2.column("col").to_pylist() == [0, 1, 2]
-
-
 def test_ordinal_encoder_encode_column_vectorized():
     """Test _encode_column_vectorized method directly."""
     encoder = OrdinalEncoder(["col"])
@@ -826,63 +779,6 @@ def test_one_hot_encoder_list_fallback_to_pandas():
     # Verify one-hot encoding for list columns (handled by pandas fallback)
     # Each list element maps to one-hot vector
     assert len(result_df["D"]) == 3
-
-
-# =============================================================================
-# Tests for OneHotEncoder Arrow array caching
-# =============================================================================
-
-
-def test_one_hot_encoder_arrow_array_caching():
-    """Test that _get_arrow_arrays caches results correctly."""
-    encoder = OneHotEncoder(["col"])
-
-    fit_df = pd.DataFrame({"col": ["a", "b", "c"]})
-    encoder.fit(ray.data.from_pandas(fit_df))
-
-    # First call should create the cache
-    keys1, values1 = encoder._get_arrow_arrays("col")
-    assert "_arrow_arrays_col" in encoder._cache
-
-    # Second call should return cached values
-    keys2, values2 = encoder._get_arrow_arrays("col")
-
-    # Should be the same objects (cached)
-    assert keys1 is keys2
-    assert values1 is values2
-
-    assert keys1.to_pylist() == ["a", "b", "c"]
-    assert values1.to_pylist() == [0, 1, 2]
-
-
-def test_one_hot_encoder_cache_invalidation_on_refit():
-    """Test that Arrow array cache is invalidated when encoder is re-fitted."""
-    encoder = OneHotEncoder(["col"])
-
-    # First fit: a=0, b=1
-    fit_df1 = pd.DataFrame({"col": ["a", "b"]})
-    encoder.fit(ray.data.from_pandas(fit_df1))
-
-    # Transform to populate cache
-    table1 = pa.Table.from_pandas(pd.DataFrame({"col": ["a", "b"]}))
-    result1 = encoder._transform_arrow(table1)
-    assert "_arrow_arrays_col" in encoder._cache
-
-    # Verify first encoding
-    result_df1 = result1.to_pandas()
-    _assert_one_hot_equal(result_df1["col"], [[1, 0], [0, 1]])
-
-    # Re-fit with completely different values: x=0, y=1, z=2
-    # This should clear the cache automatically
-    fit_df2 = pd.DataFrame({"col": ["x", "y", "z"]})
-    encoder.fit(ray.data.from_pandas(fit_df2))
-    assert "_arrow_arrays_col" not in encoder._cache
-
-    # Transform with new values should use fresh stats, not stale cache
-    table2 = pa.Table.from_pandas(pd.DataFrame({"col": ["x", "y", "z"]}))
-    result2 = encoder._transform_arrow(table2)
-    result_df2 = result2.to_pandas()
-    _assert_one_hot_equal(result_df2["col"], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
 
 def test_one_hot_encoder_multi_chunk_column():

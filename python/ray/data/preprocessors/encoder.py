@@ -41,51 +41,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _ArrowEncoderCacheMixin:
-    """Mixin providing Arrow array caching for encoder preprocessors.
+def _get_unique_value_arrow_arrays(
+    stats: Dict[str, Any], input_col: str
+) -> Tuple[pa.Array, pa.Array]:
+    """Get Arrow arrays for keys and values from encoder stats.
 
-    This mixin provides common caching functionality for encoders that use
-    Arrow arrays for vectorized transformations. It caches the conversion
-    from stats (dict or Arrow format) to Arrow arrays used in encoding.
+    Args:
+        stats: The encoder's stats_ dictionary.
+        input_col: The name of the column to get arrays for.
+
+    Returns:
+        Tuple of (keys_array, values_array) for the column's ordinal mapping.
     """
-
-    def _init_arrow_cache(self):
-        """Initialize the Arrow array cache. Call this in __init__."""
-        self._cache: Dict[str, Tuple[pa.Array, pa.Array]] = {}
-
-    def _clear_arrow_cache(self):
-        """Clear cached Arrow arrays to ensure fresh data after re-fitting."""
-        self._cache.clear()
-
-    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
-        """Get Arrow arrays for keys and values, with caching.
-
-        Args:
-            input_col: The name of the column to get arrays for.
-
-        Returns:
-            Tuple of (keys_array, values_array) for the column's ordinal mapping.
-        """
-        cache_key = f"_arrow_arrays_{input_col}"
-        if cache_key not in self._cache:
-            stat_value = self.stats_[f"unique_values({input_col})"]
-            if isinstance(stat_value, dict):
-                # Stats are in pandas dict format - convert to Arrow format
-                sorted_keys = sorted(stat_value.keys())
-                keys_array = pa.array(sorted_keys)
-                values_array = pa.array(
-                    [stat_value[k] for k in sorted_keys], type=pa.int64()
-                )
-            else:
-                # Stats are in Arrow tuple format: (keys_array, values_array)
-                keys_array, values_array = stat_value
-            self._cache[cache_key] = (keys_array, values_array)
-        return self._cache[cache_key]
+    stat_value = stats[f"unique_values({input_col})"]
+    if isinstance(stat_value, dict):
+        # Stats are in pandas dict format - convert to Arrow format
+        sorted_keys = sorted(stat_value.keys())
+        keys_array = pa.array(sorted_keys)
+        values_array = pa.array([stat_value[k] for k in sorted_keys], type=pa.int64())
+    else:
+        # Stats are in Arrow tuple format: (keys_array, values_array)
+        keys_array, values_array = stat_value
+    return keys_array, values_array
 
 
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
-class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
+class OrdinalEncoder(SerializablePreprocessorBase):
     r"""Encode values within columns as ordered integer values.
 
     :class:`OrdinalEncoder` encodes categorical features as integers that range from
@@ -185,12 +167,8 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
-        self._init_arrow_cache()
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        # Clear cached Arrow arrays from any previous fit
-        self._clear_arrow_cache()
-
         self.stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
@@ -198,7 +176,7 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 encode_lists=self.encode_lists,
                 key_gen=key_gen,
             ),
-            post_process_fn=unique_post_fn(batch_format=self.preferred_batch_format()),
+            post_process_fn=unique_post_fn(),
             stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
@@ -220,6 +198,11 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         # Arrow tuple format (keys_array, values_array)
         keys_array, values_array = stat_value
         return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
+
+    # TODO(xgui): after
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values."""
+        return _get_unique_value_arrow_arrays(self.stats_, input_col)
 
     def _encode_list_element(self, element: list, *, column_name: str):
         ordinal_map = self._get_ordinal_map(column_name)
@@ -315,8 +298,6 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         self.encode_lists = fields["encode_lists"]
         # optional fields
         self._fitted = fields.get("_fitted")
-        # Initialize runtime cache (no need to serialize since it is just a local cache)
-        self._init_arrow_cache()
 
     def __repr__(self):
         return (
@@ -328,7 +309,7 @@ class OrdinalEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
 
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.one_hot_encoder")
-class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
+class OneHotEncoder(SerializablePreprocessorBase):
     r"""`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
 
@@ -432,12 +413,8 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
-        self._init_arrow_cache()
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        # Clear cached Arrow arrays from any previous fit
-        self._clear_arrow_cache()
-
         self.stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
@@ -446,7 +423,7 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
                 key_gen=key_gen,
                 max_categories=self.max_categories,
             ),
-            post_process_fn=unique_post_fn(batch_format=self.preferred_batch_format()),
+            post_process_fn=unique_post_fn(),
             stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
@@ -519,10 +496,14 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
 
         return table
 
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values."""
+        return _get_unique_value_arrow_arrays(self.stats_, input_col)
+
     def _encode_column_one_hot(
         self, column: pa.ChunkedArray, input_col: str
     ) -> pa.FixedSizeListArray:
-        """Encode a column to one-hot vectors using cached Arrow arrays.
+        """Encode a column to one-hot vectors using Arrow arrays.
 
         Unseen categories are encoded as all-zeros vectors, matching the pandas
         behavior. Null values should be validated before calling this method
@@ -572,8 +553,6 @@ class OneHotEncoder(_ArrowEncoderCacheMixin, SerializablePreprocessorBase):
         self.max_categories = fields["max_categories"]
         # optional fields
         self._fitted = fields.get("_fitted")
-        # Initialize runtime cache (no need to serialize since it is just a local cache)
-        self._init_arrow_cache()
 
     def __repr__(self):
         return (
@@ -1190,11 +1169,6 @@ def unique_post_fn(
             dict format for columns containing lists. The _transform_arrow method
             handles this by detecting dict-format stats and converting as needed.
         """
-        # Handle Python set/list from compute_unique_value_indices -
-        # fall back to Python-based sorting
-        if isinstance(values, (set, list)):
-            return gen_value_index(list(values))
-
         # Handle ListScalar from aggregation result
         if isinstance(values, pa.ListScalar):
             values = values.values
