@@ -1201,7 +1201,9 @@ def test_get_gpu_profile_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/task/gpu_profile", params=params, allow_redirects=False)
+        resp = requests.get(
+            f"{webui_url}/task/gpu_profile", params=params, allow_redirects=False
+        )
         print(f"resp.status_code: {resp.status_code}")
         print(f"resp.text: {resp.text[:200] if resp.text else 'No text'}")
 
@@ -1214,7 +1216,10 @@ def test_get_gpu_profile_running_task(shutdown_only):
             # Task might not be ready yet, retry
             return False
 
-        assert resp.status_code in [302, 500], f"Unexpected status code: {resp.status_code}, text: {resp.text[:200]}"
+        assert resp.status_code in [
+            302,
+            500,
+        ], f"Unexpected status code: {resp.status_code}, text: {resp.text[:200]}"
 
         # If it's a redirect, verify it points to the logs API
         if resp.status_code == 302:
