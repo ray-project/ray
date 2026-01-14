@@ -82,7 +82,7 @@ def test_data_config_validation():
         ray.train.DataConfig(datasets_to_split={})
 
 
-def test_dataset_setup_callback(ray_start_4_cpus):
+def test_datasets_callback(ray_start_4_cpus):
     """Check that the `DatasetsSetupCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
