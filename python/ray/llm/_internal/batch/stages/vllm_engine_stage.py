@@ -62,7 +62,8 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    prompt: str
+    # Either prompt or prompt_token_ids must be provided.
+    prompt: Optional[str] = None
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
@@ -78,6 +79,12 @@ class vLLMEngineRequest(BaseModel):
     params: Any
     # LoRA request.
     lora_request: Optional[Any] = None
+
+    @root_validator(pre=True)
+    def validate_prompt_or_prompt_token_ids(cls, values):
+        if not values.get("prompt") and not values.get("prompt_token_ids"):
+            raise ValueError("Either 'prompt' or 'prompt_token_ids' must be provided.")
+        return values
 
     class Config:
         validate_assignment = True
@@ -190,6 +197,7 @@ class vLLMOutputData(BaseModel):
                 and data.embeddings.dtype == torch.bfloat16
             ):
                 data.embeddings = data.embeddings.to(torch.float32)
+            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -219,7 +227,7 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
         # Flag to log deprecation warning only once
         self._guided_decoding_warning_logged = False
 
@@ -234,6 +242,19 @@ class vLLMEngineWrapper:
         self.dynamic_lora_loading_path = dynamic_lora_loading_path
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
+
+        # Set runner and convert based on task type.
+        if self.task_type == vLLMTaskType.GENERATE:
+            kwargs["runner"] = "generate"
+        elif self.task_type == vLLMTaskType.EMBED:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "embed"
+        elif self.task_type == vLLMTaskType.CLASSIFY:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "classify"
+        elif self.task_type == vLLMTaskType.SCORE:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "reward"
 
         try:
             import vllm
@@ -327,7 +348,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -508,7 +529,9 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = request.prompt
+                request_output.prompt = (
+                    request.prompt if request.prompt is not None else ""
+                )
                 return request_output
 
         raise RuntimeError(
@@ -629,6 +652,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -638,6 +665,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 model,
                 self.model,
             )
+
         return engine_kwargs
 
     async def _generate_with_error_handling(
@@ -865,7 +893,7 @@ class vLLMEngineStage(StatefulStage):
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
+        ret = {}
         if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
@@ -877,7 +905,8 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         ret = {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
+            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",

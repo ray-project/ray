@@ -174,7 +174,7 @@ errors, and every time a trial completes.
 
 TrialScheduler
 ~~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers>`__]
+[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/schedulers>`__]
 TrialSchedulers operate over a set of possible trials to run,
 prioritizing trial execution given available cluster resources.
 
