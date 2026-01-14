@@ -1,3 +1,4 @@
+import math
 import unittest
 from pathlib import Path
 
@@ -277,10 +278,36 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Ensure that we evaluated every 2 training iterations.
         self.assertEqual(self.config.offline_evaluation_interval, 2)
         self.assertIn(EVALUATION_RESULTS, results[1])
+        self.assertIn(EVALUATION_RESULTS, results[2])
         self.assertIn(EVALUATION_RESULTS, results[3])
-        # Also ensure we did not evaluate at other iterations.
+        # Also ensure we have no evaluation results in the first iteration.
         self.assertNotIn(EVALUATION_RESULTS, results[0])
-        self.assertNotIn(EVALUATION_RESULTS, results[2])
+
+        # Ensure that we did 2 iterations over the dataset in each evaluation.
+        for eval_idx in [1, 2, 3]:
+            eval_metrics = results[eval_idx][EVALUATION_RESULTS]
+            eval_metrics = eval_metrics[OFFLINE_EVAL_RUNNER_RESULTS]
+            if (eval_idx + 1) % self.config.offline_evaluation_interval == 0:
+                self.assertEqual(
+                    eval_metrics[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED],
+                    self.config.dataset_num_iters_per_learner,
+                )
+                self.assertEqual(
+                    eval_metrics[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED_LIFETIME],
+                    self.config.dataset_num_iters_per_learner
+                    * (eval_idx + 1)
+                    // self.config.offline_evaluation_interval,
+                )
+            else:
+                self.assertTrue(
+                    math.isnan(eval_metrics[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED]),
+                )
+                self.assertEqual(
+                    eval_metrics[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED_LIFETIME],
+                    results[eval_idx - 1][EVALUATION_RESULTS][
+                        OFFLINE_EVAL_RUNNER_RESULTS
+                    ][ALL_MODULES][DATASET_NUM_ITERS_EVALUATED_LIFETIME],
+                )
 
         # Get evaluation metrics.
         eval_metrics = results[3][EVALUATION_RESULTS]
