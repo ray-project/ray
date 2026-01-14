@@ -41,15 +41,16 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         ]
 
         self._input_done_flags: List[bool] = [False] * len(input_ops)
-        self._next_input_to_flush = 0
 
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Union": []}
+        self._current_input_index = 0
         super().__init__(data_context, *input_ops)
 
     def start(self, options: ExecutionOptions):
-        # Whether to preserve the order of the input data (both the
-        # order of the input operators and the order of the blocks within).
+        # Whether to preserve deterministic ordering of output blocks.
+        # When True, blocks are emitted in round-robin order across inputs,
+        # ensuring the same input always produces the same output order.
         self._preserve_order = options.preserve_order
         super().start(options)
 
@@ -99,33 +100,27 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
-
-        if not self._preserve_order or input_index == self._next_input_to_flush:
-            if self._preserve_order:
-                while self._input_buffers[input_index]:
-                    buffered = self._input_buffers[input_index].get_next()
-                    self._metrics.on_input_dequeued(buffered)
-                    self._output_buffer.append(buffered)
-                    self._metrics.on_output_queued(buffered)
-            self._output_buffer.append(refs)
-            self._metrics.on_output_queued(refs)
-        else:
+        if self._preserve_order:
             self._input_buffers[input_index].add(refs)
             self._metrics.on_input_queued(refs)
+            self._try_round_robin()
+        else:
+            self._output_buffer.append(refs)
+            self._metrics.on_output_queued(refs)
 
     def input_done(self, input_index: int) -> None:
         self._input_done_flags[input_index] = True
         if self._preserve_order:
-            self._try_advance_and_flush()
+            self._try_round_robin()
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
 
         if not self._preserve_order:
             return
-
-        self._try_advance_and_flush()
-        assert all(not ref for ref in self._input_buffers)
+        while any(buffer.has_next() for buffer in self._input_buffers):
+            self._try_round_robin()
+        assert all(not buffer.has_next() for buffer in self._input_buffers)
 
     def has_next(self) -> bool:
         # Check if the output buffer still contains at least one block.
@@ -139,15 +134,24 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def get_stats(self) -> StatsDict:
         return self._stats
 
-    def _try_advance_and_flush(self) -> None:
+    def _try_round_robin(self) -> None:
+        """Try to move blocks from input buffers to output in round-robin order.
 
-        while self._next_input_to_flush < len(self._input_buffers):
-            if not self._input_done_flags[self._next_input_to_flush]:
-                break
-            buffer_to_flush = self._input_buffers[self._next_input_to_flush]
-            while buffer_to_flush:
-                refs = buffer_to_flush.get_next()
+        Pulls one block from the current input, then advances to the next.
+        If the current input's buffer is empty but not exhausted, stops and
+        waits (blocking behavior) to maintain deterministic ordering.
+        """
+        num_inputs = len(self._input_buffers)
+
+        for _ in range(num_inputs):
+            buffer = self._input_buffers[self._current_input_index]
+
+            if buffer.has_next():
+                refs = buffer.get_next()
                 self._metrics.on_input_dequeued(refs)
                 self._output_buffer.append(refs)
                 self._metrics.on_output_queued(refs)
-            self._next_input_to_flush += 1
+            elif not self._input_done_flags[self._current_input_index]:
+                break
+
+            self._current_input_index = (self._current_input_index + 1) % num_inputs
