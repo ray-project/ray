@@ -158,7 +158,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_footsies_appo_gpu",
+    name = "learning_tests_appo_footsies_single_gpu",
     size = "large",
     srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
     args = [
@@ -179,31 +179,36 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_footsies_appo_multi_cpu",
+    name = "learning_tests_appo_footsies_multi_gpu",
     size = "large",
     srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
     args = [
         "--as-test",
-        "--num-env-runners=6",
-        "--evaluation-num-env-runners=2",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
         "--num-learners=2",
+        "--num-gpus-per-learner=1",
+        "--num-aggregator-actors-per-learner=2",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
+        "multi_gpu",
         "team:rllib",
     ],
 )
 
 py_test(
-    name = "learning_tests_multi_agent_footsies_appo_no_aggregator_actors",
+    name = "learning_tests_appo_footsies_single_gpu_no_aggregator_actors",
     size = "large",
     srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
     args = [
         "--as-test",
-        "--num-env-runners=6",
-        "--evaluation-num-env-runners=2",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
         "--num-aggregator-actors-per-learner=0",
     ],
     main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
