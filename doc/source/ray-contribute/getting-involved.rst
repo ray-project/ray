@@ -403,7 +403,7 @@ Committers are experienced contributors who have demonstrated significant contri
 to the Ray project over an extended period. Committers have additional responsibilities
 and privileges within the project.
 
-**Eligibility Criteria:**
+**Eligibility Criteria**
 
 - Must be active in the project for at least 6 months
 - Must be nominated by at least 1 TSC (Technical Steering Committee) member
@@ -414,7 +414,7 @@ and privileges within the project.
   - Active participation in community discussions
   - Technical expertise in one or more areas of the project
 
-**Responsibilities:**
+**Responsibilities**
 
 Committers are expected to:
 
