@@ -139,7 +139,6 @@ py_test(
 )
 
 # Footsies
-
 py_test(
     name = "learning_tests_appo_footsies_single_gpu",
     size = "large",
