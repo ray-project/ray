@@ -1,0 +1,602 @@
+# Get started with Tensor Parallelism (DTensor) and Ray Train
+
+**Time to complete:** 20 min
+
+This template shows how to train large language models using tensor parallelism with PyTorch's native DTensor API and Ray Train for distributed execution.
+
+**Tensor Parallelism (TP)** shards model weights across multiple GPUs, enabling training of models that are too large to fit on a single GPU. Combined with **Data Parallelism (DP)**, this creates a powerful **2D parallelism** strategy that scales efficiently to many GPUs.
+
+This tutorial provides a step-by-step guide covering:
+
+- Understanding 2D parallelism (Tensor Parallelism + Data Parallelism)
+- Setting up a 2D device mesh with PyTorch
+- Applying DTensor tensor parallelism to transformer layers
+- Combining with FSDP2 for data parallelism
+- TP-aware data loading to ensure correct gradient computation
+- Distributed checkpointing with Ray Train
+
+**Note:** This tutorial uses PyTorch's native `DTensor` and `fully_shard` APIs. These require PyTorch 2.4 or later.
+
+<div id="anyscale-note" class="alert alert-block alert-warning">
+
+  <strong>Anyscale Specific Configuration</strong>
+
+  <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you would need to manually:</p>
+
+  <ul>
+    <li><strong>Configure your Ray Cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
+    <li><strong>Manage Dependencies</strong>: Manually install and manage dependencies on each node.</li>
+    <li><strong>Set Up Storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+  </ul>
+</div>
+
+<style>
+  div#anyscale-note > p,
+  div#anyscale-note > ul,
+  div#anyscale-note > ul li {
+    color: black;
+  }
+
+  div#anyscale-note {
+    background-color: rgb(255, 243, 205);
+  }
+
+  div#anyscale-note {
+    border: 1px solid #ccc; 
+    border-radius: 8px;
+    padding: 15px;
+  }
+
+</style>
+
+## Understanding 2D Parallelism
+
+2D parallelism combines two complementary strategies:
+
+- **Tensor Parallelism (TP)**: Shards model weights across GPUs within a TP group. All GPUs in a TP group process the same input data but hold different parts of the model.
+- **Data Parallelism (DP)**: Replicates the model across DP groups. Each DP group processes different data and synchronizes gradients.
+
+With `tp_size=2` and `dp_size=2` on 4 GPUs, the device mesh looks like:
+
+```
+Device Mesh (2x2):
+        TP Dim
+      [0]  [1]
+ DP   +---+---+
+ Dim  | 0 | 1 |  <- TP Group 0 (same data, sharded model)
+      +---+---+
+      | 2 | 3 |  <- TP Group 1 (same data, sharded model)
+      +---+---+
+        ^   ^
+       DP Groups (different data, gradient sync)
+```
+
+- **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
+- **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
+
+## 1. Package and environment setup
+
+Install the required dependencies:
+
+
+```bash
+%%bash
+pip install torch transformers datasets
+```
+
+
+```python
+# Enable Ray Train V2 for the latest train APIs
+import os
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+import json
+import logging
+import tempfile
+import uuid
+
+import torch
+import torch.distributed as dist
+
+# Set up logging
+logger = logging.getLogger(__name__)
+```
+
+## 2. Data loading with TP-aware sharding
+
+A critical aspect of tensor parallelism is ensuring all GPUs in a TP group receive identical input data. Standard data loaders shard by `world_rank`, giving each GPU different data. With TP, you must shard by `dp_rank` instead:
+
+```python
+# All TP ranks in same DP group get identical batches
+sampler = DistributedSampler(
+    dataset,
+    num_replicas=dp_size,  # NOT world_size
+    rank=dp_rank,          # NOT world_rank
+)
+```
+
+The following function creates a dataloader with proper TP-aware sharding:
+
+
+```python
+from datasets import DownloadConfig, load_dataset
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
+from transformers import AutoTokenizer
+
+import ray.train
+
+
+def create_dataloader(
+    model_name: str,
+    dataset_name: str,
+    seq_length: int,
+    batch_size: int,
+    dp_rank: int,
+    dp_size: int,
+    seed: int = 42,
+    dataset_percentage: float = 10.0,
+) -> DataLoader:
+    """
+    Create dataloader with TP-aware sharding.
+
+    IMPORTANT: Uses dp_rank/dp_size for sharding (NOT world_rank/world_size).
+    This ensures all TP ranks in the same DP group see identical batches.
+    """
+    world_rank = ray.train.get_context().get_world_rank()
+
+    # Handle datasets that require a config name
+    dataset_config = "wikitext-2-raw-v1" if dataset_name == "wikitext" else None
+    split_spec = f"train[:{int(dataset_percentage)}%]"
+
+    # Rank 0 downloads first to avoid conflicts
+    if world_rank == 0:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        dataset = load_dataset(
+            dataset_name, dataset_config, split=split_spec,
+            download_config=DownloadConfig(disable_tqdm=True),
+        )
+    dist.barrier()
+
+    # Other ranks load from cache
+    if world_rank != 0:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        dataset = load_dataset(
+            dataset_name, dataset_config, split=split_spec,
+            download_config=DownloadConfig(disable_tqdm=True),
+        )
+
+    # Set pad token if needed
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # Tokenize dataset
+    def tokenize_fn(examples):
+        return tokenizer(
+            examples["text"], padding="max_length", max_length=seq_length, truncation=True
+        )
+
+    tokenized = dataset.map(
+        tokenize_fn, batched=True, num_proc=1, keep_in_memory=True,
+        remove_columns=dataset.column_names,
+    )
+
+    # Add labels (same as input_ids for causal LM)
+    def add_labels(examples):
+        examples["labels"] = examples["input_ids"].copy()
+        return examples
+
+    tokenized = tokenized.map(add_labels, batched=True, num_proc=1, keep_in_memory=True)
+    tokenized.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
+
+    # [1] Use DP rank/size for sharding (ensures TP ranks get same data)
+    sampler = DistributedSampler(
+        tokenized, num_replicas=dp_size, rank=dp_rank, shuffle=True, seed=seed
+    )
+
+    return DataLoader(tokenized, batch_size=batch_size, sampler=sampler, drop_last=True)
+```
+
+## 3. Model parallelization with DTensor
+
+PyTorch's DTensor provides native tensor parallelism through the `parallelize_module` API. For transformer models, you apply:
+
+- **ColwiseParallel**: Splits output features across TP ranks (used for q, k, v projections and MLP up projections)
+- **RowwiseParallel**: Splits input features across TP ranks (used for output projections and MLP down projections)
+
+The following code sets up the 2D device mesh and applies tensor parallelism:
+
+
+```python
+from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
+from torch.distributed.device_mesh import init_device_mesh
+from torch.distributed.tensor.parallel import (
+    ColwiseParallel,
+    RowwiseParallel,
+    parallelize_module,
+)
+from transformers import AutoConfig, AutoModelForCausalLM
+
+import ray.train.torch
+
+
+def setup_model_with_tp(
+    model_name: str,
+    tp_size: int,
+    dp_size: int,
+    world_rank: int,
+    world_size: int,
+    device: torch.device,
+):
+    """
+    Set up the model with tensor parallelism (DTensor) and data parallelism (FSDP2).
+    
+    Returns:
+        tuple: (model, tp_mesh, dp_mesh, tp_rank, dp_rank)
+    """
+    # Calculate TP and DP rank
+    tp_rank = world_rank % tp_size
+    dp_rank = world_rank // tp_size
+
+    # Validate configuration
+    if dp_size * tp_size != world_size:
+        raise ValueError(
+            f"dp_size ({dp_size}) * tp_size ({tp_size}) must equal "
+            f"world_size ({world_size})"
+        )
+
+    # Load model config and validate TP compatibility
+    hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    if hf_config.num_key_value_heads % tp_size != 0:
+        raise ValueError(
+            f"TP size {tp_size} must divide num_key_value_heads "
+            f"{hf_config.num_key_value_heads}"
+        )
+
+    if world_rank == 0:
+        logger.info(f"Setting up 2D mesh: dp_size={dp_size}, tp_size={tp_size}")
+
+    # [1] Create 2D device mesh: (dp, tp)
+    device_mesh = init_device_mesh(
+        "cuda", (dp_size, tp_size), mesh_dim_names=("dp", "tp")
+    )
+    tp_mesh = device_mesh["tp"]
+    dp_mesh = device_mesh["dp"]
+
+    if world_rank == 0:
+        logger.info(f"Device mesh created: {device_mesh}")
+
+    # [2] Create model with random initialization on the target device
+    dtype = torch.bfloat16
+    prev_device = torch.get_default_device()
+    torch.set_default_device(device)
+    model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
+    torch.set_default_device(prev_device)
+
+    # Get transformer layers (Qwen/Llama-style models)
+    layers = model.model.layers
+
+    # [3] Define TP mapping for transformer layers
+    # ColwiseParallel: splits output features across TP ranks
+    # RowwiseParallel: splits input features across TP ranks
+    tp_mapping = {
+        # Attention projections
+        "self_attn.q_proj": ColwiseParallel(),
+        "self_attn.k_proj": ColwiseParallel(),
+        "self_attn.v_proj": ColwiseParallel(),
+        "self_attn.o_proj": RowwiseParallel(),
+        # MLP projections
+        "mlp.gate_proj": ColwiseParallel(),
+        "mlp.up_proj": ColwiseParallel(),
+        "mlp.down_proj": RowwiseParallel(),
+    }
+
+    if world_rank == 0:
+        logger.info(f"Applying DTensor TP to {len(layers)} layers")
+
+    # [4] Apply DTensor TP to transformer layers
+    for layer in layers:
+        parallelize_module(layer, tp_mesh, tp_mapping)
+
+    # [5] Apply FSDP2 for data parallelism (if dp_size > 1)
+    mp_policy = MixedPrecisionPolicy(param_dtype=dtype, reduce_dtype=dtype)
+
+    if dp_size > 1:
+        if world_rank == 0:
+            logger.info("Applying FSDP2 to transformer layers")
+
+        for layer in layers:
+            fully_shard(layer, mesh=dp_mesh, mp_policy=mp_policy)
+
+        # Apply to the whole model
+        fully_shard(model, mesh=dp_mesh, mp_policy=mp_policy)
+    else:
+        if world_rank == 0:
+            logger.info("dp_size=1, skipping FSDP sharding (TP only)")
+
+    if world_rank == 0:
+        num_params = sum(p.numel() for p in model.parameters())
+        logger.info(f"Model initialized with {num_params:,} parameters")
+
+    return model, tp_mesh, dp_mesh, tp_rank, dp_rank
+```
+
+## 4. Checkpointing
+
+With tensor parallelism, each worker holds a shard of the model. Checkpointing saves each shard independently, and Ray Train aggregates them into a single checkpoint.
+
+
+```python
+from ray.train import Checkpoint
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    world_rank: int,
+    epoch: int,
+    step: int,
+    avg_loss: float,
+) -> None:
+    """Save checkpoint and report to Ray Train."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+        # Each rank saves its model/optimizer shard
+        torch.save(
+            model.state_dict(),
+            os.path.join(checkpoint_dir, f"model_rank{world_rank}.pt"),
+        )
+        torch.save(
+            optimizer.state_dict(),
+            os.path.join(checkpoint_dir, f"optimizer_rank{world_rank}.pt"),
+        )
+
+        # Save metadata (from rank 0 only)
+        if world_rank == 0:
+            with open(os.path.join(checkpoint_dir, "metadata.json"), "w") as f:
+                json.dump({"epoch": epoch, "step": step}, f)
+
+        # All workers must call report() with their checkpoint
+        checkpoint = Checkpoint.from_directory(tmp_dir)
+        ray.train.report({"loss": avg_loss, "epoch": epoch}, checkpoint=checkpoint)
+```
+
+## 5. Training loop
+
+The main training function brings together all components:
+
+
+```python
+def train_func(config):
+    """
+    Main training loop executed by each Ray Train worker.
+
+    This function:
+    1. Sets up the 2D device mesh for TP + DP
+    2. Creates and shards the model with DTensor (TP) and FSDP2 (DP)
+    3. Runs the training loop with checkpointing
+    """
+    # Get Ray Train context
+    world_rank = ray.train.get_context().get_world_rank()
+    world_size = ray.train.get_context().get_world_size()
+    device = ray.train.torch.get_device()
+
+    tp_size = config["tp_size"]
+    dp_size = config["dp_size"]
+
+    if world_rank == 0:
+        logger.info(f"Worker started: world_rank={world_rank}, world_size={world_size}")
+
+    # Set up model with 2D parallelism
+    model, tp_mesh, dp_mesh, tp_rank, dp_rank = setup_model_with_tp(
+        model_name=config["model_name"],
+        tp_size=tp_size,
+        dp_size=dp_size,
+        world_rank=world_rank,
+        world_size=world_size,
+        device=device,
+    )
+
+    # Create optimizer
+    # Note: Use foreach=False because DTensor doesn't support fused optimizer ops
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config.get("learning_rate", 1e-5),
+        weight_decay=config.get("weight_decay", 0.01),
+        foreach=False,
+    )
+
+    dtype = torch.bfloat16
+
+    if world_rank == 0:
+        if dp_size > 1:
+            logger.info(f"2D parallelism: {dp_size} DP x {tp_size} TP")
+        logger.info("torch.autocast enabled with dtype=bfloat16")
+
+    # Create dataloader with TP-aware sharding
+    dataloader = create_dataloader(
+        model_name=config["model_name"],
+        dataset_name=config["dataset_name"],
+        seq_length=config["seq_length"],
+        batch_size=config["batch_size"],
+        dp_rank=dp_rank,
+        dp_size=dp_size,
+        seed=config.get("seed", 42),
+        dataset_percentage=config.get("dataset_percentage", 10.0),
+    )
+
+    steps_per_epoch = len(dataloader)
+    if world_rank == 0:
+        logger.info(f"Dataloader created: {steps_per_epoch} steps per epoch")
+
+    # Training loop
+    model.train()
+
+    for epoch in range(config["num_epochs"]):
+        dataloader.sampler.set_epoch(epoch)
+
+        running_loss = 0.0
+        num_batches = 0
+
+        for step, batch in enumerate(dataloader):
+            # Move batch to device
+            batch = {k: v.to(device) for k, v in batch.items()}
+
+            # Zero gradients
+            optimizer.zero_grad(set_to_none=True)
+
+            # Forward pass with autocast
+            with torch.autocast(device_type="cuda", dtype=dtype):
+                outputs = model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch["attention_mask"],
+                    labels=batch["labels"],
+                    use_cache=False,
+                )
+                loss = outputs.loss
+
+            # Backward pass
+            loss.backward()
+
+            # Optimizer step
+            optimizer.step()
+
+            # Track loss
+            loss_value = loss.item()
+            running_loss += loss_value
+            num_batches += 1
+
+            # Log progress
+            if world_rank == 0 and step % config.get("log_interval", 10) == 0:
+                logger.info(
+                    f"Epoch: {epoch} Step: {step + 1}/{steps_per_epoch} Loss: {loss_value:.4f}"
+                )
+
+            # Debug mode: stop early for testing
+            if config.get("debug_steps", 0) > 0 and step + 1 >= config["debug_steps"]:
+                if world_rank == 0:
+                    logger.info(f"Debug steps finished. Stopping epoch {epoch}.")
+                break
+
+        # Calculate average loss for epoch
+        avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
+
+        # Save checkpoint at end of epoch
+        save_checkpoint(model, optimizer, world_rank, epoch, step, avg_loss)
+
+        if world_rank == 0:
+            logger.info(f"Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
+```
+
+## 6. Launch the distributed training job
+
+Configure and launch the training job using Ray Train's TorchTrainer. This example uses:
+- 4 workers (GPUs)
+- 2-way tensor parallelism
+- 2-way data parallelism
+- A small model (Qwen2.5-0.5B) for demonstration
+
+
+```python
+from ray.train import RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer
+
+# Parallelism configuration
+tp_size = 2  # Tensor parallel degree
+dp_size = 2  # Data parallel degree
+num_workers = tp_size * dp_size  # Total workers must equal tp_size * dp_size
+
+# Configure distributed training resources
+scaling_config = ScalingConfig(
+    num_workers=num_workers,
+    use_gpu=True,
+)
+
+# Training configuration
+train_loop_config = {
+    # Model and data
+    "model_name": "Qwen/Qwen2.5-0.5B",  # Small model for demo
+    "dataset_name": "wikitext",
+    "dataset_percentage": 5.0,  # Use 5% of dataset for faster demo
+    # Parallelism
+    "tp_size": tp_size,
+    "dp_size": dp_size,
+    # Training hyperparameters
+    "batch_size": 1,
+    "seq_length": 512,
+    "num_epochs": 1,
+    "learning_rate": 1e-5,
+    "weight_decay": 0.01,
+    # Logging and debug
+    "log_interval": 5,
+    "debug_steps": 20,  # Stop after 20 steps for demo (set to 0 for full training)
+    "seed": 42,
+}
+
+# Create experiment name
+experiment_name = f"tp_dtensor_{uuid.uuid4().hex[:8]}"
+
+# Configure run settings
+run_config = RunConfig(
+    storage_path="/mnt/cluster_storage/",
+    name=experiment_name,
+)
+
+# Initialize and launch the trainer
+trainer = TorchTrainer(
+    train_loop_per_worker=train_func,
+    scaling_config=scaling_config,
+    train_loop_config=train_loop_config,
+    run_config=run_config,
+)
+
+print(f"Starting tensor parallel training with {tp_size}-way TP and {dp_size}-way DP...")
+result = trainer.fit()
+print("Training completed successfully!")
+print(f"Final metrics: {result.metrics}")
+```
+
+## Scaling to larger models
+
+To train larger models like Qwen2-7B or Llama-3-8B, adjust the configuration:
+
+```python
+# For 8 GPUs: 4-way TP, 2-way DP
+train_loop_config = {
+    "model_name": "Qwen/Qwen2-7B",
+    "tp_size": 4,
+    "dp_size": 2,
+    "batch_size": 1,
+    "seq_length": 2048,
+    ...
+}
+
+scaling_config = ScalingConfig(
+    num_workers=8,
+    use_gpu=True,
+)
+```
+
+**Tips for scaling:**
+- Increase `tp_size` to fit larger models (TP shards model weights)
+- Increase `dp_size` to improve throughput (DP processes more data in parallel)
+- Ensure `tp_size` divides the model's `num_key_value_heads`
+- Use NVLink-connected GPUs for efficient TP communication
+
+## Summary
+
+In this tutorial, you learned:
+
+- How 2D parallelism combines tensor parallelism and data parallelism
+- How to set up a 2D device mesh with PyTorch
+- How to apply DTensor tensor parallelism to transformer layers
+- The importance of TP-aware data loading for correct gradient computation
+- How to combine DTensor with FSDP2 for 2D parallelism
+- How to save distributed checkpoints with Ray Train
+
+For production training of large models, consider:
+- Using larger `tp_size` for models that don't fit on a single GPU
+- Enabling gradient checkpointing for memory efficiency
+- Using PyTorch's memory profiler to optimize memory usage
