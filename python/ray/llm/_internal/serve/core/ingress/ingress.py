@@ -31,6 +31,7 @@ from ray.llm._internal.common.utils.lora_utils import (
 from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -40,6 +41,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
@@ -53,6 +56,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TokenizeCompletionRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
     TranscriptionStreamResponse,
@@ -87,6 +92,9 @@ T = TypeVar("T")
 
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "autoscaling_config": {
+        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    },
 }
 
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
@@ -144,6 +152,8 @@ DEFAULT_ENDPOINTS = {
         "/v1/audio/transcriptions",
     ),
     "score": lambda app: app.post("/v1/score"),
+    "tokenize": lambda app: app.post("/tokenize"),
+    "detokenize": lambda app: app.post("/detokenize"),
 }
 
 
@@ -237,9 +247,8 @@ def make_fastapi_ingress(
         class_dict[method_name] = decorated_method
 
     # Create new class with the decorated methods in its __dict__.
-    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
-    # class so that make_fastapi_class_based_view can properly identify the routes
-    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    # We keep the same __name__ and __qualname__ as the original class
+    # so that the new class properly represents the input class.
     new_cls = type(cls.__name__, (cls,), class_dict)
     new_cls.__qualname__ = cls.__qualname__
 
@@ -684,6 +693,68 @@ class OpenAiIngress(DeploymentProtocol):
                 )
 
             if isinstance(result, ScoreResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def tokenize(
+        self, body: TokenizeCompletionRequest, request: Request
+    ) -> Response:
+        """Tokenize text into token IDs.
+
+        This endpoint tokenizes the provided text prompt and returns the token IDs,
+        counts, and optionally token strings.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The tokenize request containing the text to tokenize.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with token IDs and metadata.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="tokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, TokenizeResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def detokenize(self, body: DetokenizeRequest, request: Request) -> Response:
+        """Convert token IDs back to text.
+
+        This endpoint detokenizes the provided token IDs and returns the
+        corresponding text.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The detokenize request containing the token IDs.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with the detokenized text.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="detokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, DetokenizeResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod

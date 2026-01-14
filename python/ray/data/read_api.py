@@ -22,7 +22,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
@@ -72,6 +72,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
     get_table_block_metadata_schema,
@@ -447,7 +448,7 @@ def read_datasource(
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
-        concurrency=concurrency,
+        compute=TaskPoolStrategy(concurrency),
     )
     execution_plan = ExecutionPlan(
         stats,
@@ -985,10 +986,8 @@ def read_parquet(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -1172,10 +1171,8 @@ def read_images(
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1337,10 +1334,9 @@ def read_json(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to ``FileShuffleConfig``, you can configure deterministic shuffling.
-            Use ``FileShuffleConfig(seed=42, reseed_after_epoch=False)`` for consistent
-            shuffling across epochs, or ``FileShuffleConfig(seed=42)`` for different
-            shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
+            the input files, e.g. ``FileShuffleConfig(seed=42)``.
+            Defaults to not shuffle with ``None``.
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
@@ -1542,10 +1538,8 @@ def read_csv(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
@@ -1674,10 +1668,8 @@ def read_text(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1799,10 +1791,8 @@ def read_avro(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1904,10 +1894,9 @@ def read_numpy(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to ``FileShuffleConfig``, you can configure deterministic shuffling.
-            Use ``FileShuffleConfig(seed=42, reseed_after_epoch=False)`` for consistent
-            shuffling across epochs, or ``FileShuffleConfig(seed=42)`` for different
-            shuffling per epoch. Defaults to not shuffle with ``None``.
+            if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
+            input files, i.e. ``FileShuffleConfig(seed = 42)``.
+            Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2041,10 +2030,8 @@ def read_tfrecords(
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2228,10 +2215,8 @@ def read_mcap(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
             Defaults to ``["mcap"]``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2336,10 +2321,9 @@ def read_webdataset(
         suffixes: A function or list of suffixes to select for creating samples.
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to ``FileShuffleConfig``, you can configure deterministic shuffling.
-            Use ``FileShuffleConfig(seed=42, reseed_after_epoch=False)`` for consistent
-            shuffling across epochs, or ``FileShuffleConfig(seed=42)`` for different
-            shuffling per epoch. Defaults to not shuffle with ``None``.
+            if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
+            input files, i.e. ``FileShuffleConfig(seed = 42)``.
+            Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
@@ -2475,10 +2459,8 @@ def read_binary_files(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            If setting to :class:`~ray.data.FileShuffleConfig`, you can configure
-            deterministic shuffling. Use ``FileShuffleConfig(seed=X, reseed_after_epoch=False)``
-            for consistent shuffling across epochs, or ``FileShuffleConfig(seed=X)`` for
-            different shuffling per epoch. Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2526,6 +2508,7 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    sql_params: Optional[Any] = None,
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
@@ -2603,6 +2586,8 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        sql_params: Parameters to bind to the SQL query. Use the placeholder style
+            required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
         shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
             For other databases, common alternatives include "hash" and "SHA".
@@ -2629,6 +2614,7 @@ def read_sql(
     """
     datasource = SQLDatasource(
         sql=sql,
+        sql_params=sql_params,
         shard_keys=shard_keys,
         shard_hash_fn=shard_hash_fn,
         connection_factory=connection_factory,
@@ -3124,7 +3110,7 @@ def from_pandas(
             ary = dfs[0]
         dfs = np.array_split(ary, override_num_blocks)
 
-    from ray.air.util.data_batch_conversion import (
+    from ray.data.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
@@ -3553,47 +3539,16 @@ def from_huggingface(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Union[MaterializedDataset, Dataset]:
-    """Create a :class:`~ray.data.MaterializedDataset` from a
+    """Read a Hugging Face Dataset into a Ray Dataset.
+
+    Creates a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
-    For an `IterableDataset`, we use a streaming implementation to read data.
 
-    If the dataset is a public Hugging Face Dataset that is hosted on the Hugging Face Hub and
-    no transformations have been applied, then the `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
-    will be passed to :meth:`~ray.data.read_parquet` to perform a distributed read. All
-    other cases will be done with a single node read.
+    It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
+    filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
-    Example:
-
-        ..
-            The following `testoutput` is mocked to avoid illustrating download
-            logs like "Downloading and preparing dataset 162.17 MiB".
-
-        .. testcode::
-
-            import ray
-            import datasets
-
-            hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-            ray_ds = ray.data.from_huggingface(hf_dataset["train"])
-            print(ray_ds)
-
-            hf_dataset_stream = datasets.load_dataset("tweet_eval", "emotion", streaming=True)
-            ray_ds_stream = ray.data.from_huggingface(hf_dataset_stream["train"])
-            print(ray_ds_stream)
-
-        .. testoutput::
-            :options: +MOCK
-
-            MaterializedDataset(
-                num_blocks=...,
-                num_rows=3257,
-                schema={text: string, label: int64}
-            )
-            Dataset(
-                num_rows=3257,
-                schema={text: string, label: int64}
-            )
+    See :ref:`Loading Hugging Face datasets <loading_huggingface_datasets>` for more details.
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
@@ -3965,7 +3920,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance-python-doc/all-modules.html#lance.LanceDataset>`_.
+    `Lance Dataset <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
         >>> import ray
@@ -3982,16 +3937,16 @@ def read_lance(
             integer version number or a string tag. By default, the
             latest version is loaded.
         columns: The columns to read. By default, all columns are read.
-        filter: Read returns only the rows matching the filter. By default, no
-            filter is applied.
+        filter: A string that is a valid SQL WHERE clause. Read returns
+            only the rows matching the filter. See
+            `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
+            for valid SQL expressions. By default, no filter is applied.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
-            endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/guide/object_store/>`_.
+            endpoint, etc. For more information, see `Object Store Configuration <https://lance.org/guide/object_store/>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io\
-            /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
+            see `Lance Python API doc <https://lance-format.github.io/lance-python-doc/all-modules.html#lance.dataset.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4138,7 +4093,7 @@ def read_unity_catalog(
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/external-access/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
@@ -4457,7 +4412,7 @@ def _resolve_parquet_args(
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),
                     tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col, tensor_col_name),
+                    ArrowTensorArray.from_numpy(np_col, column_name=tensor_col_name),
                 )
             if existing_block_udf is not None:
                 # Apply UDF after casting the tensor columns.

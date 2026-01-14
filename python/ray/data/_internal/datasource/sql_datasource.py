@@ -1,13 +1,18 @@
 import logging
 import math
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
+
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +79,13 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
+def _execute(cursor: Cursor, sql: str, params: Optional[Any]) -> None:
+    if params is None:
+        cursor.execute(sql)
+    else:
+        cursor.execute(sql, params)
+
+
 class SQLDatasource(Datasource):
     MIN_ROWS_PER_READ_TASK = 50
 
@@ -83,6 +95,7 @@ class SQLDatasource(Datasource):
         connection_factory: Callable[[], Connection],
         shard_hash_fn: str,
         shard_keys: Optional[List[str]] = None,
+        sql_params: Optional[Any] = None,
     ):
         self.sql = sql
         if shard_keys and len(shard_keys) > 1:
@@ -93,6 +106,7 @@ class SQLDatasource(Datasource):
             self.shard_keys = None
         self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
+        self.sql_params = sql_params
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
@@ -115,7 +129,7 @@ class SQLDatasource(Datasource):
         )
         try:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(query)
+                _execute(cursor, query, self.sql_params)
             return True
         except Exception as e:
             logger.info(f"Database does not support sharding: {str(e)}.")
@@ -125,12 +139,12 @@ class SQLDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
             """Read all data in a single block when sharding is not supported."""
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(self.sql)
+                _execute(cursor, self.sql, self.sql_params)
                 return [_cursor_to_block(cursor)]
 
         # Check if sharding is supported by the database first
@@ -175,7 +189,7 @@ class SQLDatasource(Datasource):
 
     def _get_num_rows(self) -> int:
         with _connect(self.connection_factory) as cursor:
-            cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
+            _execute(cursor, f"SELECT COUNT(*) FROM ({self.sql}) as T", self.sql_params)
             return cursor.fetchone()[0]
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
@@ -187,7 +201,7 @@ class SQLDatasource(Datasource):
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(query)
+                _execute(cursor, query, self.sql_params)
                 block = _cursor_to_block(cursor)
                 return [block]
 

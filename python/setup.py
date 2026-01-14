@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -175,8 +175,6 @@ generated_python_directories = [
     "ray/serve/generated",
 ]
 
-ray_files.append("ray/nightly-wheels.yaml")
-
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
@@ -252,11 +250,10 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
-            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
             "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0",
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -301,8 +298,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0",
                 "pyOpenSSL",
             ]
         )
@@ -324,9 +320,9 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.1.1",
+        "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack==1.7.0",
+        "ormsgpack>=1.7.0",
         "pyyaml",
         "scipy",
     ]
@@ -375,7 +371,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.12.0",
+                "vllm[audio]>=0.13.0",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
@@ -761,6 +757,13 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
+    try:
+        from setuptools.command.bdist_wheel import bdist_wheel
+    except ImportError:
+        from wheel.bdist_wheel import bdist_wheel
+
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -768,6 +771,46 @@ if __name__ == "__main__":
     class BinaryDistribution(setuptools.Distribution):
         def has_ext_modules(self):
             return True
+
+    class RayCppBdistWheel(bdist_wheel):
+        """Custom bdist_wheel that produces Python-agnostic wheels for ray-cpp.
+
+        PROBLEM
+        -------
+        The ray-cpp wheel contains only C++ files (headers, libraries, executables)
+        with NO Python-specific code. It should work with any Python 3.x version.
+        However, by default, setuptools/bdist_wheel generates wheels tagged with
+        the specific Python interpreter used to build, e.g.:
+
+            ray_cpp-3.0.0-cp310-cp310-manylinux2014_x86_64.whl
+                          ^^^^^-^^^^^
+                          Python 3.10 specific!
+
+        This class forces the wheel tag to be:
+
+            ray_cpp-3.0.0-py3-none-manylinux2014_x86_64.whl
+                          ^^^-^^^^
+                          Works with ANY Python 3!
+
+        Tag meanings:
+        - "py3" = compatible with any Python 3.x
+        - "none" = no Python ABI dependency (no compiled .so using Python.h)
+        - "manylinux2014_x86_64" = platform tag (still needed for C++ binaries)
+
+        """
+
+        def finalize_options(self):
+            super().finalize_options()
+            # Mark as non-pure to ensure we get a platform tag (e.g., manylinux2014).
+            # Pure wheels get "any" as the platform tag, which is wrong for ray-cpp
+            # since it contains platform-specific C++ binaries.
+            self.root_is_pure = False
+
+        def get_tag(self):
+            # Get the platform tag from parent (e.g., "manylinux2014_x86_64")
+            _, _, platform_tag = super().get_tag()
+            # Force Python-agnostic tags: ("py3", "none", platform_tag)
+            return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
@@ -785,6 +828,12 @@ if __name__ == "__main__":
         # If the license text has multiple lines, add an ending endline.
         license_text += "\n"
 
+    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
+    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
+    cmdclass = {"build_ext": build_ext}
+    if setup_spec.type == SetupType.RAY_CPP:
+        cmdclass["bdist_wheel"] = RayCppBdistWheel
+
     setuptools.setup(
         name=setup_spec.name,
         version=setup_spec.version,
@@ -797,16 +846,15 @@ if __name__ == "__main__":
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.9",
+        python_requires=">=3.10",
         classifiers=[
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
-        cmdclass={"build_ext": build_ext},
+        cmdclass=cmdclass,
         distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),
