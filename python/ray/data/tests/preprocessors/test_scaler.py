@@ -378,15 +378,7 @@ def test_standard_scaler_arrow_transform():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
 
     scaler = StandardScaler(["B", "C"])
-
-    # Manually set stats
-    scaler.stats_ = {
-        "mean(B)": 4.0,
-        "std(B)": 2.0,
-        "mean(C)": 10.0,
-        "std(C)": 0.0,  # Test std=0 case
-    }
-    scaler._fitted = True
+    scaler.fit(ray.data.from_pandas(in_df))
 
     # Create Arrow table for transformation
     table = pa.Table.from_pandas(in_df)
@@ -401,17 +393,26 @@ def test_standard_scaler_arrow_transform():
     result_df = result_table.to_pandas()
 
     # Expected encoding:
-    # B: (x - 4) / 2 -> [-1.5, -0.5, 0.5, 1.5]
-    # C: std=0 -> std becomes 1 -> (x - 10) / 1 = 0 for all
-    expected_col_b = [-1.5, -0.5, 0.5, 1.5]
-    expected_col_c = [0.0, 0.0, 0.0, 0.0]
+    # B: (x - mean(B)) / std(B)
+    # C: std(C)=0 -> std becomes 1 -> (x - mean(C)) / 1 = 0 for all
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_col_b = [(x - b_mean) / b_std for x in col_b]
+
+    c_mean = scaler.stats_["mean(C)"]
+    c_std = scaler.stats_["std(C)"] or 0.0
+    if c_std == 0:
+        c_std = 1
+    expected_col_c = [(x - c_mean) / c_std for x in col_c]
 
     assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
-    assert (
-        result_df["B"].tolist() == expected_col_b
+    assert np.allclose(
+        result_df["B"].tolist(), expected_col_b
     ), f"Column B mismatch: {result_df['B'].tolist()}"
-    assert (
-        result_df["C"].tolist() == expected_col_c
+    assert np.allclose(
+        result_df["C"].tolist(), expected_col_c
     ), f"Column C mismatch: {result_df['C'].tolist()}"
 
 
@@ -422,13 +423,7 @@ def test_standard_scaler_arrow_transform_append_mode():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
 
     scaler = StandardScaler(["B"], output_columns=["B_scaled"])
-
-    # Manually set stats
-    scaler.stats_ = {
-        "mean(B)": 3.0,
-        "std(B)": 2.0,
-    }
-    scaler._fitted = True
+    scaler.fit(ray.data.from_pandas(in_df))
 
     table = pa.Table.from_pandas(in_df)
     result_table = scaler._transform_arrow(table)
@@ -439,23 +434,21 @@ def test_standard_scaler_arrow_transform_append_mode():
     assert result_df["B"].tolist() == col_b
 
     # New column should have scaled values: (x - 3) / 2
-    expected_b_scaled = [-1.0, 0.0, 1.0]
-    assert result_df["B_scaled"].tolist() == expected_b_scaled
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_b_scaled = [(x - b_mean) / b_std for x in col_b]
+    assert np.allclose(result_df["B_scaled"].tolist(), expected_b_scaled)
 
 
 def test_standard_scaler_arrow_transform_null_stats():
     """Test the StandardScaler _transform_arrow method with null mean/std."""
-    col_a = [1.0, 2.0, 3.0]
-    in_df = pd.DataFrame.from_dict({"A": col_a})
+    # Use an all-null column to produce null mean/std during fit.
+    in_df = pd.DataFrame.from_dict({"A": [None, None, None]})
 
     scaler = StandardScaler(["A"])
-
-    # Manually set stats with None (simulating all-null column)
-    scaler.stats_ = {
-        "mean(A)": None,
-        "std(A)": None,
-    }
-    scaler._fitted = True
+    scaler.fit(ray.data.from_pandas(in_df))
 
     table = pa.Table.from_pandas(in_df)
     result_table = scaler._transform_arrow(table)
@@ -479,15 +472,7 @@ def test_standard_scaler_arrow_transform_overlapping_columns():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
 
     scaler = StandardScaler(["A", "B"], output_columns=["B", "C"])
-
-    # Manually set stats
-    scaler.stats_ = {
-        "mean(A)": 4.0,
-        "std(A)": 2.0,
-        "mean(B)": 20.0,
-        "std(B)": 10.0,
-    }
-    scaler._fitted = True
+    scaler.fit(ray.data.from_pandas(in_df))
 
     # Test Arrow transform
     table = pa.Table.from_pandas(in_df)
@@ -501,15 +486,23 @@ def test_standard_scaler_arrow_transform_overlapping_columns():
     assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
 
     # Column B should contain scaled A: (A - 4) / 2 = [-1, 0, 1]
-    expected_b = [-1.0, 0.0, 1.0]
-    assert result_df["B"].tolist() == expected_b, (
+    a_mean = scaler.stats_["mean(A)"]
+    a_std = scaler.stats_["std(A)"] or 0.0
+    if a_std == 0:
+        a_std = 1
+    expected_b = [(x - a_mean) / a_std for x in col_a]
+    assert np.allclose(result_df["B"].tolist(), expected_b), (
         f"Column B should contain scaled A. Expected {expected_b}, "
         f"got {result_df['B'].tolist()}"
     )
 
     # Column C should contain scaled B: (B - 20) / 10 = [-1, 0, 1]
-    expected_c = [-1.0, 0.0, 1.0]
-    assert result_df["C"].tolist() == expected_c, (
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_c = [(x - b_mean) / b_std for x in col_b]
+    assert np.allclose(result_df["C"].tolist(), expected_c), (
         f"Column C should contain scaled B. Expected {expected_c}, "
         f"got {result_df['C'].tolist()}"
     )

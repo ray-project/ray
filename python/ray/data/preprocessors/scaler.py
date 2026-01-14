@@ -6,6 +6,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
+from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
@@ -122,15 +123,6 @@ class StandardScaler(SerializablePreprocessorBase):
         df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
 
-    def _set_or_append_column(
-        self, table: pa.Table, column: pa.ChunkedArray, output_col: str
-    ) -> pa.Table:
-        column_idx = table.schema.get_field_index(output_col)
-        if column_idx == -1:
-            return table.append_column(output_col, column)
-        else:
-            return table.set_column(column_idx, output_col, column)
-
     def _transform_arrow(self, table: pa.Table) -> pa.Table:
         """Transform using fast native PyArrow operations."""
         # Read all input columns first to avoid reading modified data when
@@ -146,7 +138,9 @@ class StandardScaler(SerializablePreprocessorBase):
             if s_std is None or s_mean is None:
                 # Return column filled with nulls, preserving original column type
                 null_array = pa.nulls(len(column), type=column.type)
-                table = self._set_or_append_column(table, null_array, output_col)
+                table = BlockAccessor.for_block(table).upsert_column(
+                    output_col, null_array
+                )
                 continue
 
             # Handle division by zero
@@ -159,7 +153,9 @@ class StandardScaler(SerializablePreprocessorBase):
                 pc.subtract(column, pa.scalar(float(s_mean))), pa.scalar(float(s_std))
             )
 
-            table = self._set_or_append_column(table, scaled_column, output_col)
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, scaled_column
+            )
 
         return table
 
