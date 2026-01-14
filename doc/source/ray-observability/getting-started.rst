@@ -72,7 +72,7 @@ Ray Dashboard Subprocess Modules
 The Ray Dashboard includes several subprocess modules that run in separate processes. You can control which modules are enabled using environment variables.
 
 Environment Variables
-^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~
 
 ``RAY_DASHBOARD_DISABLED_MODULES``
     Comma-separated list of dashboard subprocess modules to disable.
@@ -83,7 +83,7 @@ If ``RAY_DASHBOARD_DISABLED_MODULES`` is set, all modules except those listed wi
 If it isn't set, all modules will be enabled by default.
 
 Available Modules
-^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~
 
 - ``DataHead``: Data-related APIs
 - ``EventHead``: Ray Event APIs
@@ -97,7 +97,7 @@ Available Modules
 - ``UsageStatsHead``: Usage statistics APIs
 
 Example Usage
-^^^^^^^^^^^^^
+~~~~~~~~~~~~~
 
 To disable specific modules:
 ::

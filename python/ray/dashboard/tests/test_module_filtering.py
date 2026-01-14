@@ -22,6 +22,7 @@ def clean_env_var():
     if "RAY_DASHBOARD_DISABLED_MODULES" in os.environ:
         del os.environ["RAY_DASHBOARD_DISABLED_MODULES"]
 
+
 def test_dashboard_head_filters_modules_based_on_env_var():
     """Test that DashboardHead properly filters modules based on environment variable."""
     # Set up a mock subprocess module for testing
@@ -64,6 +65,7 @@ def test_dashboard_head_filters_modules_based_on_env_var():
             # TestModule1 should still be loaded
             assert "TestModule1" in loaded_module_names
 
+
 def test_dashboard_head_no_filtering_when_env_var_not_set():
     """Test that all modules are loaded when environment variable is not set."""
     # Ensure environment variable is not set
@@ -105,6 +107,7 @@ def test_dashboard_head_no_filtering_when_env_var_not_set():
             assert "TestModule1" in loaded_module_names
             assert len(loaded_module_names) == 2
 
+
 def test_dashboard_head_multiple_modules_filtered():
     """Test that multiple modules can be filtered out."""
     with patch("ray.dashboard.utils.get_all_modules") as mock_get_modules:
@@ -142,6 +145,7 @@ def test_dashboard_head_multiple_modules_filtered():
             loaded_module_names = [handle.module_cls.__name__ for handle in modules]
 
             assert len(loaded_module_names) == 0
+
 
 def test_dashboard_head_with_specific_modules_to_load():
     """Test filtering works correctly when specific modules are requested."""
@@ -186,6 +190,7 @@ def test_dashboard_head_with_specific_modules_to_load():
             assert "TestModule1" in loaded_module_names
             assert len(loaded_module_names) == 1
 
+
 def test_dashboard_head_minimal_mode_ignores_env_var():
     """Test that in minimal mode, subprocess modules are not loaded regardless of env var."""
     with patch("ray.dashboard.utils.get_all_modules") as mock_get_modules:
@@ -221,6 +226,7 @@ def test_dashboard_head_minimal_mode_ignores_env_var():
             # In minimal mode, no subprocess modules should be loaded
             assert len(modules) == 0
 
+
 def test_dashboard_head_whitespace_in_env_var():
     """Test that whitespace in environment variable is properly handled."""
     with patch("ray.dashboard.utils.get_all_modules") as mock_get_modules:
@@ -254,6 +260,7 @@ def test_dashboard_head_whitespace_in_env_var():
 
             # Both modules should be filtered out (whitespace should be trimmed)
             assert len(loaded_module_names) == 0
+
 
 def test_dashboard_head_empty_env_var():
     """Test that empty environment variable behaves like it's not set."""
@@ -290,6 +297,7 @@ def test_dashboard_head_empty_env_var():
             assert "TestModule" in loaded_module_names
             assert "TestModule1" in loaded_module_names
             assert len(loaded_module_names) == 2
+
 
 def test_dashboard_head_case_sensitive_matching():
     """Test that module name matching is case-sensitive."""
