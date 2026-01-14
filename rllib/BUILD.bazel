@@ -197,6 +197,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
+        "multi_gpu",
         "team:rllib",
     ],
 )
