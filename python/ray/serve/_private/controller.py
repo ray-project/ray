@@ -1299,8 +1299,6 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name)
         )
-        if ingress_deployment_name is None:
-            return []
         deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
         details = self.deployment_state_manager.get_deployment_details(deployment_id)
         if not details:
