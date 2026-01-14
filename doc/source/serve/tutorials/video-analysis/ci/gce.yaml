@@ -1,0 +1,19 @@
+cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}   # required; set by CI
+region: us-central1
+
+# Cluster resources
+head_node_type:
+  name: head
+  instance_type: n1-standard-8
+  resources:
+    cpu: 8
+
+worker_node_types:
+  - name: 16CPU-64GB-GPU
+    instance_type: n4-standard-16
+    min_workers: 1
+    max_workers: 32
+  - name: 4CPU-16GB-GPU
+    instance_type: g2-standard-4
+    min_workers: 1
+    max_workers: 32
