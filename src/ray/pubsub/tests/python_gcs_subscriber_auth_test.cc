@@ -25,7 +25,6 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/env.h"
-#include "ray/util/network_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -119,7 +118,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
                                                 0,  // Random port
-                                                GetLocalhostIP(),
+                                                true,
                                                 1,
                                                 7200000,
                                                 auth_token);
