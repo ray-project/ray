@@ -139,23 +139,6 @@ py_test(
 )
 
 # Footsies
-py_test(
-    name = "learning_tests_multi_agent_footsies_appo",
-    size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
-    args = [
-        "--as-test",
-        "--num-env-runners=6",
-        "--evaluation-num-env-runners=2",
-        "--num-aggregator-actors-per-learner=2",
-    ],
-    main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
 
 py_test(
     name = "learning_tests_appo_footsies_single_gpu",
