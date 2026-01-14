@@ -215,7 +215,7 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
         batch_format: The format for the batch data passed to `aggregate()`.
             Supported values: "pyarrow", "pandas", "numpy", or None.
             If `on` is specified, the batch will contain only that column.
-            Default is "default" which uses the system default format.
+            Default is "pyarrow".
 
     Example:
         .. testcode::
@@ -253,7 +253,7 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
         *,
         on: Optional[str],
         ignore_nulls: bool,
-        batch_format: Optional[str] = "default",
+        batch_format: Optional[str] = "pyarrow",
     ):
         if not name:
             raise ValueError(
@@ -261,8 +261,6 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
             )
 
         # Validate batch_format
-        if batch_format == "default":
-            batch_format = "pyarrow"  # Default to pyarrow for aggregations
         if batch_format is not None and batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
                 f"batch_format must be one of {VALID_BATCH_FORMATS}, got {batch_format}"
