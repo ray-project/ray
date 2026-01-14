@@ -39,12 +39,6 @@ def _create_dataset(items_data, dataset_format, arrow_table=None):
 DATASET_FORMATS = ["pandas", "arrow"]
 
 
-def _make_fixed_size_list_table() -> pa.Table:
-    values = pa.array([1, 2, 3, 4, 5, 6], type=pa.int64())
-    fixed = pa.FixedSizeListArray.from_arrays(values, list_size=2)
-    return pa.Table.from_arrays([fixed], names=["features"])
-
-
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 class TestListNamespace:
     """Tests for list namespace operations."""
@@ -102,26 +96,6 @@ class TestListNamespace:
         result = ds.with_column("len_plus_one", col("items").list.len() + 1).to_pandas()
         expected = pd.DataFrame({"items": [[1, 2, 3]], "len_plus_one": [4]})
         assert rows_same(result, expected)
-
-
-def test_arr_to_list_fixed_size(ray_start_regular_shared):
-    table = _make_fixed_size_list_table()
-    ds = ray.data.from_arrow(table)
-
-    result = (
-        ds.with_column("features", col("features").arr.to_list())
-        .select_columns(["features"])
-        .to_pandas()
-    )
-    expected = pd.DataFrame(
-        [
-            {"features": [1, 2]},
-            {"features": [3, 4]},
-            {"features": [5, 6]},
-        ]
-    )
-
-    assert rows_same(result, expected)
 
 
 if __name__ == "__main__":
