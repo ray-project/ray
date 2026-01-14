@@ -199,7 +199,6 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         keys_array, values_array = stat_value
         return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
 
-    # TODO(xgui): after
     def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
         """Get Arrow arrays for keys and values."""
         return _get_unique_value_arrow_arrays(self.stats_, input_col)
