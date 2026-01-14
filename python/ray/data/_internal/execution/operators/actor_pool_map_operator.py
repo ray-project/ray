@@ -489,12 +489,12 @@ class ActorPoolMapOperator(MapOperator):
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
         if "max_restarts" not in ray_remote_args:
-            ray_remote_args["max_restarts"] = -1
+            ray_remote_args["max_restarts"] = 20
         if (
             "max_task_retries" not in ray_remote_args
             and ray_remote_args.get("max_restarts") != 0
         ):
-            ray_remote_args["max_task_retries"] = -1
+            ray_remote_args["max_task_retries"] = 20
 
         # Allow actor tasks to execute out of order by default. This prevents actors
         # from idling when the first actor task is blocked.
