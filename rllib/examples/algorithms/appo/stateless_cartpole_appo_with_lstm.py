@@ -90,6 +90,7 @@ config = (
         env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     )
     .learners(
+        num_learners=args.num_learners,
         num_aggregator_actors_per_learner=2,
     )
     .training(

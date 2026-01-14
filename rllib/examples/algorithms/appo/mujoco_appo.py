@@ -86,6 +86,7 @@ config = (
         rollout_fragment_length=512,  # Note: [1] uses 1024.
     )
     .learners(
+        num_learners=args.num_learners,
         num_aggregator_actors_per_learner=2,
     )
     .training(

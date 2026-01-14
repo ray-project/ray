@@ -72,7 +72,7 @@ parser = add_rllib_example_script_args(
 parser.set_defaults(
     env="ale_py:ALE/Pong-v5",
     num_env_runners=4,
-    num_envs_per_env_runner=6,
+    num_envs_per_env_runner=10,
     num_learners=1,
 )
 args = parser.parse_args()
@@ -110,11 +110,15 @@ config = (
         clip_rewards=True,
     )
     .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+        rollout_fragment_length=32,
         env_to_module_connector=_make_env_to_module_connector,
-        num_envs_per_env_runner=2,
+
     )
     .learners(
         num_aggregator_actors_per_learner=2,
+        num_learners=args.num_learners,
     )
     .training(
         learner_connector=_make_learner_connector,

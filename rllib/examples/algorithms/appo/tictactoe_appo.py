@@ -90,6 +90,7 @@ config = (
         num_envs_per_env_runner=args.num_envs_per_env_runner,
     )
     .learners(
+        num_learners=args.num_learners,
         num_aggregator_actors_per_learner=2,
     )
     .training(
