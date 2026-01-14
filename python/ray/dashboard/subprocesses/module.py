@@ -110,7 +110,7 @@ class SubprocessModule(abc.ABC):
         or other criteria.
 
         Args:
-            module_name: The name of the module to check. If None, defaults to the current class name.
+            module_name: The name of the module to check.
 
         Returns:
             bool: True if the module should be enabled, False otherwise.
