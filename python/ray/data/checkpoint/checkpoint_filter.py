@@ -86,7 +86,7 @@ class CheckpointLoader:
 
         Returns:
             bool: Is there a valid checkpoint under the checkpoint_path.
-            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs ndarray
+            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs block
                 if there is a valid checkpoint.
         """
         start_t = time.time()
@@ -184,7 +184,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
         Returns:
             bool: Is there a valid checkpoint under the checkpoint_path.
-            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs ndarray
+            Optional[ObjectRef[Block]]: ObjectRef to the checkpointed IDs block
                 if there is a valid checkpoint.
         """
         loader = IdColumnCheckpointLoader(
