@@ -29,11 +29,11 @@ namespace core {
 
 /// Used to implement the non-actor task queue. These tasks do not have ordering
 /// constraints.
-class NormalTaskExecutionQueue : public SchedulingQueue {
+class NormalTaskExecutionQueue {
  public:
   NormalTaskExecutionQueue();
 
-  void Stop() override;
+  void Stop();
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no,
@@ -44,26 +44,27 @@ class NormalTaskExecutionQueue : public SchedulingQueue {
                               const Status &,
                               rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+           TaskSpecification task_spec);
 
   /// Search for an TaskToExecute associated with the task that we are trying to cancel.
   /// If found, remove the TaskToExecute from the queue and return true. Else,
   /// return false.
-  bool CancelTaskIfFound(TaskID task_id) override;
+  bool CancelTaskIfFound(TaskID task_id);
 
   /// Execute as many queued tasks as possible.
   void ExecuteQueuedTasks();
 
-  /// Cancel all queued (waiting or deferred) requests in a thread-safe manner.
-  void CancelAllPending(const Status &status) override;
-
  private:
+  /// Cancel all tasks queued for execution.
+  void CancelAllQueuedTasks(const std::string &msg);
+
   // Get the next queued task to execute if available.
   std::optional<TaskToExecute> TryPopQueuedTask();
 
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
-  /// Queue with (accept, rej) callbacks for non-actor tasks
+
+  /// Queue of tasks to execute.
   std::deque<TaskToExecute> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };

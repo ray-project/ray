@@ -67,10 +67,9 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
-  /// Cancel all pending (not yet accepted/executing) requests in the queue.
-  void CancelAllPending(const Status &status) override;
-
  private:
+  void CancelAllQueuedTasks(const std::string &msg);
+
   void RunRequest(TaskToExecute request);
 
   void RunRequestWithResolvedDependencies(TaskToExecute &request);

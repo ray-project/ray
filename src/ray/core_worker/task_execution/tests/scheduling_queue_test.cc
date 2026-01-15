@@ -25,7 +25,6 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
-#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 
 // using namespace std::chrono_literals;
@@ -502,59 +501,6 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
   ASSERT_EQ(reject_seq_nos, (std::vector<int64_t>{0, 1}));
 
   queue.Stop();
-}
-
-TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) { n_rej++; };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
-  queue->ExecuteQueuedTasks();
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 1);
-
-  queue->Stop();
-}
-
-TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
-  int n_ok = 0;
-  std::atomic<int> n_rej{0};
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    n_rej.fetch_add(1);
-  };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-
-  // Enqueue several normal tasks but do not schedule them.
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-
-  // Stopping should cancel all queued tasks without running them.
-  queue->Stop();
-
-  ASSERT_EQ(n_ok, 0);
-  ASSERT_EQ(n_rej.load(), 3);
 }
 
 TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {

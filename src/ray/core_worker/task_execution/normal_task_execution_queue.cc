@@ -22,9 +22,19 @@ namespace core {
 
 NormalTaskExecutionQueue::NormalTaskExecutionQueue(){};
 
+void NormalTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
+  absl::MutexLock lock(&mu_);
+  Status status = Status::SchedulingCancelled(msg);
+
+  while (!pending_normal_tasks_.empty()) {
+    auto it = pending_normal_tasks_.begin();
+    it->Cancel(status);
+    pending_normal_tasks_.erase(it);
+  }
+}
+
 void NormalTaskExecutionQueue::Stop() {
-  CancelAllPending(Status::SchedulingCancelled(
-      "Normal scheduling queue stopped; canceling pending tasks"));
+  CancelAllQueuedTasks("Normal task execution queue stopped; canceling all queued tasks.");
 }
 
 /// Add a new task's callbacks to the worker queue.
@@ -78,15 +88,6 @@ std::optional<TaskToExecute> NormalTaskExecutionQueue::TryPopQueuedTask() {
 void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
   while (auto task = TryPopQueuedTask()) {
     task->Accept();
-  }
-}
-
-void NormalTaskExecutionQueue::CancelAllPending(const Status &status) {
-  absl::MutexLock lock(&mu_);
-  while (!pending_normal_tasks_.empty()) {
-    auto it = pending_normal_tasks_.begin();
-    it->Cancel(status);
-    pending_normal_tasks_.erase(it);
   }
 }
 

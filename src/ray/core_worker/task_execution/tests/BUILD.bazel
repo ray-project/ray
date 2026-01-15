@@ -37,6 +37,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "normal_task_execution_queue_test",
+    srcs = ["normal_task_execution_queue_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker/task_execution:normal_task_execution_queue",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "scheduling_queue_test",
     srcs = ["scheduling_queue_test.cc"],
     tags = ["team:core"],
@@ -44,7 +55,6 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:actor_scheduling_queue",
-        "//src/ray/core_worker/task_execution:normal_task_execution_queue",
         "//src/ray/core_worker/task_execution:out_of_order_actor_scheduling_queue",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
