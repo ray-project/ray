@@ -42,9 +42,9 @@ void NormalTaskExecutionQueue::Add(
   // Create a TaskToExecute object for the new task, and add it to the queue.
 
   pending_normal_tasks_.push_back(TaskToExecute(std::move(accept_request),
-                                                 std::move(reject_request),
-                                                 std::move(send_reply_callback),
-                                                 std::move(task_spec)));
+                                                std::move(reject_request),
+                                                std::move(send_reply_callback),
+                                                std::move(task_spec)));
 }
 
 // Search for an TaskToExecute associated with the task that we are trying to cancel.

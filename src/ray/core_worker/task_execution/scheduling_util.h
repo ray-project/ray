@@ -31,12 +31,12 @@ class TaskToExecute {
  public:
   TaskToExecute();
   TaskToExecute(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-                     accept_callback,
-                 std::function<void(const TaskSpecification &,
-                                    const Status &,
-                                    rpc::SendReplyCallback)> reject_callback,
-                 rpc::SendReplyCallback send_reply_callback,
-                 TaskSpecification task_spec);
+                    accept_callback,
+                std::function<void(const TaskSpecification &,
+                                   const Status &,
+                                   rpc::SendReplyCallback)> reject_callback,
+                rpc::SendReplyCallback send_reply_callback,
+                TaskSpecification task_spec);
 
   void Accept();
   void Cancel(const Status &status);

@@ -85,9 +85,9 @@ void OutOfOrderActorSchedulingQueue::Add(
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   auto task_id = task_spec.TaskId();
   auto request = TaskToExecute(std::move(accept_request),
-                                std::move(reject_request),
-                                std::move(send_reply_callback),
-                                std::move(task_spec));
+                               std::move(reject_request),
+                               std::move(send_reply_callback),
+                               std::move(task_spec));
   bool run_request = true;
   std::optional<TaskToExecute> request_to_cancel;
   {

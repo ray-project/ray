@@ -255,11 +255,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                    << " to normal scheduling task queue.";
     auto accept_callback = make_accept_callback();
     normal_task_execution_queue_->Add(request.sequence_number(),
-                                  request.client_processed_up_to(),
-                                  std::move(accept_callback),
-                                  std::move(cancel_callback),
-                                  std::move(send_reply_callback),
-                                  std::move(task_spec));
+                                      request.client_processed_up_to(),
+                                      std::move(accept_callback),
+                                      std::move(cancel_callback),
+                                      std::move(send_reply_callback),
+                                      std::move(task_spec));
   }
 }
 

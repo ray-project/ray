@@ -60,9 +60,7 @@ const std::vector<rpc::ObjectReference> &TaskToExecute::PendingDependencies() co
   return pending_dependencies_;
 };
 
-bool TaskToExecute::DependenciesResolved() const {
-  return pending_dependencies_.empty();
-}
+bool TaskToExecute::DependenciesResolved() const { return pending_dependencies_.empty(); }
 
 void TaskToExecute::MarkDependenciesResolved() { pending_dependencies_.clear(); }
 
