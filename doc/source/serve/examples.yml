@@ -163,5 +163,5 @@ examples:
     related_technology: ml applications
   - title: Integrate with MLflow Model Registry
     skill_level: intermediate
-    link: mlflow-serving-intig
+    link: model-registries
     related_technology: integrations
