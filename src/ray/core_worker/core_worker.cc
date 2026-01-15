@@ -384,7 +384,7 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_8);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
-          return raylet_ipc_client_->WaitForActorCallArgs(args, tag);
+          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag)) << "WaitForActorCallArgs IPC failed unexpectedly";
         });
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,

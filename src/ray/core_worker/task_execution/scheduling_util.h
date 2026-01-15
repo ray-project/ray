@@ -76,7 +76,7 @@ class ActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface 
   // The caller is expected to call `MarkReady` with the provided tag when the associated
   // arguments are ready.
   using AsyncWaitForArgs =
-      std::function<Status(const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
+      std::function<void(const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
 
   explicit ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args);
 

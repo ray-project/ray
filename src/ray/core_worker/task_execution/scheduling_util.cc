@@ -76,7 +76,7 @@ void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReferen
                                             std::function<void()> on_args_ready) {
   auto tag = next_tag_++;
   in_flight_waits_[tag] = on_args_ready;
-  RAY_CHECK_OK(async_wait_for_args_(args, tag));
+  async_wait_for_args_(args, tag);
 }
 
 void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
