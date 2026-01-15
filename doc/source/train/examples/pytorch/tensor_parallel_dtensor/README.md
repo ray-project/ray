@@ -554,7 +554,6 @@ experiment_name = f"tp_dtensor_{uuid.uuid4().hex[:8]}"
 
 # Configure run settings
 run_config = RunConfig(
-    storage_path="/mnt/cluster_storage/",
     name=experiment_name,
 )
 
