@@ -832,7 +832,11 @@ def upload_package_if_needed(
 def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
     pkg_file = Path(_get_local_path(base_directory, uri))
-    local_dir = pkg_file.with_suffix("")
+    extension = _get_package_extension(pkg_file)
+    if extension:
+        local_dir = pkg_file.with_name(pkg_file.name[: -len(extension)])
+    else:
+        local_dir = pkg_file.with_suffix("")
     return local_dir
 
 
