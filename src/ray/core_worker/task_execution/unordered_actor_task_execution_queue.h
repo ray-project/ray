@@ -35,8 +35,8 @@
 namespace ray {
 namespace core {
 
-/// This queue schedule the actor tasks as soon as the dependency is resolved,
-/// and ignores the ordering (sequence_no) by the submitting client.
+/// Schedules actor tasks as soon as their dependencies are resolved.
+/// Does not guarantee that tasks are executed in submission order.
 class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
   UnorderedActorTaskExecutionQueue(
