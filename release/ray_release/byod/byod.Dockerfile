@@ -4,7 +4,7 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-ARG PIP_REQUIREMENTS
+ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
