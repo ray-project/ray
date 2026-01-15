@@ -274,20 +274,24 @@ class FuseOperators(Rule):
 
         # only allow fusion of MapBatches -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
-            return (
+            if not (
                 isinstance(up_logical_op, MapBatches)
                 and up_logical_op._batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
-                # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
-                # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
-                # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
-                # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
-                # https://anyscale1.atlassian.net/browse/DATA-1731
-                and up_logical_op._batch_size
-                % down_logical_op.target_num_rows_per_block
-                == 0
-            )
+            ):
+                return False
+
+            # Non-strict mode: can always fuse, no matter what batch_size is.
+            # This allows fusion without cross-task buffering by using default bundler.
+            if not down_logical_op.strict:
+                return True
+
+            # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
+            # When batch_size % target == 0, each batch can be perfectly sliced into chunks
+            # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
+            # docstring for details.
+            return up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
             return False
@@ -309,10 +313,31 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert (
-            up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
-        )
+
         batch_size = up_logical_op._batch_size
+
+        # Choose ref_bundler and fusion behavior based on strict mode
+        if down_logical_op.strict:
+            # Strict mode: use StreamingRepartitionRefBundler for stitching.
+            # Only works when batch_size % target == 0 (verified in _can_fuse).
+            assert (
+                batch_size % down_logical_op.target_num_rows_per_block == 0
+            ), (
+                f"Strict mode fusion requires batch_size ({batch_size}) to be "
+                f"a multiple of target_num_rows_per_block "
+                f"({down_logical_op.target_num_rows_per_block})"
+            )
+            ref_bundler = StreamingRepartitionRefBundler(batch_size)
+            # No further fusion because StreamingRepartitionRefBundler is stateful
+            # and maintains internal buffering state across bundles.
+            supports_fusion = False
+        else:
+            # Non-strict mode: use default pass-through bundler.
+            # Works with any batch_size without cross-task buffering.
+            ref_bundler = None
+            # Can fuse further because the default bundler is stateless
+            # and processes each bundle independently.
+            supports_fusion = True
 
         compute = self._fuse_compute_strategy(
             up_logical_op._compute, down_logical_op._compute
@@ -336,13 +361,11 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=StreamingRepartitionRefBundler(batch_size),
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
-            # For now, we don't want to over-fuse StreamingRepartition with other map operators,
-            # so the result operator does not support further fusion.
-            supports_fusion=False,
+            supports_fusion=supports_fusion,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
