@@ -19,7 +19,6 @@ This tutorial shows you how to build a recommendation system using Ray Serve's m
 Recommendation systems typically involve multiple stages: feature extraction, candidate generation, ranking, and filtering. Model composition solves common challenges by:
 
 - **Independent scaling**: Scale feature extractors separately from ranking models based on traffic patterns.
-- **Team ownership**: Different teams can own and deploy their models independently.
 - **Flexible updates**: Update one component without redeploying the entire pipeline.
 - **Resource optimization**: Allocate different resources (CPU/GPU) to each component.
 
