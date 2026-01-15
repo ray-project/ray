@@ -70,19 +70,13 @@ def __ray_recv__(
                 f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
             )
 
-        tensors = []
-        for meta in tensor_meta:
-            shape, dtype = meta
-            tensor = torch.empty(shape, dtype=dtype, device=device)
-            tensors.append(tensor)
-
         tensor_transport_manager = get_tensor_transport_manager(backend)
-        tensor_transport_manager.recv_multiple_tensors(
-            tensors,
+        tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
         )
+        assert len(tensors) == len(tensor_meta)
         gpu_object_store.add_object(obj_id, tensors)
     except Exception as e:
         # Store the error as a gpu object if the recv fails, so waiters will raise the error.

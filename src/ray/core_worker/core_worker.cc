@@ -99,8 +99,7 @@ ObjectLocation CreateObjectLocation(
   bool is_spilled = !object_info.spilled_url().empty();
   // If the object size is unknown it's unset, and we use -1 to indicate that.
   int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
-  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_size,
+  return ObjectLocation(object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
@@ -3479,7 +3478,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
-    // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
+    // Normal tasks are enqueued here, and we post a ExecuteQueuedNormalTasks instance to
     // the task execution service.
     task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
     task_execution_service_.post(
@@ -3491,7 +3490,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->RunNormalTasksFromQueue();
+          task_receiver_->ExecuteQueuedNormalTasks();
         },
         "CoreWorker.HandlePushTask");
   }

@@ -646,6 +646,31 @@
     timeout: 3600
     script: python text_embedding/main.py {{args}}
 
+# Multi-stage inference pipeline with separate CPU preprocessing and GPU inference.
+# Mimics production ML inference pipeline with:
+# - Separate preprocessing (CPU) and inference (GPU actors) stages
+# - Pandas preprocessing
+# - Metadata column passthrough
+# - Extra output columns
+- name: multi_stage_batch_inference
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+  env: gce
+
+  cluster:
+    cluster_compute: autoscaling_gpu_g2_gce.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python model_inference_pipeline_benchmark.py
+      --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
+      --preprocessing-batch-size 4096
+      --inference-batch-size 1024
+      --inference-min-actors 1
+      --inference-max-actors 300
+
 ##############
 # TPCH Queries
 ##############
