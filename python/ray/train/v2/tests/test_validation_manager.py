@@ -139,7 +139,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
 def test_checkpoint_validation_management_failure(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
-    def failing_validate_fn(checkpoint, config):
+    def failing_validate_fn(checkpoint):
         return "invalid_return_type"
 
     vm = validation_manager.ValidationManager(
@@ -178,7 +178,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
 def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
-    def infinite_waiting_validate_fn(checkpoint, config):
+    def infinite_waiting_validate_fn(checkpoint):
         while True:
             time.sleep(1)
 
