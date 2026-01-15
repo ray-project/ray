@@ -1,7 +1,7 @@
-"""Hyperparameter tuning script for APPO on Atari using HyperOpt.
+"""Hyperparameter tuning script for APPO on CartPole using HyperOpt.
 
 This script uses Ray Tune's HyperOpt search algorithm to optimize APPO
-hyperparameters for Atari Pong, targeting convergence within 3.5 million
+hyperparameters for CartPole-v1, targeting convergence within 2 million
 timesteps. HyperOpt uses Tree-structured Parzen Estimators (TPE) for
 efficient Bayesian optimization of the hyperparameter search space.
 
@@ -21,45 +21,35 @@ Key hyperparameters being tuned:
 How to run this script
 ----------------------
 Run with 4 parallel trials (default):
-`python atari_appo_hyperopt.py`
+`python cartpole_hyperopt.py`
 
 Run with custom number of parallel trials:
-`python atari_appo_hyperopt.py --num-samples=8 --max-concurrent-trials=4`
+`python cartpole_hyperopt.py --num-samples=8 --max-concurrent-trials=4`
 
 Run on a cluster with cloud or shared filesystem storage:
-`python atari_appo_hyperopt.py --storage-path=s3://my-bucket/appo-hyperopt`
-`python atari_appo_hyperopt.py --storage-path=/mnt/nfs/appo-hyperopt`
+`python cartpole_hyperopt.py --storage-path=s3://my-bucket/appo-hyperopt`
+`python cartpole_hyperopt.py --storage-path=/mnt/nfs/appo-hyperopt`
 
 Note on storage for multi-node clusters
 ---------------------------------------
 The default storage path is /mnt/cluster_storage, which assumes a shared filesystem
 is mounted at that location on all cluster nodes. For cloud storage, override with:
-`python atari_appo_hyperopt.py --storage-path=s3://my-bucket/path`
+`python cartpole_hyperopt.py --storage-path=s3://my-bucket/path`
 For local development, override with a local path:
-`python atari_appo_hyperopt.py --storage-path=~/ray_results`
+`python cartpole_hyperopt.py --storage-path=~/ray_results`
 See: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html
 
 Results to expect
 -----------------
 HyperOpt will explore the hyperparameter space and converge toward configurations
-that achieve reward of 18+ on Pong within 3.5 million timesteps. The best
+that achieve reward of 475+ on CartPole within 2 million timesteps. The best
 trial's hyperparameters will be logged at the end of training.
 """
 import os
 
-import gymnasium as gym
-
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.tune import CLIReporter
-from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.hyperopt import HyperOptSearch
-
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
-from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
 )
@@ -68,16 +58,15 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.tune.registry import register_env
+from ray.tune import CLIReporter
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.search.hyperopt import HyperOptSearch
 
 parser = add_rllib_example_script_args(
     default_reward=475.0,
     default_timesteps=2_000_000,
 )
-parser.add_argument(
-
-    default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
-)
+parser.add_argument(default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"))
 parser.set_defaults(
     num_env_runners=4,
     num_envs_per_env_runner=6,
@@ -139,7 +128,6 @@ if __name__ == "__main__":
         hyperopt_search, max_concurrent=args.max_concurrent_trials
     )
 
-
     tuner = tune.Tuner(
         config.algo_class,
         param_space=config,
@@ -157,7 +145,7 @@ if __name__ == "__main__":
                     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "episode return mean",
                 },
                 max_report_frequency=30,
-            )
+            ),
         ),
         tune_config=tune.TuneConfig(
             metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
