@@ -1301,5 +1301,131 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
 }
 
+TEST_F(GcsPlacementGroupManagerTest, TestConcurrentPlacementGroupScheduling) {
+  // Test that multiple placement groups can be scheduled concurrently.
+  // This verifies that the manager properly supports concurrent scheduling
+  // without blocking on a single placement group.
+
+  // Register multiple placement groups
+  const int num_pgs = 5;
+  std::vector<rpc::CreatePlacementGroupRequest> requests;
+  std::atomic<int> registered_placement_group_count(0);
+
+  for (int i = 0; i < num_pgs; ++i) {
+    requests.push_back(GenCreatePlacementGroupRequest(
+        /*name=*/"pg_" + std::to_string(i),
+        rpc::PlacementStrategy::SPREAD,
+        /*bundles_count=*/2,
+        /*cpu_num=*/1.0,
+        JobID::FromInt(i + 1)));
+  }
+
+  // Register all placement groups
+  for (int i = 0; i < num_pgs; ++i) {
+    RegisterPlacementGroup(requests[i],
+                           [&registered_placement_group_count](const Status &status) {
+                             ++registered_placement_group_count;
+                           });
+  }
+
+  // Verify all placement groups were registered
+  ASSERT_EQ(registered_placement_group_count, num_pgs);
+
+  // Verify that the scheduler received ALL placement groups, not just the first one.
+  // Before the fix for concurrent scheduling, only one PG would be scheduled at a time.
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), num_pgs);
+
+  // Verify all placement groups are in PENDING state
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), num_pgs);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 0);
+
+  // Complete all placement groups
+  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups;
+  for (int i = 0; i < num_pgs; ++i) {
+    placement_groups.push_back(mock_placement_group_scheduler_->placement_groups_[i]);
+  }
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  for (auto &pg : placement_groups) {
+    OnPlacementGroupCreationSuccess(pg);
+    ASSERT_EQ(pg->GetState(), rpc::PlacementGroupTableData::CREATED);
+  }
+
+  // Verify all placement groups are now CREATED
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::PENDING), 0);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), num_pgs);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingWhileMultiplePGsScheduling) {
+  // Test that Remove works correctly when multiple placement groups are being scheduled
+  // concurrently. This verifies that removing one PG doesn't affect others.
+
+  const int num_pgs = 3;
+  std::vector<rpc::CreatePlacementGroupRequest> requests;
+  std::atomic<int> registered_placement_group_count(0);
+
+  for (int i = 0; i < num_pgs; ++i) {
+    requests.push_back(GenCreatePlacementGroupRequest(
+        /*name=*/"pg_" + std::to_string(i),
+        rpc::PlacementStrategy::SPREAD,
+        /*bundles_count=*/2,
+        /*cpu_num=*/1.0,
+        JobID::FromInt(i + 1)));
+  }
+
+  // Register all placement groups
+  for (int i = 0; i < num_pgs; ++i) {
+    RegisterPlacementGroup(requests[i],
+                           [&registered_placement_group_count](const Status &status) {
+                             ++registered_placement_group_count;
+                           });
+  }
+
+  ASSERT_EQ(registered_placement_group_count, num_pgs);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), num_pgs);
+
+  // Get the placement groups
+  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups;
+  for (int i = 0; i < num_pgs; ++i) {
+    placement_groups.push_back(mock_placement_group_scheduler_->placement_groups_[i]);
+  }
+
+  // Remove the middle placement group while all are in-flight
+  auto pg_to_remove = placement_groups[1];
+  EXPECT_CALL(
+      *mock_placement_group_scheduler_,
+      DestroyPlacementGroupBundleResourcesIfExists(pg_to_remove->GetPlacementGroupID()))
+      .Times(1);
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              MarkScheduleCancelled(pg_to_remove->GetPlacementGroupID()))
+      .Times(1);
+
+  rpc::RemovePlacementGroupRequest remove_request;
+  remove_request.set_placement_group_id(pg_to_remove->GetPlacementGroupID().Binary());
+
+  std::promise<void> remove_promise;
+  gcs_placement_group_manager_->RemovePlacementGroup(
+      pg_to_remove->GetPlacementGroupID(), [&remove_promise](const Status &status) {
+        RAY_CHECK_OK(status);
+        remove_promise.set_value();
+      });
+  RunIOService();
+  remove_promise.get_future().get();
+
+  // Verify the removed PG is in REMOVED state
+  ASSERT_EQ(pg_to_remove->GetState(), rpc::PlacementGroupTableData::REMOVED);
+
+  // Complete the remaining placement groups (first and last)
+  mock_placement_group_scheduler_->placement_groups_.clear();
+  OnPlacementGroupCreationSuccess(placement_groups[0]);
+  OnPlacementGroupCreationSuccess(placement_groups[2]);
+
+  // Verify states
+  ASSERT_EQ(placement_groups[0]->GetState(), rpc::PlacementGroupTableData::CREATED);
+  ASSERT_EQ(placement_groups[2]->GetState(), rpc::PlacementGroupTableData::CREATED);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::CREATED), 2);
+  ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
+}
+
 }  // namespace gcs
 }  // namespace ray

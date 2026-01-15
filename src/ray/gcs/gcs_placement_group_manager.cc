@@ -347,6 +347,11 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
       MarkSchedulingStarted(placement_group_id);
+      RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] GCS Manager: Starting to schedule PG "
+                    << placement_group_id << " (name=" << placement_group->GetName()
+                    << ")"
+                    << ", current in-flight count: " << scheduling_in_progress_ids_.size()
+                    << ", pending count: " << pending_placement_groups_.size();
       // We can't use designated initializers thanks to MSVC (error C7555).
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
           /*placement_group=*/placement_group,

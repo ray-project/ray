@@ -1922,9 +1922,13 @@ void NodeManager::HandlePrepareBundleResources(
     bundle_specs.push_back(
         std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
   }
-  RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
-                 << GetDebugStringForBundles(bundle_specs);
+  PlacementGroupID pg_id = bundle_specs.empty() ? PlacementGroupID::Nil()
+                                                : bundle_specs[0]->PlacementGroupId();
+  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] Raylet: Received Prepare request for PG "
+                << pg_id << ", bundles: " << GetDebugStringForBundles(bundle_specs);
   auto prepared = placement_group_resource_manager_.PrepareBundles(bundle_specs);
+  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] Raylet: Prepare result for PG " << pg_id << ": "
+                << (prepared ? "SUCCESS" : "FAILED");
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
