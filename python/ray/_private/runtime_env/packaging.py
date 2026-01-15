@@ -1175,10 +1175,16 @@ def get_top_level_dir_from_tar(package_path: str):
             if not name or name == ".":
                 continue
             parts = name.split("/", 1)
-            if len(parts) == 1:
-                return None
             dir_name = parts[0]
             if dir_name == MAC_OS_ZIP_HIDDEN_DIR_NAME:
+                continue
+            if len(parts) == 1:
+                if not member.isdir():
+                    return None
+                if top_level_directory is None:
+                    top_level_directory = dir_name
+                elif dir_name != top_level_directory:
+                    return None
                 continue
             if top_level_directory is None:
                 top_level_directory = dir_name
@@ -1203,7 +1209,7 @@ def _safe_extract_tar(
 ) -> None:
     for member in tar.getmembers():
         name = _normalize_tar_member_name(member.name)
-        if not name:
+        if not name or name == ".":
             continue
         member_path = os.path.join(target_dir, name)
         if not _is_within_directory(target_dir, member_path):
