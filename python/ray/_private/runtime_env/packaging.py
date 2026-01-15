@@ -1205,11 +1205,18 @@ def _safe_extract_tar(
         if not _is_within_directory(target_dir, member_path):
             logger.warning(f"Skipping unsafe path in tar: {member.name}")
             continue
-        if member.issym() or member.islnk():
+        if member.issym():
             link_target = os.path.join(os.path.dirname(member_path), member.linkname)
             if not _is_within_directory(target_dir, link_target):
                 logger.warning(
                     f"Skipping unsafe symlink in tar: {member.name} -> {member.linkname}"
+                )
+                continue
+        elif member.islnk():
+            link_target = os.path.join(target_dir, member.linkname)
+            if not _is_within_directory(target_dir, link_target):
+                logger.warning(
+                    f"Skipping unsafe hard link in tar: {member.name} -> {member.linkname}"
                 )
                 continue
         elif member.isdev():
