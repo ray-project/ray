@@ -48,8 +48,8 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "scheduling_queue_test",
-    srcs = ["scheduling_queue_test.cc"],
+    name = "actor_task_execution_queue_test",
+    srcs = ["actor_task_execution_queue_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
