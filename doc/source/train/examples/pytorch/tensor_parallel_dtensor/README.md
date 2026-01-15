@@ -96,10 +96,14 @@ import tempfile
 import uuid
 
 import torch
-import torch.distributed as dist
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+def get_mixed_precision_dtype() -> torch.dtype:
+    """Select a mixed-precision dtype that the current GPU supports."""
+    return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 ```
 
 ## 2. Data loading with TP-aware sharding
@@ -143,28 +147,18 @@ def create_dataloader(
     IMPORTANT: Uses dp_rank/dp_size for sharding (NOT world_rank/world_size).
     This ensures all TP ranks in the same DP group see identical batches.
     """
-    world_rank = ray.train.get_context().get_world_rank()
-
     # Handle datasets that require a config name
     dataset_config = "wikitext-2-raw-v1" if dataset_name == "wikitext" else None
     split_spec = f"train[:{int(dataset_percentage)}%]"
 
-    # Rank 0 downloads first to avoid conflicts
-    if world_rank == 0:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        dataset = load_dataset(
-            dataset_name, dataset_config, split=split_spec,
-            download_config=DownloadConfig(disable_tqdm=True),
-        )
-    dist.barrier()
-
-    # Other ranks load from cache
-    if world_rank != 0:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        dataset = load_dataset(
-            dataset_name, dataset_config, split=split_spec,
-            download_config=DownloadConfig(disable_tqdm=True),
-        )
+    # HF datasets/tokenizers handle process-safe caching and downloads.
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    dataset = load_dataset(
+        dataset_name,
+        dataset_config,
+        split=split_spec,
+        download_config=DownloadConfig(disable_tqdm=True),
+    )
 
     # Set pad token if needed
     if tokenizer.pad_token is None:
@@ -180,10 +174,24 @@ def create_dataloader(
         tokenize_fn, batched=True, num_proc=1, keep_in_memory=True,
         remove_columns=dataset.column_names,
     )
+    tokenized = tokenized.filter(
+        lambda example: sum(example["attention_mask"]) > 1,
+        keep_in_memory=True,
+    )
 
-    # Add labels (same as input_ids for causal LM)
+    # Add labels (ignore padding tokens for causal LM)
     def add_labels(examples):
-        examples["labels"] = examples["input_ids"].copy()
+        labels = []
+        for input_ids, attention_mask in zip(
+            examples["input_ids"], examples["attention_mask"]
+        ):
+            labels.append(
+                [
+                    token if mask == 1 else -100
+                    for token, mask in zip(input_ids, attention_mask)
+                ]
+            )
+        examples["labels"] = labels
         return examples
 
     tokenized = tokenized.map(add_labels, batched=True, num_proc=1, keep_in_memory=True)
@@ -267,11 +275,13 @@ def setup_model_with_tp(
         logger.info(f"Device mesh created: {device_mesh}")
 
     # [2] Create model with random initialization on the target device
-    dtype = torch.bfloat16
+    dtype = get_mixed_precision_dtype()
     prev_device = torch.get_default_device()
-    torch.set_default_device(device)
-    model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
-    torch.set_default_device(prev_device)
+    try:
+        torch.set_default_device(device)
+        model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
+    finally:
+        torch.set_default_device(prev_device)
 
     # Get transformer layers (Qwen/Llama-style models)
     layers = model.model.layers
@@ -339,10 +349,7 @@ def save_checkpoint(
     avg_loss: float,
 ) -> None:
     """Save checkpoint and report to Ray Train."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
+    with tempfile.TemporaryDirectory() as checkpoint_dir:
         # Each rank saves its model/optimizer shard
         torch.save(
             model.state_dict(),
@@ -359,7 +366,7 @@ def save_checkpoint(
                 json.dump({"epoch": epoch, "step": step}, f)
 
         # All workers must call report() with their checkpoint
-        checkpoint = Checkpoint.from_directory(tmp_dir)
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
         ray.train.report({"loss": avg_loss, "epoch": epoch}, checkpoint=checkpoint)
 ```
 
@@ -408,12 +415,12 @@ def train_func(config):
         foreach=False,
     )
 
-    dtype = torch.bfloat16
+    dtype = get_mixed_precision_dtype()
 
     if world_rank == 0:
         if dp_size > 1:
             logger.info(f"2D parallelism: {dp_size} DP x {tp_size} TP")
-        logger.info("torch.autocast enabled with dtype=bfloat16")
+        logger.info(f"torch.autocast enabled with dtype={dtype}")
 
     # Create dataloader with TP-aware sharding
     dataloader = create_dataloader(
@@ -440,7 +447,9 @@ def train_func(config):
         running_loss = 0.0
         num_batches = 0
 
+        last_step = -1
         for step, batch in enumerate(dataloader):
+            last_step = step
             # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
 
@@ -484,7 +493,7 @@ def train_func(config):
         avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
 
         # Save checkpoint at end of epoch
-        save_checkpoint(model, optimizer, world_rank, epoch, step, avg_loss)
+        save_checkpoint(model, optimizer, world_rank, epoch, last_step, avg_loss)
 
         if world_rank == 0:
             logger.info(f"Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
