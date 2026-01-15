@@ -20,11 +20,10 @@
 namespace ray {
 namespace core {
 
-/// Used to implement task queueing at the worker. Abstraction to provide a common
-/// interface for actor tasks as well as normal ones.
-class SchedulingQueue {
+/// Interface for actor task execution queue implementations.
+class ActorTaskExecutionQueueInterface {
  public:
-  virtual ~SchedulingQueue() = default;
+  virtual ~ActorTaskExecutionQueueInterface() = default;
   virtual void Add(int64_t seq_no,
                    int64_t client_processed_up_to,
                    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>

@@ -54,8 +54,8 @@ ray_cc_test(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
-        "//src/ray/core_worker/task_execution:actor_scheduling_queue",
-        "//src/ray/core_worker/task_execution:out_of_order_actor_scheduling_queue",
+        "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
+        "//src/ray/core_worker/task_execution:unordered_actor_task_execution_queue",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

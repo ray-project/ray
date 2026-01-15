@@ -21,7 +21,6 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/task_execution/scheduling_queue.h"
 #include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/rpc/rpc_callback_types.h"
 
@@ -67,7 +66,6 @@ class NormalTaskExecutionQueue {
 
   /// Queue of tasks to execute.
   std::deque<TaskToExecute> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
-  friend class SchedulingQueueTest;
 };
 
 }  // namespace core

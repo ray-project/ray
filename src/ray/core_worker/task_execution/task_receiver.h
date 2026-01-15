@@ -24,11 +24,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
 #include "ray/core_worker/task_execution/normal_task_execution_queue.h"
-#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
@@ -132,8 +132,8 @@ class TaskReceiver {
   /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
   /// submitted the task.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
-      actor_scheduling_queues_;
+  absl::flat_hash_map<WorkerID, std::unique_ptr<ActorTaskExecutionQueueInterface>>
+      actor_task_execution_queues_;
 
   // Queue of normal (non-actor) tasks waiting to execute.
   std::unique_ptr<NormalTaskExecutionQueue> normal_task_execution_queue_;

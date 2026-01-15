@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
 #include <memory>
 #include <string>
@@ -25,7 +25,7 @@
 namespace ray {
 namespace core {
 
-OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
+UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
@@ -53,7 +53,7 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::CancelAllQueuedTasks(const std::string &msg) {
+void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
   absl::MutexLock lock(&mu_);
 
   Status status = Status::SchedulingCancelled(msg);
@@ -66,7 +66,7 @@ void OutOfOrderActorSchedulingQueue::CancelAllQueuedTasks(const std::string &msg
   }
 }
 
-void OutOfOrderActorSchedulingQueue::Stop() {
+void UnorderedActorTaskExecutionQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
@@ -77,7 +77,7 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
-void OutOfOrderActorSchedulingQueue::Add(
+void UnorderedActorTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
@@ -138,7 +138,7 @@ void OutOfOrderActorSchedulingQueue::Add(
   }
 }
 
-bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+bool UnorderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
   if (pending_task_id_to_is_canceled.find(task_id) !=
       pending_task_id_to_is_canceled.end()) {
@@ -150,7 +150,7 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
+void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     TaskToExecute &request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
@@ -176,7 +176,7 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequest(TaskToExecute request) {
+void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -216,7 +216,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(TaskToExecute request) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
+void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     TaskID task_id, TaskToExecute &request) {
   bool is_canceled = false;
   {
@@ -251,7 +251,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
         [this, request = std::move(*request_to_run)]() mutable {
           RunRequest(std::move(request));
         },
-        "OutOfOrderActorSchedulingQueue.RunRequest");
+        "UnorderedActorTaskExecutionQueue.RunRequest");
   }
 }
 

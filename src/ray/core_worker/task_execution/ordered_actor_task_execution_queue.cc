@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
 
 #include <algorithm>
 #include <memory>
@@ -22,7 +22,7 @@
 namespace ray {
 namespace core {
 
-ActorSchedulingQueue::ActorSchedulingQueue(
+OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
@@ -35,7 +35,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       task_event_buffer_(task_event_buffer),
       pool_manager_(std::move(pool_manager)) {}
 
-void ActorSchedulingQueue::CancelAllQueuedTasks(const std::string &msg) {
+void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
   absl::MutexLock lock(&mu_);
 
   Status status = Status::SchedulingCancelled(msg);
@@ -57,13 +57,13 @@ void ActorSchedulingQueue::CancelAllQueuedTasks(const std::string &msg) {
   }
 }
 
-void ActorSchedulingQueue::Stop() {
+void OrderedActorTaskExecutionQueue::Stop() {
   pool_manager_->Stop();
   CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(
+void OrderedActorTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
@@ -154,7 +154,7 @@ void ActorSchedulingQueue::Add(
   ScheduleRequests();
 }
 
-bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
   if (pending_task_id_to_is_canceled.find(task_id) !=
       pending_task_id_to_is_canceled.end()) {
@@ -167,7 +167,7 @@ bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 /// Schedules as many requests as possible in sequence.
-void ActorSchedulingQueue::ScheduleRequests() {
+void OrderedActorTaskExecutionQueue::ScheduleRequests() {
   // Cancel any stale requests that the client doesn't need any longer.
   // This happens when the client sends an RPC with the client_processed_up_to
   // sequence number higher than the lowest sequence number of a pending actor task.
@@ -267,7 +267,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 }
 
-void ActorSchedulingQueue::ExecuteRequest(TaskToExecute &&request) {
+void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
@@ -280,7 +280,7 @@ void ActorSchedulingQueue::ExecuteRequest(TaskToExecute &&request) {
   }
 }
 
-void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
+void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
                                                            TaskToExecute &request) {
   bool is_canceled = false;
   {

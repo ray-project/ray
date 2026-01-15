@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
+#include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
 namespace ray {
 namespace core {
@@ -216,14 +218,14 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 
   if (task_spec.IsActorTask()) {
-    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
-    if (it == actor_scheduling_queues_.end()) {
-      it = actor_scheduling_queues_
+    auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
+    if (it == actor_task_execution_queues_.end()) {
+      it = actor_task_execution_queues_
                .emplace(
                    task_spec.CallerWorkerId(),
-                   allow_out_of_order_execution_
-                       ? std::unique_ptr<SchedulingQueue>(
-                             std::make_unique<OutOfOrderActorSchedulingQueue>(
+                     allow_out_of_order_execution_
+                         ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
+                         std::make_unique<UnorderedActorTaskExecutionQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
@@ -232,15 +234,15 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                  is_asyncio_,
                                  fiber_max_concurrency_,
                                  concurrency_groups_))
-                       : std::unique_ptr<SchedulingQueue>(
-                             std::make_unique<ActorSchedulingQueue>(
+                         : std::unique_ptr<ActorTaskExecutionQueueInterface>(
+                             std::make_unique<OrderedActorTaskExecutionQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
                                  pool_manager_,
                                  RayConfig::instance()
-                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
-               .first;
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())
+                   )).first;
     }
 
     auto accept_callback = make_accept_callback();
@@ -270,8 +272,8 @@ void TaskReceiver::ExecuteQueuedNormalTasks() {
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
                                          const TaskID &task_id) {
   bool task_found = false;
-  auto it = actor_scheduling_queues_.find(caller_worker_id);
-  if (it != actor_scheduling_queues_.end()) {
+  auto it = actor_task_execution_queues_.find(caller_worker_id);
+  if (it != actor_task_execution_queues_.end()) {
     task_found = it->second->CancelTaskIfFound(task_id);
   }
 
@@ -305,7 +307,7 @@ void TaskReceiver::Stop() {
   if (stopping_.exchange(true)) {
     return;
   }
-  for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
+  for (const auto &[_, scheduling_queue] : actor_task_execution_queues_) {
     scheduling_queue->Stop();
   }
   if (normal_task_execution_queue_) {
