@@ -290,7 +290,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._common.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_default_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -327,7 +327,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._common.utils.get_ray_temp_dir()
+            temp_dir = ray._common.utils.get_default_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -1541,7 +1541,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
@@ -1565,7 +1567,9 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
