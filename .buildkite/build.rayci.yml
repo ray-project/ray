@@ -61,7 +61,8 @@ steps:
     key: linux_wheels_upload
     instance_type: small
     commands:
-      - ./ci/build/extract_wanda_wheels.sh ray-wheel-py{{matrix}}
+      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+        --wanda-image-name=ray-wheel-py{{matrix}}
       - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
@@ -70,6 +71,7 @@ steps:
       - "3.13"
     depends_on:
       - ray-wheel-build
+      - forge
     tags:
       - release_wheels
       - skip-on-premerge
@@ -110,10 +112,12 @@ steps:
     key: linux_cpp_wheels_upload
     instance_type: small
     commands:
-      - ./ci/build/extract_wanda_wheels.sh ray-cpp-wheel
+      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+        --wanda-image-name=ray-cpp-wheel
       - ./ci/build/copy_build_artifacts.sh wheel
     depends_on:
       - ray-cpp-wheel-build
+      - forge
     tags:
       - release_wheels
       - skip-on-premerge
