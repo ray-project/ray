@@ -239,20 +239,20 @@ def _get_most_frequent_values(
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
     # Use ValueCounter aggregator for all columns at once
-    agg_fns = [ValueCounter(on=col) for col in columns]
-    aggregated_counts = dataset.aggregate(*agg_fns)
+    agg_fns: List[ValueCounter] = [ValueCounter(on=col) for col in columns]
+    aggregated_counts: Dict[str, Any] = dataset.aggregate(*agg_fns)
 
-    result = {}
+    result: Dict[str, Union[str, Number]] = {}
     for col in columns:
-        value_counter_key = f"value_counter({col})"
-        value_counts = aggregated_counts[value_counter_key]
+        value_counter_key: str = f"value_counter({col})"
+        value_counts: Dict[str, Any] = aggregated_counts[value_counter_key]
 
         # Single pass: find most frequent, break ties lexicographically (largest)
-        values = value_counts["values"]
-        counts = value_counts["counts"]
+        values: List[Any] = value_counts["values"]
+        counts: List[int] = value_counts["counts"]
 
         # O(n) - no sorting needed
-        most_frequent = max(
+        most_frequent: Union[str, Number] = max(
             zip(values, counts),
             key=lambda x: (x[1], str(x[0])),  # (count, lexicographic)
         )[0]
