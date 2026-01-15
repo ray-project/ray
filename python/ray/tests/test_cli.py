@@ -884,7 +884,7 @@ def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key)
                 "--log-style=pretty",
                 "--log-color",
                 "False",
-                "--node_ip",
+                "--node-ip",
                 worker_ip_to_verify,
             ],
         )
