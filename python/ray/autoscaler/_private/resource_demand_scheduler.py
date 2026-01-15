@@ -371,7 +371,7 @@ class ResourceDemandScheduler:
             if runtime_resources:
                 runtime_resources = copy.deepcopy(runtime_resources)
                 resources = self.node_types[node_type].get("resources", {})
-                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                for key in ["CPU", "GPU", "memory"]:
                     if key in runtime_resources:
                         resources[key] = runtime_resources[key]
                 self.node_types[node_type]["resources"] = resources
@@ -648,7 +648,7 @@ def _add_min_workers_nodes(
     request_resources() constraints.
 
     Args:
-        node_resources: Resources of exisiting nodes already launched/pending.
+        node_resources: Resources of existing nodes already launched/pending.
         node_type_counts: Counts of existing nodes already launched/pending.
         node_types: Node types config.
         max_workers: global max_workers constaint.

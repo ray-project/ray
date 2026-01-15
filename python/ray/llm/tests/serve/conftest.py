@@ -11,16 +11,26 @@ import yaml
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
+    DetokenizeRequest,
+    EmbeddingCompletionRequest,
+    ScoreRequest,
+    TokenizeCompletionRequest,
+    TranscriptionRequest,
+)
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.serve.llm import (
     LLMConfig,
-    LLMServer,
     LLMServingArgs,
     ModelLoadingConfig,
     build_openai_app,
 )
+
+MOCK_MODEL_ID = "mock-model"
 
 
 @pytest.fixture
@@ -59,6 +69,106 @@ def llm_config(model_pixtral_12b, disable_placement_bundles):
         accelerator_type="L4",
         runtime_env={},
         log_engine_metrics=False,
+    )
+
+
+@pytest.fixture
+def mock_llm_config():
+    """LLM config for mock engine testing."""
+    return LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="mock-model"),
+        runtime_env={},
+        log_engine_metrics=False,
+    )
+
+
+@pytest.fixture
+def mock_chat_request(stream, max_tokens):
+    """Fixture for creating chat completion requests for mock testing."""
+    return ChatCompletionRequest(
+        model=MOCK_MODEL_ID,
+        messages=[{"role": "user", "content": "Hello, world!"}],
+        max_tokens=max_tokens,
+        stream=stream,
+    )
+
+
+@pytest.fixture
+def mock_completion_request(stream, max_tokens):
+    """Fixture for creating text completion requests for mock testing."""
+    return CompletionRequest(
+        model=MOCK_MODEL_ID,
+        prompt="Complete this text:",
+        max_tokens=max_tokens,
+        stream=stream,
+    )
+
+
+@pytest.fixture
+def mock_embedding_request(dimensions):
+    """Fixture for creating embedding requests for mock testing."""
+    request = EmbeddingCompletionRequest(
+        model=MOCK_MODEL_ID,
+        input="Text to embed",
+    )
+    if dimensions:
+        request.dimensions = dimensions
+    return request
+
+
+@pytest.fixture
+def mock_transcription_request(stream, temperature, language):
+    """Fixture for creating transcription requests for mock testing."""
+    # Create a mock audio file for testing
+    from io import BytesIO
+
+    from fastapi import UploadFile
+
+    # Create a simple mock audio file (WAV format)
+    mock_audio_data = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"  # random byte string to test the transcription API
+    mock_file = UploadFile(
+        file=BytesIO(mock_audio_data),
+        filename="test_audio.wav",
+    )
+
+    return TranscriptionRequest(
+        file=mock_file,
+        model=MOCK_MODEL_ID,
+        language=language,
+        temperature=temperature,
+        stream=stream,
+        prompt="",
+    )
+
+
+@pytest.fixture
+def mock_score_request():
+    """Fixture for creating score requests for mock testing."""
+    return ScoreRequest(
+        model=MOCK_MODEL_ID,
+        text_1="What is the capital of France?",
+        text_2="The capital of France is Paris.",
+    )
+
+
+@pytest.fixture
+def mock_tokenize_request(return_token_strs):
+    """Fixture for creating tokenize requests for mock testing."""
+    return TokenizeCompletionRequest(
+        model=MOCK_MODEL_ID,
+        prompt="Hello, world!",
+        add_special_tokens=False,
+        return_token_strs=return_token_strs,
+    )
+
+
+@pytest.fixture
+def mock_detokenize_request():
+    """Fixture for creating detokenize requests for mock testing."""
+    # Use character codes for "Hello" as tokens
+    return DetokenizeRequest(
+        model=MOCK_MODEL_ID,
+        tokens=[72, 101, 108, 108, 111],  # "Hello" in ASCII
     )
 
 
@@ -127,14 +237,30 @@ def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundl
 
 
 @pytest.fixture
-def create_server():
-    """Asynchronously create an LLMServer instance."""
+def testing_multiple_models(shutdown_ray_and_serve, disable_placement_bundles):
+    """Fixture for testing with multiple models configured."""
+    test_model_paths = [
+        get_test_model_path("mock_vllm_model.yaml"),
+        get_test_model_path("mock_vllm_model_2.yaml"),
+    ]
+    args = LLMServingArgs(
+        llm_configs=[str(path.absolute()) for path in test_model_paths]
+    )
+    router_app = build_openai_app(args)
+    serve._run(router_app, name="router", _blocking=False)
 
-    async def creator(*args, **kwargs):
-        # _ = LLMServer(...) will raise TypeError("__init__() should return None")
-        # so we do __new__ then __init__
-        server = LLMServer.__new__(LLMServer)
-        await server.__init__(*args, **kwargs)
-        return server
+    client = openai.Client(
+        base_url="http://localhost:8000/v1", api_key="not_an_actual_key"
+    )
 
-    return creator
+    # Block until the deployment is ready
+    # Wait at most 200s [3 min]
+    for _i in range(20):
+        try:
+            model_ids = [model.id for model in client.models.list().data]
+            if len(model_ids) >= 2:
+                break
+        except Exception as e:
+            print("Error", e)
+        time.sleep(10)
+    yield client, model_ids

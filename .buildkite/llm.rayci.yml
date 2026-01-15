@@ -1,6 +1,8 @@
 group: llm tests
 depends_on:
   - forge
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   - name: llmbuild
     wanda: ci/docker/llm.build.wanda.yaml
@@ -30,18 +32,32 @@ steps:
       - cpu
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
+        --python-version 3.11 --build-name llmbuild
         --except-tags gpu
     depends_on: llmbuild
 
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
     tags:
-      - python
+      - llm
+      - gpu
+    instance_type: g6-large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
+        --python-version 3.11 --build-name llmgpubuild --only-tags gpu
+        --except-tags multi_gpu_4
+    depends_on: llmgpubuild
+
+  - label: "llm gpu tests (4 GPUs)"
+    key: "llm-gpu-tests-4gpu"
+    tags:
       - llm
       - gpu
     instance_type: gpu-large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
-        --build-name llmgpubuild --only-tags gpu
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
+        --python-version 3.11 --build-name llmgpubuild
+        --only-tags multi_gpu_4
+        --gpus 4
     depends_on: llmgpubuild

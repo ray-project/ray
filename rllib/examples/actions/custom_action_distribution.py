@@ -20,7 +20,7 @@ This examples:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --temperature=0.8`
+`python [script file name].py --temperature=0.8`
 
 Use the `--temperature` setting to change the temperature. Higher values (>>1.0) lead
 to almost random behavior, lower values (<<1.0) lead to always-greedy behavior. Note
@@ -63,11 +63,10 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.rl_modules.classes.custom_action_distribution_rlm import (
     CustomActionDistributionRLModule,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_timesteps=200000,
@@ -83,7 +82,6 @@ parser.add_argument(
     "Set this to <<1.0 to approximate greedy behavior and to >>1.0 to approximate "
     "random behavior.",
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

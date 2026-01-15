@@ -167,5 +167,5 @@ if __name__ == "__main__":
 
     if "TEST_OUTPUT_JSON" in os.environ:
         with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
-            results = {"success": 1}
+            results = {}
             json.dump(results, out_file)

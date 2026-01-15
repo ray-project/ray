@@ -8,12 +8,14 @@
 Deploy Ray Serve Apps <user-guides/rayservice>
 user-guides/rayservice-no-ray-serve-replica
 user-guides/rayservice-high-availability
+user-guides/rayservice-incremental-upgrade
 user-guides/observability
 user-guides/upgrade-guide
 user-guides/k8s-cluster-setup
 user-guides/storage
 user-guides/config
 user-guides/configuring-autoscaling
+user-guides/label-based-scheduling
 user-guides/kuberay-gcs-ft
 user-guides/kuberay-gcs-persistent-ft
 user-guides/gke-gcs-bucket
@@ -41,6 +43,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-rayservice`
 * {ref}`kuberay-rayservice-no-ray-serve-replica`
 * {ref}`kuberay-rayservice-ha`
+* {ref}`kuberay-rayservice-incremental-upgrade`
 * {ref}`kuberay-observability`
 * {ref}`kuberay-upgrade-guide`
 * {ref}`kuberay-k8s-setup`

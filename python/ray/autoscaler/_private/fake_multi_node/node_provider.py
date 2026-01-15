@@ -13,6 +13,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -354,18 +355,19 @@ class FakeMultiNodeProvider(NodeProvider):
                 min_worker_port=0,
                 max_worker_port=0,
                 dashboard_port=None,
+                dashboard_agent_listen_port=0,
                 num_cpus=resources.pop("CPU", 0),
                 num_gpus=resources.pop("GPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 labels=labels,
-                redis_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                redis_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,
-                gcs_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                gcs_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,

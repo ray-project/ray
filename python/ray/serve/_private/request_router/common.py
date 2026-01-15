@@ -38,7 +38,7 @@ class PendingRequest:
     metadata: RequestMetadata
     """Metadata for the request, including request ID and whether it's streaming."""
 
-    created_at: float = field(default_factory=time.time)
+    created_at: float = field(default_factory=lambda: time.time())
     """Timestamp when the request was created."""
 
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
@@ -48,6 +48,9 @@ class PendingRequest:
         default_factory=RequestRoutingContext
     )
     """Context for request routing, used to track routing attempts and backoff."""
+
+    resolved: bool = False
+    """Whether the arguments have been resolved."""
 
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""
@@ -70,7 +73,7 @@ class ReplicaQueueLengthCache:
         self._cache: Dict[ReplicaID, ReplicaQueueLengthCacheEntry] = {}
         self._staleness_timeout_s = staleness_timeout_s
         self._get_curr_time_s = (
-            get_curr_time_s if get_curr_time_s is not None else time.time
+            get_curr_time_s if get_curr_time_s is not None else lambda: time.time()
         )
 
     def _is_timed_out(self, timestamp_s: int) -> bool:

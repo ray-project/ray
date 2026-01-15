@@ -54,66 +54,6 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
 
 .. tab-set::
 
-    .. tab-item:: Hugging Face Transformers
-
-        .. This snippet isn't tested because it doesn't use any Ray code.
-
-        .. testcode::
-            :skipif: True
-
-            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
-
-            import numpy as np
-            import evaluate
-            from datasets import load_dataset
-            from transformers import (
-                Trainer,
-                TrainingArguments,
-                AutoTokenizer,
-                AutoModelForSequenceClassification,
-            )
-
-            # Datasets
-            dataset = load_dataset("yelp_review_full")
-            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-
-            def tokenize_function(examples):
-                return tokenizer(examples["text"], padding="max_length", truncation=True)
-
-            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
-            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
-
-            # Model
-            model = AutoModelForSequenceClassification.from_pretrained(
-                "bert-base-cased", num_labels=5
-            )
-
-            # Metrics
-            metric = evaluate.load("accuracy")
-
-            def compute_metrics(eval_pred):
-                logits, labels = eval_pred
-                predictions = np.argmax(logits, axis=-1)
-                return metric.compute(predictions=predictions, references=labels)
-
-            # Hugging Face Trainer
-            training_args = TrainingArguments(
-                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
-            )
-
-            trainer = Trainer(
-                model=model,
-                args=training_args,
-                train_dataset=small_train_dataset,
-                eval_dataset=small_eval_dataset,
-                compute_metrics=compute_metrics,
-            )
-
-            # Start Training
-            trainer.train()
-
-
-
     .. tab-item:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
@@ -216,6 +156,65 @@ Compare a standard Hugging Face Transformers script with its Ray Train equivalen
                 model = AutoModelForSequenceClassification.from_pretrained(checkpoint_path)
 
 
+    .. tab-item:: Hugging Face Transformers
+
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
+
+            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
+
+            import numpy as np
+            import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer,
+                AutoModelForSequenceClassification,
+            )
+
+            # Datasets
+            dataset = load_dataset("yelp_review_full")
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], padding="max_length", truncation=True)
+
+            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
+
+            # Model
+            model = AutoModelForSequenceClassification.from_pretrained(
+                "bert-base-cased", num_labels=5
+            )
+
+            # Metrics
+            metric = evaluate.load("accuracy")
+
+            def compute_metrics(eval_pred):
+                logits, labels = eval_pred
+                predictions = np.argmax(logits, axis=-1)
+                return metric.compute(predictions=predictions, references=labels)
+
+            # Hugging Face Trainer
+            training_args = TrainingArguments(
+                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+            )
+
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=small_train_dataset,
+                eval_dataset=small_eval_dataset,
+                compute_metrics=compute_metrics,
+            )
+
+            # Start Training
+            trainer.train()
+
+
 Set up a training function
 --------------------------
 
@@ -223,6 +222,7 @@ Set up a training function
 
 Ray Train sets up the distributed process group on each worker before entering the training function.
 Put all your logic into this function, including:
+
 - Dataset construction and preprocessing
 - Model initialization
 - Transformers trainer definition
@@ -321,14 +321,18 @@ training code.
             import ray
             from ray.train.huggingface import TransformersTrainer
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            # optional: preprocess the dataset
-            # hf_datasets = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
-            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # Define the Trainer generation function
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -379,14 +383,18 @@ training code.
                 prepare_trainer,
             )
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            # optional: preprocess the dataset
-            # hf_datasets = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
-            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # [1] Define the full training function
             # =====================================

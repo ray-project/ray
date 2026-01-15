@@ -17,8 +17,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
-
 namespace ray {
 
 void PushManager::StartPush(const NodeID &dest_id,
@@ -41,7 +39,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    RAY_CHECK_NE(it->second->num_chunks_to_send, 0);
+    RAY_CHECK_NE(it->second->num_chunks_to_send_, 0);
     chunks_remaining_ += it->second->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
@@ -73,12 +71,12 @@ void PushManager::ScheduleRemainingPushes() {
       auto &push_state = *iter;
       push_state.SendOneChunk();
       chunks_in_flight_ += 1;
-      if (push_state.num_chunks_to_send == 0) {
-        auto push_state_map_iter = push_state_map_.find(push_state.node_id);
+      if (push_state.num_chunks_to_send_ == 0) {
+        auto push_state_map_iter = push_state_map_.find(push_state.node_id_);
         RAY_CHECK(push_state_map_iter != push_state_map_.end());
 
         auto &dest_map = push_state_map_iter->second;
-        auto dest_map_iter = dest_map.find(push_state.object_id);
+        auto dest_map_iter = dest_map.find(push_state.object_id_);
         RAY_CHECK(dest_map_iter != dest_map.end());
 
         iter = push_requests_with_chunks_to_send_.erase(dest_map_iter->second);
@@ -106,10 +104,9 @@ void PushManager::HandleNodeRemoved(const NodeID &node_id) {
 }
 
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_push_manager_num_pushes_remaining.Record(
-      NumPushRequestsWithChunksToSend());
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksInFlight(), "InFlight");
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksRemaining(), "Remaining");
+  push_manager_num_pushes_remaining_gauge_.Record(NumPushRequestsWithChunksToSend());
+  push_manager_chunks_gauge_.Record(NumChunksInFlight(), {{"Type", "InFlight"}});
+  push_manager_chunks_gauge_.Record(NumChunksRemaining(), {{"Type", "Remaining"}});
 }
 
 std::string PushManager::DebugString() const {

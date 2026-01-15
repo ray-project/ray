@@ -14,15 +14,15 @@
 
 #pragma once
 
+#include "ray/observability/metric_interface.h"
+
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
 
-using TagKeyType = opencensus::tags::TagKey;
-using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
+namespace ray {
+namespace stats {
 
 extern const TagKeyType ComponentKey;
-
-extern const TagKeyType JobNameKey;
 
 extern const TagKeyType NodeAddressKey;
 
@@ -30,15 +30,7 @@ extern const TagKeyType VersionKey;
 
 extern const TagKeyType LanguageKey;
 
-extern const TagKeyType WorkerPidKey;
-
-extern const TagKeyType DriverPidKey;
-
-extern const TagKeyType ActorIdKey;
-
 extern const TagKeyType WorkerIdKey;
-
-extern const TagKeyType JobIdKey;
 
 extern const TagKeyType SessionNameKey;
 
@@ -47,22 +39,10 @@ extern const TagKeyType NameKey;
 extern const TagKeyType SourceKey;
 
 // Object store memory location tag constants
-extern const TagKeyType LocationKey;
-
-constexpr char kResourceNameKey[] = "ResourceName";
-
-constexpr char kCustomKey[] = "CustomKey";
-
-constexpr char kObjectLocMmapShm[] = "MMAP_SHM";
-constexpr char kObjectLocMmapDisk[] = "MMAP_DISK";
-constexpr char kObjectLocSpilled[] = "SPILLED";
-constexpr char kObjectLocWorkerHeap[] = "WORKER_HEAP";
+constexpr std::string_view LocationKey = "Location";
 
 // Object store memory sealed/unsealed tag
-extern const TagKeyType ObjectStateKey;
-constexpr char kObjectSealed[] = "SEALED";
-constexpr char kObjectUnsealed[] = "UNSEALED";
+constexpr std::string_view ObjectStateKey = "ObjectState";
 
-// GCS task manager tags
-constexpr char kGcsTaskStatusEventDropped[] = "STATUS_EVENT";
-constexpr char kGcsProfileEventDropped[] = "PROFILE_EVENT";
+}  // namespace stats
+}  // namespace ray

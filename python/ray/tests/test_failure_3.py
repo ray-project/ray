@@ -1,21 +1,22 @@
-import os
-import sys
-import signal
-import time
-import threading
 import json
+import os
+import signal
+import sys
+import threading
+import time
 from pathlib import Path
 
-import ray
 import numpy as np
 import pytest
-import psutil
 
-from ray._private.test_utils import (
-    wait_for_pid_to_exit,
-    run_string_as_driver_nonblocking,
-)
+import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+
+import psutil
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -54,7 +55,15 @@ def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
     (RayletDiedError).
     """
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    system_configs = {
+        "health_check_initial_delay_ms": 0,
+        "health_check_timeout_ms": 10,
+        "health_check_failure_threshold": 1,
+    }
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=system_configs,
+    )
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)

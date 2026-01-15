@@ -46,6 +46,7 @@ DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_ORG_ID_ENV_VAR = "RAY_GRAFANA_ORG_ID"
 DEFAULT_GRAFANA_ORG_ID = "1"
+GRAFANA_CLUSTER_FILTER_ENV_VAR = "RAY_GRAFANA_CLUSTER_FILTER"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
@@ -119,6 +120,7 @@ class MetricsHead(SubprocessModule):
         self._grafana_org_id = os.environ.get(
             GRAFANA_ORG_ID_ENV_VAR, DEFAULT_GRAFANA_ORG_ID
         )
+        self._grafana_cluster_filter = os.environ.get(GRAFANA_CLUSTER_FILTER_ENV_VAR)
 
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
@@ -145,7 +147,7 @@ class MetricsHead(SubprocessModule):
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed",
+                        message="Grafana healthcheck failed",
                         status=resp.status,
                     )
                 json = await resp.json()
@@ -153,7 +155,7 @@ class MetricsHead(SubprocessModule):
                 if json["database"] != "ok":
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed. Database not ok.",
+                        message="Grafana healthcheck failed. Database not ok.",
                         status=resp.status,
                         json=json,
                     )
@@ -166,6 +168,7 @@ class MetricsHead(SubprocessModule):
                     session_name=self.session_name,
                     dashboard_uids=self._dashboard_uids,
                     dashboard_datasource=self._prometheus_name,
+                    grafana_cluster_filter=self._grafana_cluster_filter,
                 )
 
         except Exception as e:
@@ -175,7 +178,7 @@ class MetricsHead(SubprocessModule):
 
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                message="Grafana healtcheck failed",
+                message="Grafana healthcheck failed",
                 exception=str(e),
             )
 

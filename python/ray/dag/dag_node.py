@@ -1,31 +1,29 @@
+import asyncio
 import copy
-from ray.experimental.channel.auto_transport_type import AutoTransportType
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+import uuid
+from itertools import chain
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 import ray
 from ray.dag.base import DAGNodeBase
-from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.util.annotations import DeveloperAPI
-
-from itertools import chain
-
-from typing import (
-    Optional,
-    Union,
-    List,
-    Tuple,
-    Dict,
-    Any,
-    TypeVar,
-    Callable,
-    Literal,
-)
-import uuid
-import asyncio
-
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
+from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 
@@ -198,7 +196,7 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "accelerator":
             self._type_hint = TorchTensorType(
-                transport == "accelerator",
+                transport="accelerator",
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -212,8 +210,9 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
-                    "a Communicator type"
+                    f"Invalid transport type: {transport}. "
+                    "Transport must be one of 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "an instance of Communicator type."
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,

@@ -48,9 +48,11 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false,
+              bool allow_out_of_order_execution = false,
+              bool enable_tensor_transport = false,
               std::optional<bool> enable_task_events = absl::nullopt,
-              const std::unordered_map<std::string, std::string> &labels = {});
+              const std::unordered_map<std::string, std::string> &labels = {},
+              bool is_detached = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -83,11 +85,13 @@ class ActorHandle {
   /// \param[in] builder Task spec builder.
   /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
   /// raylet-based actor restart.
+  /// \param[in] tensor_transport Tensor transport for the actor task.
   void SetActorTaskSpec(TaskSpecBuilder &builder,
                         const ObjectID new_cursor,
                         int max_retries,
                         bool retry_exceptions,
-                        const std::string &serialized_retry_exception_allowlist);
+                        const std::string &serialized_retry_exception_allowlist,
+                        const std::optional<std::string> &tensor_transport);
 
   /// Reset the actor task spec fields of an existing task so that the task can
   /// be re-executed.
@@ -108,7 +112,11 @@ class ActorHandle {
 
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
-  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+  bool AllowOutOfOrderExecution() const { return inner_.allow_out_of_order_execution(); }
+
+  bool EnableTensorTransport() const { return inner_.enable_tensor_transport(); }
+
+  bool IsDetached() const { return inner_.is_detached(); }
 
   const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
     return inner_.labels();

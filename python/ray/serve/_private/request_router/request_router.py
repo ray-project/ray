@@ -29,9 +29,13 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica_result import ReplicaResult
@@ -412,6 +416,7 @@ class FIFOMixin:
             request_metadata
         )
         if matched_pending_request is not None:
+            self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -421,6 +426,7 @@ class FIFOMixin:
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
+                self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
                 break
 
@@ -429,11 +435,10 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
-    backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
-    """
-    The sequence of backoff timeouts to use when all replicas' queues are full.
-    The last item in the list is the max timeout and will be used repeatedly.
-    """
+    """Backoff parameters for request router."""
+    initial_backoff_s = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+    backoff_multiplier = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+    max_backoff_s = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
@@ -507,12 +512,15 @@ class RequestRouter(ABC):
         self.num_routing_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request routing tasks in the router.",
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_gauge.set(0)
@@ -524,15 +532,66 @@ class RequestRouter(ABC):
                 "The number of request routing tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
+
+        # Queue wait time histogram: time request spent waiting in queue
+        # before being assigned to a replica.
+        self.queue_wait_time_ms_histogram = metrics.Histogram(
+            "serve_request_router_fulfillment_time_ms",
+            description=(
+                "Time in milliseconds that a request spent waiting in the "
+                "queue before being assigned to a replica."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "actor_id", "application", "handle_source"),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
+            }
+        )
+
+        self.router_queue_len_gauge = metrics.Gauge(
+            "serve_request_router_queue_len",
+            description=(
+                "The number of requests currently running on a replica "
+                "as tracked by the router's queue length cache."
+            ),
+            tag_keys=(
+                "deployment",
+                "replica_id",
+                "actor_id",
+                "application",
+                "handle_source",
+            ),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
+            }
+        )
+
+    def _update_router_queue_len_gauge(self, replica_id: ReplicaID, queue_len: int):
+        """Update the router queue length gauge for a specific replica."""
+        self.router_queue_len_gauge.set(
+            queue_len,
+            tags={"replica_id": replica_id.unique_id},
+        )
 
     def initialize_state(self, **kwargs):
         """
@@ -621,6 +680,17 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(
                 replica_id, queue_len_info.num_ongoing_requests
             )
+            self._update_router_queue_len_gauge(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
+
+    def on_send_request(self, replica_id: ReplicaID):
+        """Increment queue length cache when a request is sent to a replica."""
+        if self._use_replica_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            new_queue_len = num_ongoing_requests + 1
+            self._replica_queue_len_cache.update(replica_id, new_queue_len)
+            self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -769,6 +839,7 @@ class RequestRouter(ABC):
                 queue_len = t.result()
                 result.append((replica, queue_len))
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
+                self._update_router_queue_len_gauge(replica.replica_id, queue_len)
 
         assert len(result) == len(replicas)
         return result
@@ -853,6 +924,11 @@ class RequestRouter(ABC):
 
         return None
 
+    def _record_queue_wait_time(self, pending_request: PendingRequest):
+        """Records the time a request spent in the queue."""
+        queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
+        self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+
     def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
@@ -869,6 +945,7 @@ class RequestRouter(ABC):
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
+            self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -892,12 +969,12 @@ class RequestRouter(ABC):
         will be considered. If those are occupied, the full set of replicas will be
         considered on subsequent iterations.
         After each iteration, there will be an increasing backoff sleep time (dictated
-        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
-        backoff sleep time.
+        by `initial_backoff_s` and `backoff_multiplier`). The caller should exit the
+        generator to reset the backoff sleep time.
         """
         entered_backoff = False
         try:
-            backoff_index = 0
+            attempt = 0
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -932,7 +1009,10 @@ class RequestRouter(ABC):
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not pending_request.routing_context.should_backoff:
+                if (
+                    pending_request
+                    and not pending_request.routing_context.should_backoff
+                ):
                     continue
 
                 if not entered_backoff:
@@ -941,9 +1021,14 @@ class RequestRouter(ABC):
                     self.num_routing_tasks_in_backoff_gauge.set(
                         self.num_routing_tasks_in_backoff
                     )
-
-                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+                else:
+                    # Only backoff after the first retry.
+                    backoff_s = min(
+                        self.initial_backoff_s * self.backoff_multiplier**attempt,
+                        self.max_backoff_s,
+                    )
+                    await asyncio.sleep(backoff_s)
+                    attempt += 1
         finally:
             if entered_backoff:
                 self.num_routing_tasks_in_backoff -= 1
@@ -966,46 +1051,52 @@ class RequestRouter(ABC):
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
                 request_metadata = pending_request.metadata if pending_request else None
-                async for candidates in self._choose_replicas_with_backoff(
+                gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
-                ):
-                    # Clear out pending requests at the front of the
-                    # queue that have been cancelled, then reevaluate
-                    # if we need to continue this routing task.
-                    while (
-                        len(self._pending_requests_to_fulfill) > 0
-                        and self._pending_requests_to_fulfill[0].future.done()
-                    ):
-                        self._pending_requests_to_fulfill.popleft()
+                )
+                try:
+                    async for candidates in gen_choose_replicas_with_backoff:
+                        # Clear out pending requests at the front of the
+                        # queue that have been cancelled, then reevaluate
+                        # if we need to continue this routing task.
+                        while (
+                            len(self._pending_requests_to_fulfill) > 0
+                            and self._pending_requests_to_fulfill[0].future.done()
+                        ):
+                            self._pending_requests_to_fulfill.popleft()
 
-                    if len(self._routing_tasks) > self.target_num_routing_tasks:
-                        break
+                        if len(self._routing_tasks) > self.target_num_routing_tasks:
+                            break
 
-                    replica = await self._select_from_candidate_replicas(
-                        candidates, backoff_index
-                    )
-                    if replica is not None:
-                        self._fulfill_next_pending_request(replica, request_metadata)
-                        break
-
-                    backoff_index += 1
-                    if backoff_index >= 50 and backoff_index % 50 == 0:
-                        routing_time_elapsed = time.time() - start_time
-                        warning_log = (
-                            "Failed to route request after "
-                            f"{backoff_index} attempts over "
-                            f"{routing_time_elapsed:.2f}s. Retrying."
+                        replica = await self._select_from_candidate_replicas(
+                            candidates, backoff_index
                         )
-                        if request_metadata is not None:
-                            warning_log += (
-                                f" Request ID: {request_metadata.request_id}."
+                        if replica is not None:
+                            self._fulfill_next_pending_request(
+                                replica, request_metadata
                             )
-                            if request_metadata.multiplexed_model_id:
+                            break
+
+                        backoff_index += 1
+                        if backoff_index >= 50 and backoff_index % 50 == 0:
+                            routing_time_elapsed = time.time() - start_time
+                            warning_log = (
+                                "Failed to route request after "
+                                f"{backoff_index} attempts over "
+                                f"{routing_time_elapsed:.2f}s. Retrying."
+                            )
+                            if request_metadata is not None:
                                 warning_log += (
-                                    " Multiplexed model ID: "
-                                    f"{request_metadata.multiplexed_model_id}."
+                                    f" Request ID: {request_metadata.request_id}."
                                 )
-                        logger.warning(warning_log)
+                                if request_metadata.multiplexed_model_id:
+                                    warning_log += (
+                                        " Multiplexed model ID: "
+                                        f"{request_metadata.multiplexed_model_id}."
+                                    )
+                            logger.warning(warning_log)
+                finally:
+                    await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
@@ -1074,9 +1165,22 @@ class RequestRouter(ABC):
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
-        return self.update_replicas(
-            [self.create_replica_wrapper(r) for r in running_replicas]
-        )
+        replica_wrappers = []
+        for r in running_replicas:
+            try:
+                replica_wrappers.append(self.create_replica_wrapper(r))
+            except ValueError:
+                # NOTE(abrar): ValueError is raised when the actor handle is not found
+                # by ray.get_actor.
+
+                # Actor has died (e.g., due to node failure) but controller hasn't
+                # detected it yet. Skip this replica; controller will send an update
+                # when it detects the failure.
+                logger.warning(
+                    f"Failed to get handle to replica {r.replica_id} during router "
+                    "update. The replica actor may have died. Skipping this replica."
+                )
+        return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None

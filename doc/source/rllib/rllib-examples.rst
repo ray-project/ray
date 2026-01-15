@@ -8,7 +8,7 @@ Examples
 .. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
-`examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
+`examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
 of RLlib, demonstrating the different use cases and features of the library.
 
 .. note::
@@ -26,7 +26,7 @@ of RLlib, demonstrating the different use cases and features of the library.
 
 Folder structure
 ----------------
-The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ has
+The `examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__ has
 several sub-directories described in detail below.
 
 
@@ -39,7 +39,7 @@ directory and run the script as-is with python:
 .. code-block:: bash
 
     $ cd ray/rllib/examples/multi_agent
-    $ python multi_agent_pendulum.py --enable-new-api-stack --num-agents=2
+    $ python multi_agent_pendulum.py --num-agents=2
 
 
 Use the `--help` command line argument to have each script print out its supported command line options.
@@ -158,7 +158,7 @@ Curiosity
    Using curiosity is beneficial in sparse-reward environments where agents may struggle to find rewarding paths.
    However, count-based methods are only feasible for environments with small observation spaces.
 
-- `Euclidian distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
+- `Euclidean distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
    Uses Euclidean distance between states and the initial state to measure novelty, encouraging exploration by rewarding the agent for reaching "far away"
    regions of the environment.
    Suitable for sparse-reward tasks, where diverse exploration is key to success.
@@ -177,11 +177,16 @@ Curriculum learning
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
 
+- `Curriculum learning for Atari Pong <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/pong_curriculum_learning.py>`__:
+   Demonstrates curriculum learning for Atari Pong using the `frameskip` to increase difficulty of the task.
+   This approach enables gradual learning, allowing agents to master slower reactions (lower `frameskip`) before progressing to more faster ones (higher `frameskip`).
+   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
 
 Debugging
 +++++++++
 
-- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_sampling_and_training.py>`__:
    Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
    :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
    When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling
@@ -193,7 +198,7 @@ Environments
 
 - `Async gym vectorization, parallelizing sub-environments <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/async_gym_env_vectorization.py>`__:
    Shows how the `gym_env_vectorize_mode` config setting can significantly speed up your
-   :py:class`~ray.rllib.env.env_runner.EnvRunner` actors, if your RL environment is slow and you are
+   :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, if your RL environment is slow and you're
    using `num_envs_per_env_runner > 1`. The reason for the performance gain is that each sub-environment runs in its own process.
 
 - `Custom env rendering method <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_env_render_method.py>`__:
@@ -342,21 +347,22 @@ Multi-agent RL
 - `PettingZoo parameter sharing <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
    Uses `PettingZoo <https://pettingzoo.farama.org/>`__ for an environment where all agents share a single policy.
 
-- `PettingZoo shared value function <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_shared_value_function.py>`__:
-   Also using PettingZoo, this example explores shared value functions among agents.
-   It demonstrates collaborative learning scenarios where agents collectively estimate a value function rather than individual policies.
-
 - `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__:
    Simulates a rock-paper-scissors game with one heuristic-driven agent and one learning agent.
    It provides insights into performance when combining fixed and adaptive strategies in adversarial games.
 
-- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
+- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/tree/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
    Sets up a rock-paper-scissors game where you train both agents to learn strategies on how to play against each other.
    Useful for evaluating performance in simple adversarial settings.
 
 - `Self-play, league-based, with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_league_based_with_open_spiel.py>`__:
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
+
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/multi_agent_footsies_ppo.py>`__:
+    Implements self-play with the Footsies environment (two player zero-sum game).
+    This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
+    setting up a multi-agent self-play training scenario.
 
 - `Self-play with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__:
    Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve
@@ -410,7 +416,7 @@ RLModules
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional
    feature extraction tailored to the environment's visual observations.
 
-- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
+- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/tree/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
    Uses a custom LSTM within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, allowing for temporal sequence processing,
    beneficial for partially observable environments with sequential dependencies.
 
@@ -432,17 +438,17 @@ RLModules
 Tuned examples
 --------------
 
-The `tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__ folder
+The `tuned examples <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__ folder
 contains python config files that you can execute analogously to all other example scripts described
 here to run tuned learning experiments for the different algorithms and environment types.
 
-For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
+For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py>`__,
 which learns to solve the Pong environment in roughly 5 minutes. You can run it as follows on a single
 g5.24xlarge or g6.24xlarge machine with 4 GPUs and 96 CPUs:
 
 .. code-block:: bash
 
-    $ cd ray/rllib/tuned_examples/ppo
+    $ cd ray/rllib/examples/algorithms/ppo
     $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
 Note that RLlib's daily or weekly release tests use some of the files in this folder as well.
@@ -501,8 +507,6 @@ Blog posts
 
 - `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
    Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL attention net architectures.
-- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
-   How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
 - `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
    Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
 - `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:

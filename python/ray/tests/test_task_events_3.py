@@ -1,11 +1,20 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.util.state import list_tasks
+
+# Run every test in this module twice: default and with core-worker to aggregator feature flag enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 
 def test_globally_disable_task_events(

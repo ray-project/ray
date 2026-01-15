@@ -15,6 +15,7 @@ from typing import Callable, Optional
 import ray
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
+from ray._common.serialization import pickle_dumps
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -22,7 +23,6 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
@@ -34,6 +34,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
 )
 from ray.remote_function import RemoteFunction
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -544,6 +545,16 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+
+            # Re-inject tracing into the loaded class. This is necessary because
+            # cloudpickle doesn't preserve __signature__ attributes on module-level
+            # functions. When a class is pickled and unpickled, user-defined methods
+            # are looked up from the module, losing the __signature__ that was set by
+            # _inject_tracing_into_class during actor creation. Re-injecting tracing
+            # ensures the method signatures include _ray_trace_ctx when tracing is
+            # enabled, matching the behavior expected by _tracing_actor_method_invocation.
+            _inject_tracing_into_class(actor_class)
+
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -600,7 +611,11 @@ class FunctionActorManager:
         self, actor_class_name, actor_method_names, traceback_str
     ):
         class TemporaryActor:
-            pass
+            async def __dummy_method(self):
+                """Dummy method for this fake actor class to work for async actors.
+                Without this method, this temporary actor class fails to initialize
+                if the original actor class was async."""
+                pass
 
         def temporary_actor_method(*args, **kwargs):
             raise RuntimeError(

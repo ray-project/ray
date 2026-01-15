@@ -234,7 +234,7 @@ def test_listen_for_change_java(serve_instance):
             node_id="node_id",
             node_ip="node_ip",
             availability_zone="some-az",
-            actor_handle=host,
+            actor_name=f"SERVE_REPLICA::default#deployment_name#{i}",
             max_ongoing_requests=1,
         )
         for i in range(2)

@@ -23,7 +23,6 @@ class AggregateNumRows(PhysicalOperator):
             "AggregateNumRows",
             input_dependencies,
             data_context,
-            target_max_block_size=None,
         )
 
         self._column_name = column_name
@@ -59,7 +58,4 @@ class AggregateNumRows(PhysicalOperator):
         self._num_rows += refs.num_rows()
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

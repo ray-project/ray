@@ -13,7 +13,7 @@ references/index
 ## Overview
 
 In this section we cover how to launch Ray clusters on Cloud VMs. Ray ships with built-in support
-for launching AWS and GCP clusters, and also has community-maintained integrations for Azure, Aliyun and vSphere.
+for launching AWS, GCP, and Azure clusters, and also has community-maintained integrations for Aliyun and vSphere.
 Each Ray cluster consists of a head node and a collection of worker nodes. Optional
 [autoscaling](vms-autoscaling) support allows the Ray cluster to be sized according to the
 requirements of your Ray workload, adding and removing worker nodes as needed. Ray supports

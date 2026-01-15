@@ -36,7 +36,7 @@ through which the agent cannot walk.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --map=large --time-limit=50`
+`python [script file name].py --map=large --time-limit=50`
 
 Use the `--flat` option to disable the hierarchical setup and learn the simple (flat)
 SixRoomEnv with only one policy. You should observe that it's much harder for the algo
@@ -78,7 +78,7 @@ from ray.rllib.examples.envs.classes.six_room_env import (
     HierarchicalSixRoomEnv,
     SixRoomEnv,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -121,7 +121,6 @@ parser.add_argument(
     default=3,
     help="The number of low-level agents/policies to use.",
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

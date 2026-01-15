@@ -3,7 +3,7 @@ steps:
   - name: k8sbuild
     wanda: ci/docker/k8s.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build
+      - oss-ci-base_build-multipy
     tags: cibase
 
   - label: ":kubernetes: operator"
@@ -16,9 +16,11 @@ steps:
     docker_network: "host"
     depends_on:
       - k8sbuild
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
+      - ray-core-build
+      - ray-dashboard-build
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
     key: kuberay_tests
@@ -42,6 +44,8 @@ steps:
           - "test_streaming_llm"
           - "test_many_job_submissions"
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
+      - ray-core-build
+      - ray-dashboard-build

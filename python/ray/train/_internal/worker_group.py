@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import socket
@@ -8,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import ray
 from ray.actor import ActorHandle
 from ray.air._internal.util import exception_cause, skip_exceptions
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
@@ -99,7 +101,7 @@ def construct_metadata() -> WorkerMetadata:
     )
 
 
-class WorkerGroup:
+class WorkerGroup(BaseWorkerGroup):
     """Group of Ray Actors that can execute arbitrary functions.
 
     ``WorkerGroup`` launches Ray actors according to the given
@@ -168,9 +170,12 @@ class WorkerGroup:
             )
 
         self.num_workers = num_workers
-        self.num_cpus_per_worker = resources_per_worker.pop("CPU", 0)
-        self.num_gpus_per_worker = resources_per_worker.pop("GPU", 0)
-        self.memory_per_worker = resources_per_worker.pop("memory", 0)
+        self.resources_per_worker = resources_per_worker
+
+        _resources_per_worker = copy.deepcopy(resources_per_worker)
+        self.num_cpus_per_worker = _resources_per_worker.pop("CPU", 0)
+        self.num_gpus_per_worker = _resources_per_worker.pop("GPU", 0)
+        self.memory_per_worker = _resources_per_worker.pop("memory", 0)
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
         assert issubclass(self._base_cls, RayTrainWorker)
@@ -186,7 +191,7 @@ class WorkerGroup:
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
             memory=self.memory_per_worker,
-            resources=resources_per_worker,
+            resources=_resources_per_worker,
         )(self._base_cls)
         self.start()
 
@@ -269,6 +274,8 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
+        # TODO: Add a timeout in the case of a hang, particularly
+        # relevant when func is TorchConfig.on_shutdown
         return ray.get(self.execute_async(func, *args, **kwargs))
 
     def execute_single_async(
@@ -424,3 +431,7 @@ class WorkerGroup:
 
     def __len__(self):
         return len(self.workers)
+
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return copy.deepcopy(self.resources_per_worker)

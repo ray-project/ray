@@ -24,7 +24,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -84,6 +83,9 @@ class PlacementGroupResourceManager {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
+
+  friend bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
+                                 const BundleID &bundle_id);
 };
 
 /// Associated with new scheduler.

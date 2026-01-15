@@ -4,11 +4,13 @@ If you need a customized Ray instance (e.g., to change system config or env vars
 put the test in `test_runtime_env_standalone.py`.
 """
 import os
+import re
 import sys
 
 import pytest
 
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 
@@ -165,6 +167,33 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
         runtime_env = RuntimeEnv(config=RuntimeEnvConfig(**good_config))
         run(runtime_env)
+
+
+def test_runtime_env_error_includes_node_ip(start_cluster_shared):
+    """Test that RuntimeEnv errors include node IP information for debugging."""
+    _, address = start_cluster_shared
+    ray.init(address=address)
+
+    # Test with invalid pip package to trigger RuntimeEnvSetupError.
+    @ray.remote(
+        runtime_env={
+            "pip": ["nonexistent-package"],
+            "config": {"setup_timeout_seconds": 1},
+        }
+    )
+    def f():
+        return "should not reach here"
+
+    # Test pip package error
+    with pytest.raises(RuntimeEnvSetupError) as exception_info:
+        ray.get(f.remote())
+    error_message = str(exception_info.value)
+    print(f"Pip error message: {error_message}")
+    # Check that error message contains node IP information
+    # The format should be like "[Node 192.168.1.100] ..." or "[Node unknown] ..."
+    assert re.search(
+        r"\[Node ((\d{1,3}\.){3}\d{1,3}|unknown)\] ", error_message
+    ), f"Error message should contain node IP or 'unknown' in proper format: {error_message}"
 
 
 if __name__ == "__main__":

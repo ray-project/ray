@@ -39,7 +39,7 @@ able to successfully learn CartPole-v1.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -72,18 +72,16 @@ learning behavior on the CartPole-v1 environment:
 """
 
 from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_reward=250.0,
     default_iters=1000,
     default_timesteps=1_000_000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

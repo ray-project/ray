@@ -791,16 +791,16 @@ config = vLLMEngineProcessorConfig(
 
 ### LLM processor
 
-Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_llm_processor.html#ray.data.llm.build_llm_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself.
+Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_processor.html#ray.data.llm.build_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself.
 
 
 ```python
-from ray.data.llm import build_llm_processor
+from ray.data.llm import build_processor
 ```
 
 
 ```python
-processor = build_llm_processor(
+processor = build_processor(
     config,
     preprocess=lambda row: dict(
         model=lora_path,  # REMOVE this line if doing inference with just the base model
@@ -878,7 +878,7 @@ results[0]
       "num_generated_tokens": 5,
       "num_input_tokens": 164,
       "output": "request_attribute(esrb[])",
-      "params": "SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0.3, top_p=1.0, top_k=-1, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=250, min_tokens=0, logprobs=None, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, guided_decoding=None)",
+      "params": "SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0.3, top_p=1.0, top_k=-1, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=250, min_tokens=0, logprobs=None, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, structured_outputs=None)",
       "prompt": "<|im_start|>system
     Given a target sentence construct the underlying meaning representation of the input sentence as a single function with attributes and attribute values. This function should describe the target string accurately and the function must be one of the following ['inform', 'request', 'give_opinion', 'confirm', 'verify_attribute', 'suggest', 'request_explanation', 'recommend', 'request_attribute']. The attributes must be one of the following: ['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres', 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier']<|im_end|>
     <|im_start|>user
@@ -961,6 +961,7 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 Define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where you can define where the model comes from, it's [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html).
 
+**Note**: If you're using AWS S3, replace `AWS_REGION` in the `runtime_env`'s `env_vars` below with the cloud storage and respective region you saved your model artifacts to. Do the same if using other cloud storage options as well.
 
 ```python
 # Define config.
@@ -973,6 +974,7 @@ llm_config = LLMConfig(
         "dynamic_lora_loading_path": dynamic_lora_path,
         "max_num_adapters_per_replica": 16,  # You only have 1.
     },
+    runtime_env={"env_vars": {"AWS_REGION": "us-west-2"}},
     # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
     deployment_config={
         "autoscaling_config": {

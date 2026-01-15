@@ -1,6 +1,8 @@
 import contextlib
 import functools
+import logging
 import time
+import traceback
 from datetime import datetime
 from typing import (
     Any,
@@ -17,7 +19,11 @@ from typing import (
 
 import ray
 from ray.train._internal.utils import count_required_parameters
+from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
+
 
 T = TypeVar("T")
 
@@ -210,3 +216,75 @@ def get_callable_name(fn: Callable) -> str:
 
     # Fallback to the class name for objects that implement __call__
     return fn.__class__.__name__
+
+
+def construct_user_exception_with_traceback(
+    e: BaseException, exclude_frames: int = 0
+) -> UserExceptionWithTraceback:
+    """Construct a UserExceptionWithTraceback from a base exception.
+
+    Args:
+        e: The base exception to construct a UserExceptionWithTraceback from.
+        exclude_frames: The number of frames to exclude from the beginnning of
+            the traceback.
+
+    Returns:
+        A UserExceptionWithTraceback object.
+    """
+    # TODO(justinvyu): This is brittle and may break if the call stack
+    # changes. Figure out a more robust way to exclude these frames.
+    exc_traceback_str = traceback.format_exc(
+        limit=-(len(traceback.extract_tb(e.__traceback__)) - exclude_frames)
+    )
+    logger.error(f"Error in training function:\n{exc_traceback_str}")
+    return UserExceptionWithTraceback(e, traceback_str=exc_traceback_str)
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V2 worker."""
+    from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+
+    try:
+        get_train_fn_utils()
+        return True
+    except RuntimeError:
+        return False
+
+
+def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
+    """Check that the caller is a Ray Train worker spawned by Ray Train,
+    with access to training function utilities.
+
+    Args:
+        raise_in_tune_session: Whether to raise a specific error message if the caller
+            is in a Tune session. If True, will raise a DeprecationWarning.
+
+    Returns:
+        A decorator that performs this check, which raises an error if the caller
+        is not a Ray Train worker.
+    """
+
+    def _wrap(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def _wrapped_fn(*args, **kwargs):
+            from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+            if raise_in_tune_session and _in_tune_session():
+                raise DeprecationWarning(
+                    f"`ray.train.{fn.__name__}` is deprecated when running in a function "
+                    "passed to Ray Tune. Please use the equivalent `ray.tune` API instead. "
+                    "See this issue for more context: "
+                    "https://github.com/ray-project/ray/issues/49454"
+                )
+
+            if not _in_ray_train_worker():
+                raise RuntimeError(
+                    f"`{fn.__name__}` cannot be used outside of a Ray Train training function. "
+                    "You are calling this API from the driver or another non-training process. "
+                    "These utilities are only available within a function launched by `trainer.fit()`."
+                )
+            return fn(*args, **kwargs)
+
+        return _wrapped_fn
+
+    return _wrap

@@ -42,7 +42,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
-            ray._private.usage.usage_lib.record_library_usage("job_submission")
+            ray._common.usage.usage_lib.record_library_usage("job_submission")
             submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
@@ -52,6 +52,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
                 entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
+                entrypoint_label_selector=submit_request.entrypoint_label_selector,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)

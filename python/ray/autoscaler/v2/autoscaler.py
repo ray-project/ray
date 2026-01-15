@@ -1,6 +1,7 @@
 import logging
 from queue import Queue
 from typing import List, Optional
+from urllib.parse import urlsplit
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
@@ -31,6 +32,9 @@ from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+    CloudResourceMonitor,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     ThreadedRayInstaller,
@@ -39,7 +43,6 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
-from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +58,7 @@ class Autoscaler:
     ) -> None:
         """
         Args:
-            session_name: The name of the ray session.
+            session_name: The current Ray session name.
             config_reader: The config reader.
             gcs_client: The GCS client.
             event_logger: The event logger for emitting cluster events.
@@ -76,6 +79,7 @@ class Autoscaler:
         self._metrics_reporter = metrics_reporter
 
         self._init_cloud_instance_provider(config, config_reader)
+        self._cloud_resource_monitor = None
         self._init_instance_manager(
             session_name=session_name,
             config=config,
@@ -160,6 +164,8 @@ class Autoscaler:
                     max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
+        self._cloud_resource_monitor = CloudResourceMonitor()
+        subscribers.append(self._cloud_resource_monitor)
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
@@ -201,6 +207,7 @@ class Autoscaler:
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
                 cloud_provider=self._cloud_instance_provider,
+                cloud_resource_monitor=self._cloud_resource_monitor,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
                     self._cloud_instance_provider.get_non_terminated()

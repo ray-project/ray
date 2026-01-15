@@ -10,7 +10,7 @@ steps:
           "$(buildkite-agent meta-data get passing-commit)" "$(buildkite-agent meta-data get failing-commit)"
     mount_buildkite_agent: true
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     priority: 10
 
   - name: linux or windows test

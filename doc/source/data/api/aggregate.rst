@@ -25,3 +25,10 @@ compute aggregations.
     AbsMax
     Quantile
     Unique
+    AsList
+    CountDistinct
+    ValueCounter
+    MissingValuePercentage
+    ZeroPercentage
+    ApproximateQuantile
+    ApproximateTopK

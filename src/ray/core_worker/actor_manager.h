@@ -24,10 +24,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/actor_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker/reference_counter_interface.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 namespace ray {
 namespace core {
 
@@ -107,6 +106,7 @@ class ActorManager {
   ///
   /// NOTE: Getting an actor handle from GCS (named actor) is considered as adding a new
   /// actor handle.
+  /// NOTE: Attempting to add the same actor in parallel can cause RAY CHECK failure.
   ///
   /// \param actor_handle The handle to the actor.
   /// \param[in] call_site The caller's site.
@@ -115,10 +115,10 @@ class ActorManager {
   /// task.
   /// \return True if the handle was added and False if we already had a handle to
   /// the same actor.
-  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &call_site,
-                         const rpc::Address &caller_address,
-                         bool owned);
+  bool EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                             const std::string &call_site,
+                             const rpc::Address &caller_address,
+                             bool owned);
 
   /// Wait for actor reference deletion.
   ///
@@ -143,6 +143,9 @@ class ActorManager {
   ///
   /// \param actor_id ID of the actor to be subscribed.
   void SubscribeActorState(const ActorID &actor_id);
+
+  /// Returns the actor handle if it exists, nullptr otherwise.
+  std::shared_ptr<ActorHandle> GetActorHandleIfExists(const ActorID &actor_id);
 
  private:
   /// Give this worker a handle to an actor.
@@ -192,7 +195,6 @@ class ActorManager {
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
 
-  /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.

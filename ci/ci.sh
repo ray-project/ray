@@ -13,43 +13,6 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
-# Calls the provided command with set -x temporarily suppressed
-suppress_xtrace() {
-  {
-    local restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x"; fi
-  } 2> /dev/null
-  local status=0
-  "$@" || status=$?
-  ${restore_shell_state}
-  { return "${status}"; } 2> /dev/null
-}
-
-# Idempotent environment loading
-reload_env() {
-  # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
-  # e.g. for CI cross-compatibility.
-  # Normal environment variables should be set up at software installation time, not here.
-
-  if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
-    case "${GITHUB_PULL_REQUEST}" in
-      [1-9]*) TRAVIS_PULL_REQUEST="${GITHUB_PULL_REQUEST}";;
-      *) TRAVIS_PULL_REQUEST=false;;
-    esac
-    export TRAVIS_PULL_REQUEST
-  fi
-
-  if [ "${GITHUB_ACTIONS-}" = true ] && [ -z "${TRAVIS_BRANCH-}" ]; then
-    # Define TRAVIS_BRANCH to make Travis scripts run on GitHub Actions.
-    TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"  # For pull requests, the base branch name
-    TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"  # Remove refs/... prefix
-    # TODO(mehrdadn): Make TRAVIS_BRANCH be a named ref (e.g. 'master') like it's supposed to be.
-    # For now we use a hash because GitHub Actions doesn't clone refs the same way as Travis does.
-    TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"
-    export TRAVIS_BRANCH
-  fi
-}
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -117,24 +80,31 @@ compile_pip_dependencies() {
 }
 
 test_cpp() {
+  if [[ "${OSTYPE}" == darwin* ]]; then
+    echo "use macos_ci.sh to run cpp tests"
+    exit 1
+  fi
+
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
-  bazel test --test_output=all //cpp:test_python_call_cpp
+  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example, currently does not work on mac
-  if [[ "${OSTYPE}" != darwin* ]]; then
-    rm -rf ray-template
-    ray cpp --generate-bazel-project-template-to ray-template
-    pushd ray-template && bash run.sh
-  fi
+  rm -rf ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  (
+    cd ray-template
+    bash run.sh
+  )
 }
 
 test_macos_wheels() {
@@ -150,8 +120,8 @@ test_macos_wheels() {
   return "${TEST_WHEEL_RESULT}"
 }
 
-install_npm_project() {
-  if [ "${OSTYPE}" = msys ]; then
+_install_npm_project() {
+  if [[ "${OSTYPE}" == msys ]]; then
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
@@ -160,23 +130,25 @@ install_npm_project() {
 }
 
 build_dashboard_front_end() {
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == msys ]]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
-  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+  elif [[ "${NO_DASHBOARD-}" == "1" ]]; then
     echo "Skipping dashboard build"
   else
     (
       cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-        set +x  # suppress set -x since it'll get very noisy here
-        . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
-        nvm install $NODE_VERSION
-        nvm use --silent $NODE_VERSION
+      if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
+        if [[ -d "${HOME}/.nvm" ]]; then
+          set +x  # suppress set -x since it'll get very noisy here
+          . "${HOME}/.nvm/nvm.sh"
+          NODE_VERSION="14"
+          nvm install $NODE_VERSION
+          nvm use --silent $NODE_VERSION
+        fi
       fi
-      install_npm_project
+      _install_npm_project
       npm run build
     )
   fi
@@ -187,7 +159,7 @@ build_sphinx_docs() {
 
   (
     cd "${WORKSPACE_DIR}"/doc
-    if [ "${OSTYPE}" = msys ]; then
+    if [[ "${OSTYPE}" == msys ]]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
@@ -199,7 +171,7 @@ build_sphinx_docs() {
 check_sphinx_links() {
   (
     cd "${WORKSPACE_DIR}"/doc
-    if [ "${OSTYPE}" = msys ]; then
+    if [[ "${OSTYPE}" == msys ]]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make linkcheck
@@ -211,11 +183,11 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
-    bazel build //:ray_pkg
+    bazel run //:gen_ray_pkg
   elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
     echo "No need to build anything before install"
   elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
-    bazel build --config debug //:ray_pkg
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1
@@ -241,25 +213,20 @@ install_ray() {
   )
 }
 
-validate_wheels_commit_str() {
-  if [ "${OSTYPE}" = msys ]; then
-    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
-    return 0
-  fi
-
-  if [ -n "${BUILDKITE_COMMIT}" ]; then
-    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+_validate_macos_wheels_commit_str() {
+  if [[ -n "${BUILDKITE_COMMIT}" ]]; then
+    EXPECTED_COMMIT="${BUILDKITE_COMMIT:-}"
   else
-    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+    EXPECTED_COMMIT="$(git rev-parse HEAD)"
   fi
 
-  if [ -z "$EXPECTED_COMMIT" ]; then
-    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
-    return 0
+  if [[ -z "$EXPECTED_COMMIT" ]]; then
+    echo "Could not validate expected wheel commits: BUILDKITE_COMMIT is empty." >&2
+    exit 1
   fi
 
   for whl in .whl/*.whl; do
-    basename=${whl##*/}
+    basename="${whl##*/}"
 
     if [[ "$basename" =~ "_cpp" ]]; then
       # cpp wheels cannot be checked this way
@@ -280,85 +247,29 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels_and_jars() {
+build_macos_wheels_and_jars() {
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    echo "Not on macOS"
+    exit 1
+  fi
+
   _bazel_build_before_install
 
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  rm -rf .whl
   mkdir -p .whl
-  rm -rf .whl/* || true
 
-  case "${OSTYPE}" in
-    linux*)
-      # Mount bazel cache dir to the docker container.
-      # For the linux wheel build, we use a shared cache between all
-      # wheels, but not between different travis runs, because that
-      # caused timeouts in the past. See the "cache: false" line below.
-      local MOUNT_BAZEL_CACHE=(
-        -e "TRAVIS=true"
-        -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
-        -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-1}"
-        -e "BUILDKITE=${BUILDKITE:-}"
-        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
-        -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
-        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
-        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
-      )
+  # This command should be kept in sync with ray/python/README-building-wheels.md.
+  "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
 
-      IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
-      IMAGE_TAG="2022-12-20-b4884d9"
+  mkdir -p /tmp/artifacts
+  rm -rf /tmp/artifacts/.whl
+  cp -r .whl /tmp/artifacts/.whl
+  chmod 755 /tmp/artifacts/.whl
+  chmod 644 /tmp/artifacts/.whl/*
 
-      local MOUNT_ENV=()
-      if [[ "${LINUX_JARS-}" == "1" ]]; then
-        MOUNT_ENV+=(-e "BUILD_JAR=1")
-      fi
-
-      if [[ -z "${BUILDKITE-}" ]]; then
-        # This command should be kept in sync with ray/python/README-building-wheels.md,
-        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-        docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-      else
-        rm -rf /ray-mount/*
-        rm -rf /ray-mount/.whl || true
-        rm -rf /ray/.whl || true
-        cp -rT /ray /ray-mount
-        ls -a /ray-mount
-        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        cp -rT /ray-mount /ray # copy new files back here
-        find . | grep whl # testing
-
-        # Sync the directory to buildkite artifacts
-        rm -rf /artifact-mount/.whl || true
-
-        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
-          cp -r .whl /artifact-mount/.whl
-          chmod -R 777 /artifact-mount/.whl
-        fi
-
-        validate_wheels_commit_str
-      fi
-      ;;
-    darwin*)
-      # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      mkdir -p /tmp/artifacts/.whl
-      rm -rf /tmp/artifacts/.whl || true
-
-      if [[ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" == "1" ]]; then
-        cp -r .whl /tmp/artifacts/.whl
-        chmod -R 777 /tmp/artifacts/.whl
-      fi
-
-      validate_wheels_commit_str
-      ;;
-    msys*)
-      "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
-      ;;
-  esac
+  _validate_macos_wheels_commit_str
 }
 
 configure_system() {
@@ -397,15 +308,7 @@ build() {
   install_ray
 }
 
-_main() {
-  if [ "${GITHUB_ACTIONS-}" = true ]; then
-    exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
-    reload_env
-  fi
-  "$@"
-}
-
-_main "$@"
+"$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

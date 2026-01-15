@@ -14,7 +14,7 @@ if sys.version_info >= (3, 12):
 else:
     from tensorflow.keras.datasets import mnist
 
-    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.tune.integration.keras import TuneReportCheckpointCallback
 
 
 def train_mnist(config):
@@ -51,7 +51,7 @@ def train_mnist(config):
         verbose=0,
         validation_data=(x_test, y_test),
         callbacks=[
-            ReportCheckpointCallback(
+            TuneReportCheckpointCallback(
                 checkpoint_on=[], metrics={"mean_accuracy": "accuracy"}
             )
         ],

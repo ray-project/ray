@@ -160,7 +160,7 @@ async def test_too_long_completion_request(
     )
 
     # XXX: AE-686 hack, should read model data instead
-    length = 20000
+    length = 200000
     if "8x22" in model:
         length = 70000
 
@@ -311,8 +311,12 @@ async def test_logprobs(
             assert len(logprob["top_logprobs"]) == num_logprobs
             assert list(logprob["token"].encode()) == logprob["bytes"]
 
-    # top logprobs have to be positive integer
-    invalid_num_logprobs = [-1]
+    # top logprobs have to be positive integer (and not -1)
+    # https://github.com/vllm-project/vllm/pull/23868
+    # PR in vLLM changed interpretation of num_logprobs = -1
+    # Overrides to model_config.get_vocab_size(), which triggers
+    # openai.APIError instead of openai.badRequestError
+    invalid_num_logprobs = [-2]
     bad_config = configuration.copy()
     for invalid_num_logprob in invalid_num_logprobs:
         bad_config["top_logprobs"] = invalid_num_logprob

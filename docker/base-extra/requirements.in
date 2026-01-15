@@ -1,0 +1,10 @@
+azure-identity
+jupyterlab
+ipywidgets
+grpcio
+grpcio-tools
+
+jupyter_server_terminals
+
+# [backend] is for installing anyscale CLI for use in the anyscale cloud.
+anyscale[backend]>=0.26.74

@@ -12,10 +12,10 @@ from collections import Counter
 from typing import List
 from unittest import mock
 
+import numpy as np
 import pytest
 
 import ray
-import ray.train
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
@@ -660,14 +660,12 @@ class ResourceExhaustedTest(unittest.TestCase):
         the objects captured in trainable/training function are too
         large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
 
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
         a_large_array = []
-        for i in range(50):
-            a_large_array.append(fetch_olivetti_faces())
+        for _ in range(50):
+            a_large_array.append(np.random.rand(400, 4096))
 
         def training_func(config):
+            del config  # unused var
             for item in a_large_array:
                 assert item
 

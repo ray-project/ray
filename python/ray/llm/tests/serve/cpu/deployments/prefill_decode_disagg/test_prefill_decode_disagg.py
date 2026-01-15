@@ -1,22 +1,192 @@
 import sys
-from unittest.mock import patch
 
 import pytest
-from vllm.config import KVTransferConfig
-from vllm.platforms.interface import UnspecifiedPlatform
 
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
-from ray.llm._internal.serve.configs.server_models import LLMRawResponse
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
-    build_app,
+from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
+from ray.llm._internal.serve.core.ingress.builder import (
+    IngressClsConfig,
 )
-from ray.llm.tests.serve.mocks.mock_vllm_engine import MockPDDisaggVLLMEngine
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.serve.llm.openai_api_models import ChatCompletionRequest
+from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+    PDServingArgs,
+    ProxyClsConfig,
+    build_pd_openai_app,
+)
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    PDProxyServer,
+)
+from ray.serve.llm import LLMConfig
+
+
+class TestPDServingArgs:
+    """Test suite for PDServingArgs data model."""
+
+    @pytest.fixture
+    def pd_configs(self):
+        """Prefill and decode configs with required kv_transfer_config."""
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def test_basic_creation_and_defaults(self, pd_configs):
+        """Test creation with minimal config and verify defaults."""
+        prefill, decode = pd_configs
+        args = PDServingArgs(prefill_config=prefill, decode_config=decode)
+
+        # Verify configs
+        assert isinstance(args.prefill_config, LLMConfig)
+        assert isinstance(args.decode_config, LLMConfig)
+
+        # Verify defaults
+        assert isinstance(args.proxy_cls_config, ProxyClsConfig)
+        assert args.proxy_cls_config.proxy_cls == PDProxyServer
+        assert isinstance(args.ingress_cls_config, IngressClsConfig)
+        assert args.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args.proxy_deployment_config == {}
+        assert args.ingress_deployment_config == {}
+
+    def test_flexible_input_types(self):
+        """Test accepts dicts for prefill and decode configs."""
+        config_dict = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        args = PDServingArgs(prefill_config=config_dict, decode_config=config_dict)
+        assert isinstance(args.prefill_config, LLMConfig)
+        assert isinstance(args.decode_config, LLMConfig)
+
+    def test_proxy_config_flexibility(self, pd_configs):
+        """Test proxy_cls_config: defaults, dict input, object input, and class loading."""
+        prefill, decode = pd_configs
+
+        # Test defaults
+        args_default = PDServingArgs(prefill_config=prefill, decode_config=decode)
+        assert isinstance(args_default.proxy_cls_config, ProxyClsConfig)
+        assert args_default.proxy_cls_config.proxy_cls == PDProxyServer
+        assert args_default.proxy_cls_config.proxy_extra_kwargs == {}
+
+        # Test as dict with custom kwargs
+        args_dict = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config={"proxy_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.proxy_cls_config, ProxyClsConfig)
+        assert args_dict.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
+
+        # Test as object
+        args_obj = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config=ProxyClsConfig(proxy_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.proxy_cls_config, ProxyClsConfig)
+        assert args_obj.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
+
+        # Test class loading from string
+        args_str = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config={
+                "proxy_cls": "ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server:PDProxyServer"
+            },
+        )
+        assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
+
+    def test_ingress_config_flexibility(self, pd_configs):
+        """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
+        prefill, decode = pd_configs
+
+        # Test defaults
+        args_default = PDServingArgs(prefill_config=prefill, decode_config=decode)
+        assert isinstance(args_default.ingress_cls_config, IngressClsConfig)
+        assert args_default.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args_default.ingress_cls_config.ingress_extra_kwargs == {}
+
+        # Test as dict with custom kwargs
+        args_dict = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config={"ingress_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.ingress_cls_config, IngressClsConfig)
+        assert args_dict.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+
+        # Test as object
+        args_obj = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config=IngressClsConfig(ingress_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.ingress_cls_config, IngressClsConfig)
+        assert args_obj.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+
+        # Test class loading from string
+        args_str = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config={
+                "ingress_cls": "ray.llm._internal.serve.core.ingress.ingress:OpenAiIngress"
+            },
+        )
+        assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress
+
+    def test_validation_rules(self):
+        """Test validation: matching model IDs and required kv_transfer_config."""
+        # Mismatched model IDs
+        prefill = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="model-1", model_source="source"
+            ),
+            engine_kwargs={"kv_transfer_config": {"kv_connector": "NixlConnector"}},
+        )
+        decode = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="model-2", model_source="source"
+            ),
+            engine_kwargs={"kv_transfer_config": {"kv_connector": "NixlConnector"}},
+        )
+        with pytest.raises(ValueError, match="P/D model id mismatch"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
+
+        # Missing kv_transfer_config
+        prefill_no_kv = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+        decode_no_kv = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+        with pytest.raises(ValueError, match="kv_transfer_config is required"):
+            PDServingArgs(prefill_config=prefill_no_kv, decode_config=decode_no_kv)
 
 
 class TestServingArgsParsing:
-    def test_parse_dict(self):
+    @pytest.mark.parametrize("kv_connector", ["NixlConnector", "LMCacheConnectorV1"])
+    def test_parse_dict(self, kv_connector: str):
         prefill_config = LLMConfig(
             model_loading_config=dict(
                 model_id="qwen-0.5b",
@@ -30,6 +200,10 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 
@@ -46,135 +220,91 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 
         pd_config = {"prefill_config": prefill_config, "decode_config": decode_config}
 
-        app = build_app(pd_config)
+        app = build_pd_openai_app(pd_config)
         assert app is not None
 
 
-class FakePlatform(UnspecifiedPlatform):
-    """
-    vllm UnspecifiedPlatform has some interfaces that's left unimplemented, which
-    could trigger exception in following tests. So we implement needed interfaces
-    and patch.
-    """
+class TestBuildPDOpenaiApp:
+    """Test suite for build_pd_openai_app function."""
 
-    def is_async_output_supported(self, enforce_eager: bool) -> bool:
-        return True
-
-
-class TestPDDisaggLLMServer:
-    """Test PD-disaggregated LLM server.
-
-    A real P/D disaggregation use case will spawn multiple LLM servers,
-    so this test suite just does smoke test and verifies certain expected
-    parameters exist in responses.
-    """
-
-    @pytest.mark.asyncio
-    @patch("vllm.platforms.current_platform", FakePlatform())
-    async def test_chat_non_streaming(
-        self,
-        create_server,
-        # model_pixtral_12b is a fixture that only contains config files without weights
-        model_pixtral_12b,
-    ):
-        """This is smoke testing that normal chat completion works."""
-        llm_config = LLMConfig(
-            # Here we
-            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
-            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
-            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
-            # so we select a non-NVIDIA type here: Intel-GAUDI.
-            accelerator_type="Intel-GAUDI",
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            engine_kwargs={
-                "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
-                    kv_role="kv_both",
-                ),
+    @pytest.fixture
+    def pd_configs(self):
+        """Prefill and decode configs with required kv_transfer_config."""
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
             },
-        )
-
-        server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
-
-        # Create a chat completion request
-        request = ChatCompletionRequest(
-            model="test_model",
-            messages=[dict(role="user", content="Hello")],
-            stream=False,
-            max_tokens=5,
-        )
-
-        # Get the response
-        response_stream = await server.chat(request)
-
-        # Collect responses (should be just one)
-        responses = [r async for r in response_stream]
-
-        # Check that we got one response
-        assert len(responses) == 1
-        assert responses[0].choices[0].message.role == "assistant"
-        assert (
-            responses[0].choices[0].message.content
-            == "mock_pd_client_response_0 mock_pd_client_response_1 mock_pd_client_response_2 mock_pd_client_response_3 mock_pd_client_response_4 "
-        )
-
-    @pytest.mark.asyncio
-    @patch("vllm.platforms.current_platform", FakePlatform())
-    async def test_predict_non_streaming(
-        self,
-        create_server,
-        # model_pixtral_12b is a fixture that only contains config files without weights
-        model_pixtral_12b,
-    ):
-        """Test non-streaming predict."""
-        llm_config = LLMConfig(
-            # Here we
-            # 1. want to skip GPU placement in cpu test cases (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_engine.py#L330)
-            # 2. cannot set it to None, otherwise it defaults to use_gpu=True (https://github.com/ray-project/ray/blob/c7e07328c9efbd0d67bf2da4fa098d6492478ef4/python/ray/llm/_internal/serve/deployments/llm/vllm/vllm_models.py#L159)
-            # 3. cannot use "CPU" or anything random, which violates the check (https://github.com/ray-project/ray/blob/945b9d5dd55c9215d0aeb94a66cfda3b71c2fd43/python/ray/llm/_internal/serve/configs/server_models.py#L325)
-            # so we select a non-NVIDIA type here: Intel-GAUDI.
-            accelerator_type="Intel-GAUDI",
-            model_loading_config=ModelLoadingConfig(
-                model_id=model_pixtral_12b,
-            ),
-            engine_kwargs={
-                "kv_transfer_config": KVTransferConfig(
-                    kv_connector="NixlConnector",
-                    kv_role="kv_both",
-                ),
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
             },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def test_deployment_config_merging(self, pd_configs):
+        """Test that deployment configs are properly merged with default options.
+
+        This test ensures that deep_merge_dicts return value is properly assigned
+        for both proxy and ingress deployments, and that nested dictionaries are
+        properly deep-merged without losing default values.
+        """
+        prefill, decode = pd_configs
+
+        # Build app with custom configs for both proxy and ingress including nested options
+        app = build_pd_openai_app(
+            {
+                "prefill_config": prefill,
+                "decode_config": decode,
+                "proxy_deployment_config": {
+                    "num_replicas": 2,
+                    "ray_actor_options": {
+                        "num_cpus": 4,
+                        "memory": 2048,
+                    },
+                    "max_ongoing_requests": 150,  # Override default
+                },
+                "ingress_deployment_config": {
+                    "num_replicas": 5,
+                    "ray_actor_options": {
+                        "num_cpus": 8,
+                        "memory": 4096,
+                    },
+                    "max_ongoing_requests": 300,  # Override default
+                },
+            }
         )
 
-        server = await create_server(llm_config, engine_cls=MockPDDisaggVLLMEngine)
+        # The app should have an ingress deployment bound to a proxy deployment
+        # The proxy is passed as an Application via llm_deployments in init_kwargs
+        ingress_deployment = app._bound_deployment
+        proxy_app = ingress_deployment.init_kwargs["llm_deployments"][0]
+        proxy_deployment = proxy_app._bound_deployment
 
-        # Create a predict request
-        request = Prompt(
-            prompt="test prompt",
-            parameters=dict(
-                max_tokens=1,
-                stream=False,
-                kv_transfer_params=dict(field_that_does_not_matter="1"),
-            ),
-        )
+        # Verify proxy config was applied with deep merge
+        assert proxy_deployment._deployment_config.num_replicas == 2
+        assert proxy_deployment.ray_actor_options["num_cpus"] == 4
+        assert proxy_deployment.ray_actor_options["memory"] == 2048
+        assert proxy_deployment._deployment_config.max_ongoing_requests == 150
 
-        # Get the response
-        responses: list[LLMRawResponse] = []
-        async for response in server._predict(
-            request_id="test_request_id", prompt=request, stream=False
-        ):
-            responses.append(response)
-
-        # Collect responses (should be just one)
-        assert len(responses) == 1
-        assert responses[0].generated_text == "mock_pd_client_response_0 "
-        assert responses[0].metadata is not None
+        # Verify ingress config was applied with deep merge
+        assert ingress_deployment._deployment_config.num_replicas == 5
+        assert ingress_deployment.ray_actor_options["num_cpus"] == 8
+        assert ingress_deployment.ray_actor_options["memory"] == 4096
+        assert ingress_deployment._deployment_config.max_ongoing_requests == 300
 
 
 if __name__ == "__main__":

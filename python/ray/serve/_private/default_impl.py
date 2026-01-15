@@ -1,3 +1,4 @@
+import asyncio
 from typing import Callable, Optional, Tuple
 
 import ray
@@ -19,6 +20,8 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_PROXY_USE_GRPC,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -26,10 +29,12 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.router import Router, SingletonThreadRouter
+from ray.serve._private.router import CurrentLoopRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
+    asyncio_grpc_exception_handler,
     generate_request_id,
     get_current_actor_id,
     get_head_node_id,
@@ -122,7 +127,10 @@ def get_request_metadata(init_options, handle_options):
         is_streaming=handle_options.stream,
         _request_protocol=request_protocol,
         grpc_context=_request_context.grpc_context,
-        _by_reference=True,
+        _by_reference=handle_options._by_reference,
+        _on_separate_loop=init_options._run_router_in_separate_loop,
+        request_serialization=handle_options.request_serialization,
+        response_serialization=handle_options.response_serialization,
     )
 
 
@@ -158,7 +166,31 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    return SingletonThreadRouter(
+    if handle_options._run_router_in_separate_loop:
+        router_wrapper_cls = SingletonThreadRouter
+        # Determine the component for the event loop monitor
+        if handle_options._source == DeploymentHandleSource.REPLICA:
+            component = EventLoopMonitor.COMPONENT_REPLICA
+        elif handle_options._source == DeploymentHandleSource.PROXY:
+            component = EventLoopMonitor.COMPONENT_PROXY
+        else:
+            component = EventLoopMonitor.COMPONENT_UNKNOWN
+        SingletonThreadRouter._get_singleton_asyncio_loop(
+            component
+        ).set_exception_handler(asyncio_grpc_exception_handler)
+    else:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "No event loop running. You cannot use a handle initialized with "
+                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
+                "loop."
+            )
+
+        router_wrapper_cls = CurrentLoopRouter
+
+    return router_wrapper_cls(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
@@ -197,9 +229,13 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         handle._init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
             _source=DeploymentHandleSource.PROXY,
+            _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
         )
 
-    return handle.options(stream=not info.app_is_cross_language)
+    return handle.options(
+        stream=not info.app_is_cross_language,
+        _by_reference=not RAY_SERVE_PROXY_USE_GRPC,
+    )
 
 
 def get_controller_impl():

@@ -49,4 +49,4 @@ Alternatively, you can also add a `go` label to manually trigger the full
 test suite on your PR (be mindful that this is less recommended but we
 understand you know best about the need of your PR). While we anticipate
 this will be rarely needed, if you do require it constantly, please let
-us know. We are continuously improve the effectiveness of microcheck.
+us know. We are continuously improving the effectiveness of microcheck.

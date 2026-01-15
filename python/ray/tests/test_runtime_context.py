@@ -1,15 +1,15 @@
 import os
 import signal
-import time
 import sys
+import time
 import warnings
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
-from ray._common.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -159,6 +159,20 @@ def test_ids(ray_start_regular):
     with warnings.catch_warnings(record=True) as w:
         assert rtc.get_node_id() == rtc.node_id.hex()
         assert any("Use get_node_id() instead" in str(warning.message) for warning in w)
+
+    # session name
+    assert isinstance(rtc.get_session_name(), str)
+    session_name = rtc.get_session_name()
+    assert len(session_name) > 0
+
+    @ray.remote
+    def verify_session_name(expected_session_name):
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_session_name(), str)
+        assert rtc.get_session_name() == expected_session_name
+        return True
+
+    ray.get(verify_session_name.remote(session_name))
 
     # job id
     assert isinstance(rtc.get_job_id(), str)
@@ -422,12 +436,11 @@ def test_get_node_labels(ray_start_cluster_head):
         resources={"worker1": 1},
         num_cpus=1,
         labels={
-            "accelerator-type": "A100",
-            "region": "us-west4",
-            "market-type": "spot",
+            "ray.io/accelerator-type": "A100",
+            "ray.io/availability-region": "us-west4",
+            "ray.io/market-type": "spot",
         },
     )
-    # ray.init(address=cluster.address)
 
     @ray.remote
     class Actor:
@@ -438,20 +451,20 @@ def test_get_node_labels(ray_start_cluster_head):
             return ray.get_runtime_context().get_node_labels()
 
     expected_node_labels = {
-        "accelerator-type": "A100",
-        "region": "us-west4",
-        "market-type": "spot",
+        "ray.io/accelerator-type": "A100",
+        "ray.io/availability-region": "us-west4",
+        "ray.io/market-type": "spot",
     }
 
     # Check node labels from Actor runtime context
-    a = Actor.options(label_selector={"accelerator-type": "A100"}).remote()
+    a = Actor.options(label_selector={"ray.io/accelerator-type": "A100"}).remote()
     node_labels = ray.get(a.get_node_labels.remote())
-    expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
+    expected_node_labels["ray.io/node-id"] = ray.get(a.get_node_id.remote())
     assert expected_node_labels == node_labels
 
     # Check node labels from driver runtime context (none are set except default)
     driver_labels = ray.get_runtime_context().get_node_labels()
-    assert {"ray.io/node_id": ray.get_runtime_context().get_node_id()} == driver_labels
+    assert {"ray.io/node-id": ray.get_runtime_context().get_node_id()} == driver_labels
 
 
 if __name__ == "__main__":

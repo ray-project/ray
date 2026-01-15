@@ -1,23 +1,25 @@
-import atexit
 import asyncio
+import atexit
 import collections
 import os
 import signal
 import sys
+import tempfile
 import time
+from typing import Callable, Generator, List
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
-from ray.actor import exit_actor
-from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    wait_for_pid_to_exit,
     generate_system_config_map,
+    wait_for_pid_to_exit,
 )
+from ray.actor import exit_actor
+from ray.exceptions import AsyncioActorExit
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -27,6 +29,40 @@ def ray_init_with_task_retry_delay():
     address = ray.init(_system_config={"task_retry_delay_ms": 100})
     yield address
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_init_with_actor_graceful_shutdown_timeout():
+    ray.shutdown()
+    address = ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
+    yield address
+    ray.shutdown()
+
+
+@pytest.fixture
+def tempfile_factory() -> Generator[Callable[[], str], None, None]:
+    """Yields a factory function to generate tempfiles that will be deleted after the test run."""
+    files = []
+
+    def create_temp_file():
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        files.append(temp_file.name)
+        return temp_file.name
+
+    yield create_temp_file
+
+    # Cleanup all created files
+    for file_path in files:
+        try:
+            os.unlink(file_path)
+        except Exception:
+            pass
+
+
+def check_file_exists_and_not_empty(file_path):
+    """Helper to check if file exists and has content."""
+    return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
 
 @pytest.mark.parametrize(
@@ -75,95 +111,77 @@ def test_actor_spilled(ray_start_regular):
 def test_async_generator_crash_restart(ray_start_cluster):
     """
     Timeline:
-    1. In worker node, creates a generator that generates 2 objects
-    2. Kills worker node, objs exist in ref, but data lost
-    3. In worker node, creates a consumer that consumes 2 objects
-    4. Start a worker node to enable the task and lineage reconstruction
-    5. Lineage reconstruction should be working here.
-        The gen is dead after it only generated 1.
-    6. Verify that the consumer task can still run (it's not)
+
+    1. On a worker node, run a generator task that generates 2 objects in total and run
+       it to completion.
+    2. Kill the worker node so the objects are lost but the object refs exist.
+    3. Submit a consumer task that depends on the generated object refs.
+    4. Add a new worker node that the generator and the consumer can be run on
+    5. Verify that the generator outputs are reconstructed and the consumer succeeds.
     """
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"head": 1})
+    head_node_id = cluster.add_node(
+        _system_config={
+            "health_check_timeout_ms": 1000,
+            "health_check_failure_threshold": 1,
+        }
+    ).node_id
     cluster.wait_for_nodes()
-
     ray.init(address=cluster.address)
 
-    @ray.remote(num_cpus=0, resources={"head": 0.1})
-    class Killer:
-        def __init__(self):
-            self.pid = None
-            self.at_num = None
-            self.kill_num = 0
-
-        def set_pid(self, pid):
-            self.pid = pid
-
-        def set_at_num(self, at_num):
-            self.at_num = at_num
-
-        def kill_if_needed(self, num):
-            if self.kill_num > 3:
-                return
-            self.kill_num = self.kill_num + 1
-            if self.pid is not None and self.at_num is not None and num == self.at_num:
-                import os
-                import signal
-
-                print(f"Killing the pid = {self.pid}")
-                os.kill(self.pid, signal.SIGKILL)
+    # Used to pause the generator task and kill it after it generates the first object.
+    signal = SignalActor.remote()
 
     @ray.remote(
-        num_cpus=1, max_restarts=-1, max_task_retries=-1, resources={"worker": 1}
+        label_selector={"ray.io/node-id": f"!{head_node_id}"},
+        max_restarts=-1,
+        max_task_retries=-1,
     )
     class Generator:
-        async def gen(self, nums, killer):
-            """
-            Generates "value_holder" objects. For each object, it first notifies the
-            killer, and yields the object.
-            """
-            print(f"my pid is {os.getpid()}, telling to killer")
-            await killer.set_pid.remote(os.getpid())
-            print(f"generates total {nums}")
-            for i in range(nums):
-                await killer.kill_if_needed.remote(i)
+        async def generate(self):
+            print("Generate first object.")
+            yield np.ones(1024**2, dtype=np.uint8)
+            print("Wait for SignalActor.")
+            ray.get(signal.wait.remote())
+            print("Generate second object.")
+            yield np.ones(1024**2, dtype=np.uint8)
 
-                print(f"generating {i}")
-                yield np.ones((1000, 1000), dtype=np.uint8) * i
-                print(f"generated {i}")
-            print(f"generated total {nums}")
+    @ray.remote(label_selector={"ray.io/node-id": f"!{head_node_id}"})
+    def consumer(object_refs: List[ray.ObjectRef]):
+        assert len(object_refs) == 2
+        print("Calling `ray.get`.")
+        ray.get(object_refs)
+        print("`ray.get` succeeded.")
 
-    @ray.remote(num_cpus=1, resources={"worker": 1})
-    def consumes(objs, expected_num):
-        nums = ray.get(objs)
-        assert len(nums) == expected_num
-        print(f"consumes {len(nums)}")
-        print(nums)
-        return expected_num
-
-    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    worker_node = cluster.add_node(num_cpus=2, resources={"worker": 2})
     cluster.wait_for_nodes()
 
     generator = Generator.remote()
-    killer = Killer.remote()
 
-    # First run, no kills
-    gen = ray.get(generator.gen.remote(2, killer))  # returns ObjectRefGenerator
-    objs = list(gen)  # [ObjectRef, ...]
-    assert len(objs) == 2
+    # First run, let the generator run to completion.
+    obj_ref_gen_ref = generator.generate.remote()
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+    ray.get(signal.send.remote(clear=True))
+    object_refs = list(ray.get(obj_ref_gen_ref))
+    assert len(object_refs) == 2
 
-    # kill the worker node
+    # Kill the worker node that holds the objects.
     cluster.remove_node(worker_node, allow_graceful=False)
 
-    # In the lineage reconstruction, the generator is dead after it only generated 5...
-    ray.get(killer.set_at_num.remote(1))
+    # Submit a consumer task that requires the objects from the generator.
+    consumer = consumer.remote(object_refs)
 
-    # ... but a consumer takes all 10
-    consumer = consumes.remote(objs, 2)
-    # start a new worker node
-    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    # Start a new worker node that the generator can be rerun on and the consumer can
+    # run on.
+    worker_node = cluster.add_node(num_cpus=2, resources={"worker": 2})
     cluster.wait_for_nodes()
 
+    # Kill the generator after it generates a single object.
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+    ray.kill(generator, no_restart=False)
+
+    # Now let the generator complete and check that the consumer succeeds.
+    ray.get(signal.send.remote())
     ray.get(consumer)
 
 
@@ -1246,6 +1264,297 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
     os.kill(pid, signal.SIGKILL)
     ray.get(signal_actor_2.send.remote())
     assert ray.get(refs) == [3, 4, 5]
+
+
+def test_actor_user_shutdown_method(ray_start_regular_shared, tempfile_factory):
+    """Test that __ray_shutdown__ method is called during actor termination."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class UserShutdownActor:
+        def __init__(self):
+            pass
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_called")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+    actor = UserShutdownActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "ray_shutdown_called"
+
+
+def test_actor_ray_shutdown_handles_exceptions(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that Ray handles unhandled exceptions in __ray_shutdown__ gracefully."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class ExceptionActor:
+        def __ray_shutdown__(self):
+            # Write to file before raising exception
+            with open(shutdown_file, "w") as f:
+                f.write("cleanup_started")
+                f.flush()
+
+            # Let exception propagate to Ray's machinery
+            raise ValueError("Unhandled exception in __ray_shutdown__")
+
+        def get_ready(self):
+            return "ready"
+
+    actor = ExceptionActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    # Verify that despite the exception:
+    # 1. File was written (cleanup started)
+    # 2. Actor shuts down properly (no system crash)
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "cleanup_started"
+
+
+def test_actor_atexit_handler_dont_conflict_with_ray_shutdown(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that atexit handler methods don't conflict with __ray_shutdown__ and both run."""
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
+
+    @ray.remote
+    class CleanupActor:
+        def __init__(self):
+            atexit.register(self.cleanup)
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_called")
+                f.flush()
+
+        def cleanup(self):
+            with open(atexit_file, "w") as f:
+                f.write("atexit_cleanup_called")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+    actor = CleanupActor.remote()
+    ray.get(actor.get_ready.remote())
+    actor.__ray_terminate__.remote()
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(shutdown_file))
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "ray_shutdown_called"
+    wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file))
+    with open(atexit_file, "r") as f:
+        assert f.read() == "atexit_cleanup_called"
+
+
+def test_actor_ray_shutdown_dont_interfere_with_kill(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test __ray_shutdown__ is not called when actor is killed with ray.kill()."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class KillableActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_kill")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+        def sleep_forever(self):
+            time.sleep(3600)
+
+    actor = KillableActor.remote()
+    ray.get(actor.get_ready.remote())
+    _ = actor.sleep_forever.remote()
+    ray.kill(actor)
+
+    wait_for_condition(lambda: not check_file_exists_and_not_empty(shutdown_file))
+
+
+def test_actor_ray_shutdown_called_on_del(ray_start_regular_shared, tempfile_factory):
+    """Test that __ray_shutdown__ is called when actor goes out of scope via del."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class DelTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_del")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = DelTestActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_del", (
+            "Expected __ray_shutdown__ to be called within actor_graceful_shutdown_timeout_ms "
+            "after actor handle was deleted with del"
+        )
+
+
+def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
+    """Test that both __ray_shutdown__ and atexit handlers run on del actor."""
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
+    order_file = tempfile_factory()
+
+    @ray.remote
+    class BothHandlersActor:
+        def __init__(self):
+            atexit.register(self.cleanup)
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_del")
+                f.flush()
+            with open(order_file, "a") as f:
+                f.write(f"shutdown:{time.time()}\n")
+                f.flush()
+
+        def cleanup(self):
+            with open(atexit_file, "w") as f:
+                f.write("atexit_del")
+                f.flush()
+
+            with open(order_file, "a") as f:
+                f.write(f"atexit:{time.time()}\n")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = BothHandlersActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+    with open(shutdown_file, "r") as f:
+        assert (
+            f.read() == "ray_shutdown_del"
+        ), "Expected __ray_shutdown__ to be called when actor deleted"
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file), timeout=10)
+    with open(atexit_file, "r") as f:
+        assert f.read() == "atexit_del", "Expected atexit handler to be called"
+
+    # Verify execution order: __ray_shutdown__ should run before atexit
+    wait_for_condition(lambda: check_file_exists_and_not_empty(order_file), timeout=10)
+    with open(order_file, "r") as f:
+        order = f.read()
+        lines = order.strip().split("\n")
+        assert len(lines) == 2, f"Expected 2 entries, got: {lines}"
+        assert lines[0].startswith(
+            "shutdown:"
+        ), f"Expected __ray_shutdown__ first, got order: {lines}"
+        assert lines[1].startswith(
+            "atexit:"
+        ), f"Expected atexit second, got order: {lines}"
+
+
+def test_actor_ray_shutdown_called_on_scope_exit(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that __ray_shutdown__ is called when actor goes out of scope."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class ScopeTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_scope_exit")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    def create_and_use_actor():
+        actor = ScopeTestActor.remote()
+        ray.get(actor.ready.remote())
+        # Actor goes out of scope at end of function
+
+    create_and_use_actor()
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_scope_exit"
+
+
+def test_actor_graceful_shutdown_timeout_fallback(
+    ray_init_with_actor_graceful_shutdown_timeout, tempfile_factory
+):
+    """Test that actor is force killed if __ray_shutdown__ exceeds timeout."""
+    shutdown_started_file = tempfile_factory()
+    shutdown_completed_file = tempfile_factory()
+
+    @ray.remote
+    class HangingShutdownActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_started_file, "w") as f:
+                f.write("shutdown_started")
+                f.flush()
+
+            # Hang indefinitely - simulating buggy cleanup code
+            time.sleep(5)
+
+            # This should never be reached due to force kill fallback
+            with open(shutdown_completed_file, "w") as f:
+                f.write("should_not_reach")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = HangingShutdownActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    # Verify that shutdown started
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_started_file), timeout=5
+    )
+    with open(shutdown_started_file, "r") as f:
+        assert (
+            f.read() == "shutdown_started"
+        ), "Expected __ray_shutdown__ to start execution"
+
+    # Verify that shutdown did NOT complete (force killed before completion)
+    assert not check_file_exists_and_not_empty(shutdown_completed_file), (
+        "Expected actor to be force-killed before __ray_shutdown__ completed, "
+        "but completion file exists. This means force kill fallback did not work."
+    )
 
 
 if __name__ == "__main__":

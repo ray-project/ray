@@ -1,17 +1,15 @@
 import pytest
 
 import ray
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ActorPoolScalingRequest,
-)
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
@@ -47,19 +45,19 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r3)
-        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=1, object_store_memory=0.0B, memory=0.0B)"
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MiB, memory=0.0B)"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GiB, memory=64.0MiB)"
     )
     assert (
         repr(unlimited)
@@ -68,8 +66,8 @@ def test_execution_resources(ray_start_10_cpus_shared):
 
     # Test object_store_memory_str.
     assert r3.object_store_memory_str() == "0.0B"
-    assert r4.object_store_memory_str() == "100.0MB"
-    assert r5.object_store_memory_str() == "1.0GB"
+    assert r4.object_store_memory_str() == "100.0MiB"
+    assert r5.object_store_memory_str() == "1.0GiB"
     assert unlimited.object_store_memory_str() == "inf"
 
     # Test add.
@@ -314,6 +312,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     inc_obj_store_mem = (
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
+        * MAX_SAFE_BLOCK_SIZE_FACTOR
     )
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(
@@ -428,6 +427,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     inc_obj_store_mem = (
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
+        * MAX_SAFE_BLOCK_SIZE_FACTOR
     )
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(
@@ -581,6 +581,16 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
         op.get_next()
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
+
+
+def test_execution_resources_to_resource_dict():
+    resources = ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4)
+    assert resources.to_resource_dict() == {
+        "CPU": 1,
+        "GPU": 2,
+        "object_store_memory": 3,
+        "memory": 4,
+    }
 
 
 if __name__ == "__main__":

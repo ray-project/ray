@@ -55,7 +55,12 @@ const ActorDetailPage = () => {
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <Box sx={{ padding: 2, backgroundColor: "white" }}>
+      <Box
+        sx={(theme) => ({
+          padding: 2,
+          backgroundColor: theme.palette.background.paper,
+        })}
+      >
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
@@ -67,7 +72,12 @@ const ActorDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box
+      sx={(theme) => ({
+        padding: 2,
+        backgroundColor: theme.palette.background.paper,
+      })}
+    >
       <MetadataSection
         metadataList={[
           {
@@ -118,12 +128,12 @@ const ActorDetailPage = () => {
           },
           {
             label: "Node ID",
-            content: actorDetail.address?.rayletId
+            content: actorDetail.address?.nodeId
               ? {
-                  value: actorDetail.address?.rayletId,
-                  copyableValue: actorDetail.address?.rayletId,
-                  link: actorDetail.address.rayletId
-                    ? generateNodeLink(actorDetail.address.rayletId)
+                  value: actorDetail.address?.nodeId,
+                  copyableValue: actorDetail.address?.nodeId,
+                  link: actorDetail.address.nodeId
+                    ? generateNodeLink(actorDetail.address.nodeId)
                     : undefined,
                 }
               : { value: "-" },
@@ -191,19 +201,19 @@ const ActorDetailPage = () => {
               <div>
                 <CpuStackTraceLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
                 <br />
                 <MemoryProfilingButton
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.nodeId}
                   type=""
                 />
               </div>

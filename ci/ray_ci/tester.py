@@ -1,22 +1,24 @@
 import os
+import subprocess
 import sys
-from typing import List, Set, Tuple, Optional
+from typing import List, Optional, Set, Tuple
 
-import yaml
 import click
+import yaml
 
-from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.builder_container import (
-    BuilderContainer,
+from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.configs import (
+    DEFAULT_ARCHITECTURE,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
-    DEFAULT_ARCHITECTURE,
     PYTHON_VERSIONS,
 )
+from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init
+from ci.ray_ci.utils import ci_init, ecr_docker_login
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -162,6 +164,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "cgroup",
             # java build types
             "java",
+            # with cpp and java worker support
+            "multi-lang",
             # do not build ray
             "skip",
         ]
@@ -226,12 +230,13 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
     ci_init()
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    ecr_docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
-        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
+        wheel_python_version = python_version or DEFAULT_PYTHON_VERSION
+        BuilderContainer(wheel_python_version, DEFAULT_BUILD_TYPE, architecture).run()
     bisect_run_test_target = bisect_run_test_target or os.environ.get(
         "RAYCI_BISECT_TEST_TARGET"
     )
@@ -254,6 +259,9 @@ def main(
     )
     if build_only:
         sys.exit(0)
+
+    print("--- Listing test targets", file=sys.stderr)
+
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
     else:
@@ -272,6 +280,11 @@ def main(
             get_high_impact_tests=get_high_impact_tests,
             lookup_test_database=lookup_test_database,
         )
+    if not test_targets:
+        print("--- No tests to run", file=sys.stderr)
+        sys.exit(0)
+
+    print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
         team,
         test_targets,
@@ -325,6 +338,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            python_version=python_version,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
             privileged=privileged,
@@ -399,18 +413,21 @@ def _get_test_targets(
     get_flaky_tests: bool = False,
     get_high_impact_tests: bool = False,
     lookup_test_database: bool = True,
+    workspace_dir: Optional[str] = None,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
+    if not workspace_dir:
+        workspace_dir = bazel_workspace_dir
     test_targets = {
         target
-        for target in container.run_script_with_output(
-            [
-                f'bazel query "{query}"',
-            ]
+        for target in subprocess.check_output(
+            ["bazel", "query", query],
+            cwd=workspace_dir,
         )
+        .decode("utf-8")
         .strip()
         .split(os.linesep)
         if target
@@ -444,18 +461,22 @@ def _get_test_targets(
             prefix=prefix,
             bazel_workspace_dir=bazel_workspace_dir,
             team=team,
-        ).union(_get_new_tests(prefix, container))
+        ).union(_get_new_tests(prefix, workspace_dir))
         final_targets = high_impact_tests.intersection(final_targets)
 
     return sorted(final_targets)
 
 
-def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+def _get_new_tests(prefix: str, workspace_dir: str) -> Set[str]:
     """
     Get all local test targets that are not in database
     """
     local_test_targets = set(
-        container.run_script_with_output(['bazel query "tests(//...)"'])
+        subprocess.check_output(
+            ["bazel", "query", "tests(//...)"],
+            cwd=workspace_dir,
+        )
+        .decode("utf-8")
         .strip()
         .split(os.linesep)
     )

@@ -233,6 +233,7 @@ class Deployment:
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
+        max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -310,6 +311,11 @@ class Deployment:
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
+
+        if max_constructor_retry_count is not DEFAULT.VALUE:
+            new_deployment_config.max_constructor_retry_count = (
+                max_constructor_retry_count
+            )
 
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def

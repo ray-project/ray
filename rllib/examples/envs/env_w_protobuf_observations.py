@@ -15,7 +15,7 @@ below, take a look at the `ProtobufCartPoleObservationDecoder` class imported be
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -50,7 +50,7 @@ from ray.rllib.examples.connectors.classes.protobuf_cartpole_observation_decoder
 from ray.rllib.examples.envs.classes.cartpole_with_protobuf_observation_space import (
     CartPoleWithProtobufObservationSpace,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -58,7 +58,6 @@ from ray.tune.registry import get_trainable_cls
 
 
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

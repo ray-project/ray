@@ -2,7 +2,7 @@ import { getStateApiDownloadLogUrl, MAX_LINES_FOR_LOGS } from "./log";
 
 describe("getStateApiDownloadLogUrl", () => {
   it("only uses parameters provided but doesn't fetch when parameters are null", () => {
-    expect.assertions(9);
+    expect.assertions(10);
 
     expect(
       getStateApiDownloadLogUrl({
@@ -10,7 +10,7 @@ describe("getStateApiDownloadLogUrl", () => {
         filename: "file.log",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=true`,
     );
 
     expect(
@@ -19,7 +19,7 @@ describe("getStateApiDownloadLogUrl", () => {
         filename: "file.log",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=true`,
     );
 
     expect(
@@ -28,7 +28,7 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "err",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?task_id=task-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?task_id=task-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=true`,
     );
 
     expect(
@@ -37,7 +37,7 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "out",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?task_id=task-id&suffix=out&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?task_id=task-id&suffix=out&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=true`,
     );
 
     expect(
@@ -46,7 +46,17 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "err",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=true`,
+    );
+
+    expect(
+      getStateApiDownloadLogUrl({
+        actorId: "actor-id",
+        suffix: "err",
+        filterAnsiCode: false,
+      }),
+    ).toStrictEqual(
+      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=false`,
     );
 
     expect(

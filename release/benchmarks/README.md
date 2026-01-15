@@ -1,5 +1,7 @@
 # Ray Scalability Envelope
 
+**NOTE**: the Ray scalability benchmarks are in the process of being refreshed. If you have questions about a specific workload or limit, please get in touch by filing a [GitHub issue](https://github.com/ray-project/ray/issues).
+
 ## Distributed Benchmarks
 
 All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.

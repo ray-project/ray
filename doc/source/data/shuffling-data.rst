@@ -20,7 +20,7 @@ resource consumption and runtime. Choose the most appropriate method for your us
 Shuffle the ordering of files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To randomly shuffle the ordering of input files before reading, call a :ref:`read function <input-output>` function that supports shuffling, such as
+To randomly shuffle the ordering of input files before reading, call a :ref:`read function <loading-data-api>` function that supports shuffling, such as
 :func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
 
@@ -103,12 +103,11 @@ Global shuffle
 
 To shuffle all rows globally, across the whole dataset, multiple options are available
 
-    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
-    from existing blocks into the new ones using an optionally provided seed.
-
-    2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
-    :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
-    deterministic way of co-locating rows based on the hash of the column values.
+1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
+from existing blocks into the new ones using an optionally provided seed.
+2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
+:ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
+deterministic way of co-locating rows based on the hash of the column values.
 
 Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization
 barrier---subsequent operators won't be able to start executing until shuffle completion.
@@ -189,8 +188,8 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 
 .. code-block:: bash
 
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
+    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort_benchmark.py
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort_benchmark.py --num-partitions=10 --partition-size=1e7
 
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.

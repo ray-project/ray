@@ -156,7 +156,7 @@ that sets up and invokes a model. Then, call
 
     ds = (
         ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-        .map_batches(TextClassifier, concurrency=2)
+        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2))
     )
 
     ds.show(3)
@@ -182,7 +182,7 @@ To save text, call a method like :meth:`~ray.data.Dataset.write_parquet`. Ray Da
 save text in many formats.
 
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Saving Data API <saving-data-api>`.
 
 .. testcode::
 

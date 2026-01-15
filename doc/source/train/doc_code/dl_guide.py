@@ -1,5 +1,10 @@
 # flake8: noqa
 
+# TODO: [V2] Deprecated doc code to delete.
+import os
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "0"
+
 MOCK = True
 
 # __ft_initial_run_start__

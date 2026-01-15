@@ -3,17 +3,60 @@ import binascii
 import errno
 import importlib
 import inspect
-from inspect import signature
+import logging
 import os
-import psutil
 import random
 import string
 import sys
 import tempfile
-from typing import Any, Coroutine, Dict, Optional
+import time
+from abc import ABC, abstractmethod
+from inspect import signature
+from types import ModuleType
+from typing import Any, Coroutine, Dict, Optional, Tuple
+
+import ray
+from ray._raylet import GcsClient, NodeID
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
+import psutil
+
+logger = logging.getLogger(__name__)
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
+def import_module_and_attr(
+    full_path: str, *, reload_module: bool = False
+) -> Tuple[ModuleType, Any]:
+    """Given a full import path to a module attr, return the imported module and attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
+
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
+    Returns:
+        A tuple of the imported module and attr.
+    """
+    if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
+        module_name, attr_name = full_path.split(":")
+    else:
+        last_period_idx = full_path.rfind(".")
+        module_name = full_path[:last_period_idx]
+        attr_name = full_path[last_period_idx + 1 :]
+    module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
+    return module, getattr(module, attr_name)
+
+
+def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
     """Given a full import path to a module attr, return the imported attr.
 
     If `reload_module` is set, the module will be reloaded using `importlib.reload`.
@@ -26,25 +69,7 @@ def import_attr(full_path: str, *, reload_module: bool = False):
     Returns:
         Imported attr
     """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
+    return import_module_and_attr(full_path, reload_module=reload_module)[1]
 
 
 def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
@@ -199,7 +224,58 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def get_user_temp_dir():
+def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
+    """
+    Get the ray temp directory.
+
+    If a temp dir was specified for this node, this function will
+    retrieve the information from GCS. Otherwise, it will fallback to the
+    default ray temp directory.
+
+    Args:
+        gcs_client: The GCS client.
+        node_id: The ID of the node to fetch the temp dir for.
+                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
+                        (hex string representation of the node ID)
+
+    Returns:
+        The path to the ray temp directory.
+    """
+    # check if temp dir is available from runtime context
+    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
+        return ray.get_runtime_context().get_temp_dir()
+
+    # Fetch temp dir as specified by --temp-dir at creation time.
+    try:
+        # Create node selector for node_id filter
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = NodeID.from_hex(node_id).binary()
+
+        node_infos = gcs_client.get_all_node_info(
+            node_selectors=[node_selector],
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+        )
+    if not node_infos:
+        raise Exception(
+            f"No node info associated with ALIVE state found for node {node_id} in GCS"
+        )
+
+    node_info = next(iter(node_infos))
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is not None:
+            return temp_dir
+        else:
+            raise Exception(
+                "Node temp_dir was not found in NodeInfo. did the node's raylet start successfully?"
+            )
+
+
+def get_default_system_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -210,16 +286,17 @@ def get_user_temp_dir():
         tempdir = os.path.join(os.sep, "tmp")
     else:
         tempdir = tempfile.gettempdir()
+
     return tempdir
 
 
-def get_ray_temp_dir():
-    return os.path.join(get_user_temp_dir(), "ray")
+def get_default_ray_temp_dir():
+    return os.path.join(get_default_system_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
+        temp_dir = get_default_ray_temp_dir()
     return os.path.join(temp_dir, "ray_current_cluster")
 
 
@@ -351,3 +428,15 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     return byte_str.decode(encode_type)
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

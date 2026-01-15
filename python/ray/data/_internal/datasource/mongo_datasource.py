@@ -7,6 +7,8 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     import pymongoarrow.api
 
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,10 +54,15 @@ class MongoDatasource(Datasource):
                 self._client, self._database, self._collection
             )
             self._avg_obj_size = self._client[self._database].command(
-                "collstats", self._collection
+                "collStats", self._collection
             )["avgObjSize"]
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
         from bson.objectid import ObjectId
 
         self._get_or_create_client()
@@ -124,6 +131,7 @@ class MongoDatasource(Datasource):
             read_task = ReadTask(
                 lambda args=make_block_args: [make_block(*args)],
                 metadata,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

@@ -1,12 +1,13 @@
-import pytest
-import sys
 import json
+import sys
+
+import pytest
 
 from ray_release.command_runner._anyscale_job_wrapper import (
+    OUTPUT_JSON_FILENAME,
+    TIMEOUT_RETURN_CODE,
     main,
     run_bash_command,
-    TIMEOUT_RETURN_CODE,
-    OUTPUT_JSON_FILENAME,
 )
 
 cloud_storage_kwargs = dict(

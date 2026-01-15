@@ -8,12 +8,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
-from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
+from ray._common.test_utils import wait_for_condition
+from ray._private import worker
 from ray._private.ray_constants import (
-    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_NAMESPACE_DASHBOARD,
+    PROCESS_TYPE_DASHBOARD,
 )
 from ray._private.test_utils import (
     format_web_url,
@@ -84,10 +84,13 @@ def test_parse_cluster_info(
 
     address, module_string, inner_address = address_param
 
-    with patch.multiple(
-        "ray.dashboard.modules.dashboard_sdk",
-        get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
-    ), patch.multiple("importlib", import_module=mock_import_module):
+    with (
+        patch.multiple(
+            "ray.dashboard.modules.dashboard_sdk",
+            get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
+        ),
+        patch.multiple("importlib", import_module=mock_import_module),
+    ):
         if module_string == "ray":
             with pytest.raises(ValueError, match="ray://"):
                 parse_cluster_info(
@@ -166,13 +169,6 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
                 print("Internal KV was GC'ed at time ", time.time() - start)
 
 
-@pytest.fixture
-def mock_candidate_number():
-    os.environ["CANDIDATE_AGENT_NUMBER"] = "2"
-    yield
-    os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
-
-
 def get_register_agents_number(gcs_client):
     keys = gcs_client.internal_kv_keys(
         prefix=DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
@@ -180,132 +176,6 @@ def get_register_agents_number(gcs_client):
         timeout=GCS_RPC_TIMEOUT_SECONDS,
     )
     return len(keys)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "include_dashboard": True,
-            "env_vars": {
-                "CANDIDATE_AGENT_NUMBER": "2",
-                RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
-                "RAY_health_check_initial_delay_ms": "0",
-                "RAY_health_check_period_ms": "1000",
-                "RAY_JOB_AGENT_USE_HEAD_NODE_ONLY": "0",
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
-    cluster = ray_start_cluster_head_with_env_vars
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    client = JobSubmissionClient(webui_url)
-    gcs_client = GcsClient(address=cluster.gcs_address)
-
-    def submit_job_and_wait_finish():
-        submission_id = client.submit_job(entrypoint="echo hello")
-
-        wait_for_condition(
-            _check_job_succeeded, client=client, job_id=submission_id, timeout=30
-        )
-
-    head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
-    worker_1_http_port = 52366
-    cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
-    assert len(cluster.worker_nodes) == 1
-    node_try_to_kill = list(cluster.worker_nodes)[0]
-
-    def make_sure_worker_node_run_job(port):
-        actors = ray.state.actors()
-
-        def _kill_all_driver():
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
-
-        try:
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    parent_proc = proc.parent()
-                    if f"--listen-port={port}" in " ".join(parent_proc.cmdline()):
-                        _kill_all_driver()
-                        return True
-        except Exception as ex:
-            print("Got exception:", ex)
-            raise
-        client.submit_job(entrypoint="sleep 3600")
-        return False
-
-    # Make `list(cluster.worker_nodes)[0]` and head node called at least once
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_1_http_port), timeout=60
-    )
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(head_http_port), timeout=60
-    )
-
-    worker_2_http_port = 52367
-    cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
-
-    # The third `JobAgent` will not be called here.
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    def get_all_new_supervisor_actor_info(old_supervisor_actor_ids):
-        all_actors = ray.state.state.actor_table(None)
-        res = dict()
-        for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor_ids:
-                continue
-            if not actor_info["Name"].startswith("_ray_internal_job_actor"):
-                continue
-            res[actor_id] = actor_info
-        return res
-
-    old_supervisor_actor_ids = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-
-    assert len(new_owner_port) == 2
-    old_owner_port = new_owner_port
-
-    node_try_to_kill.kill_raylet()
-
-    # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
-
-    # Make sure the third JobAgent will be called here.
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_2_http_port), timeout=60
-    )
-
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-    assert len(new_owner_port) == 2
-    assert len(old_owner_port - new_owner_port) == 1
-    assert len(new_owner_port - old_owner_port) == 1
 
 
 @pytest.mark.parametrize(
@@ -424,6 +294,45 @@ def test_job_submission_with_runtime_env_as_object(
         assert "gcs://" in parsed_runtime_env["working_dir"]
         assert len(parsed_runtime_env["py_modules"]) == 1
         assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
+    """
+    Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
+
+    This test uses its own Ray cluster and kills the dashboard while tailing logs
+    to simulate an abnormal WebSocket closure.
+    """
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(format_web_url(dashboard_url))
+
+    # Submit a long-running job
+    driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.5)
+"""
+    entrypoint = f"python -c '{driver_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint)
+
+    # Start tailing logs and stop Ray while tailing
+    # Expect RuntimeError when WebSocket closes abnormally
+    with pytest.raises(
+        RuntimeError,
+        match="WebSocket connection closed unexpectedly with close code",
+    ):
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            i += 1
+
+            # Kill the dashboard after receiving a few log lines
+            if i == 3:
+                print("\nKilling the dashboard to close websocket abnormally...")
+                dash_info = worker._global_node.all_processes[PROCESS_TYPE_DASHBOARD][0]
+                psutil.Process(dash_info.process.pid).kill()
 
 
 if __name__ == "__main__":
