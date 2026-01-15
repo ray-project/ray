@@ -80,6 +80,7 @@ args = parser.parse_args()
 
 config = (
     APPOConfig()
+    .environment(env=args.env)
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
