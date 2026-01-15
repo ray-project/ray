@@ -434,3 +434,21 @@ message DeploymentArgs {
 message ApplicationArgs {
   bool external_scaler_enabled = 1;
 }
+
+message ASGIRequest {
+  bytes pickled_request_metadata = 1;
+  bytes request_args = 2;
+  bytes request_kwargs = 3;
+}
+
+message ASGIResponse {
+  bytes serialized_message = 1;
+  bool is_error = 2;
+}
+
+service ASGIService {
+  rpc HandleRequest(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestStreaming(ASGIRequest) returns (stream ASGIResponse);
+  rpc HandleRequestWithRejection(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestWithRejectionStreaming(ASGIRequest) returns (stream ASGIResponse);
+}
