@@ -81,6 +81,7 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -529,6 +530,7 @@ class ReplicaBase(ABC):
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
+        actor_id = ray.get_runtime_context().get_actor_id()
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
             init_args,
@@ -538,6 +540,7 @@ class ReplicaBase(ABC):
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
             deployment_config=deployment_config,
+            actor_id=actor_id,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -570,6 +573,18 @@ class ReplicaBase(ABC):
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
         )
+
+        # Start event loop monitoring for the replica's main event loop.
+        self._main_loop_monitor = EventLoopMonitor(
+            component=EventLoopMonitor.COMPONENT_REPLICA,
+            loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
+            actor_id=actor_id,
+            extra_tags={
+                "deployment": self._deployment_id.name,
+                "application": self._deployment_id.app_name,
+            },
+        )
+        self._main_loop_monitor.start(self._event_loop)
 
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
@@ -799,7 +814,19 @@ class ReplicaBase(ABC):
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
-    ):
+    ) -> Tuple[Tuple[Any], Dict[str, Any], Any]:
+        # Extract _ray_trace_ctx from kwargs at the entry point.
+        #
+        # Context: When tracing is enabled, Ray's tracing decorators inject
+        # _ray_trace_ctx into ServeReplica actor method calls. The ServeReplica
+        # actor methods properly handle this, but we
+        # need to extract it before calling user-defined deployment methods.
+        #
+        # Design: We return it so it can be passed to _wrap_request() which
+        # stores it in _RequestContext. Users can then access it via serve.context
+        # if needed (advanced use case), while keeping it out of their method signatures.
+        ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
+
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
                 request_args[0], StreamingHTTPRequest
@@ -827,15 +854,15 @@ class ReplicaBase(ABC):
                 else {}
             )
 
-        return request_args, request_kwargs
+        return request_args, request_kwargs, ray_trace_ctx
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata):
+        with self._wrap_request(request_metadata, ray_trace_ctx):
             async with self._start_request(request_metadata):
                 return await self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -845,10 +872,12 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata) as status_code_callback:
+        with self._wrap_request(
+            request_metadata, ray_trace_ctx
+        ) as status_code_callback:
             async with self._start_request(request_metadata):
                 if request_metadata.is_http_request:
                     scope, receive = request_args
@@ -881,10 +910,12 @@ class ReplicaBase(ABC):
             yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
 
-        request_args, request_kwargs = self._unpack_proxy_args(
+        request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        with self._wrap_request(request_metadata) as status_code_callback:
+        with self._wrap_request(
+            request_metadata, ray_trace_ctx
+        ) as status_code_callback:
             async with self._start_request(request_metadata):
                 yield ReplicaQueueLengthInfo(
                     accepted=True,
@@ -1158,7 +1189,7 @@ class Replica(ReplicaBase):
 
     @contextmanager
     def _wrap_request(
-        self, request_metadata: RequestMetadata
+        self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
     ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
@@ -1174,6 +1205,7 @@ class Replica(ReplicaBase):
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
+                _ray_trace_ctx=ray_trace_ctx,
             )
         )
 
@@ -1430,6 +1462,7 @@ class UserCallableWrapper:
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
         deployment_config: DeploymentConfig,
+        actor_id: str,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1461,10 +1494,25 @@ class UserCallableWrapper:
                 asyncio.new_event_loop()
             )
 
+            # Start event loop monitoring for the user code event loop.
+            # We create the monitor here but start it inside the thread function
+            # so the task is created on the correct thread.
+            self._user_code_loop_monitor = EventLoopMonitor(
+                component=EventLoopMonitor.COMPONENT_REPLICA,
+                loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
+                actor_id=actor_id,
+                extra_tags={
+                    "deployment": self._deployment_id.name,
+                    "application": self._deployment_id.app_name,
+                },
+            )
+
             def _run_user_code_event_loop():
                 # Required so that calls to get the current running event loop work
                 # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
+                # Start monitoring before run_forever so the task is scheduled.
+                self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
 
             self._user_code_event_loop_thread = threading.Thread(
@@ -1474,6 +1522,7 @@ class UserCallableWrapper:
             self._user_code_event_loop_thread.start()
         else:
             self._user_code_event_loop = asyncio.get_running_loop()
+            self._user_code_loop_monitor = None
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
