@@ -113,6 +113,14 @@ class TestReservationOpResourceAllocator:
         # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
+        # Test get_allocation.
+        # Ineligible operators should return None.
+        assert allocator.get_allocation(o1) is None
+        assert allocator.get_allocation(o4) is None
+        # allocation = op_reserved + op_shared = (4, 0, 125) + (4, 0, 250) = (8, 0, 375)
+        # When usage is zero, allocation equals budget.
+        assert allocator.get_allocation(o2) == ExecutionResources(8, 0, 375)
+        assert allocator.get_allocation(o3) == ExecutionResources(8, 0, 375)
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -146,6 +154,11 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
+        # Test get_allocation.
+        # allocation = op_reserved + op_shared
+        # op_reserved = (4, 0, 125), op_shared[o2] = (3, 0, 113), op_shared[o3] = (3, 0, 112)
+        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
+        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -180,6 +193,10 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
+        # Test get_allocation.
+        # allocation = op_reserved + op_shared = (3, 0, 100) + (1.5, 0, 50) = (4.5, 0, 150)
+        assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
+        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
