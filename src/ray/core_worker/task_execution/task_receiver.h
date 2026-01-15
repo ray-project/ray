@@ -67,6 +67,7 @@ class TaskReceiver {
         waiter_(dependency_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(std::move(actor_creation_task_done)),
+        normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
@@ -135,8 +136,7 @@ class TaskReceiver {
       actor_scheduling_queues_;
 
   // Queue of normal (non-actor) tasks waiting to execute.
-  std::unique_ptr<SchedulingQueue> normal_task_execution_queue_ =
-      std::make_unique<NormalTaskExecutionQueue>();
+  std::unique_ptr<NormalTaskExecutionQueue> normal_task_execution_queue_;
 
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.
