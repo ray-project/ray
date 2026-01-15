@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Protocol
+from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol
 
 from ray.util.annotations import PublicAPI
 
@@ -51,6 +51,23 @@ class ValidateFn(Protocol):
 
 @dataclass
 @PublicAPI(stability="alpha")
+class ValidationTaskConfig:
+    """Configuration for a specific validation task, passed to report().
+
+    Args:
+        func_kwargs: json-serializable keyword arguments to pass to the validation function.
+            Note that we always pass `checkpoint` as the first argument to the
+            validation function.
+    """
+
+    func_kwargs: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if self.func_kwargs is None:
+            self.func_kwargs = {}
+
+
+@PublicAPI(stability="alpha")
 class ValidationConfig:
     """Configuration for validation, passed to the trainer.
 
@@ -63,27 +80,13 @@ class ValidationConfig:
             ValidationTaskConfig passed to report().
     """
 
-    validate_fn: ValidateFn
-    validation_task_config: "ValidationTaskConfig" = None
-
-    def __post_init__(self):
-        if self.validation_task_config is None:
+    def __init__(
+        self,
+        validate_fn: ValidateFn,
+        validation_task_config: Optional[ValidationTaskConfig] = None,
+    ):
+        self.validate_fn = validate_fn
+        if validation_task_config is None:
             self.validation_task_config = ValidationTaskConfig()
-
-
-@dataclass
-@PublicAPI(stability="alpha")
-class ValidationTaskConfig:
-    """Configuration for a specific validation task, passed to report().
-
-    Args:
-        func_kwargs: Keyword arguments to pass to the validation function.
-            Note that we always pass `checkpoint` as the first argument to the
-            validation function.
-    """
-
-    func_kwargs: Dict[str, Any] = None
-
-    def __post_init__(self):
-        if self.func_kwargs is None:
-            self.func_kwargs = {}
+        else:
+            self.validation_task_config = validation_task_config
