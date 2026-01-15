@@ -255,7 +255,12 @@ class IMPALALearner(Learner):
                 with self._learner_state_lock:
                     self._learner_state = self._learner_state_queue.get_nowait()
             except queue.Empty:
-                logger.warning("No learner state available in the queue yet.")
+                pass
+                # (Mark): While I hate not raising a warning or error here
+                #   this just caused a huge amount of warnings that were unhelpful.
+                #   We could check if the queue is empty however this requires a mutex
+                #   and would reduce throughput
+                # logger.warning("No learner state available in the queue yet.")
 
         # Every 20th block call we submit results. Otherwise we keep the
         # thread running without interruption to avoid thread contention.
