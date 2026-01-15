@@ -59,6 +59,7 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
 
   task_def_event->set_parent_task_id("parent_task_id");
   task_def_event->set_placement_group_id("pg_id");
+  (*task_def_event->mutable_label_selector())["region"] = "us-west4";
 
   // Add some required resources
   (*task_def_event->mutable_required_resources())["CPU"] = 1.0;
@@ -67,13 +68,28 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   // Set runtime env info
   task_def_event->set_serialized_runtime_env("test_env");
 
+  // Add a second task with a fully qualified name to test CallString() behavior
+  auto *event2 = request.mutable_events_data()->add_events();
+  event2->set_event_id("test_event_id_2");
+  event2->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+  auto *task_def_event2 = event2->mutable_task_definition_event();
+  task_def_event2->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event2->set_language(rpc::Language::PYTHON);
+  task_def_event2->mutable_task_func()
+      ->mutable_python_function_descriptor()
+      ->set_function_name("class_name.<locals>.member_function_name");
+  task_def_event2->set_task_id("test_task_id_2");
+  task_def_event2->set_task_attempt(1);
+  task_def_event2->set_job_id("test_job_id");
+  task_def_event2->set_task_name("member_function_name");
+
   // Convert
   auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   ASSERT_EQ(task_event_data_requests.size(), 1);
   const auto &task_event_data = task_event_data_requests[0];
-  EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
+  EXPECT_EQ(task_event_data.data().events_by_task_size(), 2);
   const auto &converted_task = task_event_data.data().events_by_task(0);
   EXPECT_EQ(converted_task.task_id(), "test_task_id");
   EXPECT_EQ(converted_task.attempt_number(), 1);
@@ -90,10 +106,19 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_info.runtime_env_info().serialized_runtime_env(), "test_env");
   EXPECT_EQ(task_info.parent_task_id(), "parent_task_id");
   EXPECT_EQ(task_info.placement_group_id(), "pg_id");
+  EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
 
   // Verify required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 1.0);
   EXPECT_EQ(task_info.required_resources().at("memory"), 1024.0);
+
+  // Verify the second task with fully qualified name
+  const auto &converted_task2 = task_event_data.data().events_by_task(1);
+  ASSERT_TRUE(converted_task2.has_task_info());
+  const auto &task_info2 = converted_task2.task_info();
+  // CallString() should extract just "member_function_name" from
+  // "class_name.<locals>.member_function_name"
+  EXPECT_EQ(task_info2.func_or_class_name(), "member_function_name");
 }
 
 TEST(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
@@ -371,6 +396,7 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   actor_def_event.set_actor_id("actor-123");
   actor_def_event.set_parent_task_id("parent-actor-task");
   actor_def_event.set_placement_group_id("pg-actor");
+  (*actor_def_event.mutable_label_selector())["region"] = "us-west4";
 
   // Set runtime env info
   actor_def_event.set_serialized_runtime_env("test_actor_env");
@@ -400,11 +426,13 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   EXPECT_EQ(task_info.type(), rpc::TaskType::ACTOR_TASK);
   EXPECT_EQ(task_info.name(), "test_actor_task");
   EXPECT_EQ(task_info.language(), rpc::Language::PYTHON);
-  EXPECT_EQ(task_info.func_or_class_name(), "test_actor_function");
+  // CallString() for actor tasks returns "ClassName.function_name"
+  EXPECT_EQ(task_info.func_or_class_name(), "TestActorClass.test_actor_function");
   EXPECT_EQ(task_info.runtime_env_info().serialized_runtime_env(), "test_actor_env");
   EXPECT_EQ(task_info.actor_id(), "actor-123");
   EXPECT_EQ(task_info.parent_task_id(), "parent-actor-task");
   EXPECT_EQ(task_info.placement_group_id(), "pg-actor");
+  EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
 
   // Check required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
@@ -421,10 +449,12 @@ struct OptionalFieldTestCase {
   std::string worker_id;
   int32_t worker_pid;
   std::string error_message;  // Empty string means no error_info should be set
+  std::string actor_repr_name;
   bool expect_node_id_set;
   bool expect_worker_id_set;
   bool expect_worker_pid_set;
   bool expect_error_info_set;
+  bool expect_actor_repr_name_set;
 };
 
 class TaskLifecycleEventOptionalFieldsTest
@@ -452,6 +482,9 @@ TEST_P(TaskLifecycleEventOptionalFieldsTest, TestOptionalFieldPresence) {
   // Set error_info if specified
   if (!test_case.error_message.empty()) {
     lifecycle_event.mutable_ray_error_info()->set_error_message(test_case.error_message);
+  }
+  if (!test_case.actor_repr_name.empty()) {
+    lifecycle_event.set_actor_repr_name(test_case.actor_repr_name);
   }
 
   // Call the converter
@@ -488,6 +521,12 @@ TEST_P(TaskLifecycleEventOptionalFieldsTest, TestOptionalFieldPresence) {
   if (test_case.expect_error_info_set) {
     EXPECT_EQ(state_updates.error_info().error_message(), test_case.error_message);
   }
+
+  EXPECT_EQ(state_updates.has_actor_repr_name(), test_case.expect_actor_repr_name_set)
+      << "actor_repr_name presence mismatch for test: " << test_case.test_name;
+  if (test_case.expect_actor_repr_name_set) {
+    EXPECT_EQ(state_updates.actor_repr_name(), test_case.actor_repr_name);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -495,41 +534,94 @@ INSTANTIATE_TEST_SUITE_P(
     TaskLifecycleEventOptionalFieldsTest,
     ::testing::Values(
         // All fields empty - none should be set
-        OptionalFieldTestCase{"AllEmpty", "", "", 0, "", false, false, false, false},
+        OptionalFieldTestCase{
+            "AllEmpty", "", "", 0, "", "", false, false, false, false, false},
         // All fields non-empty - all should be set
         OptionalFieldTestCase{"AllNonEmpty",
                               "test_node_id",
                               "test_worker_id",
                               1234,
                               "Test error",
+                              "repr_name",
+                              true,
                               true,
                               true,
                               true,
                               true},
         // Mixed: node_id set, others empty
-        OptionalFieldTestCase{
-            "OnlyNodeId", "test_node_id", "", 0, "", true, false, false, false},
+        OptionalFieldTestCase{"OnlyNodeId",
+                              "test_node_id",
+                              "",
+                              0,
+                              "",
+                              "",
+                              true,
+                              false,
+                              false,
+                              false,
+                              false},
         // Mixed: worker_id set, others empty
-        OptionalFieldTestCase{
-            "OnlyWorkerId", "", "test_worker_id", 0, "", false, true, false, false},
+        OptionalFieldTestCase{"OnlyWorkerId",
+                              "",
+                              "test_worker_id",
+                              0,
+                              "",
+                              "",
+                              false,
+                              true,
+                              false,
+                              false,
+                              false},
         // Mixed: worker_pid set, others empty
         OptionalFieldTestCase{
-            "OnlyWorkerPid", "", "", 5678, "", false, false, true, false},
+            "OnlyWorkerPid", "", "", 5678, "", "", false, false, true, false, false},
         // Only error_info set, others empty
-        OptionalFieldTestCase{
-            "OnlyErrorInfo", "", "", 0, "Test error", false, false, false, true},
+        OptionalFieldTestCase{"OnlyErrorInfo",
+                              "",
+                              "",
+                              0,
+                              "Test error",
+                              "",
+                              false,
+                              false,
+                              false,
+                              true,
+                              false},
+        // Only actor_repr_name set, others empty
+        OptionalFieldTestCase{"OnlyActorReprName",
+                              "",
+                              "",
+                              0,
+                              "",
+                              "repr_name",
+                              false,
+                              false,
+                              false,
+                              false,
+                              true},
         // Mixed: node_id and worker_pid set, worker_id and error_info empty
-        OptionalFieldTestCase{
-            "NodeIdAndWorkerPid", "test_node_id", "", 9999, "", true, false, true, false},
+        OptionalFieldTestCase{"NodeIdAndWorkerPid",
+                              "test_node_id",
+                              "",
+                              9999,
+                              "",
+                              "",
+                              true,
+                              false,
+                              true,
+                              false,
+                              false},
         // Mixed: worker_id and worker_pid set, node_id and error_info empty
         OptionalFieldTestCase{"WorkerIdAndWorkerPid",
                               "",
                               "test_worker_id",
                               4321,
                               "",
+                              "",
                               false,
                               true,
                               true,
+                              false,
                               false},
         // Mixed: worker_id and error_info set, others empty
         OptionalFieldTestCase{"WorkerIdAndErrorInfo",
@@ -537,10 +629,12 @@ INSTANTIATE_TEST_SUITE_P(
                               "test_worker_id",
                               0,
                               "Worker error",
+                              "",
                               false,
                               true,
                               false,
-                              true}),
+                              true,
+                              false}),
     [](const ::testing::TestParamInfo<OptionalFieldTestCase> &info) {
       return info.param.test_name;
     });
