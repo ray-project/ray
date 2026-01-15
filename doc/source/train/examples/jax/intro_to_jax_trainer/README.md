@@ -8,11 +8,11 @@ Ray Train lets you keep your training code in a normal Python function, then run
 
 This tutorial is inspired by Andrey Karpathy’s [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master) and Google’s [Train a GPT-2 model with JAX on TPU for free](https://developers.googleblog.com/en/train-gpt2-model-with-jax-on-tpu/).
 
-In this tutorial, you:
+In this tutorial, you will:
 
-1. Start with a basic JAX/Flax GPT-2-style model and training step.
-2. Wrap the loop in a `train_loop_per_worker` function and scale it out using Ray Train `JaxTrainer` with GPUs or TPUs!
-3. Stream data and report metrics (and optionally checkpoints) through Ray Train.
+1. Prepare and the `OpenWebText` dataset and wrap with Ray Data.
+2. Define a basic GPT2 model and train step in Jax/Flax.
+3. Wrap the training loop in a `train_loop_per_worker` function and scale it out using Ray Train `JaxTrainer` with GPUs or TPUs!
 
 
 
@@ -58,19 +58,21 @@ If you’re running on GPUs, install `jax[cuda]`. If you’re running on Google 
 This notebook uses `jax[cuda]` in the examples for simplicity.
 
 
+Run below if you plan to use GPUs.
 
-```python
-# Run below if you plan to use GPUs.
+
+```bash
 %%bash
 pip install pandas numpy jax[cuda] flax tiktoken datasets transformers orbax optax
 
 ```
 
+Run below if you plan to use TPUs.
+
 
 ```python
-# Run below if you plan to use Google TPUs.
-%%bash
-pip install pandas numpy jax[tpu] flax tiktoken datasets transformers orbax optax
+# %%bash
+# pip install pandas numpy jax[tpu] flax tiktoken datasets transformers orbax optax
 ```
 
 Next, prepare the data that you’ll feed into the training loop.
@@ -154,10 +156,99 @@ After running the script, you should have two files in shared storage:
 1. Training dataset: `/mnt/cluster_storage/openwebtext/train.bin`
 2. Validation dataset: `/mnt/cluster_storage/openwebtext/val.bin`
 
-You’ll load these files with Ray Data later, then stream batches to the training workers.
 
 
-## Step 2: Define a JAX/Flax GPT-2-style model
+## Step 2: Load the dataset with Ray Data.
+
+Next, let's load these files with Ray Data. 
+
+For more details about Ray Data, check out the [Ray Data documentation](https://docs.ray.io/en/master/data/data.html#data).
+
+
+
+```python
+import ray
+import ray.data
+
+def make_bin_xy_dataset(
+    bin_path: str,
+    seqlen: int,
+    *,
+    # How many sequences to generate per epoch-like pass.
+    # You can make this very large and then re-iterate over batches in the
+    # training loop.
+    num_sequences: int,
+    seed: int = 0,
+    dtype=np.uint16,
+    concurrency: int = 64,
+):
+    """
+    Build a Ray Dataset of (x,y) sequences sampled randomly from a .bin token file.
+
+    Produces rows:
+      - x: int32[seqlen]
+      - y: int32[seqlen]
+    """
+    if not os.path.exists(bin_path):
+        raise FileNotFoundError(bin_path)
+
+    # Open memmap on driver just to get length.
+    data = np.memmap(bin_path, dtype=dtype, mode="r")
+    n = int(len(data))
+    if n <= seqlen + 1:
+        raise ValueError(f"{bin_path} too small: len={n}, seqlen={seqlen}")
+
+    rng = np.random.default_rng(seed)
+    # Each start index uses [i : i+seqlen+1]
+    starts = rng.integers(0, n - (seqlen + 1), size=num_sequences, dtype=np.int64)
+
+    # Create a dataset of start indices
+    ds = ray.data.from_items([{"i": int(i)} for i in starts])
+
+    def read_xy(batch):
+        # Open memmap inside worker process
+        mm = np.memmap(bin_path, dtype=dtype, mode="r")
+        idx = batch["i"].astype(np.int64, copy=False)
+
+        # Allocate fixed arrays
+        bs = idx.shape[0]
+        x = np.empty((bs, seqlen), dtype=np.int32)
+        y = np.empty((bs, seqlen), dtype=np.int32)
+
+        # Slice per row (still Python loop, but runs in parallel across Ray workers)
+        for j, start in enumerate(idx):
+            window = mm[start : start + seqlen + 1].astype(np.int32, copy=False)
+            x[j] = window[:-1]
+            y[j] = window[1:]
+
+        return {"x": x, "y": y}
+
+    # Batch reading for efficiency
+    ds = ds.map_batches(
+        read_xy,
+        batch_format="numpy",
+        batch_size=32,
+        compute=ray.data.TaskPoolStrategy(size=concurrency),
+        zero_copy_batch=True,
+    )
+
+    return ds
+
+train_ds = make_bin_xy_dataset(
+        "/mnt/cluster_storage/openwebtext/train.bin",
+        seqlen=1024,
+        num_sequences=5_000_000,
+        seed=2357,
+    )
+val_ds = make_bin_xy_dataset(
+    "/mnt/cluster_storage/openwebtext/val.bin",
+    seqlen=1024,
+    num_sequences=5_000_000,
+    seed=2357,
+)
+```
+
+## Step 3: Define a JAX/Flax GPT-2-style model
 
 
 Now define the model and the core training step with JAX and Flax.
@@ -185,15 +276,7 @@ import orbax.checkpoint as orbax
 
 import tiktoken
 
-import ray
-from ray import train
-import ray.data
-from ray.train import Checkpoint
-
 ```
-
-First, define a small training configuration object. `JaxTrainer` will pass values from `train_loop_config` into your per-worker function, so keeping config in one place makes it easy to scale and to tune.
-
 
 
 ```python
@@ -401,16 +484,24 @@ def train_step(model, optimizer, metrics, batch):
 
 ```
 
-## Step 3: Scale training to multiple workers with Ray Train `JaxTrainer`
+## Step 4: Wrap training logic in `train_loop_per_worker`
 
-Next, wrap the JAX training logic in a `train_loop_per_worker` function and launch it with Ray Train `JaxTrainer`.
+Next, let's wrap the JAX training logic in a `train_loop_per_worker` function.
 
 Each Ray Train worker runs the same Python function with a different world rank, and Ray sets device visibility per worker (for example, one GPU per worker). Inside this function, you can:
 
 - Read the distributed context (`world_rank`, `world_size`).
 - Get the per-worker dataset shard (`train.get_dataset_shard(...)`) to stream batches.
-- Report metrics (and optionally checkpoints) back to the trainer with `ray.train.report(...)`.
+- Report metrics and checkpoints back to the trainer with `ray.train.report(...)`.
 
+
+
+```python
+
+import ray
+from ray import train
+from ray.train import Checkpoint
+```
 
 
 ```python
@@ -540,7 +631,7 @@ def train_loop_per_worker(config_dict: dict) -> None:
 
 ```
 
-## Step 4: Launch distributed training with `JaxTrainer` and Ray Data
+## Step 5: Launch distributed training with `JaxTrainer`
 
 To run `train_loop_per_worker` on a Ray cluster, you construct a `JaxTrainer` with:
 
@@ -549,97 +640,46 @@ To run `train_loop_per_worker` on a Ray cluster, you construct a `JaxTrainer` wi
 - `scaling_config`: the number of workers and compute resources (GPUs or TPUs) for the training run.
 - `datasets`: The Ray Datasets to ingest for training. Datasets are keyed by name (`{name: dataset}`). Each dataset can be accessed from within the `train_loop_per_worker` by calling `ray.train.get_dataset_shard(name)`. Sharding and additional configuration can be done by passing in a `dataset_config`.
 - `run_config`: runtime configuration including where to write outputs such as checkpoints.
-- `jax_config`: The configuration for setting up the JAX backend. If set to None, a default configuration will be used based on `JAX_PLATFORMS` environment variables.
-- `dataset_config`: The configuration for ingesting the input datasets. By default, all the Ray Dataset are split equally across workers. See [DataConfig](https://docs.ray.io/en/master/train/api/doc/ray.train.DataConfig.html#ray.train.DataConfig) for more details.
-
-The following cells create Ray Data datasets from the `.bin` token files and then launch the trainer.
 
 
 
-```python
-def make_bin_xy_dataset(
-    bin_path: str,
-    seqlen: int,
-    *,
-    # How many sequences to generate per epoch-like pass.
-    # You can make this very large and then re-iterate over batches in the
-    # training loop.
-    num_sequences: int,
-    seed: int = 0,
-    dtype=np.uint16,
-    concurrency: int = 64,
-):
-    """
-    Build a Ray Dataset of (x,y) sequences sampled randomly from a .bin token file.
-
-    Produces rows:
-      - x: int32[seqlen]
-      - y: int32[seqlen]
-    """
-    if not os.path.exists(bin_path):
-        raise FileNotFoundError(bin_path)
-
-    # Open memmap on driver just to get length.
-    data = np.memmap(bin_path, dtype=dtype, mode="r")
-    n = int(len(data))
-    if n <= seqlen + 1:
-        raise ValueError(f"{bin_path} too small: len={n}, seqlen={seqlen}")
-
-    rng = np.random.default_rng(seed)
-    # Each start index uses [i : i+seqlen+1]
-    starts = rng.integers(0, n - (seqlen + 1), size=num_sequences, dtype=np.int64)
-
-    # Create a dataset of start indices
-    ds = ray.data.from_items([{"i": int(i)} for i in starts])
-
-    def read_xy(batch):
-        # Open memmap inside worker process
-        mm = np.memmap(bin_path, dtype=dtype, mode="r")
-        idx = batch["i"].astype(np.int64, copy=False)
-
-        # Allocate fixed arrays
-        bs = idx.shape[0]
-        x = np.empty((bs, seqlen), dtype=np.int32)
-        y = np.empty((bs, seqlen), dtype=np.int32)
-
-        # Slice per row (still Python loop, but runs in parallel across Ray workers)
-        for j, start in enumerate(idx):
-            window = mm[start : start + seqlen + 1].astype(np.int32, copy=False)
-            x[j] = window[:-1]
-            y[j] = window[1:]
-
-        return {"x": x, "y": y}
-
-    # Batch reading for efficiency
-    ds = ds.map_batches(
-        read_xy,
-        batch_format="numpy",
-        batch_size=32,
-        compute=ray.data.TaskPoolStrategy(size=concurrency),
-        zero_copy_batch=True,
-    )
-
-    return ds
-
-train_ds = make_bin_xy_dataset(
-        "/mnt/cluster_storage/openwebtext/train.bin",
-        seqlen=1024,
-        num_sequences=5_000_000,
-        seed=2357,
-    )
-val_ds = make_bin_xy_dataset(
-    "/mnt/cluster_storage/openwebtext/val.bin",
-    seqlen=1024,
-    num_sequences=5_000_000,
-    seed=2357,
-)
-```
+`trainer.fit` spawns a controller process to orchestrate the training run and worker processes to actually execute the Jax training code.
 
 
 ```python
 from ray.train import RunConfig, ScalingConfig
 from ray.train.v2.jax import JaxTrainer
+```
 
+Let's define the `scaling_config` that we want to scale the training process.
+`JaxTrainer` now supports both GPU training and TPU training. See [`ScalingConfig` API reference](https://docs.ray.io/en/master/train/api/doc/ray.train.ScalingConfig.html#ray.train.ScalingConfig) for more details. 
+
+
+* In order to use GPUs, you will need to set `use_gpu=True` like other framework trainer.
+* In order to use TPUs, you will need to set `use_tpu=True` and set the TPU topology/accelerator type. For more information about TPU clusters with Ray on Kubernetes, see the [KubeRay TPU guide](https://docs.ray.io/en/master/cluster/kubernetes/user-guides/tpu.html#kuberay-tpu).
+
+
+```python
+# In this example, we use 2 GPUs.
+gpu_scaling_config = ScalingConfig(
+    use_gpu=True,
+    num_workers=2,  # Change this to match on your GPU cluster setting.
+    resources_per_worker={"GPU": 1},
+)
+# If you plan to use TPUs, see an example below.
+# tpu_scaling_config = ScalingConfig(
+#     use_tpu=True,
+#     num_workers=4,
+#     topology="2x2x4",
+#     accelerator_type="TPU-V6E",
+#     resources_per_worker={"TPU": 4},
+# )
+```
+
+Finally, pass the `scaling_config` to the `JaxTrainer` and launch it.
+
+
+```python
 storage_path = "/mnt/cluster_storage"
 
 trainer = JaxTrainer(
@@ -647,11 +687,7 @@ trainer = JaxTrainer(
     train_loop_config={
         "global_batch_size": 32,
     },
-    scaling_config=ScalingConfig(
-        use_gpu=True,
-        num_workers=2,  # Change this to match on your GPU cluster setting.
-        resources_per_worker={"GPU": 1},
-    ),
+    scaling_config=gpu_scaling_config,
     run_config=RunConfig(
         name="jax_gpt2",
         storage_path=storage_path,
@@ -666,53 +702,12 @@ print(result)
 
 ```
 
-### Run on TPUs
-
-`JaxTrainer` can also run on TPUs.
-
-To switch from GPUs to TPUs, update the `ScalingConfig` to request TPU resources and set the TPU topology/accelerator type. The following example shows a TPU V6E configuration.
-
-For more information about TPU clusters with Ray on Kubernetes, see the [KubeRay TPU guide](https://docs.ray.io/en/master/cluster/kubernetes/user-guides/tpu.html#kuberay-tpu).
-
-
-
-```python
-from ray.train import RunConfig, ScalingConfig
-from ray.train.v2.jax import JaxTrainer
-
-storage_path = "/mnt/cluster_storage"
-
-trainer = JaxTrainer(
-    train_loop_per_worker=train_loop_per_worker,
-    train_loop_config={
-        "global_batch_size": 32,
-    },
-    scaling_config=ScalingConfig(
-            use_tpu=True,
-            num_workers=4,
-            topology="2x2x4",
-            accelerator_type="TPU-V6E",
-            resources_per_worker={"TPU": 4},
-            placement_strategy="SPREAD",
-    ),
-    run_config=RunConfig(
-        name="jax_gpt2_tpu",
-        storage_path=storage_path,
-        worker_runtime_env={"env_vars": {"LD_LIBRARY_PATH": ""}},
-    ),
-    datasets={"train": train_ds, "val": val_ds},
-)
-
-result = trainer.fit()
-print(result)
-
-```
-
 ## Summary
 
 In this notebook, you:
 
 - Built a GPT-2-style model with JAX and Flax NNX.
 - Wrapped the training step in a `train_loop_per_worker` and scaled it out using Ray Train `JaxTrainer` with GPUs or TPUs.
-- Streamed data to distributed workers and reported metrics (and optionally checkpoints) through Ray Train.
+- Streamed data to distributed workers and reported metrics and checkpoints through Ray Train.
+
 
