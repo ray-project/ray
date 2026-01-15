@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
@@ -81,7 +82,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
-            concurrency=1,
+            compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
             accelerator_type=gpu_type,
         ),
@@ -98,9 +99,13 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         },
     }
     ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ActorPoolStrategy)
+    assert compute.min_size == 1
+    assert compute.max_size == 1
+
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 0,
@@ -131,7 +136,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
             "model": "random-model",
             # This is overriden in the processor, so it remains unchanged when we bypass
             # the processor and pass it directly to the stage via vLLMEngineStageUDF.
-            "task": vLLMTaskType.EMBED,
+            "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
             "disable_log_stats": False,
         },
@@ -139,7 +144,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     assert udf.model == model_llama_3_2_216M
     assert udf.task_type == vLLMTaskType.GENERATE
-    assert udf.engine_kwargs["task"] == vLLMTaskType.EMBED
+    assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
@@ -170,7 +175,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
         enable_log_requests=False,
@@ -265,7 +270,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -316,7 +321,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -360,7 +365,7 @@ async def test_vllm_wrapper_embed_pooling_params(
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -416,7 +421,7 @@ async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -454,7 +459,7 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         enable_lora=True,
         max_lora_rank=16,
@@ -518,7 +523,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         structured_outputs_config={"backend": "xgrammar"},
         seed=42,

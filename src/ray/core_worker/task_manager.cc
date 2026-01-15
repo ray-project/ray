@@ -275,7 +275,12 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
-      bool is_reconstructable = max_retries != 0;
+      LineageReconstructionEligibility lineage_eligibility;
+      if (max_retries == 0) {
+        lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
+      } else {
+        lineage_eligibility = LineageReconstructionEligibility::ELIGIBLE;
+      }
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -290,7 +295,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         caller_address,
                                         call_site,
                                         -1,
-                                        is_reconstructable,
+                                        lineage_eligibility,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
                                         tensor_transport);
@@ -361,7 +366,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     }
     auto &task_entry = it->second;
     if (task_entry.is_canceled_) {
-      return rpc::ErrorType::TASK_CANCELLED;
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED;
     }
 
     if (task_entry.spec_.IsStreamingGenerator() &&
@@ -390,7 +395,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
-               : std::make_optional(rpc::ErrorType::TASK_CANCELLED);
+               : std::make_optional(
+                     rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   }
 
   UpdateReferencesForResubmit(spec, task_deps);
@@ -597,6 +603,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
       in_memory_store_.Put(object, object_id, reference_counter_.HasReference(object_id));
       direct_return = true;
     }
+  }
+  if (return_object.has_direct_transport_metadata()) {
+    set_direct_transport_metadata_(object_id, return_object.direct_transport_metadata());
   }
 
   rpc::Address owner_address;

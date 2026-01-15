@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 # Asynchronous Inference with Ray Serve
 
 **⏱️ Time to complete:** 30 minutes
@@ -54,14 +57,14 @@ Redis serves as both the message broker (task queue) and result backend.
 **Install and start Redis (Google Colab compatible):**
 
 
-```python
+```bash
 # Install and start Redis server
-!sudo apt-get update -qq
-!sudo apt-get install -y redis-server
-!redis-server --port 6399 --save "" --appendonly no --daemonize yes
+sudo apt-get update -qq
+sudo apt-get install -y redis-server
+redis-server --port 6399 --save "" --appendonly no --daemonize yes
 
 # Verify Redis is running
-!redis-cli -p 6399 ping
+redis-cli -p 6399 ping
 ```
 
 **Alternative methods:**
@@ -74,7 +77,7 @@ Redis serves as both the message broker (task queue) and result backend.
 
 
 ```python
-!pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
+pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
 ```
 
 ## Step 3: Start the Ray Serve Application
