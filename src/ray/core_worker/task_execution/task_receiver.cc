@@ -264,11 +264,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
 }
 
 void TaskReceiver::RunNormalTasksFromQueue() {
-  // If the scheduling queue is empty, return.
-  if (normal_task_execution_queue_->TaskQueueEmpty()) {
-    return;
-  }
-
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_task_execution_queue_->ScheduleRequests();
 }

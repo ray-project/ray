@@ -27,17 +27,6 @@ void NormalTaskExecutionQueue::Stop() {
       "Normal scheduling queue stopped; canceling pending tasks"));
 }
 
-bool NormalTaskExecutionQueue::TaskQueueEmpty() const {
-  absl::MutexLock lock(&mu_);
-  return pending_normal_tasks_.empty();
-}
-
-// Returns the current size of the task queue.
-size_t NormalTaskExecutionQueue::Size() const {
-  absl::MutexLock lock(&mu_);
-  return pending_normal_tasks_.size();
-}
-
 /// Add a new task's callbacks to the worker queue.
 void NormalTaskExecutionQueue::Add(
     int64_t seq_no,
@@ -81,12 +70,12 @@ void NormalTaskExecutionQueue::ScheduleRequests() {
     TaskToExecute head;
     {
       absl::MutexLock lock(&mu_);
-      if (!pending_normal_tasks_.empty()) {
-        head = std::move(pending_normal_tasks_.front());
-        pending_normal_tasks_.pop_front();
-      } else {
+      if (pending_normal_tasks_.empty()) {
         return;
       }
+
+      head = std::move(pending_normal_tasks_.front());
+      pending_normal_tasks_.pop_front();
     }
     head.Accept();
   }

@@ -63,16 +63,6 @@ void OutOfOrderActorSchedulingQueue::Stop() {
       "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
 }
 
-bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
-  RAY_LOG(FATAL) << "TaskQueueEmpty() not implemented for actor queues";
-  return false;
-}
-
-size_t OutOfOrderActorSchedulingQueue::Size() const {
-  RAY_LOG(FATAL) << "Size() not implemented for actor queues";
-  return 0;
-}
-
 void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
   RAY_LOG(FATAL) << "ScheduleRequests() not implemented for actor queues";
 }

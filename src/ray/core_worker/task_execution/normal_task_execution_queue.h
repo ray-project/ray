@@ -34,8 +34,6 @@ class NormalTaskExecutionQueue : public SchedulingQueue {
   NormalTaskExecutionQueue();
 
   void Stop() override;
-  bool TaskQueueEmpty() const override;
-  size_t Size() const override;
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no,

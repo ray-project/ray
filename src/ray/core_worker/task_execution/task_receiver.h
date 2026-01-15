@@ -128,12 +128,13 @@ class TaskReceiver {
   /// The callback function to be invoked when finishing a task.
   OnActorCreationTaskDone actor_creation_task_done_;
 
-  /// Queue of pending requests per actor handle.
+  /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
+  /// submitted the task.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
       actor_scheduling_queues_;
 
-  // Queue of pending normal (non-actor) tasks.
+  // Queue of normal (non-actor) tasks waiting to execute.
   std::unique_ptr<SchedulingQueue> normal_task_execution_queue_ =
       std::make_unique<NormalTaskExecutionQueue>();
 

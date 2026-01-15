@@ -507,7 +507,6 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
 TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -523,7 +522,6 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
-  ASSERT_FALSE(queue->TaskQueueEmpty());
   queue->ScheduleRequests();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 1);

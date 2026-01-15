@@ -41,20 +41,6 @@ void ActorSchedulingQueue::Stop() {
       "Actor scheduling queue stopped; canceling pending tasks"));
 }
 
-bool ActorSchedulingQueue::TaskQueueEmpty() const {
-  RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return false;
-}
-
-size_t ActorSchedulingQueue::Size() const {
-  RAY_CHECK(false) << "Size() not implemented for actor queues";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return 0;
-}
-
 /// Add a new actor task's callbacks to the worker queue.
 void ActorSchedulingQueue::Add(
     int64_t seq_no,
