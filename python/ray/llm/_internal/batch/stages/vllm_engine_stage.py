@@ -5,6 +5,7 @@ import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
 from collections import Counter
@@ -706,11 +707,16 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             # engine. Ray Data's max_restarts=-1 (default) will create a
             # replacement actor, and task retries will go to healthy actors.
             #
+            # NOTE: We use os._exit(1) instead of ray.actor.exit_actor() because:
+            # - os._exit(1) -> SYSTEM_ERROR -> raises RaySystemError -> task IS retried
+            # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> raises ActorDiedError
+            #   -> task is NOT retried (ActorDiedError is not a RaySystemError)
+            #
             # See: https://github.com/ray-project/ray/issues/59522
             logger.error(
                 f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
             )
-            ray.actor.exit_actor()
+            os._exit(1)
         except Exception as e:
             if not self.should_continue_on_error:
                 raise
