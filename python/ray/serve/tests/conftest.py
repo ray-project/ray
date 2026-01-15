@@ -355,30 +355,32 @@ def _get_node_id():
 
 # Test fixture to start a Serve instance in a RayCluster with two labeled nodes
 @pytest.fixture
-def serve_instance_with_labeled_nodes(ray_shutdown):
-    cluster = Cluster()
-    # Unlabeled default node.
-    node0_config = {
-        "num_cpus": 1,
-        "resources": {"worker0": 1},
-    }
-    cluster.add_node(**node0_config)
-    node1_config = {
-        "num_cpus": 1,
-        "resources": {"worker1": 1},
-        "labels": {"region": "us-west", "gpu-type": "A100"},
-    }
-    cluster.add_node(**node1_config)
-    ray.init(address=cluster.address)
-    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
+def serve_instance_with_labeled_nodes(ray_cluster):
+    cluster = ray_cluster
 
-    node2_config = {
-        "num_cpus": 2,
-        "resources": {"worker2": 1},
-        "labels": {"region": "us-east", "gpu-type": "H100"},
-    }
-    cluster.add_node(**node2_config)
+    # Unlabeled default node.
+    cluster.add_node(num_cpus=3, resources={"worker0": 1})
+
+    # Node 1 - labeled A100 node in us-west.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker1": 1},
+        labels={"region": "us-west", "gpu-type": "A100"},
+    )
+
+    # Node 2 - labeled H100 node in us-east.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker2": 1},
+        labels={"region": "us-east", "gpu-type": "H100"},
+    )
+
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
     node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
 
     serve.start()
-    yield _get_global_client(), node_1_id, node_2_id
+
+    yield _get_global_client(), node_1_id, node_2_id, cluster
