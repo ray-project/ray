@@ -123,6 +123,15 @@ class StandardScaler(SerializablePreprocessorBase):
         df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
 
+    @staticmethod
+    def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
+        if std == 0:
+            std = 1
+
+        return pc.divide(
+            pc.subtract(column, pa.scalar(float(mean))), pa.scalar(float(std))
+        )
+
     def _transform_arrow(self, table: pa.Table) -> pa.Table:
         """Transform using fast native PyArrow operations."""
         # Read all input columns first to avoid reading modified data when
@@ -143,15 +152,7 @@ class StandardScaler(SerializablePreprocessorBase):
                 )
                 continue
 
-            # Handle division by zero
-            if s_std == 0:
-                s_std = 1
-
-            # Apply standard scaling: (x - mean) / std
-            # Use float scalars to ensure float division
-            scaled_column = pc.divide(
-                pc.subtract(column, pa.scalar(float(s_mean))), pa.scalar(float(s_std))
-            )
+            scaled_column = self._scale_column(column, s_mean, s_std)
 
             table = BlockAccessor.for_block(table).upsert_column(
                 output_col, scaled_column
