@@ -126,6 +126,7 @@ class Preprocessor(abc.ABC):
             )
 
         self.stat_computation_plan.reset()
+        self.stats_ = {}
         fitted_ds = self._fit(ds)._fit_execute(ds)
         self._fitted = True
         return fitted_ds
@@ -437,7 +438,7 @@ class Preprocessor(abc.ABC):
         (`_transform_pandas`, `_transform_numpy`, `_transform_arrow`) are implemented.
         Defaults to Pandas.
 
-        Can be overriden by Preprocessor classes depending on which transform
+        Can be overridden by Preprocessor classes depending on which transform
         path is the most optimal.
         """
         return BatchFormat.PANDAS

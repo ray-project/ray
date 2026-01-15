@@ -381,7 +381,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         wait_for_condition(lambda: verify_nodes(3, 1))
 
         def kill_node(node_id):
-            cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
+            cmd = f"ps auxww | grep {node_id} | grep -v grep | awk '{{print $2}}'"
             pids = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
             print(f"Killing pids {pids}")
             # kill the pids (handle multiple PIDs separated by newlines)

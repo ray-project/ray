@@ -99,8 +99,7 @@ ObjectLocation CreateObjectLocation(
   bool is_spilled = !object_info.spilled_url().empty();
   // If the object size is unknown it's unset, and we use -1 to indicate that.
   int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
-  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_size,
+  return ObjectLocation(object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
@@ -329,7 +328,6 @@ CoreWorker::CoreWorker(
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
-      connected_(true),
       gcs_client_(std::move(gcs_client)),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
@@ -525,23 +523,32 @@ CoreWorker::CoreWorker(
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
+}
 
-  // Initialize shutdown coordinator last - after all services are ready
-  // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
-  shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
-      std::move(shutdown_executor), options_.worker_type);
+CoreWorker::~CoreWorker() {
+  WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Core worker is destructed";
+}
+
+void CoreWorker::InitializeShutdownExecutor() {
+  auto executor = std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
+  shutdown_coordinator_ =
+      std::make_unique<ShutdownCoordinator>(std::move(executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
                     "worker type: "
                  << WorkerTypeString(options_.worker_type);
-}  // NOLINT(readability/fn_size)
-
-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
+}
 
 void CoreWorker::Shutdown() {
   shutdown_coordinator_->RequestShutdown(
       /*force_shutdown=*/false, ShutdownReason::kGracefulExit, "ray.shutdown() called");
+}
+
+void CoreWorker::WaitForShutdownComplete(std::chrono::milliseconds timeout_ms) {
+  if (shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown()) {
+    shutdown_coordinator_->GetExecutor()->WaitForCompletion(timeout_ms);
+  }
 }
 
 void CoreWorker::ConnectToRayletInternal() {
@@ -582,9 +589,9 @@ void CoreWorker::Disconnect(
   }
 
   opencensus::stats::StatsExporter::ExportNow();
-  if (connected_) {
+
+  if (connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
-    connected_ = false;
     Status status = raylet_ipc_client_->Disconnect(
         exit_type, exit_detail, creation_task_exception_pb_bytes);
     if (status.ok()) {
@@ -592,6 +599,8 @@ void CoreWorker::Disconnect(
     } else {
       RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
     }
+  } else {
+    RAY_LOG(DEBUG) << "Already disconnected, skipping disconnect message";
   }
 }
 
@@ -965,7 +974,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      rpc_address_,
                                      CurrentCallSite(),
                                      object.GetSize(),
-                                     /*is_reconstructable=*/false,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true,
                                      NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -1052,7 +1061,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        rpc_address_,
                                        CurrentCallSite(),
                                        data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
@@ -2564,12 +2573,16 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
         } else {
           std::stringstream stream;
           stream << "Failed to find a corresponding actor handle for " << actor_id;
-          cb(Status::Invalid(stream.str()));
+          cb(Status::NotFound(stream.str()));
         }
       },
       "CoreWorker.KillActor");
   const auto &status = f.get();
-  actor_manager_->OnActorKilled(actor_id);
+  // Only call OnActorKilled if the kill was successful (status is OK).
+  // If the actor handle doesn't exist, OnActorKilled would crash.
+  if (status.ok()) {
+    actor_manager_->OnActorKilled(actor_id);
+  }
   return status;
 }
 
@@ -2724,6 +2737,7 @@ void CoreWorker::RunTaskExecutionLoop() {
         10,
         "CoreWorker.CheckSignal");
   }
+  event_loops_running_ = true;
   task_execution_service_.run();
   RAY_CHECK(shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown())
       << "Task execution loop was terminated without calling shutdown API.";
@@ -2807,8 +2821,11 @@ Status CoreWorker::ExecuteTask(
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
 
-  // Extract function name and retry status for metrics reporting.
-  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  // Extract task name and retry status for metrics reporting.
+  // Use GetName() which returns the custom task name if set via .options(name="..."),
+  // otherwise falls back to the function descriptor's call string. This ensures
+  // consistency with task events reported to the State API / Dashboard.
+  std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
   ++num_get_pin_args_in_flight_;
@@ -3266,13 +3283,14 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   size_t num_returns = task_spec.NumReturns();
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
-      reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
-                                         /*contained_ids=*/{},
-                                         rpc_address_,
-                                         CurrentCallSite(),
-                                         -1,
-                                         /*is_reconstructable=*/false,
-                                         /*add_local_ref=*/true);
+      reference_counter_->AddOwnedObject(
+          task_spec.ReturnId(i),
+          /*contained_ids=*/{},
+          rpc_address_,
+          CurrentCallSite(),
+          -1,
+          LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE,
+          /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -3434,10 +3452,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
 
   // Increment the task_queue_length and per function counter.
+  // Use task name which includes custom name from .options(name="...") if set,
+  // ensuring consistency with task events reported to the State API / Dashboard.
   task_queue_length_ += 1;
-  std::string func_name =
-      FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
-          ->CallString();
+  std::string func_name = request.task_spec().name();
   task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
@@ -3951,14 +3969,22 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 
     // Do force kill after reply callback sent.
     if (force_kill) {
-      // We grab the lock again to make sure that we are force-killing the correct
-      // task. This is guaranteed not to deadlock because ForceExit should not
-      // require any other locks.
-      absl::MutexLock lock(&mutex_);
-      if (main_thread_task_id_ == task_id) {
+      bool should_force_exit = false;
+      std::string task_name;
+      {
+        // We grab the lock to make sure that we are force-killing the correct task.
+        // We must release the lock before calling ForceExit, because ForceExit
+        // also tries to acquire mutex_ to disconnect the services.
+        absl::MutexLock lock(&mutex_);
+        if (main_thread_task_id_ == task_id) {
+          should_force_exit = true;
+          task_name = main_thread_task_name_;
+        }
+      }
+      if (should_force_exit) {
         ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
                   absl::StrCat("The worker exits because the task ",
-                               main_thread_task_name_,
+                               task_name,
                                " has received a force ray.cancel request."));
       }
     }
@@ -4175,10 +4201,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     }
     (*used_resources_map)[resource_name] = allocations;
   }
-  google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
-                                                            webui_display_.end());
-  (*stats->mutable_webui_display()) = webui_map;
-
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_in_plasma(memory_store_stats.num_in_plasma);
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
@@ -4382,7 +4404,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       rpc_address_,
       call_site,
       request.object_size(),
-      /*is_reconstructable=*/false,
+      LineageReconstructionEligibility::INELIGIBLE_PUT,
       /*add_local_ref=*/false,
       /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
@@ -4497,11 +4519,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
-  absl::MutexLock lock(&mutex_);
-  webui_display_[key] = message;
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {

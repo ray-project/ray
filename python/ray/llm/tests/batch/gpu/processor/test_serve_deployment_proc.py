@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray.data import ActorPoolStrategy
 from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionRequest
@@ -39,9 +40,10 @@ def test_serve_deployment_processor(dtype_mapping):
         "dtype_mapping": dtype_mapping,
     }
 
-    assert stage.map_batches_kwargs == {
-        "concurrency": 1,
-    }
+    assert "compute" in stage.map_batches_kwargs
+    assert isinstance(stage.map_batches_kwargs["compute"], ActorPoolStrategy)
+    assert stage.map_batches_kwargs["compute"].min_size == 1
+    assert stage.map_batches_kwargs["compute"].max_size == 1
 
 
 def test_simple_serve_deployment(serve_cleanup):
