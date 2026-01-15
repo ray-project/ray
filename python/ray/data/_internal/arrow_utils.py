@@ -47,6 +47,5 @@ def _combine_as_list_array(
     )
 
     array_cls = pa.LargeListArray if is_large else pa.ListArray
-    return array_cls.from_arrays(
-        offsets, combined, pa.list_(combined.type), mask=null_mask
-    )
+    list_type = pa.large_list(combined.type) if is_large else pa.list_(combined.type)
+    return array_cls.from_arrays(offsets, combined, list_type, mask=null_mask)
