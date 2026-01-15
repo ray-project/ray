@@ -26,11 +26,11 @@ def filter_checkpointed_rows_for_blocks(
         BatchBasedCheckpointFilter,
     )
 
-    ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
     is_checkpoint_existed = task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME]
     checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
 
     if is_checkpoint_existed:
+        ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
 
         def filter_fn(block: Block) -> Block:
             return ckpt_filter.filter_rows_for_block(
@@ -45,7 +45,9 @@ def filter_checkpointed_rows_for_blocks(
                 yield filtered_block
     else:
         for block in blocks:
-            yield block
+            ba = BlockAccessor.for_block(block)
+            if ba.num_rows() > 0:
+                yield block
 
 
 def filter_checkpointed_rows_for_batches(
@@ -59,15 +61,21 @@ def filter_checkpointed_rows_for_batches(
         BatchBasedCheckpointFilter,
     )
 
-    ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
-    checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
+    is_checkpoint_existed = task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME]
 
-    def filter_fn(batch: DataBatch) -> DataBatch:
-        return ckpt_filter.filter_rows_for_batch(
-            batch=batch,
-            checkpointed_ids=checkpointed_ids,
-        )
+    if is_checkpoint_existed:
+        ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
+        checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
 
-    for batch in batches:
-        filtered_batch = filter_fn(batch)
-        yield filtered_batch
+        def filter_fn(batch: DataBatch) -> DataBatch:
+            return ckpt_filter.filter_rows_for_batch(
+                batch=batch,
+                checkpointed_ids=checkpointed_ids,
+            )
+
+        for batch in batches:
+            filtered_batch = filter_fn(batch)
+            yield filtered_batch
+    else:
+        for batch in batches:
+            yield batch
