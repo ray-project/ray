@@ -143,14 +143,12 @@ class TestOfflineData(unittest.TestCase):
                 self.assertIsInstance(metric, StatsBase)
 
             self.assertEqual(
-                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED].peek(),
-                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED].peek(),
+                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED],
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED],
             )
             self.assertEqual(
-                metric_dict[DEFAULT_MODULE_ID][
-                    NUM_MODULE_STEPS_SAMPLED_LIFETIME
-                ].peek(),
-                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED_LIFETIME].peek(),
+                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED_LIFETIME],
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED_LIFETIME],
             )
 
         # Clean up.
