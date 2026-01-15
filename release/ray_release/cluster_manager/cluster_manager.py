@@ -119,9 +119,3 @@ class ClusterManager(abc.ABC):
 
     def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError
-
-    def delete_configs(self):
-        raise NotImplementedError
-
-    def get_cluster_address(self) -> str:
-        raise NotImplementedError
