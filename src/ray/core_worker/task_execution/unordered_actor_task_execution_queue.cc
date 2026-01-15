@@ -27,7 +27,7 @@ namespace core {
 
 UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
-    ActorTaskExecutionArgWaiter &waiter,
+    ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
