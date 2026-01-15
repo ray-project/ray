@@ -114,7 +114,6 @@ config = (
         num_envs_per_env_runner=args.num_envs_per_env_runner,
         rollout_fragment_length=32,
         env_to_module_connector=_make_env_to_module_connector,
-
     )
     .learners(
         num_aggregator_actors_per_learner=2,
@@ -126,7 +125,10 @@ config = (
         target_network_update_freq=2,
         lr=0.0006,
         vf_loss_coeff=1.7,
-        entropy_coeff=[[0, 0.025], [1_000_000, 0.0]],  # <- crucial parameter to finetune
+        entropy_coeff=[
+            [0, 0.025],
+            [1_000_000, 0.0],
+        ],
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=8,
         circular_buffer_num_batches=4,
