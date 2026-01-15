@@ -155,10 +155,11 @@ class TestReservationOpResourceAllocator:
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
         # Test get_allocation.
-        # allocation = op_reserved + op_shared
-        # op_reserved = (4, 0, 125), op_shared[o2] = (3, 0, 113), op_shared[o3] = (3, 0, 112)
-        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
-        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
+        # allocation = budget + usage
+        # budget[o2] = (3, 0, 113), budget[o3] = (5, 0, 207)
+        # usage[o2] = (6, 0, 500), usage[o3] = (2, 0, 125)
+        assert allocator.get_allocation(o2) == ExecutionResources(9, 0, 613)
+        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 332)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -194,9 +195,11 @@ class TestReservationOpResourceAllocator:
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
         # Test get_allocation.
-        # allocation = op_reserved + op_shared = (3, 0, 100) + (1.5, 0, 50) = (4.5, 0, 150)
-        assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
-        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
+        # allocation = budget + usage
+        # budget[o2] = (1.5, 0, 50), budget[o3] = (2.5, 0, 120)
+        # usage[o2] = (6, 0, 500), usage[o3] = (2, 0, 125)
+        assert allocator.get_allocation(o2) == ExecutionResources(7.5, 0, 550)
+        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 245)
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
