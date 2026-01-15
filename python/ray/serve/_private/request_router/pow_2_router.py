@@ -91,7 +91,11 @@ class PowerOfTwoChoicesRequestRouter(
         if n == 1:
             chosen_ids = [candidates[0]]
         elif n == 2:
-            chosen_ids = list(candidates)
+            # Randomize order to ensure fair selection when queue lengths are equal
+            if random.randint(0, 1):
+                chosen_ids = [candidates[0], candidates[1]]
+            else:
+                chosen_ids = [candidates[1], candidates[0]]
         else:
             i = random.randrange(n)
             j = random.randrange(n - 1)
