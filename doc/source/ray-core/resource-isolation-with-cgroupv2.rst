@@ -65,11 +65,7 @@ To enable privileged pods in Kubernetes, you need to `set the securityContext <h
 Running in Google Kubernetes Engine (GKE) with Writable Cgroups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. warning::
-
-   Running pods in a privileged security context can be risky.
-
-GKE allows you to use writable cgroups instead. See the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_.
+Since Running pods in a privileged security context can be risky, GKE allows you to use writable cgroups instead. See the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_.
 
 Running in a Bare Container
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -86,6 +82,8 @@ If you're running Ray directly on Linux, the setup is a little more involved. Yo
 1. Create a cgroup for Ray
 2. Configure the cgroup to allow the user that starts Ray to have read and write permissions
 3. Start Ray inside the cgroup
+
+Here's an example script that shows you how to perform these steps. This is to help you run ray on a single node for tests and not the recommended way to run a Ray cluster in production:
 
 .. code-block:: bash
 
@@ -107,10 +105,6 @@ If you're running Ray directly on Linux, the setup is a little more involved. Yo
 
    # Start ray with resource isolation enabled passing the cgroup path to Ray.
    ray start --enable-resource-isolation --cgroup-path=/sys/fs/cgroup/ray
-
-.. caution::
-
-   You should only be doing this if you manage your own infrastructure stack and are familiar with Linux, or for single-node testing/experimentation.
 
 Usage
 =====
@@ -253,7 +247,9 @@ If your distribution uses GRUB, add ``systemd.unified_cgroup_hierarchy=1`` to ``
 Troubleshooting
 ===============
 
-When Ray starts up with Resource Isolation enabled, it will log the relevant information in the ``raylet.out`` log file:
+To see if you've enabled Resource Isolation correctly, you can look at the ``raylet.out`` log file. If everything works you should see a log line that gives you detailed information about the cgroups that Ray created and the cgroup contraints it enabled.
+
+For example:
 
 .. code-block:: json
 
