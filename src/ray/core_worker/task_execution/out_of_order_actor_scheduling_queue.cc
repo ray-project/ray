@@ -63,10 +63,6 @@ void OutOfOrderActorSchedulingQueue::Stop() {
       "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
 }
 
-void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
-  RAY_LOG(FATAL) << "ScheduleRequests() not implemented for actor queues";
-}
-
 void OutOfOrderActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,

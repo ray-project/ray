@@ -34,7 +34,6 @@ class SchedulingQueue {
                                       rpc::SendReplyCallback)> reject_request,
                    rpc::SendReplyCallback send_reply_callback,
                    TaskSpecification task_spec) = 0;
-  virtual void ScheduleRequests() = 0;
   virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   /// Cancel all pending (not yet accepted/executing) requests in the queue with the

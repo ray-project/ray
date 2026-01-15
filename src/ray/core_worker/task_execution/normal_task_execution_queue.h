@@ -46,13 +46,13 @@ class NormalTaskExecutionQueue : public SchedulingQueue {
            rpc::SendReplyCallback send_reply_callback,
            TaskSpecification task_spec) override;
 
-  // Search for an TaskToExecute associated with the task that we are trying to cancel.
-  // If found, remove the TaskToExecute from the queue and return true. Otherwise,
-  // return false.
+  /// Search for an TaskToExecute associated with the task that we are trying to cancel.
+  /// If found, remove the TaskToExecute from the queue and return true. Else,
+  /// return false.
   bool CancelTaskIfFound(TaskID task_id) override;
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() override;
+  /// Execute as many queued tasks as possible.
+  void ExecuteQueuedTasks();
 
   /// Cancel all queued (waiting or deferred) requests in a thread-safe manner.
   void CancelAllPending(const Status &status) override;

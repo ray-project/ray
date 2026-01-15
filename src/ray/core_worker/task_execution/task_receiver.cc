@@ -263,9 +263,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   }
 }
 
-void TaskReceiver::RunNormalTasksFromQueue() {
-  // Execute as many tasks as there are in the queue, in sequential order.
-  normal_task_execution_queue_->ScheduleRequests();
+void TaskReceiver::ExecuteQueuedNormalTasks() {
+  normal_task_execution_queue_->ExecuteQueuedTasks();
 }
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,

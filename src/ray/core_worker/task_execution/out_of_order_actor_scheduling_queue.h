@@ -67,9 +67,6 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() override;
-
   /// Cancel all pending (not yet accepted/executing) requests in the queue.
   void CancelAllPending(const Status &status) override;
 

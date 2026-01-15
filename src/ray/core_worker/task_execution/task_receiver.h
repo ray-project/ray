@@ -81,8 +81,8 @@ class TaskReceiver {
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
-  /// Pop tasks from the queue and execute them sequentially
-  void RunNormalTasksFromQueue();
+  /// Execute as many tasks from the queue as are available.
+  void ExecuteQueuedNormalTasks();
 
   bool CancelQueuedNormalTask(TaskID task_id);
 

@@ -64,8 +64,7 @@ bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   return false;
 }
 
-/// Schedules as many requests as possible in sequence.
-void NormalTaskExecutionQueue::ScheduleRequests() {
+void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
   while (true) {
     TaskToExecute head;
     {
