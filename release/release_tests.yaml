@@ -32,8 +32,6 @@
 #    autosuspend_mins: 10
 #    # Optional cloud_id to use instead of the default cloud
 #    cloud_id: cld_12345678
-#    # Alternatively, you can specify a cloud name
-#    cloud_name: anyscale_default_cloud
 #
 #  # Run configuration for the test
 #  run:
