@@ -11,7 +11,7 @@ This example:
     - uses a RandomRLModule as a frozen opponent that is not trained
     - randomly maps agents to policies (including the random policy) each episode
     - demonstrates MultiRLModuleSpec for configuring multiple policies
-    - uses 5 env runners by default for parallel experience collection
+    - uses 4 env runners by default for parallel experience collection
 
 How to run this script
 ----------------------
