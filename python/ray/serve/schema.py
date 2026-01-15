@@ -488,12 +488,14 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
                     "placement_group_bundles is not provided."
                 )
 
-            if len(bundle_label_selector) != len(placement_group_bundles):
+            if len(bundle_label_selector) != 1 and len(bundle_label_selector) != len(
+                placement_group_bundles
+            ):
                 raise ValueError(
-                    f"If bundle_label_selector is provided, it must have the same "
-                    f"length as placement_group_bundles. Got "
-                    f"{len(bundle_label_selector)} label selectors and "
-                    f"{len(placement_group_bundles)} bundles."
+                    f"The `placement_group_bundle_label_selector` list must contain either "
+                    f"a single selector (to apply to all bundles) or match the number of "
+                    f"`placement_group_bundles`. Got {len(bundle_label_selector)} "
+                    f"selectors for {len(placement_group_bundles)} bundles."
                 )
 
         return values
