@@ -124,7 +124,7 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(
-            std::make_unique<ActorTaskExecutionArgWaiter>()) {
+            std::make_unique<ActorTaskExecutionArgWaiter>( [](const std::vector<rpc::ObjectReference> &args, int64_t tag) { })) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
