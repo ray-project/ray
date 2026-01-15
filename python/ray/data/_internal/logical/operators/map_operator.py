@@ -426,6 +426,7 @@ class StreamingRepartition(AbstractMap):
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        strict: bool = False,
     ):
         super().__init__(
             f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
@@ -433,6 +434,7 @@ class StreamingRepartition(AbstractMap):
             can_modify_num_rows=False,
         )
         self._target_num_rows_per_block = target_num_rows_per_block
+        self._strict = strict
 
     @property
     def target_num_rows_per_block(self) -> int:
