@@ -110,11 +110,13 @@ class SessionFileHandler(logging.Handler):
     Args:
         filename: The name of the log file. The file is created in the 'logs' directory
             of the Ray session directory.
+        encoding: Optional file encoding. Defaults to UTF-8 on Windows.
     """
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, encoding: Optional[str] = None):
         super().__init__()
         self._filename = filename
+        self._encoding = encoding
         self._handler = None
         self._formatter = None
         self._path = None
@@ -140,7 +142,10 @@ class SessionFileHandler(logging.Handler):
         os.makedirs(log_directory, exist_ok=True)
 
         self._path = os.path.join(log_directory, self._filename)
-        self._handler = logging.FileHandler(self._path)
+        encoding = self._encoding
+        if encoding is None and os.name == "nt":
+            encoding = "utf-8"
+        self._handler = logging.FileHandler(self._path, encoding=encoding)
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
 
