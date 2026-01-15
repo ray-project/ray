@@ -153,7 +153,7 @@ examples:
     skill_level: advanced
     use_cases:
       - generative ai
-    link: tutorials/asynchronous-inference/content/README
+    link: tutorials/asynchronous-inference/content/asynchronous-inference
     related_technology: integrations
   - title: Video Analysis Inference Pipeline
     skill_level: advanced
@@ -163,5 +163,5 @@ examples:
     related_technology: ml applications
   - title: Integrate with MLflow Model Registry
     skill_level: intermediate
-    link: mlflow-serving-intig
+    link: model-registries
     related_technology: integrations
