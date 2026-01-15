@@ -95,6 +95,11 @@ from ray.serve._private.default_impl import (
 )
 from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
+from ray.serve._private.grpc_util import (
+    get_grpc_response_status,
+    set_grpc_code_and_details,
+    start_grpc_server,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -113,6 +118,8 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
@@ -125,10 +132,11 @@ from ray.serve._private.utils import (
     asyncio_grpc_exception_handler,
     generate_request_id,
     get_component_file_name,  # noqa: F401
+    is_grpc_enabled,
     parse_import_path,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import AutoscalingConfig, HTTPOptions
+from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
 from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
@@ -139,8 +147,11 @@ from ray.serve.exceptions import (
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
+    HealthzResponse,
+    ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.util import metrics as ray_metrics
@@ -1537,7 +1548,6 @@ async def send_http_response(message, status_code, send):
 
 class Replica(ReplicaBase):
     def __init__(self, **kwargs):
-        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
 
         super().__init__(**kwargs)
 
@@ -1548,6 +1558,10 @@ class Replica(ReplicaBase):
         # get node ID
         self._node_id = ray.get_runtime_context().get_node_id()
         self._http_options: Optional[HTTPOptions] = None
+        self._grpc_options: Optional[gRPCOptions] = None
+
+        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
+        self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
 
@@ -1612,9 +1626,14 @@ class Replica(ReplicaBase):
             raise RuntimeError(err_msg)
 
         # Fetch configs
-        self._http_options = ray.get(
-            self._controller_handle.get_http_config.remote(),
+        self._http_options, self._grpc_options = ray.get(
+            [
+                self._controller_handle.get_http_config.remote(),
+                self._controller_handle.get_grpc_config.remote(),
+            ]
         )
+
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         # Allocate and start HTTP server
         async def start_http_server(port):
@@ -1639,7 +1658,30 @@ class Replica(ReplicaBase):
             protocol=RequestProtocol.HTTP,
         )
 
-        logger.info(f"Started HTTP server on port {self._http_port}")
+        # Allocate and start gRPC server if enabled
+        if grpc_enabled:
+
+            async def start_grpc_server_fn(port):
+                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                return await start_grpc_server(
+                    self._direct_ingress_service_handler_factory,
+                    options,
+                    event_loop=self._event_loop,
+                    enable_so_reuseport=False,
+                )
+
+            (
+                self._grpc_port,
+                self._direct_ingress_grpc_server_task,
+            ) = await allocate_and_start_server(
+                start_server_fn=start_grpc_server_fn,
+                protocol=RequestProtocol.GRPC,
+            )
+
+        logger.info(
+            f"Started HTTP server on port {self._http_port}"
+            + (f" and gRPC server on port {self._grpc_port}" if grpc_enabled else "")
+        )
 
     async def _on_initialized(self):
         await self._maybe_start_direct_ingress_servers()
@@ -1870,6 +1912,154 @@ class Replica(ReplicaBase):
                 tracing_ctx[key_str] = value.decode()
 
         return tracing_ctx
+
+    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not _is_tracing_enabled():
+            return
+
+        tracing_ctx = {}
+        for key, value in context.invocation_metadata():
+            if key in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key] = value
+
+        return tracing_ctx
+
+    async def _direct_ingress_unary_unary(
+        self,
+        service_method: str,
+        request_proto: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> bytes:
+        if service_method == "/ray.serve.RayServeAPIService/Healthz":
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            return HealthzResponse(message=message).SerializeToString()
+
+        if service_method == "/ray.serve.RayServeAPIService/ListApplications":
+            # NOTE(edoakes): ListApplications may be used for health checking.
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            # ListApplications returns only the app name the replica is serving.
+            application_names = [self._deployment_id.app_name]
+            return ListApplicationsResponse(
+                application_names=application_names
+            ).SerializeToString()
+
+        request_id = generate_request_id()
+        c = RayServegRPCContext(context)
+        c.set_trailing_metadata([("request_id", request_id)])
+        request_metadata = RequestMetadata(
+            # TODO: pick up the request ID from gRPC initial metadata.
+            request_id=request_id,
+            internal_request_id=generate_request_id(),
+            call_method=service_method.split("/")[-1],
+            _request_protocol=RequestProtocol.GRPC,
+            grpc_context=c,
+            app_name=self._deployment_id.app_name,
+            # TODO(edoakes): populate this.
+            multiplexed_model_id="",
+            route=self._deployment_id.app_name,
+            tracing_context=self.get_grpc_tracing_context(context),
+            is_streaming=False,
+            is_direct_ingress=True,
+        )
+
+        if not self._can_accept_request(request_metadata):
+            status = ResponseStatus(
+                code=grpc.StatusCode.RESOURCE_EXHAUSTED,
+                message="Request dropped due to backpressure",
+            )
+            set_grpc_code_and_details(context, status)
+            return
+
+        method_info = self._user_callable_wrapper.get_user_method_info(
+            request_metadata.call_method
+        )
+        request_args = (request_proto,)
+        request_kwargs = (
+            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+            if method_info.takes_grpc_context_kwarg
+            else {}
+        )
+
+        async def call_unary():
+            yield await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
+
+        with self._wrap_request(request_metadata):
+            self._num_queued_requests += 1
+            async with self._start_request(request_metadata):
+                self._num_queued_requests -= 1
+
+                # Use the generic disconnect detecting wrapper
+                result_gen = call_unary()
+                replica_response_generator = ReplicaResponseGenerator(
+                    result_gen,
+                    timeout_s=self._grpc_options.request_timeout_s,
+                )
+                try:
+                    result = await replica_response_generator.__anext__()
+                    c._set_on_grpc_context(context)
+                    status = ResponseStatus(code=grpc.StatusCode.OK)
+
+                    # NOTE(edoakes): we need to fully consume the generator otherwise the
+                    # finalizers that run after the `yield` statement won't run. There might
+                    # be a cleaner way to structure this.
+                    try:
+                        await replica_response_generator.__anext__()
+                    except StopAsyncIteration:
+                        pass
+                except BaseException as e:
+                    status = get_grpc_response_status(
+                        e,
+                        self._grpc_options.request_timeout_s,
+                        request_metadata.request_id,
+                    )
+                    return
+                finally:
+                    set_grpc_code_and_details(context, status)
+
+                return result.SerializeToString()
+
+    async def _direct_ingress_unary_stream(
+        self,
+        service_method: str,
+        request: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ):
+        raise NotImplementedError("unary_stream not implemented.")
+
+    def _direct_ingress_service_handler_factory(
+        self, service_method: str, stream: bool
+    ) -> Callable:
+        if stream:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_stream(
+                    service_method, *args, **kwargs
+                )
+
+        else:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_unary(
+                    service_method, *args, **kwargs
+                )
+
+        return handler
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
@@ -2142,6 +2332,8 @@ class Replica(ReplicaBase):
         await self.shutdown()
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
+        if self._direct_ingress_grpc_server_task:
+            self._direct_ingress_grpc_server_task.cancel()
 
 
 class ReplicaActor:
