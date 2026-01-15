@@ -522,7 +522,7 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
-  queue->ExecuteQueuedRequests();
+  queue->ExecuteQueuedTasks();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 1);
 
