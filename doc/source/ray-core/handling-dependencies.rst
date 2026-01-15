@@ -829,6 +829,8 @@ You can use the following command in the Terminal to do this:
     zip -r zip_file_name.zip example_dir
     tar -cf tar_file_name.tar example_dir
     tar -I zstd -cf tar_file_name.tar.zst example_dir
+    # If your tar does not support -I (GNU tar), use:
+    # tar -cf - example_dir | zstd > tar_file_name.tar.zst
 
 Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting archive contains a single top-level directory.
 In general, the archive's name and the top-level directory's name can be anything.

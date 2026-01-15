@@ -1219,13 +1219,20 @@ def _maybe_decompress_zst(package_path: Path) -> Optional[str]:
             "Please install the zstandard package."
         ) from e
 
-    with open(package_path, "rb") as src, NamedTemporaryFile(
-        suffix=".tar", delete=False
-    ) as tmp:
-        dctx = zstd.ZstdDecompressor()
-        with dctx.stream_reader(src) as reader:
-            shutil.copyfileobj(reader, tmp)
-        return tmp.name
+    tmp_path = None
+    try:
+        with open(package_path, "rb") as src, NamedTemporaryFile(
+            suffix=".tar", delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(src) as reader:
+                shutil.copyfileobj(reader, tmp)
+        return tmp_path
+    except Exception:
+        if tmp_path is not None:
+            Path(tmp_path).unlink(missing_ok=True)
+        raise
 
 
 def untar_package(
@@ -1255,6 +1262,11 @@ def untar_package(
         if remove_top_level_directory:
             top_level_directory = get_top_level_dir_from_tar(tar_path)
             if top_level_directory is not None:
+                macos_dir = _to_extended_length_path(
+                    os.path.join(target_dir, MAC_OS_ZIP_HIDDEN_DIR_NAME)
+                )
+                if os.path.isdir(macos_dir):
+                    shutil.rmtree(macos_dir)
                 remove_dir_from_filepaths(extended_target_dir, top_level_directory)
     finally:
         if temp_tar_path is not None:
