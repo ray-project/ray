@@ -70,14 +70,14 @@ class CudaIpcTransport(TensorTransportManager):
             import torch
             from torch.multiprocessing.reductions import reduce_tensor
 
-            # Create an interprocess-shareable CUDA event so that the receiver
-            # can wait for the sender's computations to complete.
-            event = torch.cuda.Event(interprocess=True)
-            torch.cuda.current_stream().record_event(event)
-
             device = gpu_object[0].device
             ray_gpu_idx = ray.get_gpu_ids()[device.index]
             ray_node_id = ray.get_runtime_context().get_node_id()
+
+            # Create an interprocess-shareable CUDA event so that the receiver
+            # can wait for the sender's computations to complete.
+            event = torch.cuda.Event(interprocess=True)
+            torch.cuda.current_stream(device).record_event(event)
 
             for t in gpu_object:
                 if t.device.type != device.type:
@@ -153,7 +153,7 @@ class CudaIpcTransport(TensorTransportManager):
                 # Make current stream wait for the sender's event
                 # This ensures sender's computation is complete before we use the tensor
                 # This is asynchronous - doesn't block CPU, only GPU stream
-                torch.cuda.current_stream().wait_event(event_remote)
+                torch.cuda.current_stream(device).wait_event(event_remote)
 
             for i, ipc_handle in enumerate(tensor_transport_metadata.cuda_ipc_handles):
                 # Reconstruct the tensor
