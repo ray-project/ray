@@ -2437,7 +2437,7 @@ class MultiAgentEpisode:
         for agent_id in self.agent_episodes.keys():
             if agent_id not in agent_ids:
                 continue
-            agent_indices[agent_id] = self.env_t_to_agent_t[agent_id].get(
+            agent_t_indices = self.env_t_to_agent_t[agent_id].get(
                 indices,
                 neg_index_as_lookback=neg_index_as_lookback,
                 fill=self.SKIP_ENV_TS_TAG,
@@ -2446,6 +2446,18 @@ class MultiAgentEpisode:
                 # the env_t_to_agent_t mappings.
                 _ignore_last_ts=what not in ["observations", "infos"],
             )
+            if isinstance(agent_t_indices, int):
+                if agent_t_indices != self.SKIP_ENV_TS_TAG:
+                    agent_t_indices = agent_t_indices - self.agent_t_started[agent_id]
+            else:
+                assert isinstance(agent_t_indices, list)
+                agent_t_indices = [
+                    index - self.agent_t_started[agent_id]
+                    if index != self.SKIP_ENV_TS_TAG
+                    else index
+                    for index in agent_t_indices
+                ]
+            agent_indices[agent_id] = agent_t_indices
         if not agent_indices:
             return []
         ret = []
@@ -2518,7 +2530,12 @@ class MultiAgentEpisode:
                 filter_for_skip_indices=agent_indices,
             )
             if isinstance(agent_indices, list):
-                agent_indices = [index - self.agent_t_started[agent_id] if agent_indices != self.SKIP_ENV_TS_TAG else index for index in agent_indices]
+                agent_indices = [
+                    index - self.agent_t_started[agent_id]
+                    if agent_indices != self.SKIP_ENV_TS_TAG
+                    else index
+                    for index in agent_indices
+                ]
 
                 agent_values = self._get_single_agent_data_by_env_step_indices(
                     what=what,
@@ -2535,7 +2552,6 @@ class MultiAgentEpisode:
                 if agent_indices != self.SKIP_ENV_TS_TAG:
                     agent_indices = agent_indices - self.agent_t_started[agent_id]
 
-                print(f'{agent_id}: {inf_lookback_buffer=}, {agent_indices=}')
                 agent_values = self._get_single_agent_data_by_index(
                     what=what,
                     inf_lookback_buffer=inf_lookback_buffer,
@@ -2567,7 +2583,7 @@ class MultiAgentEpisode:
         if index_incl_lookback == self.SKIP_ENV_TS_TAG:
             # We don't want to fill -> Skip this agent.
             if fill is None:
-                return
+                return None
             # Provide filled value for this agent.
             return getattr(sa_episode, f"get_{what}")(
                 indices=1000000000000,
