@@ -44,7 +44,7 @@ Next, within your rank 0 worker's training loop, call :func:`ray.train.report` w
 set to True, which will call your ``validate_fn`` with the default keyword arguments you passed to the trainer.
 Alternatively, you can set ``validation`` to a :class:`ray.train.v2.api.report_config.ValidationTaskConfig` object
 that contains keyword arguments that will override matching keyword arguments you passed to the trainer. If
-``validation`` is None or False, Ray Train will not run validation.
+``validation`` is False, Ray Train will not run validation.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
