@@ -72,16 +72,18 @@ class TaskReceiver {
 
   /// Enqueue a task for execution that was received via `PushTask`.
   ///
-  /// For actor tasks: the task will be enqueued and requests will be scheduled to begin execution if possible.
+  /// For actor tasks: the task will be enqueued and requests will be scheduled to begin
+  /// execution if possible.
   ///
-  /// For normal tasks: the task will only be enqueued and the caller must call `RunNormalTasksFromQueue` separately.
+  /// For normal tasks: the task will only be enqueued and the caller must call
+  /// `RunNormalTasksFromQueue` separately.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The reply callback.
   void EnqueueTask(rpc::PushTaskRequest request,
-                  rpc::PushTaskReply *reply,
-                  rpc::SendReplyCallback send_reply_callback);
+                   rpc::PushTaskReply *reply,
+                   rpc::SendReplyCallback send_reply_callback);
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();

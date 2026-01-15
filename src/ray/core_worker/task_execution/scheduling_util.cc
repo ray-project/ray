@@ -68,11 +68,12 @@ void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear();
 
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
-ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args)
+ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
+    AsyncWaitForArgs async_wait_for_args)
     : async_wait_for_args_(async_wait_for_args) {}
 
 void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReference> &args,
-                                std::function<void()> on_args_ready) {
+                                            std::function<void()> on_args_ready) {
   auto tag = next_tag_++;
   in_flight_waits_[tag] = on_args_ready;
   RAY_CHECK_OK(async_wait_for_args_(args, tag));

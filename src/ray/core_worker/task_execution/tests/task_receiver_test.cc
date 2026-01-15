@@ -130,7 +130,9 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class TaskReceiverTest : public ::testing::Test {
  public:
-  TaskReceiverTest() : actor_task_execution_arg_waiter_(std::make_unique<MockActorTaskExecutionArgWaiter>()) {
+  TaskReceiverTest()
+      : actor_task_execution_arg_waiter_(
+            std::make_unique<MockActorTaskExecutionArgWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,

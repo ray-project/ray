@@ -62,25 +62,26 @@ class ActorTaskExecutionArgWaiterInterface {
  public:
   virtual ~ActorTaskExecutionArgWaiterInterface() = default;
 
-  /// Asynchronously wait for the specified arguments and call `on_args_ready` when they are ready.
-  /// Trigger an async wait for the specified arguments.
+  /// Asynchronously wait for the specified arguments and call `on_args_ready` when they
+  /// are ready. Trigger an async wait for the specified arguments.
   ///
   /// \param[in] on_args_ready The callback to call when arguments are ready.
   virtual void AsyncWait(const std::vector<rpc::ObjectReference> &args,
-                    std::function<void()> on_args_ready) = 0;
+                         std::function<void()> on_args_ready) = 0;
 };
 
 class ActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   // Callback to trigger the asynchronous wait.
-  // The caller is expected to call `MarkReady` with the provided tag when the associated arguments are ready.
-  using AsyncWaitForArgs = std::function<Status(
-      const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
+  // The caller is expected to call `MarkReady` with the provided tag when the associated
+  // arguments are ready.
+  using AsyncWaitForArgs =
+      std::function<Status(const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
 
   explicit ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args);
 
   void AsyncWait(const std::vector<rpc::ObjectReference> &args,
-            std::function<void()> on_args_ready) override;
+                 std::function<void()> on_args_ready) override;
 
   void MarkReady(int64_t tag);
 
