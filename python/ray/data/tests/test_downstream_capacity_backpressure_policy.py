@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,6 +23,17 @@ from ray.data.context import DataContext
 
 
 class TestDownstreamCapacityBackpressurePolicy:
+    @pytest.fixture(autouse=True)
+    def setup_budget_fraction_mock(self):
+        """Fixture to patch get_utilized_object_store_budget_fraction for all tests."""
+        with patch(
+            "ray.data._internal.execution.backpressure_policy."
+            "downstream_capacity_backpressure_policy."
+            "get_utilized_object_store_budget_fraction"
+        ) as mock_func:
+            self._mock_get_utilized_budget_fraction = mock_func
+            yield
+
     def _mock_operator(
         self,
         op_class: type = PhysicalOperator,
@@ -171,13 +182,13 @@ class TestDownstreamCapacityBackpressurePolicy:
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
-        """Helper to set utilized budget fraction on resource manager.
+        """Helper to set utilized budget fraction.
 
         The policy checks: utilized_fraction <= OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         With threshold=0.9, skip backpressure when utilized_fraction <= 0.9.
         To trigger backpressure, set utilized_fraction > 0.9.
         """
-        rm.get_utilized_object_store_budget_fraction.return_value = fraction
+        self._mock_get_utilized_budget_fraction.return_value = fraction
         return fraction
 
     def _set_queue_ratio(self, op, op_state, rm, queue_size, downstream_capacity):
