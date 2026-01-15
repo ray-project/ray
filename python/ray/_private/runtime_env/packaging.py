@@ -1205,6 +1205,16 @@ def _safe_extract_tar(
         if not _is_within_directory(target_dir, member_path):
             logger.warning(f"Skipping unsafe path in tar: {member.name}")
             continue
+        if member.issym() or member.islnk():
+            link_target = os.path.join(os.path.dirname(member_path), member.linkname)
+            if not _is_within_directory(target_dir, link_target):
+                logger.warning(
+                    f"Skipping unsafe symlink in tar: {member.name} -> {member.linkname}"
+                )
+                continue
+        elif member.isdev():
+            logger.warning(f"Skipping device file in tar: {member.name}")
+            continue
         tar.extract(member, _to_extended_length_path(target_dir))
 
 
