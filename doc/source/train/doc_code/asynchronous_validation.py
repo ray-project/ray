@@ -6,8 +6,8 @@ import torch
 import ray.train
 import ray.data
 
-# Define validation dataset outside validation function because it is not serializable
-validation_dataset = ray.data.read_parquet(...)
+# Define Ray Data validation dataset outside validation function because it is not json serializable
+validation_dataset = ...
 
 
 def validate_fn(checkpoint: ray.train.Checkpoint) -> dict:

@@ -110,7 +110,7 @@ loss on a validation set. Note the following about this example:
     :end-before: __validate_fn_torch_trainer_end__
 
 (Experimental) Example: validation with Ray Data map_batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
