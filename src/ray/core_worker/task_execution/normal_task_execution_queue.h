@@ -46,7 +46,7 @@ class NormalTaskExecutionQueue {
            rpc::SendReplyCallback send_reply_callback,
            TaskSpecification task_spec);
 
-  /// Search for an TaskToExecute associated with the task that we are trying to cancel.
+  /// Search for a TaskToExecute associated with the task that we are trying to cancel.
   /// If found, remove the TaskToExecute from the queue and return true. Else,
   /// return false.
   bool CancelTaskIfFound(TaskID task_id);

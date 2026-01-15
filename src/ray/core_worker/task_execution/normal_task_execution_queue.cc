@@ -59,9 +59,6 @@ void NormalTaskExecutionQueue::Add(
                                                 std::move(task_spec)));
 }
 
-// Search for an TaskToExecute associated with the task that we are trying to cancel.
-// If found, remove the TaskToExecute from the queue and return true. Otherwise,
-// return false.
 bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
   for (std::deque<TaskToExecute>::reverse_iterator it = pending_normal_tasks_.rbegin();
