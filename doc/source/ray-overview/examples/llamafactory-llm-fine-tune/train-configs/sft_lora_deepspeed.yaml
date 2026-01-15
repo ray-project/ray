@@ -47,8 +47,8 @@ ray_storage_path: /mnt/cluster_storage/
 ray_num_workers: 4  # Number of GPUs to use
 resources_per_worker:
   GPU: 1
-  accelerator_type:L40S: 0.001            # Use this to simply specify a GPU type (not guaranteed on the same node). You can use A100-40G if L40S is not available. 
-  # anyscale/accelerator_shape:4xL40S: 0.001  # Use this to specify a specific node shape.
+  # accelerator_type:L40S: 0.001            # Use this to simply specify a GPU type (may place GPUs on separate nodes).
+  anyscale/accelerator_shape:4xL40S: 0.001  # Prefer this for DeepSpeed so all 4 GPUs are on the same node.
   # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
 ray_init_kwargs:
   runtime_env:

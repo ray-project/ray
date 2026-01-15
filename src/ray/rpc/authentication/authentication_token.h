@@ -77,6 +77,27 @@ class AuthenticationToken {
     return !(*this == other);
   }
 
+  /// Compare this token against a metadata value (e.g., "Bearer <token>").
+  /// Uses constant-time comparison to prevent timing attacks.
+  /// @param metadata_value The raw authorization header (should be "Bearer <token>")
+  /// @return true if tokens match, false otherwise
+  bool CompareWithMetadata(std::string_view metadata_value) const noexcept {
+    // Use sizeof for compile-time constant size (kBearerPrefix is constexpr char[])
+    constexpr size_t prefix_len = sizeof(kBearerPrefix) - 1;  // -1 for null terminator
+
+    // Check for valid "Bearer " prefix
+    if (metadata_value.size() < prefix_len ||
+        metadata_value.substr(0, prefix_len) != kBearerPrefix) {
+      return false;
+    }
+
+    std::string_view provided_token = metadata_value.substr(prefix_len);
+
+    // Convert to vector and use constant-time comparison
+    std::vector<uint8_t> provided_bytes(provided_token.begin(), provided_token.end());
+    return ConstTimeEqual(secret_, provided_bytes);
+  }
+
   /// Set authentication metadata on a gRPC client context
   /// Only call this from client-side code
   void SetMetadata(grpc::ClientContext &context) const {
@@ -95,6 +116,24 @@ class AuthenticationToken {
       return "";
     }
     return kBearerPrefix + std::string(secret_.begin(), secret_.end());
+  }
+
+  /// Get raw token value as string (without Bearer prefix)
+  /// WARNING: This exposes the raw token. Use sparingly.
+  /// @return Raw token string, or empty string if token is empty
+  std::string GetRawValue() const {
+    if (secret_.empty()) {
+      return "";
+    }
+    return std::string(secret_.begin(), secret_.end());
+  }
+
+  /// Get token hash
+  /// @return Hash of the token value
+  std::size_t ToHash() const {
+    // TODO(andrewsykim): consider using a more secure hashing algorithm like SHA256
+    // before documenting this feature in Ray docs.
+    return std::hash<std::string>()(std::string(secret_.begin(), secret_.end()));
   }
 
   /// Create AuthenticationToken from gRPC metadata value
@@ -119,7 +158,7 @@ class AuthenticationToken {
  private:
   std::vector<uint8_t> secret_;
 
-  // Constant-time string comparison to avoid timing attacks.
+  // Constant-time comparison to avoid timing attacks.
   // https://en.wikipedia.org/wiki/Timing_attack
   static bool ConstTimeEqual(const std::vector<uint8_t> &a,
                              const std::vector<uint8_t> &b) noexcept {
@@ -160,6 +199,13 @@ class AuthenticationToken {
     // Clear the moved-from object explicitly for security
     // Note: 'other' is already an rvalue reference, no need to move again
     other.SecureClear();
+  }
+};
+
+// Hash function for AuthenticationToken
+struct AuthenticationTokenHash {
+  std::size_t operator()(const AuthenticationToken &token) const {
+    return token.ToHash();
   }
 };
 

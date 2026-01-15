@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -101,22 +101,6 @@ def anyscale_project_url(project_id: str) -> str:
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
         f"/?tab=session-list"
-    )
-
-
-def anyscale_cluster_url(project_id: str, cluster_id: str) -> str:
-    return (
-        f"{ANYSCALE_HOST}"
-        f"/o/anyscale-internal/projects/{project_id}"
-        f"/clusters/{cluster_id}"
-    )
-
-
-def anyscale_cluster_compute_url(compute_tpl_id: str) -> str:
-    return (
-        f"{ANYSCALE_HOST}"
-        f"/o/anyscale-internal/configurations/cluster-computes"
-        f"/{compute_tpl_id}"
     )
 
 

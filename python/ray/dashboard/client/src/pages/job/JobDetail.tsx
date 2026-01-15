@@ -51,7 +51,12 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <Box sx={{ padding: 2, backgroundColor: "white" }}>
+      <Box
+        sx={(theme) => ({
+          padding: 2,
+          backgroundColor: theme.palette.background.paper,
+        })}
+      >
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
@@ -97,7 +102,12 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <Box sx={{ padding: 2, backgroundColor: "white" }}>
+    <Box
+      sx={(theme) => ({
+        padding: 2,
+        backgroundColor: theme.palette.background.paper,
+      })}
+    >
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (

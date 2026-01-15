@@ -15,5 +15,9 @@ torch-sparse==0.6.18+pt23cu121
 torch-cluster==1.6.3+pt23cu121
 torch-spline-conv==1.2.2+pt23cu121
 
-cupy-cuda12x==13.1.0; sys_platform != 'darwin'
+cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
+
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# Downgrading to JAX 0.4.13 to be compatible with CUDA 12.1
+jaxlib==0.4.13+cuda12.cudnn89; python_version < '3.12' and sys_platform != 'darwin'

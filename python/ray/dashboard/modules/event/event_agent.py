@@ -8,6 +8,9 @@ from typing import Union
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
@@ -79,24 +82,28 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         dashboard_http_address = await self._get_dashboard_http_address()
         data = await self._cached_events.get()
         self.total_event_reported += len(data)
+        last_exception = None
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):
             try:
                 logger.debug("Report %s events.", len(data))
                 async with self._dashboard_agent.http_session.post(
                     f"{dashboard_http_address}/report_events",
                     json=data,
+                    headers=get_auth_headers_if_auth_enabled({}),
                 ) as response:
                     response.raise_for_status()
                 self.total_request_sent += 1
                 break
             except Exception as e:
                 logger.warning(f"Report event failed, retrying... {e}")
+                last_exception = e
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
             logger.error(
                 "Report event failed: %s",
                 data_str[:limit] + (data_str[limit:] and "..."),
+                exc_info=last_exception,
             )
 
     async def get_internal_states(self):

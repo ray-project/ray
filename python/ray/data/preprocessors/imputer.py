@@ -1,21 +1,29 @@
+import logging
 from collections import Counter
 from numbers import Number
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
 from ray.data.aggregate import Mean
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.version_support import (
+    SerializablePreprocessor as Serializable,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+logger = logging.getLogger(__name__)
+
+
 @PublicAPI(stability="alpha")
-class SimpleImputer(Preprocessor):
+@Serializable(version=1, identifier="io.ray.preprocessors.simple_imputer")
+class SimpleImputer(SerializablePreprocessorBase):
     """Replace missing values with imputed values. If the column is missing from a
     batch, it will be filled with the imputed value.
 
@@ -128,11 +136,13 @@ class SimpleImputer(Preprocessor):
                     '`fill_value` must be set when using "constant" strategy.'
                 )
 
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self.output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
-    def _fit(self, dataset: "Dataset") -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         if self.strategy == "mean":
             self.stat_computation_plan.add_aggregator(
                 aggregator_fn=Mean, columns=self.columns
@@ -201,6 +211,27 @@ class SimpleImputer(Preprocessor):
             f"strategy={self.strategy!r}, fill_value={self.fill_value!r}, "
             f"output_columns={self.output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+            "strategy": self.strategy,
+            "fill_value": getattr(self, "fill_value", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.strategy = fields["strategy"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+        self.fill_value = fields.get("fill_value")
+
+        if self.strategy == "constant":
+            self._is_fittable = False
 
 
 def _get_most_frequent_values(

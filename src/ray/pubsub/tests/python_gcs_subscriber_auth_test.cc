@@ -24,6 +24,7 @@
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/env.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -86,7 +87,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication by default
-    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -95,9 +96,9 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
       server_->Shutdown();
       server_.reset();
     }
-    unsetenv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
     // Reset to default auth mode
-    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -107,12 +108,12 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
         std::make_unique<MockInternalPubSubGcsService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
-    std::optional<rpc::AuthenticationToken> auth_token;
+    std::shared_ptr<rpc::AuthenticationToken> auth_token;
     if (!server_token.empty()) {
-      auth_token = rpc::AuthenticationToken(server_token);
+      auth_token = std::make_shared<rpc::AuthenticationToken>(server_token);
     } else {
       // Empty token means no auth required
-      auth_token = rpc::AuthenticationToken("");
+      auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
@@ -135,11 +136,11 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   // Set client authentication token via environment variable
   void SetClientToken(const std::string &client_token) {
     if (!client_token.empty()) {
-      setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
-      RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+      ray::SetEnv("RAY_AUTH_TOKEN", client_token);
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     } else {
-      unsetenv("RAY_AUTH_TOKEN");
-      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      ray::UnsetEnv("RAY_AUTH_TOKEN");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     }
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }

@@ -5,7 +5,6 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
-from ray_release.test import Test, TestState
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester import (
@@ -18,6 +17,8 @@ from ci.ray_ci.tester import (
     _get_test_targets,
 )
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
+from ray_release.test import Test, TestState
 
 
 def _stub_test(val: dict) -> Test:
@@ -288,17 +289,22 @@ def test_get_all_test_query() -> None:
     )
 
 
-@mock.patch("ci.ray_ci.tester_container.TesterContainer.run_script_with_output")
-@mock.patch("ray_release.test.Test.gen_from_s3")
-def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
-    mock_gen_from_s3.return_value = [
-        _stub_test({"name": "linux://old_test_01"}),
-        _stub_test({"name": "linux://old_test_02"}),
-    ]
-    mock_run_script_with_output.return_value = "//old_test_01\n//new_test"
-    assert _get_new_tests(
-        "linux", LinuxTesterContainer("test", skip_ray_installation=True)
-    ) == {"//new_test"}
+def test_get_new_tests() -> None:
+    with mock.patch(
+        "subprocess.check_output",
+        return_value="\n".join(["//old_test_01", "//old_test_02", "//new_test"]).encode(
+            "utf-8"
+        ),
+    ), mock.patch(
+        "ray_release.test.Test.gen_from_s3",
+        return_value=[
+            _stub_test({"name": "linux://old_test_01"}),
+            _stub_test({"name": "linux://old_test_02"}),
+        ],
+    ):
+        assert _get_new_tests(
+            "linux", LinuxTesterContainer("test", skip_ray_installation=True)
+        ) == {"//new_test"}
 
 
 def test_get_flaky_test_targets() -> None:

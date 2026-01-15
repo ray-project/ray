@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -30,7 +31,8 @@ namespace core {
   void Handle##METHOD(rpc::METHOD##Request request,                          \
                       rpc::METHOD##Reply *reply,                             \
                       rpc::SendReplyCallback send_reply_callback) override { \
-    core_worker_->Handle##METHOD(request, reply, send_reply_callback);       \
+    core_worker_->Handle##METHOD(                                            \
+        std::move(request), reply, std::move(send_reply_callback));          \
   }
 
 // This class was introduced as a result of changes in
@@ -56,7 +58,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(ReportGeneratorItemReturns)
   RAY_CORE_WORKER_RPC_PROXY(KillActor)
   RAY_CORE_WORKER_RPC_PROXY(CancelTask)
-  RAY_CORE_WORKER_RPC_PROXY(CancelRemoteTask)
+  RAY_CORE_WORKER_RPC_PROXY(RequestOwnerToCancelTask)
   RAY_CORE_WORKER_RPC_PROXY(RegisterMutableObjectReader)
   RAY_CORE_WORKER_RPC_PROXY(GetCoreWorkerStats)
   RAY_CORE_WORKER_RPC_PROXY(LocalGC)

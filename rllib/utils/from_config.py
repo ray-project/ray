@@ -4,13 +4,12 @@ import os
 import re
 from copy import deepcopy
 from functools import partial
+from typing import TYPE_CHECKING, Optional
 
 import yaml
 
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-
-from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.rllib.utils.typing import FromConfigSpec

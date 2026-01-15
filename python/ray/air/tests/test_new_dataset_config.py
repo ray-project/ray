@@ -301,7 +301,7 @@ def _run_data_config_resource_test(data_config):
     num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
     num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
 
-    original_execution_options = data_config._execution_options
+    original_execution_options = data_config._get_execution_options("train")
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 

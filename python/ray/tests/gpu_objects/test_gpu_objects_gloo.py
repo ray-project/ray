@@ -10,8 +10,10 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.collective import create_collective_group
+from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+    CollectiveTransportMetadata,
+)
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -82,6 +84,9 @@ class ErrorActor:
     def block_background_thread(self):
         time.sleep(100)
 
+    def block_main_thread(self):
+        time.sleep(100)
+
 
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
@@ -138,12 +143,12 @@ def test_gc_gpu_object_metadata(ray_start_regular):
     ref = actors[0].echo.remote(tensor)
     gpu_obj_id = ref.hex()
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    assert gpu_obj_id in gpu_object_manager.managed_gpu_object_metadata
+    assert gpu_object_manager.is_managed_object(gpu_obj_id)
     ray.get(actors[1].double.remote(ref))
     del ref
 
     wait_for_condition(
-        lambda: gpu_obj_id not in gpu_object_manager.managed_gpu_object_metadata,
+        lambda: not gpu_object_manager.is_managed_object(gpu_obj_id),
     )
 
 
@@ -518,11 +523,21 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_src[0], tensor)
 
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, TensorTransportEnum.GLOO)
+    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, "GLOO")
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     task_args = (gpu_ref,)
-    gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
+    gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
+        dst_actor, task_args
+    )
+
+    gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+        gpu_obj_id,
+        CollectiveTransportMetadata(
+            tensor_meta=[(tensor.shape, tensor.dtype)],
+            tensor_device=tensor.device,
+        ),
+    )
 
     # Check dst_actor has the GPU object
     ret_val_dst = ray.get(
@@ -542,18 +557,18 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
 
     # Case 1: Single tensor
     ref = actor.echo.remote(tensor1)
-    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), tensor1)
+    assert torch.equal(ray.get(ref, _use_object_store=True), tensor1)
 
     # Case 2: Multiple tensors
     ref = actor.echo.remote([tensor1, tensor2])
-    result = ray.get(ref, _tensor_transport="object_store")
+    result = ray.get(ref, _use_object_store=True)
     assert torch.equal(result[0], tensor1)
     assert torch.equal(result[1], tensor2)
 
     # Case 3: Mixed CPU and GPU data
     data = [tensor1, tensor2, 7]
     ref = actor.echo.remote(data)
-    result = ray.get(ref, _tensor_transport="object_store")
+    result = ray.get(ref, _use_object_store=True)
     assert torch.equal(result[0], tensor1)
     assert torch.equal(result[1], tensor2)
     assert result[2] == 7
@@ -567,6 +582,13 @@ def test_invalid_tensor_transport(ray_start_regular):
             @ray.method(tensor_transport="invalid")
             def echo(self, data):
                 return data
+
+    actor = GPUTestActor.remote()
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+        actor.double.options(tensor_transport="invalid").remote(torch.randn((1,)))
+
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+        ray.put(torch.randn((1,)), _tensor_transport="invalid")
 
 
 @pytest.mark.skipif(
@@ -676,8 +698,8 @@ def test_dynamic_tensor_transport_via_options(
         # If enable_tensor_transport is set to True, then it's okay to use
         # dynamic tensor_transport.
         ref = sender.tensor_method.options(tensor_transport="gloo").remote()
-        tensor = ray.get(ref, _tensor_transport="object_store")
-        result = ray.get(receiver.double.remote(ref), _tensor_transport="object_store")
+        tensor = ray.get(ref, _use_object_store=True)
+        result = ray.get(receiver.double.remote(ref), _use_object_store=True)
         assert result == pytest.approx(tensor * 2)
     else:
         # If enable_tensor_transport is not set, then user cannot use
@@ -730,12 +752,12 @@ def test_app_error_fetch_to_driver(ray_start_regular):
 
     ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
     with pytest.raises(Exception, match="test_app_error"):
-        ray.get(ref, _tensor_transport="object_store")
+        ray.get(ref, _use_object_store=True)
 
     # Make sure the driver can receive an exception from the actor.
     small_tensor = torch.tensor([1, 2, 3])
     ref = actor.echo.remote(small_tensor)
-    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), small_tensor)
+    assert torch.equal(ray.get(ref, _use_object_store=True), small_tensor)
 
 
 def test_write_after_save(ray_start_regular):
@@ -789,7 +811,7 @@ def test_wait_tensor_freed(ray_start_regular):
     gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
     obj_id = "random_id"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object(obj_id, [tensor], is_primary=True)
+    gpu_object_store.add_object_primary(obj_id, [tensor], "GLOO")
 
     assert gpu_object_store.has_object(obj_id)
     with pytest.raises(TimeoutError):
@@ -816,8 +838,8 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     obj_id1 = "random_id1"
     obj_id2 = "random_id2"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object(obj_id1, [tensor], is_primary=True)
-    gpu_object_store.add_object(obj_id2, [tensor], is_primary=True)
+    gpu_object_store.add_object_primary(obj_id1, [tensor], "GLOO")
+    gpu_object_store.add_object_primary(obj_id2, [tensor], "GLOO")
 
     assert gpu_object_store.has_object(obj_id1)
     assert gpu_object_store.has_object(obj_id2)
@@ -864,12 +886,12 @@ def test_send_back_and_dst_warning(ray_start_regular):
         t = src_actor.echo.remote(tensor)
         t1 = src_actor.echo.remote(t)  # Sent back to the source actor
         t2 = dst_actor.echo.remote(t)  # Also sent to another actor
-        ray.get([t1, t2], _tensor_transport="object_store")
+        ray.get([t1, t2], _use_object_store=True)
 
     # Second transmission of ObjectRef `t` to `dst_actor` should not trigger a warning
     # Verify no `pytest.warns` context is used here because no warning should be raised
     t3 = dst_actor.echo.remote(t)
-    ray.get(t3, _tensor_transport="object_store")
+    ray.get(t3, _use_object_store=True)
 
 
 def test_duplicate_objectref_transfer(ray_start_regular):
@@ -941,13 +963,15 @@ def test_send_fails(ray_start_regular):
         ray.get(result_ref)
 
 
-def test_send_actor_dies(ray_start_regular):
+def test_send_actor_dies_before_sending(ray_start_regular):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
 
-    # Try a transfer with the sender's background thread blocked,
+    gpu_obj_ref = actors[0].send.remote(torch.randn(100, 100))
+    # Wait for the object to actually be created on the sender
+    ray.wait([gpu_obj_ref])
+    # Block the background thread before triggering the transfer
     # so the send doesn't happen before the actor is killed
-    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
     actors[0].block_background_thread.remote()
     result_ref = actors[1].recv.remote(gpu_obj_ref)
     ray.kill(actors[0])

@@ -25,7 +25,7 @@ Tuning output blocks for read
 
 By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <loading-data-api>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
 - Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
 Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
@@ -409,6 +409,7 @@ Configuring resources and locality
 By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
 You may want to customize these limits in the following scenarios:
+
 - If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (for example, 2 GB) to limit resource usage.

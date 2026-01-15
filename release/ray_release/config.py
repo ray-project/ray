@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import jsonschema
 import yaml
+
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
@@ -270,6 +271,7 @@ def validate_byod_type(byod_type: str, python_version: str) -> None:
         "3.10",
         "3.11",
         "3.12",
+        "3.13",
     ]:
         raise Exception(
             f"Invalid Python version for BYOD type {byod_type}: {python_version}"

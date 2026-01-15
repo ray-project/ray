@@ -32,6 +32,14 @@ def ray_init_with_task_retry_delay():
 
 
 @pytest.fixture
+def ray_init_with_actor_graceful_shutdown_timeout():
+    ray.shutdown()
+    address = ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 1000})
+    yield address
+    ray.shutdown()
+
+
+@pytest.fixture
 def tempfile_factory() -> Generator[Callable[[], str], None, None]:
     """Yields a factory function to generate tempfiles that will be deleted after the test run."""
     files = []
@@ -1381,6 +1389,172 @@ def test_actor_ray_shutdown_dont_interfere_with_kill(
     ray.kill(actor)
 
     wait_for_condition(lambda: not check_file_exists_and_not_empty(shutdown_file))
+
+
+def test_actor_ray_shutdown_called_on_del(ray_start_regular_shared, tempfile_factory):
+    """Test that __ray_shutdown__ is called when actor goes out of scope via del."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class DelTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_del")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = DelTestActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_del", (
+            "Expected __ray_shutdown__ to be called within actor_graceful_shutdown_timeout_ms "
+            "after actor handle was deleted with del"
+        )
+
+
+def test_actor_del_with_atexit(ray_start_regular_shared, tempfile_factory):
+    """Test that both __ray_shutdown__ and atexit handlers run on del actor."""
+    shutdown_file = tempfile_factory()
+    atexit_file = tempfile_factory()
+    order_file = tempfile_factory()
+
+    @ray.remote
+    class BothHandlersActor:
+        def __init__(self):
+            atexit.register(self.cleanup)
+
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_del")
+                f.flush()
+            with open(order_file, "a") as f:
+                f.write(f"shutdown:{time.time()}\n")
+                f.flush()
+
+        def cleanup(self):
+            with open(atexit_file, "w") as f:
+                f.write("atexit_del")
+                f.flush()
+
+            with open(order_file, "a") as f:
+                f.write(f"atexit:{time.time()}\n")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = BothHandlersActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+    with open(shutdown_file, "r") as f:
+        assert (
+            f.read() == "ray_shutdown_del"
+        ), "Expected __ray_shutdown__ to be called when actor deleted"
+
+    wait_for_condition(lambda: check_file_exists_and_not_empty(atexit_file), timeout=10)
+    with open(atexit_file, "r") as f:
+        assert f.read() == "atexit_del", "Expected atexit handler to be called"
+
+    # Verify execution order: __ray_shutdown__ should run before atexit
+    wait_for_condition(lambda: check_file_exists_and_not_empty(order_file), timeout=10)
+    with open(order_file, "r") as f:
+        order = f.read()
+        lines = order.strip().split("\n")
+        assert len(lines) == 2, f"Expected 2 entries, got: {lines}"
+        assert lines[0].startswith(
+            "shutdown:"
+        ), f"Expected __ray_shutdown__ first, got order: {lines}"
+        assert lines[1].startswith(
+            "atexit:"
+        ), f"Expected atexit second, got order: {lines}"
+
+
+def test_actor_ray_shutdown_called_on_scope_exit(
+    ray_start_regular_shared, tempfile_factory
+):
+    """Test that __ray_shutdown__ is called when actor goes out of scope."""
+    shutdown_file = tempfile_factory()
+
+    @ray.remote
+    class ScopeTestActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("shutdown_called_on_scope_exit")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    def create_and_use_actor():
+        actor = ScopeTestActor.remote()
+        ray.get(actor.ready.remote())
+        # Actor goes out of scope at end of function
+
+    create_and_use_actor()
+
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_file), timeout=10
+    )
+
+    with open(shutdown_file, "r") as f:
+        assert f.read() == "shutdown_called_on_scope_exit"
+
+
+def test_actor_graceful_shutdown_timeout_fallback(
+    ray_init_with_actor_graceful_shutdown_timeout, tempfile_factory
+):
+    """Test that actor is force killed if __ray_shutdown__ exceeds timeout."""
+    shutdown_started_file = tempfile_factory()
+    shutdown_completed_file = tempfile_factory()
+
+    @ray.remote
+    class HangingShutdownActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_started_file, "w") as f:
+                f.write("shutdown_started")
+                f.flush()
+
+            # Hang indefinitely - simulating buggy cleanup code
+            time.sleep(5)
+
+            # This should never be reached due to force kill fallback
+            with open(shutdown_completed_file, "w") as f:
+                f.write("should_not_reach")
+                f.flush()
+
+        def ready(self):
+            return "ready"
+
+    actor = HangingShutdownActor.remote()
+    ray.get(actor.ready.remote())
+    del actor
+
+    # Verify that shutdown started
+    wait_for_condition(
+        lambda: check_file_exists_and_not_empty(shutdown_started_file), timeout=5
+    )
+    with open(shutdown_started_file, "r") as f:
+        assert (
+            f.read() == "shutdown_started"
+        ), "Expected __ray_shutdown__ to start execution"
+
+    # Verify that shutdown did NOT complete (force killed before completion)
+    assert not check_file_exists_and_not_empty(shutdown_completed_file), (
+        "Expected actor to be force-killed before __ray_shutdown__ completed, "
+        "but completion file exists. This means force kill fallback did not work."
+    )
 
 
 if __name__ == "__main__":

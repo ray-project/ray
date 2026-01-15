@@ -291,9 +291,9 @@ def test_controller_recover_target_capacity(
         "downscaling_factor": 4,
         "metrics_interval_s": 1,
         # The default look_back_period_s is 30, which means the test assertions will be
-        # slow to respond to changes in metrics. Setting it to 1 makes the test assertions
+        # slow to respond to changes in metrics. Setting it to 2 makes the test assertions
         # more responsive to changes in metrics, hence reducing flakiness.
-        "look_back_period_s": 1,
+        "look_back_period_s": 2,
     },
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
@@ -1075,6 +1075,7 @@ class TestInitialReplicasHandling:
                 deployment_name: int(initial_replicas * config_target_capacity / 100)
             },
             app_name="app1",
+            timeout=30,
         )
 
         # When deploying a new config, initial_replicas * target_capacity

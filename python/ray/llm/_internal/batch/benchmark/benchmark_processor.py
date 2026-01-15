@@ -17,8 +17,11 @@ import ray
 from .dataset import ShareGPTDataset
 from ray import data, serve
 from ray.data.llm import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
     ServeDeploymentProcessorConfig,
-    build_llm_processor,
+    TokenizerStageConfig,
+    build_processor,
     vLLMEngineProcessorConfig,
 )
 from ray.serve.llm import (
@@ -36,6 +39,7 @@ class Mode(Enum):
     SHARED_VLLM_ENGINE = "shared_vllm_engine"
     SERVE_DEPLOYMENT = "serve_deployment"
     SHARED_SERVE_DEPLOYMENT = "shared_serve_deployment"
+    CLASSIFY = "classify"
 
 
 # Default sampling parameters -- ensure a fair comparison by omitting sampling-induced variance
@@ -53,6 +57,11 @@ VLLM_ENGINE_KWARGS = {
     "max_num_batched_tokens": 4096,
 }
 
+# Default pooling parameters for classification
+CLASSIFY_POOLING_PARAMS = {
+    "truncate_prompt_tokens": -1,
+}
+
 
 def build_vllm_engine_kwargs(**kwargs) -> dict:
     """Build vLLM engine kwargs from command line arguments."""
@@ -68,21 +77,32 @@ def _build_vllm_engine_config(
     pipeline_parallel_size: int = None,
     tensor_parallel_size: int = None,
     distributed_executor_backend: str = None,
+    task_type: str = None,
+    max_model_len: int = None,
 ) -> vLLMEngineProcessorConfig:
     """Helper to create vLLMEngineProcessorConfig."""
-    return vLLMEngineProcessorConfig(
+    engine_kwargs = build_vllm_engine_kwargs(
+        pipeline_parallel_size=pipeline_parallel_size,
+        tensor_parallel_size=tensor_parallel_size,
+        distributed_executor_backend=distributed_executor_backend,
+    )
+    if max_model_len is not None:
+        engine_kwargs["max_model_len"] = max_model_len
+
+    config = vLLMEngineProcessorConfig(
         model_source=model,
         batch_size=batch_size,
         concurrency=concurrency,
         apply_chat_template=False,
         tokenize=False,
         detokenize=False,
-        engine_kwargs=build_vllm_engine_kwargs(
-            pipeline_parallel_size=pipeline_parallel_size,
-            tensor_parallel_size=tensor_parallel_size,
-            distributed_executor_backend=distributed_executor_backend,
-        ),
+        engine_kwargs=engine_kwargs,
     )
+
+    if task_type is not None:
+        config.task_type = task_type
+
+    return config
 
 
 def _build_serve_deployment_config(
@@ -145,7 +165,7 @@ def build_single_vllm_engine_processor(
         tensor_parallel_size,
         distributed_executor_backend,
     )
-    return build_llm_processor(
+    return build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -174,7 +194,7 @@ def build_shared_vllm_engine_processor(
         distributed_executor_backend,
     )
 
-    processor1 = build_llm_processor(
+    processor1 = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -187,7 +207,7 @@ def build_shared_vllm_engine_processor(
         },
     )
 
-    processor2 = build_llm_processor(
+    processor2 = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
@@ -200,6 +220,42 @@ def build_shared_vllm_engine_processor(
         return processor2(processor1(dataset))
 
     return multi_turn_processor
+
+
+def build_classify_processor(
+    batch_size: int,
+    concurrency: int,
+    model: str,
+    pooling_params: dict = CLASSIFY_POOLING_PARAMS,
+    max_model_len: int = 512,
+):
+    """Build vLLM engine processor for classification benchmark."""
+
+    config = vLLMEngineProcessorConfig(
+        model_source=model,
+        task_type="classify",
+        batch_size=batch_size,
+        concurrency=concurrency,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+        engine_kwargs={
+            "enforce_eager": True,
+            "max_model_len": max_model_len,
+        },
+    )
+    return build_processor(
+        config,
+        preprocess=lambda row: dict(
+            prompt=row["prompt"],
+            pooling_params=pooling_params,
+        ),
+        postprocess=lambda row: {
+            "probs": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
 
 
 def setup_serve_deployment(model: str, concurrency: int) -> tuple[str, str]:
@@ -283,7 +339,7 @@ def build_single_serve_deployment_processor(
         deployment_name,
         app_name,
     )
-    return build_llm_processor(
+    return build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -315,7 +371,7 @@ def build_shared_serve_deployment_processor(
         app_name,
     )
 
-    processor1 = build_llm_processor(
+    processor1 = build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -336,7 +392,7 @@ def build_shared_serve_deployment_processor(
         },
     )
 
-    processor2 = build_llm_processor(
+    processor2 = build_processor(
         config,
         preprocess=lambda row: dict(
             method="completions",
@@ -399,6 +455,7 @@ def benchmark(
         Mode.SHARED_VLLM_ENGINE: build_shared_vllm_engine_processor,
         Mode.SERVE_DEPLOYMENT: build_single_serve_deployment_processor,
         Mode.SHARED_SERVE_DEPLOYMENT: build_shared_serve_deployment_processor,
+        Mode.CLASSIFY: build_classify_processor,
     }
 
     if mode not in mode_to_builder:
@@ -422,6 +479,16 @@ def benchmark(
             )
         finally:
             serve.delete(app_name)
+    elif mode == Mode.CLASSIFY:
+        return run_processor(
+            mode,
+            dataset,
+            builder,
+            batch_size=batch_size,
+            concurrency=concurrency,
+            model=model,
+            pooling_params=CLASSIFY_POOLING_PARAMS,
+        )
     else:
         return run_processor(
             mode,
@@ -479,7 +546,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--truncate-prompt",
         type=int,
-        default=2048,
+        default=512,
         help="Maximum prompt length",
     )
     # Engine configuration

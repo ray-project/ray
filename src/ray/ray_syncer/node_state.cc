@@ -63,8 +63,12 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
                  << (current ? current->version() : -1)
                  << " message_version=" << message->version()
                  << ", message_from=" << NodeID::FromBinary(message->node_id());
+
   // Check whether newer version of this message has been received.
   if (current && current->version() >= message->version()) {
+    RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
+                  << current->version()
+                  << ", dropped message version: " << message->version();
     return false;
   }
 

@@ -289,11 +289,11 @@ const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   return message_->args(arg_index).object_ref();
 }
 
-rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+std::optional<std::string> TaskSpecification::ArgTensorTransport(size_t arg_index) const {
   if (message_->args(arg_index).has_tensor_transport()) {
     return message_->args(arg_index).tensor_transport();
   }
-  return rpc::TensorTransport::OBJECT_STORE;
+  return std::nullopt;
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -495,11 +495,11 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
-const rpc::TensorTransport TaskSpecification::TensorTransport() const {
-  if (IsActorTask()) {
+std::optional<std::string> TaskSpecification::TensorTransport() const {
+  if (message_->has_tensor_transport()) {
     return message_->tensor_transport();
   }
-  return rpc::TensorTransport::OBJECT_STORE;
+  return std::nullopt;
 }
 
 bool TaskSpecification::AllowOutOfOrderExecution() const {
@@ -612,15 +612,15 @@ bool TaskSpecification::IsRetriable() const {
 }
 
 void TaskSpecification::EmitTaskMetrics(
-    ray::observability::MetricInterface &scheduler_placement_time_s_histogram) const {
-  double duration_s = (GetMessage().lease_grant_timestamp_ms() -
-                       GetMessage().dependency_resolution_timestamp_ms()) /
-                      1000;
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const {
+  double duration_ms = GetMessage().lease_grant_timestamp_ms() -
+                       GetMessage().dependency_resolution_timestamp_ms();
 
   if (IsActorCreationTask()) {
-    scheduler_placement_time_s_histogram.Record(duration_s, {{"WorkloadType", "Actor"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms,
+                                                 {{"WorkloadType", "Actor"}});
   } else {
-    scheduler_placement_time_s_histogram.Record(duration_s, {{"WorkloadType", "Task"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms, {{"WorkloadType", "Task"}});
   }
 }
 

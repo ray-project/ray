@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
   auto leader_port = std::string(argv[2]);
   auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  ray::syncer::RaySyncer syncer(io_context, node_id.Binary());
+  ray::syncer::RaySyncer syncer(io_context, node_id.Binary(), 1, 0);
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<ray::syncer::RaySyncerService> service;

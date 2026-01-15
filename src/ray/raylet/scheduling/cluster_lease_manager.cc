@@ -412,6 +412,7 @@ const RayLease *ClusterLeaseManager::AnyPendingLeasesForResourceAcquisition(
 void ClusterLeaseManager::RecordMetrics() const {
   internal_stats_.RecordMetrics();
   cluster_resource_scheduler_.GetLocalResourceManager().RecordMetrics();
+  cluster_resource_scheduler_.GetClusterResourceManager().RecordMetrics();
 }
 
 std::string ClusterLeaseManager::DebugStr() const {
