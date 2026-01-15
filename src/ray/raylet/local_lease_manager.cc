@@ -328,6 +328,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
+          RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
           // retry granting the lease once another lease finishes and releases
@@ -1202,6 +1203,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting leases size: " << waiting_leases_index_.size() << "\n";
   buffer << "Number of granted lease arguments: " << granted_lease_args_.size() << "\n";
   buffer << "Number of pinned lease arguments: " << pinned_lease_arguments_.size()
+         << "\n";
+  buffer << "Total size of pinned lease arguments: " << pinned_lease_arguments_bytes_
          << "\n";
   buffer << "Number of total spilled leases: " << num_lease_spilled_ << "\n";
   buffer << "Number of spilled waiting leases: " << num_waiting_lease_spilled_ << "\n";
