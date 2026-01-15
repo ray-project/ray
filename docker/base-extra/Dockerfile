@@ -8,9 +8,12 @@ ENV TERM=xterm
 
 ARG SSH_PORT=5020
 
-ARG PYTHON_DEPSET
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
 
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
 
 RUN <<EOF
 #!/bin/bash
@@ -91,8 +94,6 @@ if [[ "$ARCH" == "x86_64" ]]; then
     )
     rm -rf "${DYNOLOG_TMP}"
 fi
-
-PYTHON_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock
