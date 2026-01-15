@@ -72,8 +72,8 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Cancel all tasks queued for execution.
   void CancelAllQueuedTasks(const std::string &msg);
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests();
+  /// Executes as many queued tasks as are ready to execute.
+  void ExecuteQueuedTasks();
 
   /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.

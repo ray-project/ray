@@ -86,16 +86,16 @@ void OrderedActorTaskExecutionQueue::Add(
                                     << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
-  TaskToExecute inbound_request(std::move(accept_request),
+  TaskToExecute task(std::move(accept_request),
                                 std::move(reject_request),
                                 std::move(send_reply_callback),
                                 task_spec);
   const bool is_retry = task_spec.IsRetry();
-  TaskToExecute *retry_request = nullptr;
+  TaskToExecute *retry_task = nullptr;
   if (is_retry) {
-    retry_request = &pending_retry_actor_tasks_.emplace_back(std::move(inbound_request));
+    retry_task = &pending_retry_actor_tasks_.emplace_back(std::move(task));
   } else {
-    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(task)).second);
   }
 
   if (is_retry) {
@@ -114,31 +114,31 @@ void OrderedActorTaskExecutionQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
-      TaskToExecute *inbound_req = nullptr;
+    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
+      TaskToExecute *task = nullptr;
       if (is_retry) {
-        // retry_request is guaranteed to be a valid pointer for retries because it
+        // retry_task is guaranteed to be a valid pointer for retries because it
         // won't be erased from the retry list until its dependencies are fetched and
         // ExecuteRequest happens.
-        inbound_req = retry_request;
+        task = retry_task;
       } else if (auto it = pending_actor_tasks_.find(seq_no);
                  it != pending_actor_tasks_.end()) {
         // For non-retry tasks, we need to check if the task is still in the map because
         // it can be erased due to being canceled via a higher `client_processed_up_to_`.
-        inbound_req = &it->second;
+        task = &it->second;
       }
 
-      if (inbound_req != nullptr) {
-        const auto &inbound_req_task_spec = inbound_req->TaskSpec();
+      if (task != nullptr) {
+        const auto &task_spec = task->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            inbound_req_task_spec.TaskId(),
-            inbound_req_task_spec.JobId(),
-            inbound_req_task_spec.AttemptNumber(),
-            inbound_req_task_spec,
+            task_spec.TaskId(),
+            task_spec.JobId(),
+            task_spec.AttemptNumber(),
+            task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        inbound_req->MarkDependenciesResolved();
-        ScheduleRequests();
+        task->MarkDependenciesResolved();
+        ExecuteQueuedTasks();
       }
     });
   } else {
@@ -151,7 +151,7 @@ void OrderedActorTaskExecutionQueue::Add(
         /* include_task_info */ false));
   }
 
-  ScheduleRequests();
+  ExecuteQueuedTasks();
 }
 
 bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
@@ -166,8 +166,7 @@ bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-/// Schedules as many requests as possible in sequence.
-void OrderedActorTaskExecutionQueue::ScheduleRequests() {
+void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
   // Cancel any stale requests that the client doesn't need any longer.
   // This happens when the client sends an RPC with the client_processed_up_to
   // sequence number higher than the lowest sequence number of a pending actor task.
