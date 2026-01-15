@@ -78,19 +78,19 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void CancelAllPending(const Status &status) override;
 
  private:
-  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
 
-  void ExecuteRequest(InboundRequest &&request);
+  void ExecuteRequest(TaskToExecute &&request);
 
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  absl::btree_map<int64_t, InboundRequest> pending_actor_tasks_;
+  absl::btree_map<int64_t, TaskToExecute> pending_actor_tasks_;
   /// List of task retry requests. This is a separate from the map because retries don't
   /// need to be ordered.
-  std::list<InboundRequest> pending_retry_actor_tasks_;
+  std::list<TaskToExecute> pending_retry_actor_tasks_;
   /// Set of sequence numbers that can be skipped because they were retry seq no's.
   absl::flat_hash_set<int64_t> seq_no_to_skip_;
   /// The next sequence number we are waiting for to arrive.

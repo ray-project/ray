@@ -29,9 +29,9 @@ namespace core {
 
 /// Used to implement the non-actor task queue. These tasks do not have ordering
 /// constraints.
-class NormalSchedulingQueue : public SchedulingQueue {
+class NormalTaskExecutionQueue : public SchedulingQueue {
  public:
-  NormalSchedulingQueue();
+  NormalTaskExecutionQueue();
 
   void Stop() override;
   bool TaskQueueEmpty() const override;
@@ -48,8 +48,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
            rpc::SendReplyCallback send_reply_callback,
            TaskSpecification task_spec) override;
 
-  // Search for an InboundRequest associated with the task that we are trying to cancel.
-  // If found, remove the InboundRequest from the queue and return true. Otherwise,
+  // Search for an TaskToExecute associated with the task that we are trying to cancel.
+  // If found, remove the TaskToExecute from the queue and return true. Otherwise,
   // return false.
   bool CancelTaskIfFound(TaskID task_id) override;
 
@@ -63,7 +63,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
+  std::deque<TaskToExecute> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 

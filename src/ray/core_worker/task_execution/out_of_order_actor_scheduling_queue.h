@@ -78,13 +78,13 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   void CancelAllPending(const Status &status) override;
 
  private:
-  void RunRequest(InboundRequest request);
+  void RunRequest(TaskToExecute request);
 
-  void RunRequestWithResolvedDependencies(InboundRequest &request);
+  void RunRequestWithResolvedDependencies(TaskToExecute &request);
 
-  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
 
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
@@ -107,7 +107,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This can happen if transient network error happens after an actor
   /// task is submitted and received by the actor and the caller retries
   /// the same task.
-  absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, TaskToExecute> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);

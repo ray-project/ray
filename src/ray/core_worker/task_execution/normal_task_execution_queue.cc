@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 
 #include <deque>
 #include <utility>
@@ -20,26 +20,26 @@
 namespace ray {
 namespace core {
 
-NormalSchedulingQueue::NormalSchedulingQueue(){};
+NormalTaskExecutionQueue::NormalTaskExecutionQueue(){};
 
-void NormalSchedulingQueue::Stop() {
+void NormalTaskExecutionQueue::Stop() {
   CancelAllPending(Status::SchedulingCancelled(
       "Normal scheduling queue stopped; canceling pending tasks"));
 }
 
-bool NormalSchedulingQueue::TaskQueueEmpty() const {
+bool NormalTaskExecutionQueue::TaskQueueEmpty() const {
   absl::MutexLock lock(&mu_);
   return pending_normal_tasks_.empty();
 }
 
 // Returns the current size of the task queue.
-size_t NormalSchedulingQueue::Size() const {
+size_t NormalTaskExecutionQueue::Size() const {
   absl::MutexLock lock(&mu_);
   return pending_normal_tasks_.size();
 }
 
 /// Add a new task's callbacks to the worker queue.
-void NormalSchedulingQueue::Add(
+void NormalTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
@@ -50,20 +50,20 @@ void NormalSchedulingQueue::Add(
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
-  // Create a InboundRequest object for the new task, and add it to the queue.
+  // Create a TaskToExecute object for the new task, and add it to the queue.
 
-  pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
+  pending_normal_tasks_.push_back(TaskToExecute(std::move(accept_request),
                                                  std::move(reject_request),
                                                  std::move(send_reply_callback),
                                                  std::move(task_spec)));
 }
 
-// Search for an InboundRequest associated with the task that we are trying to cancel.
-// If found, remove the InboundRequest from the queue and return true. Otherwise,
+// Search for an TaskToExecute associated with the task that we are trying to cancel.
+// If found, remove the TaskToExecute from the queue and return true. Otherwise,
 // return false.
-bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
+  for (std::deque<TaskToExecute>::reverse_iterator it = pending_normal_tasks_.rbegin();
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
@@ -76,9 +76,9 @@ bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 /// Schedules as many requests as possible in sequence.
-void NormalSchedulingQueue::ScheduleRequests() {
+void NormalTaskExecutionQueue::ScheduleRequests() {
   while (true) {
-    InboundRequest head;
+    TaskToExecute head;
     {
       absl::MutexLock lock(&mu_);
       if (!pending_normal_tasks_.empty()) {
@@ -92,7 +92,7 @@ void NormalSchedulingQueue::ScheduleRequests() {
   }
 }
 
-void NormalSchedulingQueue::CancelAllPending(const Status &status) {
+void NormalTaskExecutionQueue::CancelAllPending(const Status &status) {
   absl::MutexLock lock(&mu_);
   while (!pending_normal_tasks_.empty()) {
     auto it = pending_normal_tasks_.begin();

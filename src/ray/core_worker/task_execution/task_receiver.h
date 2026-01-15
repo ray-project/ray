@@ -27,7 +27,7 @@
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
-#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -134,8 +134,8 @@ class TaskReceiver {
       actor_scheduling_queues_;
 
   // Queue of pending normal (non-actor) tasks.
-  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
-      std::make_unique<NormalSchedulingQueue>();
+  std::unique_ptr<SchedulingQueue> normal_task_execution_queue_ =
+      std::make_unique<NormalTaskExecutionQueue>();
 
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.

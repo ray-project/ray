@@ -79,12 +79,12 @@ void ActorSchedulingQueue::Add(
                                     << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
-  InboundRequest inbound_request(std::move(accept_request),
+  TaskToExecute inbound_request(std::move(accept_request),
                                  std::move(reject_request),
                                  std::move(send_reply_callback),
                                  task_spec);
   const bool is_retry = task_spec.IsRetry();
-  InboundRequest *retry_request = nullptr;
+  TaskToExecute *retry_request = nullptr;
   if (is_retry) {
     retry_request = &pending_retry_actor_tasks_.emplace_back(std::move(inbound_request));
   } else {
@@ -108,7 +108,7 @@ void ActorSchedulingQueue::Add(
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
-      InboundRequest *inbound_req = nullptr;
+      TaskToExecute *inbound_req = nullptr;
       if (is_retry) {
         // retry_request is guaranteed to be a valid pointer for retries because it
         // won't be erased from the retry list until its dependencies are fetched and
@@ -278,7 +278,7 @@ void ActorSchedulingQueue::CancelAllPending(const Status &status) {
   }
 }
 
-void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
+void ActorSchedulingQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
@@ -292,7 +292,7 @@ void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
 }
 
 void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
-                                                           InboundRequest &request) {
+                                                           TaskToExecute &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);

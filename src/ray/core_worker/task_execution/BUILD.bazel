@@ -58,9 +58,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "normal_scheduling_queue",
-    srcs = ["normal_scheduling_queue.cc"],
-    hdrs = ["normal_scheduling_queue.h"],
+    name = "normal_task_execution_queue",
+    srcs = ["normal_task_execution_queue.cc"],
+    hdrs = ["normal_task_execution_queue.h"],
     visibility = [":__subpackages__"],
     deps = [
         "scheduling_queue",
@@ -129,7 +129,7 @@ ray_cc_library(
         ":actor_scheduling_queue",
         ":concurrency_group_manager",
         ":fiber",
-        ":normal_scheduling_queue",
+        ":normal_task_execution_queue",
         ":out_of_order_actor_scheduling_queue",
         ":thread_pool",
         "//src/ray/common:asio",

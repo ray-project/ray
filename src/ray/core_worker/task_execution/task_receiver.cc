@@ -254,7 +254,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
     auto accept_callback = make_accept_callback();
-    normal_scheduling_queue_->Add(request.sequence_number(),
+    normal_task_execution_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
                                   std::move(cancel_callback),
@@ -265,12 +265,12 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
 
 void TaskReceiver::RunNormalTasksFromQueue() {
   // If the scheduling queue is empty, return.
-  if (normal_scheduling_queue_->TaskQueueEmpty()) {
+  if (normal_task_execution_queue_->TaskQueueEmpty()) {
     return;
   }
 
   // Execute as many tasks as there are in the queue, in sequential order.
-  normal_scheduling_queue_->ScheduleRequests();
+  normal_task_execution_queue_->ScheduleRequests();
 }
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
@@ -290,7 +290,7 @@ bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
 bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
-  return normal_scheduling_queue_->CancelTaskIfFound(task_id);
+  return normal_task_execution_queue_->CancelTaskIfFound(task_id);
 }
 
 void TaskReceiver::SetupActor(bool is_asyncio,
@@ -314,8 +314,8 @@ void TaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
-  if (normal_scheduling_queue_) {
-    normal_scheduling_queue_->Stop();
+  if (normal_task_execution_queue_) {
+    normal_task_execution_queue_->Stop();
   }
 }
 

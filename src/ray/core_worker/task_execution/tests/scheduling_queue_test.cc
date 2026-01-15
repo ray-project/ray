@@ -25,7 +25,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
-#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 
 // using namespace std::chrono_literals;
@@ -504,9 +504,9 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
   queue.Stop();
 }
 
-TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<NormalSchedulingQueue> queue =
-      std::make_unique<NormalSchedulingQueue>();
+TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>();
   ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
   int n_rej = 0;
@@ -531,9 +531,9 @@ TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
   queue->Stop();
 }
 
-TEST(NormalSchedulingQueueTest, StopCancelsQueuedTasks) {
-  std::unique_ptr<NormalSchedulingQueue> queue =
-      std::make_unique<NormalSchedulingQueue>();
+TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>();
   int n_ok = 0;
   std::atomic<int> n_rej{0};
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
