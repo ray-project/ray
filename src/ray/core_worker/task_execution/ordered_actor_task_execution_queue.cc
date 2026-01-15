@@ -87,9 +87,9 @@ void OrderedActorTaskExecutionQueue::Add(
 
   const auto dependencies = task_spec.GetDependencies();
   TaskToExecute task(std::move(accept_request),
-                                std::move(reject_request),
-                                std::move(send_reply_callback),
-                                task_spec);
+                     std::move(reject_request),
+                     std::move(send_reply_callback),
+                     task_spec);
   const bool is_retry = task_spec.IsRetry();
   TaskToExecute *retry_task = nullptr;
   if (is_retry) {
