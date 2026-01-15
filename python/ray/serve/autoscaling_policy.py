@@ -165,6 +165,20 @@ def _apply_default_params_and_merge_state(
     return final_num_replicas, final_state
 
 
+def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
+    """
+    Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
+    """
+    if ctx.current_num_replicas == 0:
+        if ctx.total_num_requests > 0:
+            return max(
+                math.ceil(1 * ctx.config.get_upscaling_factor()),
+                ctx.target_num_replicas,
+            )
+        return ctx.target_num_replicas
+    return None
+
+
 @PublicAPI(stability="alpha")
 def apply_autoscaling_config(
     policy_func: Callable[
@@ -182,16 +196,9 @@ def apply_autoscaling_config(
     def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
 
         # Cold start fast path: 0 replicas bypasses delay logic for immediate scale-up
-        if ctx.current_num_replicas == 0:
-            if ctx.total_num_requests > 0:
-                return (
-                    max(
-                        math.ceil(1 * ctx.config.get_upscaling_factor()),
-                        ctx.target_num_replicas,
-                    ),
-                    ctx.policy_state,
-                )
-            return ctx.target_num_replicas, ctx.policy_state
+        cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
+        if cold_start_replicas is not None:
+            return cold_start_replicas, ctx.policy_state
         policy_state = ctx.policy_state.copy()
         desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
         final_num_replicas, final_state = _apply_default_params_and_merge_state(
@@ -243,6 +250,14 @@ def apply_app_level_autoscaling_config(
         for dep_id, ctx in contexts.items():
             if dep_id not in desired_num_replicas_dict:
                 final_state[dep_id] = state_per_deployment[dep_id]
+                continue
+            # Cold start fast path: 0 replicas bypasses delay logic for immediate scale-up
+            cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
+            if cold_start_replicas is not None:
+                final_decisions[dep_id], final_state[dep_id] = (
+                    cold_start_replicas,
+                    state_per_deployment[dep_id],
+                )
                 continue
             final_num_replicas, final_dep_state = _apply_default_params_and_merge_state(
                 state_per_deployment[dep_id],

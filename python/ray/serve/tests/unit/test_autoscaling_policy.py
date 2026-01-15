@@ -8,6 +8,7 @@ from ray.serve.autoscaling_policy import (
     _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
+    apply_app_level_autoscaling_config,
     apply_autoscaling_config,
     replica_queue_length_autoscaling_policy,
 )
@@ -907,6 +908,12 @@ def simple_custom_policy(ctx: AutoscalingContext):
     return desired_num_replicas, {}
 
 
+@apply_app_level_autoscaling_config
+def simple_app_level_policy(ctxs):
+    """App-level policy that always requests scaling up to 5 replicas."""
+    return {deployment_id: 5 for deployment_id in ctxs.keys()}, {}
+
+
 class TestCustomPolicyWithDefaultParameters:
     @pytest.mark.parametrize("downscale_to_zero_delay_s", [None, 300])
     def test_upscale_downscale_delay(self, downscale_to_zero_delay_s):
@@ -1015,6 +1022,66 @@ class TestCustomPolicyWithDefaultParameters:
         ctx = create_context_with_overrides(ctx, total_num_requests=total_requests)
         num_replicas, _ = simple_custom_policy(ctx)
         assert num_replicas == expected_replicas
+
+
+class TestAppLevelPolicyWithDefaultParameters:
+    def test_cold_start_fast_path(self):
+        """App-level decorator should cold-start immediately (0 -> 1) even with delays."""
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=10,
+            target_ongoing_requests=10,
+            upscale_delay_s=20.0,
+            downscale_delay_s=200.0,
+        )
+
+        d1 = DeploymentID(name="d1", app_name="app")
+        d2 = DeploymentID(name="d2", app_name="app")
+
+        contexts = {
+            d1: AutoscalingContext(
+                config=config,
+                deployment_id=d1,
+                deployment_name="d1",
+                app_name="app",
+                current_num_replicas=0,
+                target_num_replicas=0,
+                running_replicas=[],
+                total_num_requests=1,
+                total_queued_requests=None,
+                aggregated_metrics=None,
+                raw_metrics=None,
+                capacity_adjusted_min_replicas=0,
+                capacity_adjusted_max_replicas=10,
+                policy_state={},
+                last_scale_up_time=None,
+                last_scale_down_time=None,
+                current_time=None,
+            ),
+            d2: AutoscalingContext(
+                config=config,
+                deployment_id=d2,
+                deployment_name="d2",
+                app_name="app",
+                current_num_replicas=0,
+                target_num_replicas=0,
+                running_replicas=[],
+                total_num_requests=1,
+                total_queued_requests=None,
+                aggregated_metrics=None,
+                raw_metrics=None,
+                capacity_adjusted_min_replicas=0,
+                capacity_adjusted_max_replicas=10,
+                policy_state={},
+                last_scale_up_time=None,
+                last_scale_down_time=None,
+                current_time=None,
+            ),
+        }
+
+        decisions, _ = simple_app_level_policy(contexts)
+        assert decisions[d1] == 1
+        assert decisions[d2] == 1
 
 
 if __name__ == "__main__":
