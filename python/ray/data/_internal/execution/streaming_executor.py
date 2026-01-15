@@ -55,11 +55,6 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Force a progress update after this many events processed. Avoids the
-# progress seeming to stall for very large scale workloads.
-PROGRESS_BAR_UPDATE_INTERVAL = 50
-PROGRESS_MANAGER_UPDATE_INTERVAL = 20
-
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
 
@@ -491,7 +486,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
