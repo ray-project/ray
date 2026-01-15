@@ -114,7 +114,7 @@ void OrderedActorTaskExecutionQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
+    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
       TaskToExecute *ready_task = nullptr;
       if (is_retry) {
         // retry_task is guaranteed to be a valid pointer for retries because it
