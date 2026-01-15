@@ -25,7 +25,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -45,7 +45,7 @@ class BazelRule:
         assert self.timeout in (None, "short", "moderate", "long", "eternal")
 
     @property
-    def actual_timeout_s(self) -> float:
+    def actual_timeout_s(self) -> int:
         # See https://bazel.build/reference/be/common-definitions
         # Timeout takes priority over size
         if self.timeout == "short":
@@ -198,7 +198,7 @@ def extract_rules_from_xml(element: ET.Element) -> List[BazelRule]:
 
 def group_rules_by_time_needed(
     rules: List[BazelRule],
-) -> List[Tuple[float, List[BazelRule]]]:
+) -> List[Tuple[int, List[BazelRule]]]:
     """
     Return a list of tuples of (timeout in seconds, list of rules)
     sorted descending.
@@ -212,21 +212,17 @@ def group_rules_by_time_needed(
 
 
 def allocate_slots_to_shards(
-    rules_grouped_by_time: List[Tuple[float, List[BazelRule]]],
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]],
     count: int,
-) -> List[dict]:
+) -> List[Dict[int, int]]:
     """
     Allocate test slots to shards using least-loaded strategy.
 
     This only determines how many tests of each size go to each shard,
     without assigning specific tests. This preserves load balancing while
     allowing tests to be assigned in name order later.
-
-    Returns:
-        shard_slots where shard_slots[i] is a dict mapping timeout -> number
-        of slots for shard i.
     """
-    shard_times = [0.0] * count
+    shard_times = [0] * count
     shard_slots = [defaultdict(int) for _ in range(count)]
 
     for timeout, rules in rules_grouped_by_time:
@@ -240,7 +236,7 @@ def allocate_slots_to_shards(
 
 
 def get_rules_for_shard_naive(
-    rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
     """Create shards by assigning the same number of rules to each shard."""
     all_rules = []
@@ -251,7 +247,7 @@ def get_rules_for_shard_naive(
 
 
 def get_rules_for_shard_optimal(
-    rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
     """Creates shards by trying to make sure each shard takes around the same time.
 

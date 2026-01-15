@@ -84,39 +84,39 @@ def test_allocate_slots_to_shards():
     """Test that slot allocation uses least-loaded strategy correctly."""
     # If we start with empty shards, distribute evenly
     rules = [bazel_sharding.BazelRule(f"test_{i}", "medium") for i in range(4)]
-    rules_grouped_by_time = [(300.0, rules)]
+    rules_grouped_by_time = [(300, rules)]
     shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=4
     )
     for i in range(4):
-        assert shard_slots[i][300.0] == 1
+        assert shard_slots[i][300] == 1
 
     # Add to least-loaded shard (not first shard)
     eternal_rules = [
         bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(8)
     ]
     small_rules = [bazel_sharding.BazelRule(f"small_{i}", "small") for i in range(16)]
-    rules_grouped_by_time = [(3600.0, eternal_rules), (60.0, small_rules)]
+    rules_grouped_by_time = [(3600, eternal_rules), (60, small_rules)]
     shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=24
     )
     for i in range(8):
-        assert shard_slots[i][3600.0] == 1
-        assert shard_slots[i][60.0] == 0
+        assert shard_slots[i][3600] == 1
+        assert shard_slots[i][60] == 0
     for i in range(8, 24):
-        assert shard_slots[i][3600.0] == 0
-        assert shard_slots[i][60.0] == 1
+        assert shard_slots[i][3600] == 0
+        assert shard_slots[i][60] == 1
 
     # More shards than needed, still distributes evenly
     eternal_rules = [
         bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(4)
     ]
-    rules_grouped_by_time = [(3600.0, eternal_rules)]
+    rules_grouped_by_time = [(3600, eternal_rules)]
     shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=2
     )
-    assert shard_slots[0][3600.0] == 2
-    assert shard_slots[1][3600.0] == 2
+    assert shard_slots[0][3600] == 2
+    assert shard_slots[1][3600] == 2
 
 
 def test_bazel_sharding_end_to_end(mock_build_dir):
