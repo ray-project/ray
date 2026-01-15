@@ -33,6 +33,7 @@ from ray._private.authentication_test_utils import (
 )
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
+from ray._private.services import ProcessInfo
 from ray._private.test_utils import (
     RayletKiller,
     external_redis_test_enabled,
@@ -407,24 +408,55 @@ def start_redis(db_dir):
         return address_str, processes
 
 
-def kill_all_redis_server():
+def kill_all_redis_server(process_infos: List[ProcessInfo] = None):
+    """
+    Kill all given process infos if provided.
+    Otherwise, find all redis server processes running on this host via cmdline
+    and kill them.
+    Note: killed redis process not tracked by process_infos will
+          raise ResourceWarning when the python Subprocess tracking the
+          underlying process is garbage collected.
+
+    Args:
+        process_infos: The list of ProcessInfo objects to kill.
+    """
     import psutil
 
-    # Find Redis server processes
-    redis_procs = []
-    for proc in psutil.process_iter(["name", "cmdline"]):
-        try:
-            if proc.name() == "redis-server":
-                redis_procs.append(proc)
-        except psutil.NoSuchProcess:
-            pass
+    if process_infos is not None:
+        # Try gracefully killing the spawned subprocesses first
+        for process_info in process_infos:
+            try:
+                process_info.process.kill()
+                process_info.process.wait(timeout=5)
+            except OSError:
+                # Process already dead
+                pass
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    f"Redis server process {process_info.process.pid} did not exit within 5 seconds "
+                    "after SIGKILL during test cleanup"
+                )
+    else:
+        # Find and kill all Redis server processes on host
+        redis_procs = []
+        for proc in psutil.process_iter(["name", "cmdline"]):
+            try:
+                if proc.name() == "redis-server":
+                    redis_procs.append(proc)
+            except psutil.NoSuchProcess:
+                pass
 
-    # Kill Redis server processes
-    for proc in redis_procs:
-        try:
-            proc.kill()
-        except psutil.NoSuchProcess:
-            pass
+        for proc in redis_procs:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except psutil.NoSuchProcess:
+                pass
+            except psutil.TimeoutExpired:
+                logger.warning(
+                    f"Redis server process {proc.pid} did not exit within 5 seconds "
+                    "after SIGKILL during test cleanup"
+                )
 
 
 @contextmanager
@@ -455,9 +487,7 @@ def _setup_redis(request, with_sentinel=False):
         else:
             del os.environ["RAY_external_storage_namespace"]
 
-        for proc in processes:
-            proc.process.kill()
-        kill_all_redis_server()
+        kill_all_redis_server(processes)
 
 
 @pytest.fixture
