@@ -73,8 +73,7 @@ void OutOfOrderActorSchedulingQueue::Stop() {
     fiber_state_manager_->Stop();
   }
 
-  CancelAllQueuedTasks(
-      "Actor task execution queue stopped; canceling all queued tasks.");
+  CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
 void OutOfOrderActorSchedulingQueue::Add(

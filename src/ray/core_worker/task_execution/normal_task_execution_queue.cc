@@ -34,7 +34,8 @@ void NormalTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
 }
 
 void NormalTaskExecutionQueue::Stop() {
-  CancelAllQueuedTasks("Normal task execution queue stopped; canceling all queued tasks.");
+  CancelAllQueuedTasks(
+      "Normal task execution queue stopped; canceling all queued tasks.");
 }
 
 /// Add a new task's callbacks to the worker queue.

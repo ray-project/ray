@@ -11,14 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
+
 #include <atomic>
 #include <memory>
 
 #include "gtest/gtest.h"
-
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 
 namespace ray {
 namespace core {
