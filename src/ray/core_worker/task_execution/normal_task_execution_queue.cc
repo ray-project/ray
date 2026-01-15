@@ -15,6 +15,7 @@
 #include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 
 #include <deque>
+#include <string>
 #include <utility>
 
 namespace ray {
