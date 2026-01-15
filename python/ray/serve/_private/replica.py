@@ -1599,17 +1599,6 @@ class Replica(ReplicaBase):
 
             yield result
 
-    def _record_errors_and_metrics(
-        self,
-        user_exception: Optional[BaseException],
-        status_code: Optional[str],
-        latency_ms: float,
-        request_metadata: RequestMetadata,
-    ):
-        super()._record_errors_and_metrics(
-            user_exception, status_code, latency_ms, request_metadata
-        )
-
     def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
         """Extract tracing context from ASGI request headers.
 
