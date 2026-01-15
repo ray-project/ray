@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
 
 #include <algorithm>
 #include <memory>
@@ -22,7 +22,7 @@
 namespace ray {
 namespace core {
 
-ActorSchedulingQueue::ActorSchedulingQueue(
+OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
@@ -35,28 +35,35 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       task_event_buffer_(task_event_buffer),
       pool_manager_(std::move(pool_manager)) {}
 
-void ActorSchedulingQueue::Stop() {
+void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
+  absl::MutexLock lock(&mu_);
+
+  Status status = Status::SchedulingCancelled(msg);
+
+  // Cancel queued ordered tasks.
+  while (!pending_actor_tasks_.empty()) {
+    auto head = pending_actor_tasks_.begin();
+    head->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    pending_actor_tasks_.erase(head);
+  }
+
+  // Cancel queued retry tasks.
+  while (!pending_retry_actor_tasks_.empty()) {
+    auto &req = pending_retry_actor_tasks_.front();
+    req.Cancel(status);
+    pending_task_id_to_is_canceled.erase(req.TaskID());
+    pending_retry_actor_tasks_.pop_front();
+  }
+}
+
+void OrderedActorTaskExecutionQueue::Stop() {
   pool_manager_->Stop();
-  CancelAllPending(Status::SchedulingCancelled(
-      "Actor scheduling queue stopped; canceling pending tasks"));
-}
-
-bool ActorSchedulingQueue::TaskQueueEmpty() const {
-  RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return false;
-}
-
-size_t ActorSchedulingQueue::Size() const {
-  RAY_CHECK(false) << "Size() not implemented for actor queues";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return 0;
+  CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(
+void OrderedActorTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
@@ -79,16 +86,16 @@ void ActorSchedulingQueue::Add(
                                     << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
-  InboundRequest inbound_request(std::move(accept_request),
-                                 std::move(reject_request),
-                                 std::move(send_reply_callback),
-                                 task_spec);
+  TaskToExecute task(std::move(accept_request),
+                     std::move(reject_request),
+                     std::move(send_reply_callback),
+                     task_spec);
   const bool is_retry = task_spec.IsRetry();
-  InboundRequest *retry_request = nullptr;
+  TaskToExecute *retry_task = nullptr;
   if (is_retry) {
-    retry_request = &pending_retry_actor_tasks_.emplace_back(std::move(inbound_request));
+    retry_task = &pending_retry_actor_tasks_.emplace_back(std::move(task));
   } else {
-    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(inbound_request)).second);
+    RAY_CHECK(pending_actor_tasks_.emplace(seq_no, std::move(task)).second);
   }
 
   if (is_retry) {
@@ -107,31 +114,31 @@ void ActorSchedulingQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
-      InboundRequest *inbound_req = nullptr;
+    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
+      TaskToExecute *ready_task = nullptr;
       if (is_retry) {
-        // retry_request is guaranteed to be a valid pointer for retries because it
+        // retry_task is guaranteed to be a valid pointer for retries because it
         // won't be erased from the retry list until its dependencies are fetched and
         // ExecuteRequest happens.
-        inbound_req = retry_request;
+        ready_task = retry_task;
       } else if (auto it = pending_actor_tasks_.find(seq_no);
                  it != pending_actor_tasks_.end()) {
         // For non-retry tasks, we need to check if the task is still in the map because
         // it can be erased due to being canceled via a higher `client_processed_up_to_`.
-        inbound_req = &it->second;
+        ready_task = &it->second;
       }
 
-      if (inbound_req != nullptr) {
-        const auto &inbound_req_task_spec = inbound_req->TaskSpec();
+      if (ready_task != nullptr) {
+        const auto &ready_task_spec = ready_task->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            inbound_req_task_spec.TaskId(),
-            inbound_req_task_spec.JobId(),
-            inbound_req_task_spec.AttemptNumber(),
-            inbound_req_task_spec,
+            ready_task_spec.TaskId(),
+            ready_task_spec.JobId(),
+            ready_task_spec.AttemptNumber(),
+            ready_task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        inbound_req->MarkDependenciesResolved();
-        ScheduleRequests();
+        ready_task->MarkDependenciesResolved();
+        ExecuteQueuedTasks();
       }
     });
   } else {
@@ -144,10 +151,10 @@ void ActorSchedulingQueue::Add(
         /* include_task_info */ false));
   }
 
-  ScheduleRequests();
+  ExecuteQueuedTasks();
 }
 
-bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
   if (pending_task_id_to_is_canceled.find(task_id) !=
       pending_task_id_to_is_canceled.end()) {
@@ -159,8 +166,7 @@ bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-/// Schedules as many requests as possible in sequence.
-void ActorSchedulingQueue::ScheduleRequests() {
+void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
   // Cancel any stale requests that the client doesn't need any longer.
   // This happens when the client sends an RPC with the client_processed_up_to
   // sequence number higher than the lowest sequence number of a pending actor task.
@@ -260,25 +266,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 }
 
-void ActorSchedulingQueue::CancelAllPending(const Status &status) {
-  absl::MutexLock lock(&mu_);
-  // Cancel in-order pending tasks
-  while (!pending_actor_tasks_.empty()) {
-    auto head = pending_actor_tasks_.begin();
-    head->second.Cancel(status);
-    pending_task_id_to_is_canceled.erase(head->second.TaskID());
-    pending_actor_tasks_.erase(head);
-  }
-  // Cancel retry tasks
-  while (!pending_retry_actor_tasks_.empty()) {
-    auto &req = pending_retry_actor_tasks_.front();
-    req.Cancel(status);
-    pending_task_id_to_is_canceled.erase(req.TaskID());
-    pending_retry_actor_tasks_.pop_front();
-  }
-}
-
-void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
+void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
@@ -291,8 +279,8 @@ void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
   }
 }
 
-void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
-                                                           InboundRequest &request) {
+void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
+    TaskID task_id, TaskToExecute &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);

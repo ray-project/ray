@@ -3,7 +3,7 @@ Wrapper library for using the crane tool for managing container images.
 https://github.com/google/go-containerregistry/blob/v0.19.0/cmd/crane/doc/crane.md
 
 All functions return (return_code, output) tuples. On success, return_code is 0.
-On failure, return_code is non-zero and output may be None (stderr is not captured).
+On failure, return_code is non-zero and output contains best-effort diagnostics.
 
 Callers are responsible for checking return_code to detect failures rather than
 relying on exceptions.
@@ -12,6 +12,8 @@ relying on exceptions.
 import os
 import platform
 import subprocess
+import tarfile
+import tempfile
 from typing import List, Tuple
 
 import runfiles
@@ -40,11 +42,15 @@ def _run_crane_command(
     args: List[str], stdin_input: str | None = None
 ) -> Tuple[int, str]:
     """
-    Run a crane command and return the exit code and output.
+    Run a crane command that produces TEXT output.
 
     Args:
         args: Command arguments to pass to crane.
         stdin_input: Optional input to pass via stdin (e.g., for passwords).
+
+    Returns:
+        (return_code, output). output is stdout (best-effort) and may include
+        stderr on failures.
     """
     command = [_crane_binary()] + args
     try:
@@ -57,6 +63,7 @@ def _run_crane_command(
             env=os.environ,
         ) as proc:
             if stdin_input:
+                assert proc.stdin is not None
                 proc.stdin.write(stdin_input)
                 proc.stdin.close()
             output = ""
@@ -70,15 +77,43 @@ def _run_crane_command(
                 logger.error(
                     f"Crane command `{' '.join(command)}` failed with stderr:\n{stderr}"
                 )
-                raise subprocess.CalledProcessError(
-                    return_code, command, output, stderr
-                )
+                return return_code, output or stderr or ""
             return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
     except FileNotFoundError:
         logger.error(f"Crane binary not found at {command[0]}")
         return 1, f"Crane binary not found at {command[0]}"
+    except Exception as e:
+        logger.error(
+            f"Unexpected error running crane command `{' '.join(command)}`: {e}"
+        )
+        return 1, str(e)
+
+
+def _extract_tar_to_dir(tar_path: str, output_dir: str) -> None:
+    """
+    Extract a tar file to a directory with path traversal protection.
+
+    Args:
+        tar_path: Path to the tar file to extract.
+        output_dir: Directory to extract into.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    resolved_output_dir = os.path.realpath(output_dir)
+
+    with tarfile.open(tar_path, mode="r:*") as tf:
+        for m in tf:
+            member_path = os.path.join(resolved_output_dir, m.name)
+            resolved_member_path = os.path.realpath(member_path)
+            try:
+                # Verify extracted files stay within the target directory.
+                common = os.path.commonpath([resolved_output_dir, resolved_member_path])
+                if common != resolved_output_dir:
+                    logger.warning(f"Skipping unsafe tar member: {m.name}")
+                    continue
+            except ValueError:
+                logger.warning(f"Skipping path on different drive: {m.name}")
+                continue
+            tf.extract(m, path=output_dir)
 
 
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
@@ -147,3 +182,46 @@ def call_crane_manifest(tag: str) -> Tuple[int, str]:
         since stderr is not captured.
     """
     return _run_crane_command(["manifest", tag])
+
+
+def call_crane_export(tag: str, output_dir: str) -> Tuple[int, str]:
+    """
+    Export a container image to a tar file and extract it.
+
+    Equivalent of:
+      crane export <tag> output.tar && tar -xf output.tar -C <output_dir>
+
+    Args:
+        tag: Image reference to export.
+        output_dir: Directory to extract the image filesystem into.
+
+    Returns:
+        (return_code, output) where output is best-effort diagnostics.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tar_path = os.path.join(tmpdir, "output.tar")
+        crane_cmd = [_crane_binary(), "export", tag, tar_path]
+        logger.info(f"Running: {' '.join(crane_cmd)}")
+
+        try:
+            subprocess.check_call(crane_cmd, env=os.environ)
+        except subprocess.CalledProcessError as e:
+            msg = f"crane export failed (rc={e.returncode})"
+            logger.error(msg)
+            return e.returncode, msg
+        except FileNotFoundError:
+            msg = f"Crane binary not found at {crane_cmd[0]}"
+            logger.error(msg)
+            return 1, msg
+
+        try:
+            logger.info(f"Extracting {tar_path} to {output_dir}")
+            _extract_tar_to_dir(tar_path, output_dir)
+        except Exception as e:
+            msg = f"tar extraction failed: {e}"
+            logger.error(msg)
+            return 1, msg
+
+    return 0, ""

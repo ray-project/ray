@@ -20,11 +20,9 @@
 namespace ray {
 namespace core {
 
-/// Used to implement task queueing at the worker. Abstraction to provide a common
-/// interface for actor tasks as well as normal ones.
-class SchedulingQueue {
+class ActorTaskExecutionQueueInterface {
  public:
-  virtual ~SchedulingQueue() = default;
+  virtual ~ActorTaskExecutionQueueInterface() = default;
   virtual void Add(int64_t seq_no,
                    int64_t client_processed_up_to,
                    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
@@ -34,14 +32,8 @@ class SchedulingQueue {
                                       rpc::SendReplyCallback)> reject_request,
                    rpc::SendReplyCallback send_reply_callback,
                    TaskSpecification task_spec) = 0;
-  virtual void ScheduleRequests() = 0;
-  virtual bool TaskQueueEmpty() const = 0;
-  virtual size_t Size() const = 0;
   virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
-  /// Cancel all pending (not yet accepted/executing) requests in the queue with the
-  /// provided status. Implementations should be thread-safe.
-  virtual void CancelAllPending(const Status &status) = 0;
 };
 
 }  // namespace core
