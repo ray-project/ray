@@ -1864,10 +1864,6 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     the same zone, it should not sleep before retrying and add additional latency.
     """
     s = pow_2_router
-
-    # Track the candidate replicas returned by apply_locality_routing at each step.
-    # We wrap apply_locality_routing instead of random.sample because the pow_2_router
-    # uses optimized random selection that doesn't call random.sample.
     original_apply_locality_routing = s.apply_locality_routing
     chosen_replicas = []
 
