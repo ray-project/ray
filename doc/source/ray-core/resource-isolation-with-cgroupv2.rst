@@ -147,7 +147,7 @@ Enable Resource Isolation with the SDK
    # - 5GB memory reserved for system processes.
    ray.init(
        enable_resource_isolation=True,
-       _cgroup_path="sys/fs/cgroup/ray",
+       _cgroup_path="/sys/fs/cgroup/ray",
        system_reserved_cpu=1.5,
        system_reserved_memory=5368709120,
    )
@@ -223,10 +223,10 @@ For a worker node with 32 CPU cores and 64 GB of RAM:
 
    # Calculated default values:
    #   object_store_memory = MIN(0.3 * 64GB, 200GB) = 19.2GB
-   #   system_reserved_memory = MIN(10GB, MAX(0.10 * 64GB, 1GB)) = 6.4GB
+   #   system_reserved_memory = MIN(10GB, MAX(0.10 * 64GB, 0.5GB)) = 6.4GB
    #   system_reserved_cpu = MIN(3.0, MAX(0.05 * 32, 1.0)) = 1.6
    #
-   # The total system_reserved_memory will be 19.2GB + 6.4GB = 25.6GB
+   # The total system_reserved_memory (including object_store_memory) will be 19.2GB + 6.4GB = 25.6GB
 
    ray start --enable-resource-isolation
 
