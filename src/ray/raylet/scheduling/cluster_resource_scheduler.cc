@@ -295,6 +295,48 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool exclude_local_node,
     bool requires_object_store_memory,
     bool *is_infeasible) {
+  const auto &required_placement_resources = lease_spec.GetRequiredPlacementResources();
+  const auto required_placement_resource_map =
+      required_placement_resources.GetResourceMap();
+  const auto &label_selector = lease_spec.GetLabelSelector();
+
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
+  if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
+      IsSchedulableOnNode(local_node_id_,
+                          required_placement_resource_map,
+                          label_selector,
+                          requires_object_store_memory)) {
+    *is_infeasible = false;
+    return local_node_id_;
+  }
+
+  // This argument is used to set violation, which is an unsupported feature now.
+  int64_t _unused;
+  scheduling::NodeID best_node =
+      GetBestSchedulableNode(required_placement_resource_map,
+                             label_selector,
+                             lease_spec.GetMessage().scheduling_strategy(),
+                             requires_object_store_memory,
+                             lease_spec.IsActorCreationTask(),
+                             exclude_local_node,
+                             preferred_node_id,
+                             &_unused,
+                             is_infeasible);
+
+  // There is no other available nodes.
+  if (!best_node.IsNil() && !IsSchedulableOnNode(best_node,
+                                                 required_placement_resource_map,
+                                                 label_selector,
+                                                 requires_object_store_memory)) {
+    // Prefer waiting on the local node if possible
+    // since the local node is chosen for a reason (e.g. spread).
+    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
+      auto resource_request = ResourceMapToResourceRequest(
+          required_placement_resource_map, requires_object_store_memory);
+      resource_request.SetLabelSelector(label_selector);
+      if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
+                                                          resource_request)) {
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
 

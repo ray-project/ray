@@ -105,6 +105,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// granularity.
   ///
   /// \param task_resources Task for which we allocate resources.
+  /// \param label_selector The label selector used to schedule the task.
   /// \param task_allocation Resources allocated to the task at instance granularity.
   /// This is a return parameter.
   ///
@@ -112,12 +113,14 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// False otherwise.
   bool AllocateLocalTaskResources(
       const absl::flat_hash_map<std::string, double> &task_resources,
+      const LabelSelector &label_selector,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
                                   std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+  void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation,
+                              const LabelSelector &label_selector);
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
   void MarkFootprintAsBusy(WorkFootprint item);
@@ -200,7 +203,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \param record_idle_resource: Whether to record the idle resource. This is false
   ///   when the resource was allocated partially so its idle state is actually not
   ///   affected.
+  /// \param label_selector: The label selector used to schedule the task.
   void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+                                 const LabelSelector &label_selector,
                                  bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();

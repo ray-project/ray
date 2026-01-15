@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <boost/range/adaptor/map.hpp>
 #include <optional>
 #include <sstream>
@@ -319,6 +320,10 @@ class NodeResources {
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
+  // Label constraints and the number of tasks on the node that require the label
+  // constraint.
+  absl::flat_hash_map<LabelConstraint, int32_t> label_constraint_usage_counts;
+
   // The idle duration of the node from resources reported by raylet.
   int64_t idle_resource_duration_ms = 0;
 
@@ -370,6 +375,9 @@ class NodeResourceInstances {
   NodeResourceInstanceSet total;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Label constraints and the number of tasks on the node that require the label
+  // constraint.
+  absl::flat_hash_map<LabelConstraint, int32_t> label_constraint_usage_counts;
 
   /// Extract available resource instances.
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
