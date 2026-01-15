@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -10,7 +10,7 @@ unsupported_field_message = "The field {} is not supported for on-premise cluste
 LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
 
-def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
+def prepare_local(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Prepare local cluster config for ingestion by cluster launcher and
     autoscaler.
@@ -18,12 +18,12 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
         if config.get(field):
-            # If the config already contains the internal node type, it's been prepared already hence return as-is.
+            # If the config already contains the internal node type, it's been prepared via ray up already hence return as-is.
             if (
                 field == "available_node_types"
                 and LOCAL_CLUSTER_NODE_TYPE in config.get(field, {})
             ):
-                return config
+                return None
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
     # We use a config with a single node type for on-prem clusters.

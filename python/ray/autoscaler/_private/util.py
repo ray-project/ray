@@ -240,7 +240,11 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     is_local = config.get("provider", {}).get("type") == "local"
     is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
-        config = prepare_local(config)
+        new_config = prepare_local(config)
+        # If the config is already prepared via ray up, return it as is.
+        if new_config is None:
+            return config
+        config = new_config
     elif is_kuberay:
         # With KubeRay, we don't need to do anything here since KubeRay
         # generate the autoscaler config from the RayCluster CR instead
