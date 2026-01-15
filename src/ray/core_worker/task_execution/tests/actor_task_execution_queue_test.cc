@@ -104,7 +104,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -175,7 +176,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -210,7 +212,8 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
@@ -269,7 +272,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -320,7 +324,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -363,7 +368,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -404,7 +410,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -456,7 +463,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(io_service, waiter, task_event_buffer, pool_manager, 2);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 2);
   std::vector<int64_t> accept_seq_nos;
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
@@ -514,13 +522,13 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   UnorderedActorTaskExecutionQueue queue(io_service,
-                                       waiter,
-                                       task_event_buffer,
-                                       pool_manager,
-                                       /*fiber_state_manager=*/nullptr,
-                                       /*is_asyncio=*/false,
-                                       /*fiber_max_concurrency=*/1,
-                                       /*concurrency_groups=*/{});
+                                         waiter,
+                                         task_event_buffer,
+                                         pool_manager,
+                                         /*fiber_state_manager=*/nullptr,
+                                         /*is_asyncio=*/false,
+                                         /*fiber_max_concurrency=*/1,
+                                         /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,

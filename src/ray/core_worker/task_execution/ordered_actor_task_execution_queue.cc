@@ -280,8 +280,8 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   }
 }
 
-void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
-                                                           TaskToExecute &request) {
+void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
+    TaskID task_id, TaskToExecute &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);

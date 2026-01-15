@@ -223,9 +223,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       it = actor_task_execution_queues_
                .emplace(
                    task_spec.CallerWorkerId(),
-                     allow_out_of_order_execution_
-                         ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
-                         std::make_unique<UnorderedActorTaskExecutionQueue>(
+                   allow_out_of_order_execution_
+                       ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
+                             std::make_unique<UnorderedActorTaskExecutionQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
@@ -234,15 +234,15 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                  is_asyncio_,
                                  fiber_max_concurrency_,
                                  concurrency_groups_))
-                         : std::unique_ptr<ActorTaskExecutionQueueInterface>(
+                       : std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<OrderedActorTaskExecutionQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
                                  pool_manager_,
                                  RayConfig::instance()
-                                     .actor_scheduling_queue_max_reorder_wait_seconds())
-                   )).first;
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+               .first;
     }
 
     auto accept_callback = make_accept_callback();
