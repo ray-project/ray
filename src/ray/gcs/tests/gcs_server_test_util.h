@@ -27,7 +27,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/actor/gcs_actor_manager.h"
-#include "ray/gcs/actorgcs_actor_scheduler.h"
+#include "ray/gcs/actor/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_placement_group_scheduler.h"
