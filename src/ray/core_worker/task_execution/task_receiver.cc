@@ -25,8 +25,8 @@ namespace ray {
 namespace core {
 
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
-                               rpc::PushTaskReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) {
+                                         rpc::PushTaskReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::optional<ResourceMappingType> resource_ids;

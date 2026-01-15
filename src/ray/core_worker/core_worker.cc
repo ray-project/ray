@@ -3474,7 +3474,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->QueueTaskForExecution(std::move(request), reply, send_reply_callback);
+          task_receiver_->QueueTaskForExecution(
+              std::move(request), reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {

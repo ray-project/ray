@@ -82,8 +82,8 @@ class TaskReceiver {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The reply callback.
   void QueueTaskForExecution(rpc::PushTaskRequest request,
-                   rpc::PushTaskReply *reply,
-                   rpc::SendReplyCallback send_reply_callback);
+                             rpc::PushTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
