@@ -76,7 +76,7 @@ parser = add_rllib_example_script_args(
 parser.add_argument(
     "--storage-path",
     default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"),
-    help="The storage path for checkpoints and related tuning data."
+    help="The storage path for checkpoints and related tuning data.",
 )
 parser.set_defaults(
     num_env_runners=4,
