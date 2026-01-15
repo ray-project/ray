@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
@@ -81,7 +82,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
-            concurrency=1,
+            compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
             accelerator_type=gpu_type,
         ),
@@ -98,9 +99,13 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         },
     }
     ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ActorPoolStrategy)
+    assert compute.min_size == 1
+    assert compute.max_size == 1
+
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 0,
@@ -771,8 +776,8 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
 
 @pytest.mark.asyncio
-async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
-    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
+async def test_vllm_udf_fatal_error_exits_actor(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) trigger actor exit for recovery, not error rows."""
     from vllm.v1.engine.exceptions import EngineDeadError
 
     mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
@@ -785,14 +790,28 @@ async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        should_continue_on_error=True,  # Even with this True, fatal errors should raise
+        should_continue_on_error=True,  # Even with this True, fatal errors should not yield error rows
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
 
-    with pytest.raises(EngineDeadError):
-        async for _ in udf(batch):
-            pass
+    # Fatal errors trigger actor exit for recovery (not error rows, not simple re-raise).
+    # We use os._exit(1) instead of ray.actor.exit_actor() because:
+    # - os._exit(1) -> SYSTEM_ERROR -> RaySystemError -> task IS retried
+    # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> ActorDiedError -> NOT retried
+    # We mock os._exit to verify it was called with exit code 1.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.os._exit"
+    ) as mock_os_exit:
+        # Don't actually exit - let code continue and fail naturally
+        # The important thing is verifying os._exit was called
+        try:
+            async for _ in udf(batch):
+                pass
+        except Exception:
+            pass  # Code may fail after mock returns None - that's OK for this test
+
+        mock_os_exit.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

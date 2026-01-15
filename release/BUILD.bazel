@@ -427,14 +427,8 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "//doc:asynchronous_inference_example_configs",
-        "//doc:deployment_serve_llm_example_configs",
-        "//doc:example_configs",
-        "//doc/source/data/examples:data_example_configs",
-        "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
+        # Comprehensive filegroup that auto-discovers all ci/{aws,gce}.yaml configs for ray examples.
+        "//doc:all_examples_ci_configs",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -908,21 +902,6 @@ py_test(
     deps = [
         ":cloud_util",
         bk_require("pytest"),
-    ],
-)
-
-py_binary(
-    name = "build_pipeline",
-    srcs = ["ray_release/scripts/build_pipeline.py"],
-    data = glob(["**/*.yaml"]) + [
-        "ray_release/byod/byod.Dockerfile",
-        "ray_release/byod/byod.custom.Dockerfile",
-        "//python/ray/autoscaler/aws:test_configs",
-        "//python/ray/autoscaler/gcp:test_configs",
-    ],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ":ray_release",
     ],
 )
 

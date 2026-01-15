@@ -6,7 +6,7 @@ import os
 import socket
 import sys
 import traceback
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
@@ -27,7 +27,6 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
-    get_user_temp_dir,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -379,20 +378,15 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = (
-    [
-        "pid",
-        "create_time",
-        "cpu_percent",
-        "cpu_times",
-        "cmdline",
-        "memory_info",
-        "memory_full_info",
-    ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
-)
+PSUTIL_PROCESS_ATTRS = [
+    "pid",
+    "create_time",
+    "cpu_percent",
+    "cpu_times",
+    "cmdline",
+    "memory_info",
+    "memory_full_info",
+] + (["num_fds"] if sys.platform != "win32" else [])
 
 
 class ReporterAgent(
@@ -875,19 +869,19 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
-    def _get_disk_usage():
+    def _get_disk_usage(temp_dir: str):
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
-            sdiskusage = type(psutil.disk_usage("/"))
+            sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
             return {"/": sdiskusage(total=1, used=0, free=1, percent=0.0)}
+
         if sys.platform == "win32":
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
-            tmp: psutil.disk_usage(tmp),
+            temp_dir: psutil.disk_usage(temp_dir),
         }
 
     @staticmethod
@@ -1130,7 +1124,7 @@ class ReporterAgent(
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
-            "disk": self._get_disk_usage(),
+            "disk": self._get_disk_usage(self._dashboard_agent.temp_dir),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,

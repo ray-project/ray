@@ -40,6 +40,7 @@ __all__ = [
     "update_context",
     "LinkcheckSummarizer",
     "setup_context",
+    "collect_example_orphans",
 ]
 
 # Taken from https://github.com/edx/edx-documentation
@@ -452,6 +453,8 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    TIME_SERIES_FORECASTING = "Time Series Forecasting"
+    RECOMMENDATION_SYSTEMS = "Recommendation Systems"
     ETL = "ETL"
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
@@ -515,6 +518,7 @@ class RelatedTechnology(ExampleEnum):
     LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
+    DEPLOYMENT_PATTERNS = "Deployment Patterns"
 
     @classmethod
     def formatted_name(cls):
@@ -1230,6 +1234,51 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
 
     soup.append(dropdown_container)
     return soup
+
+
+def collect_example_orphans(
+    confdir: os.PathLike,
+    srcdir: os.PathLike,
+    example_configs: Optional[List[str]] = None,
+) -> set:
+    """Collect document paths from examples.yml files to mark as orphans.
+
+    This function parses example configuration files and returns a set of
+    document paths that should be marked as orphan documents during the build.
+
+    Parameters
+    ----------
+    confdir : os.PathLike
+        Path to the Sphinx configuration directory (app.confdir)
+    srcdir : os.PathLike
+        Path to the Sphinx source directory (app.srcdir)
+    example_configs : Optional[List[str]]
+        Configuration files to parse. Defaults to EXAMPLE_GALLERY_CONFIGS.
+
+    Returns
+    -------
+    set
+        Set of document paths (without file extensions) to mark as orphans
+    """
+    if example_configs is None:
+        example_configs = EXAMPLE_GALLERY_CONFIGS
+
+    example_orphan_documents = set()
+
+    for config in example_configs:
+        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to(
+            "source"
+        )
+
+        example_config = ExampleConfig(config_path, srcdir)
+        for example in example_config:
+            if not example.link.startswith("http"):
+                # Normalize path and remove file extension to get docname
+                normalized = pathlib.PurePath(os.path.normpath(example.link))
+                docname = str(normalized.with_suffix(''))
+                example_orphan_documents.add(docname)
+
+    return example_orphan_documents
 
 
 def pregenerate_example_rsts(

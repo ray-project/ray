@@ -372,8 +372,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
-  void SetWebuiDisplay(const std::string &key, const std::string &message);
-
   /// Sets the actor's repr name.
   ///
   /// This is set explicitly rather than included as part of actor creation task spec
@@ -1869,9 +1867,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// from the thread-local WorkerThreadContext.
   absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Key value pairs to be displayed on Web UI.
-  absl::flat_hash_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
 
@@ -1892,9 +1887,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
