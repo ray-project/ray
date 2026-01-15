@@ -3510,7 +3510,7 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   task_execution_service_.post(
       [this, tag = request.tag()] {
         RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
-        actor_task_execution_arg_waiter_->MarkArgsReady(tag);
+        actor_task_execution_arg_waiter_->MarkReady(tag);
       },
       "CoreWorker.MarkActorTaskArgsReady");
 
