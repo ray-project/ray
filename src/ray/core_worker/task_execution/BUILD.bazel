@@ -78,9 +78,9 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":actor_task_execution_queue_interface",
+        ":common",
         ":concurrency_group_manager",
         ":fiber",
-        ":common",
         ":thread_pool",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
@@ -101,9 +101,9 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":actor_task_execution_queue_interface",
+        ":common",
         ":concurrency_group_manager",
         ":fiber",
-        ":common",
         ":thread_pool",
         "//src/ray/common:id",
         "//src/ray/common:task_common",

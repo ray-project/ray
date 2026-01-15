@@ -26,9 +26,9 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
-#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/rpc/rpc_callback_types.h"
 
