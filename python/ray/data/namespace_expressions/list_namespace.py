@@ -9,6 +9,7 @@ import numpy as np
 import pyarrow
 import pyarrow.compute as pc
 
+from ray.data._internal.arrow_utils import _combine_as_list_array, _counts_to_offsets
 from ray.data.datatype import DataType
 from ray.data.expressions import pyarrow_udf
 
@@ -21,25 +22,6 @@ def _ensure_array(arr: pyarrow.Array) -> pyarrow.Array:
     if isinstance(arr, pyarrow.ChunkedArray):
         return arr.combine_chunks()
     return arr
-
-
-def _build_list_array(
-    offsets: pyarrow.Array,
-    values: pyarrow.Array,
-    is_large: bool,
-    null_mask: pyarrow.Array | None = None,
-) -> pyarrow.Array:
-    """Reconstruct a ListArray from offsets and values."""
-    offsets_type = pyarrow.int64() if is_large else pyarrow.int32()
-    offsets = pc.cast(offsets, offsets_type)
-    array_cls = pyarrow.LargeListArray if is_large else pyarrow.ListArray
-    return array_cls.from_arrays(offsets, values, mask=null_mask)
-
-
-def _counts_to_offsets(counts: pyarrow.Array) -> pyarrow.Array:
-    """Convert per-row counts to list offsets via cumulative sum."""
-    cumsum = pc.cumulative_sum(counts)
-    return pyarrow.concat_arrays([pyarrow.array([0], type=cumsum.type), cumsum])
 
 
 def _infer_flattened_dtype(expr: "Expr") -> DataType:
@@ -256,7 +238,12 @@ class _ListNamespace:
             lengths = pc.fill_null(lengths, 0)
             is_large = pyarrow.types.is_large_list(arr_type)
             offsets = _counts_to_offsets(lengths)
-            sorted_arr = _build_list_array(offsets, values, is_large, null_mask)
+            sorted_arr = _combine_as_list_array(
+                offsets=offsets,
+                values=values,
+                is_large=is_large,
+                null_mask=null_mask,
+            )
 
             if pyarrow.types.is_fixed_size_list(original_type):
                 sorted_arr = sorted_arr.cast(original_type)
@@ -314,6 +301,11 @@ class _ListNamespace:
 
             is_large: bool = pyarrow.types.is_large_list(arr.type)
             null_mask: pyarrow.Array | None = arr.is_null() if arr.null_count else None
-            return _build_list_array(offsets, all_scalars, is_large, null_mask)
+            return _combine_as_list_array(
+                offsets=offsets,
+                values=all_scalars,
+                is_large=is_large,
+                null_mask=null_mask,
+            )
 
         return _list_flatten(self._expr)
