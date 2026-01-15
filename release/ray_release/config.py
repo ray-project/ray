@@ -347,7 +347,7 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 
 def get_test_cloud_id(test: Test) -> str:
-    return test["cluster"].get("cloud_id", str(DEFAULT_CLOUD_ID))
+    return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
