@@ -26,7 +26,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
+from ray.llm._internal.batch.stages.common import (
+    maybe_convert_ndarray_to_list,
+    truncate_str,
+)
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -708,10 +711,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
-            # Include snippet of failed prompt
-            prompt = row.get("prompt", "")
-            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
-                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
+            # Include snippet of failed prompt for debuggability
+            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,

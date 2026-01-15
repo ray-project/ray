@@ -261,6 +261,7 @@ steps:
       - python
       - dashboard
       - oss
+      - min_build
     instance_type: medium
     commands:
       # validate minimal installation
