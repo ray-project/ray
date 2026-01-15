@@ -12,10 +12,12 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
@@ -36,6 +38,10 @@ class TestLearner(unittest.TestCase):
         ray.shutdown()
 
     def test_end_to_end_update(self):
+        """Tests the end-to-end update process for a single-agent scenario.
+
+        We check that the loss is decreasing and that the metrics are where we expect them and that values are as expected.
+        """
 
         config = BaseTestingAlgorithmConfig()
 
@@ -43,25 +49,38 @@ class TestLearner(unittest.TestCase):
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
-        for iter_i in range(1000):
+        for seq_num in range(1, 1000):
             batch = reader.next().as_multi_agent()
             batch = learner._convert_batch_type(batch)
             results = learner.update(batch=batch)
 
-        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY].peek()
-        min_loss = min(loss, min_loss)
-        print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
-        self.assertLess(min_loss, 0.58)
+            self.assertEqual(
+                batch.count, results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED]
+            )
+            self.assertEqual(
+                batch.count,
+                results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED_LIFETIME],
+            )
+            self.assertEqual(seq_num, results[DEFAULT_MODULE_ID][WEIGHTS_SEQ_NO])
+            self.assertEqual(
+                batch.count, results[DEFAULT_MODULE_ID][MODULE_TRAIN_BATCH_SIZE_MEAN]
+            )
+            self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
+            self.assertEqual(
+                batch.count, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED]
+            )
+            self.assertEqual(
+                batch.count, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED_LIFETIME]
+            )
+            self.assertEqual(batch.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED])
+            self.assertEqual(
+                batch.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME]
+            )
 
-        # Test that the metrics are correctly aggregated to the ALL_MODULES key.
-        self.assertEqual(
-            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED].peek(),
-            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek(),
-        )
-        self.assertEqual(
-            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED_LIFETIME].peek(),
-            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
-        )
+        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
+        min_loss = min(loss, min_loss)
+        print(f"[iter = {seq_num}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
+        self.assertLess(min_loss, 0.58)
 
     def test_compute_gradients(self):
         """Tests the compute_gradients correctness.
@@ -256,7 +275,11 @@ class TestLearner(unittest.TestCase):
         check(learner1._get_optimizer_state(), learner2._get_optimizer_state())
         check(learner1._module_optimizers, learner2._module_optimizers)
 
-    def test_multi_agent_step_aggregation(self):
+    def test_multi_agent_learner_results(self):
+        """Tests the learner results for a multi-agent scenario.
+
+        We check that all metrics are where we expect them and that values are as expected.
+        """
         config = BaseTestingAlgorithmConfig()
 
         learner = config.build_learner(env=self.ENV)
@@ -269,52 +292,45 @@ class TestLearner(unittest.TestCase):
         )
         reader = get_cartpole_dataset_reader(batch_size=512)
 
-        batch_counts = {"mod1": 0, "mod2": 0}
         results = {}
-        for _iter_i in range(50):
+        for seq_num in range(1, 5):
             batch1 = reader.next()
-            batch_counts["mod1"] += batch1.count
             batch2 = reader.next()
-            batch_counts["mod2"] += batch2.count
             multi_agent_batch = MultiAgentBatch(
                 {"mod1": batch1, "mod2": batch2}, batch1.count + batch2.count
             )
             batch = learner._convert_batch_type(multi_agent_batch)
             results = learner.update(batch)
+            # Lifetime steps are aggregated at the root, so the return value in the results will contain only the last step.
+            for module_id, sa_batch_count in zip(
+                ["mod1", "mod2"], [batch1.count, batch2.count]
+            ):
+                self.assertEqual(
+                    sa_batch_count,
+                    results[module_id][NUM_MODULE_STEPS_TRAINED_LIFETIME],
+                )
+                self.assertEqual(seq_num, results[module_id][WEIGHTS_SEQ_NO])
+                self.assertEqual(
+                    sa_batch_count, results[module_id][MODULE_TRAIN_BATCH_SIZE_MEAN]
+                )
+                # We don't know what the value should be, just check for existence.
+                self.assertTrue(learner.TOTAL_LOSS_KEY in results[module_id])
 
-        # Summarize and check module steps
-        sum_all_modules_last_step = 0
-        sum_all_modules_steps_lifetime = 0
-        for batch, module_id in zip(
-            [batch1, batch2], ["mod1", "mod2"]
-        ):  # pyright: ignore[reportPossiblyUnboundVariable]
-            last_mod_steps = results[module_id][NUM_MODULE_STEPS_TRAINED].peek()
-            sum_all_modules_last_step += last_mod_steps
-            self.assertEqual(batch.count, last_mod_steps)
-
-            mod_lifetime_steps = results[module_id][
-                NUM_MODULE_STEPS_TRAINED_LIFETIME
-            ].peek()
-            sum_all_modules_steps_lifetime += mod_lifetime_steps
-            self.assertEqual(batch_counts[module_id], mod_lifetime_steps)
-        # Test that the metrics are correctly aggregated to the ALL_MODULES and as expected
-        self.assertEqual(sum(batch_counts.values()), sum_all_modules_steps_lifetime)
-        self.assertEqual(
-            sum_all_modules_last_step,
-            results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED].peek(),
-        )
-        self.assertEqual(
-            sum_all_modules_steps_lifetime,
-            results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED_LIFETIME].peek(),
-        )
-        self.assertEqual(
-            sum_all_modules_last_step,
-            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek(),
-        )
-        self.assertEqual(
-            sum_all_modules_steps_lifetime,
-            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
-        )
+            self.assertEqual(
+                batch1.count + batch2.count,
+                results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED_LIFETIME],
+            )
+            self.assertEqual(
+                batch1.count + batch2.count,
+                results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED],
+            )
+            self.assertEqual(
+                batch1.count + batch2.count,
+                results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME],
+            )
+            self.assertEqual(
+                batch1.count + batch2.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
+            )
 
 
 if __name__ == "__main__":

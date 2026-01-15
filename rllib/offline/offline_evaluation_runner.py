@@ -312,9 +312,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 self._weights_seq_no = weights_seq_no
 
     def _log_steps_evaluated_metrics(self, batch: MultiAgentBatch) -> None:
-        # Collect all module steps and add them for `ALL_MODULES` to avoid
-        # biasing the throughput by looping through modules.
-        total_module_steps = 0
         for mid, module_batch in batch.policy_batches.items():
             # Log weights seq no for this batch.
             self.metrics.log_value(
@@ -354,12 +351,12 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
-            total_module_steps,
+            batch.env_steps(),
             reduce="sum",
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            total_module_steps,
+            batch.env_steps(),
             reduce="lifetime_sum",
             with_throughput=True,
         )
