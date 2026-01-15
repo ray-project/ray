@@ -9,9 +9,8 @@ from ray_release.aws import (
 )
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.exception import CloudInfoError
-from ray_release.logger import logger
 from ray_release.test import Test
-from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+from ray_release.util import dict_hash, get_anyscale_sdk
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -37,12 +36,11 @@ class ClusterManager(abc.ABC):
         self.cluster_name = (
             f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
         )
-        self.cluster_id = None
 
         self.cluster_env = None
         self.cluster_env_name = None
-        self.cluster_env_id = None
-        self.cluster_env_build_id = None
+        self.cluster_env_id: Optional[str] = None
+        self.cluster_env_build_id: Optional[str] = None
 
         self.cluster_compute = None
         self.cluster_compute_name = None
@@ -125,22 +123,5 @@ class ClusterManager(abc.ABC):
     def delete_configs(self):
         raise NotImplementedError
 
-    def start_cluster(self, timeout: float = 600.0):
-        raise NotImplementedError
-
-    def terminate_cluster(self, wait: bool = False):
-        try:
-            self.terminate_cluster_ex(wait=False)
-        except Exception as e:
-            logger.exception(f"Could not terminate cluster: {e}")
-
-    def terminate_cluster_ex(self, wait: bool = False):
-        raise NotImplementedError
-
     def get_cluster_address(self) -> str:
         raise NotImplementedError
-
-    def get_cluster_url(self) -> Optional[str]:
-        if not self.project_id or not self.cluster_id:
-            return None
-        return anyscale_cluster_url(self.project_id, self.cluster_id)

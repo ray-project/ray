@@ -3,14 +3,14 @@ from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 from ray.tune.result import TRAINING_ITERATION
 
@@ -69,6 +69,7 @@ config = (
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
+        evaluation_config=BCConfig.overrides(explore=False),
     )
 )
 

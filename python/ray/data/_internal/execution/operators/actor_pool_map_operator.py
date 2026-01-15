@@ -5,7 +5,20 @@ import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray.actor import ActorHandle
@@ -83,6 +96,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -112,6 +126,8 @@ class ActorPoolMapOperator(MapOperator):
             ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted.
         """
         super().__init__(
             map_transformer,
@@ -125,6 +141,7 @@ class ActorPoolMapOperator(MapOperator):
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
+            on_start,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -228,8 +245,11 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
-        # Create the actor workers and add them to the pool.
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        # Trigger the large UDF warning check by accessing the property.
+        # This is needed because ActorPoolMapOperator passes _map_transformer
+        # directly to actors, never accessing the lazy _map_transformer_ref property.
+        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -305,6 +325,8 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
+        # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
+        self._notify_first_input(bundle)
         self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
@@ -431,11 +453,16 @@ class ActorPoolMapOperator(MapOperator):
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
+        max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
         num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
         num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
         memory_per_actor = self._ray_remote_args.get("memory", 0)
+
+        obj_store_mem_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
@@ -443,13 +470,21 @@ class ActorPoolMapOperator(MapOperator):
             memory=memory_per_actor * min_actors,
             # To ensure that all actors are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            )
-            * min_actors,
+            object_store_memory=obj_store_mem_per_task * min_actors,
         )
 
-        return min_resource_usage, ExecutionResources.for_limits()
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_resource_usage = ExecutionResources(
+            cpu=0 if num_cpus_per_actor == 0 else num_cpus_per_actor * max_actors,
+            gpu=0 if num_gpus_per_actor == 0 else num_gpus_per_actor * max_actors,
+            memory=0 if memory_per_actor == 0 else memory_per_actor * max_actors,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
@@ -1216,18 +1251,3 @@ class _ActorPool(AutoscalingActorPool):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         return self._per_actor_resource_usage
-
-    def get_pool_util(self) -> float:
-        if self.num_running_actors() == 0:
-            return 0.0
-        else:
-            # We compute utilization as a ration of
-            #  - Number of submitted tasks over
-            #  - Max number of tasks that Actor Pool could currently run
-            #
-            # This value could exceed 100%, since by default actors are allowed
-            # to queue tasks (to pipeline task execution by overlapping block
-            # fetching with the execution of the previous task)
-            return self.num_tasks_in_flight() / (
-                self._max_actor_concurrency * self.num_running_actors()
-            )

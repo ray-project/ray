@@ -32,6 +32,10 @@
 namespace ray {
 namespace core {
 
+using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
+using SetDirectTransportMetadata = std::function<void(
+    const ObjectID &object_id, const std::string &direct_transport_metadata)>;
+
 // If you change this options's definition, you must change the options used in
 // other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
@@ -71,7 +75,7 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
-      const rpc::TensorTransport &tensor_transport)>;
+      const std::optional<std::string> &tensor_transport)>;
 
   CoreWorkerOptions()
       : enable_logging(false),
@@ -80,6 +84,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -127,8 +132,10 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// Callback to free GPU object from the in-actor object store.
-  std::function<void(const ObjectID &)> free_actor_object_callback;
+  /// Callback to free RDT object from the in-actor RDT store.
+  FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to set the direct transport metadata for an RDT object.
+  SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -174,12 +181,10 @@ struct CoreWorkerOptions {
   int metrics_agent_port;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The startup token of the process assigned to it
-  /// during startup via command line arguments.
-  /// This is needed because the actual core worker process
-  /// may not have the same pid as the process the worker pool
-  /// starts (due to shim processes).
-  StartupToken startup_token{0};
+  /// The worker ID assigned by raylet when starting the worker process.
+  /// This is set for non-driver workers started by raylet. For drivers,
+  /// this should be Nil and the worker ID will be computed from the job ID.
+  WorkerID worker_id;
   /// Cluster ID associated with the core worker.
   ClusterID cluster_id;
   /// The function to allocate a new object for the memory store.

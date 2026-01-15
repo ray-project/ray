@@ -100,17 +100,64 @@ py_binary(
 )
 
 py_library(
-    name = "docker_tags_lib",
-    srcs = ["docker_tags_lib.py"],
+    name = "crane_lib",
+    srcs = ["crane_lib.py"],
     data = [
         "@crane_linux_x86_64//:file",
     ],
+    visibility = [
+        "//ci/ray_ci/automation:__subpackages__",
+        "//ci/ray_ci/base_images:__subpackages__",
+    ],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
+        ci_require("pytest"),
+        ci_require("requests"),
+        ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "test_crane_lib",
+    size = "small",
+    srcs = ["test_crane_lib.py"],
+    data = [
+        "@crane_linux_x86_64//:file",
+        "@registry_x86_64//:file",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ci_require("requests"),
+        ":crane_lib",
+        ":test_utils",
+    ],
+)
+
+py_library(
+    name = "docker_tags_lib",
+    srcs = ["docker_tags_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ":crane_lib",
         "//ci/ray_ci:ray_ci_lib",
         ci_require("docker"),
         ci_require("requests"),
-        ci_require("bazel-runfiles"),
     ],
 )
 
@@ -129,6 +176,7 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":docker_tags_lib",
+        ":test_utils",
     ],
 )
 
@@ -244,5 +292,27 @@ py_binary(
         ci_require("click"),
         ci_require("pygithub"),
         ci_require("tqdm"),
+    ],
+)
+
+py_binary(
+    name = "copy_wanda_image",
+    srcs = ["copy_wanda_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "extract_wanda_wheels",
+    srcs = ["extract_wanda_wheels.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
     ],
 )

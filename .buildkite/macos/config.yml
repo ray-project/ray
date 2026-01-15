@@ -16,5 +16,3 @@ hook_env_keys:
   - RAYCI_CHECKOUT_DIR
 skip_tags:
   - disabled
-tag_filter_command:
-  - ./ci/ci_tags_from_change.sh

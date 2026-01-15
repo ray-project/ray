@@ -8,20 +8,18 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
     label: "wanda: ray-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -29,7 +27,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase
 
   - name: raycudabase
@@ -41,7 +39,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -58,7 +55,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_deps/ray_base_deps_py{{matrix.python}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
@@ -67,7 +64,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -86,7 +82,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase
 
   - name: ray-llmbase
@@ -120,7 +116,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: ray-llmbase
 
   - name: ray-mlcpubase
@@ -131,7 +127,6 @@ steps:
     wanda: docker/ray-ml/cpu.wanda.yaml
     depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -141,14 +136,13 @@ steps:
     label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix}}.lock"
     depends_on: ray-mlcpubase
 
   - name: ray-mlcudabase
@@ -161,7 +155,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -176,7 +169,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -186,7 +178,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
+      REQUIREMENTS_FILE: "python/deplocks/base_extra/ray_base_extra_py{{matrix.python}}.lock"
     depends_on: ray-mlcudabase
 
   - name: ray-slimcpubase
@@ -203,6 +195,8 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "python/deplocks/base_slim/ray_base_slim_py{{matrix}}.lock"
+      CONSTRAINTS_FILE: "python/requirements_compiled_py{{matrix}}.txt"
 
   - name: ray-slimcudabase
     label: "wanda: ray-slim-py{{matrix.python}}-cu{{matrix.cuda}}-base"
@@ -226,7 +220,10 @@ steps:
           - "12.5.1"
           - "12.6.3"
           - "12.8.1"
+          - "12.9.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "python/deplocks/base_slim/ray_base_slim_py{{matrix.python}}.lock"
+      CONSTRAINTS_FILE: "python/requirements_compiled_py{{matrix.python}}.txt"

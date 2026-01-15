@@ -500,6 +500,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
@@ -521,6 +526,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
@@ -636,6 +646,31 @@
     timeout: 3600
     script: python text_embedding/main.py {{args}}
 
+# Multi-stage inference pipeline with separate CPU preprocessing and GPU inference.
+# Mimics production ML inference pipeline with:
+# - Separate preprocessing (CPU) and inference (GPU actors) stages
+# - Pandas preprocessing
+# - Metadata column passthrough
+# - Extra output columns
+- name: multi_stage_batch_inference
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+  env: gce
+
+  cluster:
+    cluster_compute: autoscaling_gpu_g2_gce.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python model_inference_pipeline_benchmark.py
+      --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
+      --preprocessing-batch-size 4096
+      --inference-batch-size 1024
+      --inference-min-actors 1
+      --inference-max-actors 300
+
 ##############
 # TPCH Queries
 ##############
@@ -684,7 +719,7 @@
  #         # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
  #         # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
  #         runtime_env:
- #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
  #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
  #       cluster_compute: cross_az_250_350_compute_gce.yaml
  #   - __suffix__: aws_failure_injection
@@ -692,12 +727,13 @@
  #     cluster:
  #       byod:
  #         runtime_env:
- #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
  #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
  #       cluster_compute: cross_az_250_350_compute_aws.yaml
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
-  frequency: nightly
+  python: "3.10"
+  frequency: weekly
   env: gce
   working_dir: nightly_tests
 
@@ -711,7 +747,7 @@
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
-    timeout: 10800
+    timeout: 14400
     # The network failure interval is set to 210 seconds since the test as is takes around double that to run without failures.
     # If the runtime of the test is dramatically reduced in the future, the interval will have to be retuned.
     script: >
@@ -725,3 +761,19 @@
       env: aws
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: does_not_over_provision
+  group: data-autoscaling
+  frequency: manual
+
+  cluster:
+    byod: {}
+    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python autoscaling/does_not_over_provision.py

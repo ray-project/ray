@@ -28,11 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_fixed_shape_tensor_types,
-)
-from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -89,6 +85,10 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -171,8 +172,8 @@ a torch.device object, or an integer (e.g. 0 for 'cuda:0').
 
 BT_API_GROUP = "Basic Transformations"
 SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
-SMJ_API_GROUP = "Splitting, Merging, Joining datasets"
-GGA_API_GROUP = "Grouped and Global aggregations"
+SMJ_API_GROUP = "Splitting, Merging, Joining Datasets"
+GGA_API_GROUP = "Grouped and Global Aggregations"
 CD_API_GROUP = "Consuming Data"
 IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
@@ -564,7 +565,7 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            If you require stateful transfomation,
+            If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
             .. testcode::
@@ -790,6 +791,7 @@ class Dataset:
             self._logical_plan.dag,
             fn,
             batch_size=batch_size,
+            can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
             min_rows_per_bundled_input=batch_size,
@@ -798,7 +800,6 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
-            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -810,6 +811,8 @@ class Dataset:
         self,
         column_name: str,
         expr: Expr,
+        *,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -818,6 +821,10 @@ class Dataset:
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
         and user-defined functions (UDFs).
+
+        For callable class UDFs, Ray Data automatically uses actor semantics to maintain
+        state across batches. You can customize the compute strategy to control parallelism
+        and resource allocation.
 
         Examples:
             >>> import ray
@@ -841,9 +848,32 @@ class Dataset:
             {'id': 0, 'id_plus_one': 1}
             {'id': 1, 'id_plus_one': 2}
 
+            >>> # Using a callable class UDF (automatically uses actors)
+            >>> @udf(return_dtype=DataType.int32())
+            ... class AddOffset:
+            ...     def __init__(self, offset):
+            ...         self.offset = offset
+            ...     def __call__(self, x):
+            ...         return pc.add(x, self.offset)
+            >>>
+            >>> add_five = AddOffset(5)
+            >>> ds.with_column("id_plus_five", add_five(col("id"))).show(2)
+            {'id': 0, 'id_plus_five': 5}
+            {'id': 1, 'id_plus_five': 6}
+
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
+            compute: The compute strategy to use for the projection operation.
+                If not specified and the expression contains callable class UDFs,
+                Ray Data automatically uses ``ActorPoolStrategy`` for actor semantics.
+                Otherwise, uses ``TaskPoolStrategy``.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size
+                  actor pool of ``n`` workers.
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use
+                  an autoscaling actor pool from ``m`` to ``n`` workers.
+
             **ray_remote_args: Additional resource requirements to request from
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
@@ -870,6 +900,7 @@ class Dataset:
             project_op = Project(
                 self._logical_plan.dag,
                 exprs=[StarExpr(), expr.alias(column_name)],
+                compute=compute,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1116,9 +1147,6 @@ class Dataset:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-        # Don't feel like we really need this
-        from ray.data._internal.compute import TaskPoolStrategy
-
         compute = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
@@ -1243,7 +1271,6 @@ class Dataset:
             )
 
         # Construct the plan and project operation
-        from ray.data._internal.compute import TaskPoolStrategy
 
         compute = TaskPoolStrategy(size=concurrency)
 
@@ -1529,7 +1556,6 @@ class Dataset:
 
         if expr is not None:
             _check_fn_params_incompatible("expr")
-            from ray.data._internal.compute import TaskPoolStrategy
 
             # Check if expr is a string (deprecated) or Expr object
             if isinstance(expr, str):
@@ -2948,7 +2974,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def unique(self, column: str) -> List[Any]:
+    def unique(self, column: str, ignore_nulls: bool = False) -> List[Any]:
         """List the unique elements in a given column.
 
         Examples:
@@ -2982,11 +3008,12 @@ class Dataset:
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: If ``True``, ignore null values in the column.
 
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
@@ -3988,15 +4015,10 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.ParquetWriter.html>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``arrow_parquet_args``. If `row_group_size` is
-                provided, it will be passed to
-                `pyarrow.parquet.ParquetWriter.write_table() <https:/\
-                    /arrow.apache.org/docs/python/generated/pyarrow\
-                        .parquet.ParquetWriter.html\
-                        #pyarrow.parquet.ParquetWriter.write_table>`_. Use this argument
+                any duplicate keys from ``arrow_parquet_args``. Use this argument
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
-                arguments for each dataset block.
+                arguments for each dataset block. See the note below for more details.
             min_rows_per_file: [Experimental] The target minimum number of rows to write
                 to each file. If ``None``, Ray Data writes a system-chosen number of
                 rows to each file. If the number of rows per block is larger than the
@@ -4026,6 +4048,22 @@ class Dataset:
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+
+        .. note::
+
+            When using `arrow_parquet_args` or `arrow_parquet_args_fn` to pass extra
+            options to pyarrow, there are some special cases:
+
+            - `partitioning_flavor`: if it's not provided, default is "hive" in Ray Data.
+              Otherwise, it follows pyarrow's behavior: `None` for pyarrow's DirectoryPartitioning,
+              "hive" for HivePartitioning, and "filename" for FilenamePartitioning.
+              See `pyarrow.dataset.partitioning` <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.partitioning.html>_.
+            - `row_group_size`: if provided, it's passed to
+              `pyarrow.parquet.ParquetWriter.write_table() <https:/\
+                  /arrow.apache.org/docs/python/generated/pyarrow\
+                      .parquet.ParquetWriter.html\
+                      #pyarrow.parquet.ParquetWriter.write_table>`_.
+
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -4189,6 +4227,10 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
+        mode: "SaveMode" = SaveMode.APPEND,
+        overwrite_filter: Optional["Expr"] = None,
+        upsert_kwargs: Optional[Dict[str, Any]] = None,
+        overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4204,31 +4246,89 @@ class Dataset:
 
                 import ray
                 import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+                from ray.data import SaveMode
+                from ray.data.expressions import col
+
+                # Basic append (default behavior)
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
 
+                # Schema evolution is automatic - new columns are added automatically
+                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+                ds_enriched.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
+                 # Upsert mode - update existing rows or insert new ones
+                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+                ds_updates.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["id"]},
+                )
+
+                # Partial overwrite with Ray Data expressions
+                ds.write_iceberg(
+                    table_identifier="events.user_activity",
+                    catalog_kwargs={"name": "default", "type": "rest"},
+                    mode=SaveMode.OVERWRITE,
+                    overwrite_filter=col("date") >= "2024-10-28"
+                )
+
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
+                function (such as name, type, etc.). For the function definition, see
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
+            snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
+            mode: Write mode using SaveMode enum. Options:
+
+                * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
+                * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
+                  or insert new rows if they don't exist in the table.
+                * SaveMode.OVERWRITE: Replace all existing data in the table with new data, or replace
+                  data matching overwrite_filter if specified.
+
+            overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
+                Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
+                this filter are replaced. If None with OVERWRITE mode, replaces all table data.
+                Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
+            overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
+                Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
+                for details.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-        """
 
+        Note:
+            Schema evolution is automatically enabled. New columns in the incoming data
+            are automatically added to the table schema. The schema is extracted
+            automatically from the data being written.
+        """
         datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
+            table_identifier=table_identifier,
+            catalog_kwargs=catalog_kwargs,
+            snapshot_properties=snapshot_properties,
+            mode=mode,
+            overwrite_filter=overwrite_filter,
+            upsert_kwargs=upsert_kwargs,
+            overwrite_kwargs=overwrite_kwargs,
         )
 
         self.write_datasink(
@@ -5248,14 +5348,19 @@ class Dataset:
             self._logical_plan.dag,
             datasink,
             ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
+            compute=TaskPoolStrategy(concurrency),
         )
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                datasink.on_write_start()
+                # TODO (https://github.com/ray-project/ray/issues/59326): There should be no special handling for skipping writes.
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )
@@ -5263,7 +5368,7 @@ class Dataset:
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
-            iter_, stats = self._write_ds._execute_to_iterator()
+            iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -6665,13 +6770,15 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+    def _execute_to_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         bundle_iter, stats, executor = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats
+        return bundle_iter, stats, executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
@@ -6800,7 +6907,8 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=_convert_to_pa_type(dtype._dtype),
                     )
                 )
 
