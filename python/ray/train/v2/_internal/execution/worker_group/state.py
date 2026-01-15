@@ -126,25 +126,18 @@ class WorkerGroupStateBuilder:
 
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
-    # Run the worker shutdown logic on each of the workers. This should
-    # be a non-blocking call to realize forceful shutdown after patience_s.
-    _ = [w.actor.shutdown.remote() for w in workers]
+    """Shuts down workers after allowing a maximum of patience_s seconds for shutdown hooks to run."""
+    if patience_s < 0:
+        raise ValueError("Invalid patience_s: must be non-negative")
+
+    done_refs = [w.actor.shutdown.remote() for w in workers]
 
     logger.debug(f"Shutting down {len(workers)} workers.")
-    if patience_s <= 0:
-        for worker in workers:
-            ray.kill(worker.actor)
-    else:
-        done_refs = [w.actor.__ray_terminate__.remote() for w in workers]
-        # Wait for actors to die gracefully.
-        _, not_done = ray.wait(
-            done_refs, num_returns=len(done_refs), timeout=patience_s
-        )
-        if not_done:
-            logger.debug("Graceful termination failed. Falling back to force kill.")
-            # If all actors are not able to die gracefully, then kill them.
-            for worker in workers:
-                ray.kill(worker.actor)
+
+    ray.wait(done_refs, num_returns=len(done_refs), timeout=patience_s)
+
+    for worker in workers:
+        ray.kill(worker.actor)
 
 
 def _shutdown_sync_actor(sync_actor: SynchronizationActor):

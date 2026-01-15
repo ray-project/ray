@@ -533,6 +533,7 @@ ray_cc_library(
         # TODO(irabbani): Refactor a subset of scheduling into a shared target
         # between the GCS and Raylet.
         "//src/ray/raylet/scheduling:scheduler",
+        "//src/ray/raylet:local_lease_manager",
         "//src/ray/raylet_rpc_client:raylet_client_lib",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:grpc_server",
