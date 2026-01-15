@@ -63,7 +63,7 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
+from tic_tac_toe import TicTacToe
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
@@ -94,15 +94,15 @@ config = (
         num_aggregator_actors_per_learner=2,
     )
     .training(
-        train_batch_size_per_learner=256,
-        target_network_update_freq=2,
-        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
+        train_batch_size_per_learner=1200,
+        target_network_update_freq=3,
+        lr=0.00025,
         vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.01], [300_000, 0.0]],
+        entropy_coeff=[[0, 0.01], [1_000_000, 0.0]],
         broadcast_interval=5,
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
-        circular_buffer_iterations_per_batch=2,
+        circular_buffer_iterations_per_batch=4,
     )
     .rl_module(
         rl_module_spec=MultiRLModuleSpec(
