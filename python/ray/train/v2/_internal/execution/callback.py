@@ -180,7 +180,7 @@ class ControllerCallback(RayTrainCallback):
         This is invoked after the exception is caught by the callback manager.
 
         Return:
-            A tuple of (action, error):
+            A tuple of (action, error), the below options are valid:
             - (CallbackErrorAction.SUPPRESS, None) to continue.
             - (CallbackErrorAction.SUPPRESS, TrainingFailedError) to log the exception and continue train.
             - (CallbackErrorAction.RAISE, TrainingFailedError) to propagate the exception to the training control flow.

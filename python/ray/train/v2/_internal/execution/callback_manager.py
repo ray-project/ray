@@ -22,6 +22,12 @@ class CallbackManager:
             except Exception as e:
                 exc_handler = getattr(callback, "on_callback_hook_exception", None)
                 if exc_handler is None:
+                    # This should never happen, log it for debugging purposes.
+                    logger.debug(
+                        f"Exception raised in callback hook '{hook_name}' from callback "
+                        f"'{callback_name}', but no 'on_callback_hook_exception' "
+                        f"handler is implemented."
+                    )
                     continue
                 try:
                     result = exc_handler(hook_name, e, **context)
@@ -32,7 +38,7 @@ class CallbackManager:
                     )
                     return ControllerError(handler_exc)
 
-                if not self._is_callback_hook_exception_handler_result(result):
+                if not self._validate_handler_result(result):
                     e = TypeError(
                         "`on_callback_hook_exception` must return "
                         "(CallbackErrorAction, Optional[TrainingFailedError]), "
@@ -41,8 +47,6 @@ class CallbackManager:
                     return ControllerError(e)
 
                 action, mapped_error = result
-                if not mapped_error:
-                    continue
 
                 match action:
                     case CallbackErrorAction.SUPPRESS:
@@ -52,6 +56,11 @@ class CallbackManager:
                             )
                         continue
                     case CallbackErrorAction.RAISE:
+                        if not mapped_error:
+                            e = ValueError(
+                                "CallbackErrorAction.RAISE expects a TrainingFailedError, got None."
+                            )
+                            return ControllerError(e)
                         return mapped_error
                     case _:
                         e = ValueError(f"Unknown CallbackErrorAction: {action}")
@@ -59,7 +68,7 @@ class CallbackManager:
 
         return None
 
-    def _is_callback_hook_exception_handler_result(self, result: object) -> bool:
+    def _validate_handler_result(self, result: object) -> bool:
         if not (isinstance(result, tuple) and len(result) == 2):
             return False
         action, mapped_error = result

@@ -430,6 +430,12 @@ class TrainController:
                 isinstance(state, ShuttingDownState)
                 and isinstance(state.next_state, ErroredState)
             ):
+                logger.warning(
+                    "A callback failed during a terminal state transition. "
+                    "This failure is being ignored to preserve the original "
+                    "training result. Error: %s",
+                    optional_result.training_failed_error,
+                )
                 return
 
             # NOTE: We intentionally do *not* re-invoke `after_controller_state_update`
