@@ -90,9 +90,6 @@
 				"project_id": {
 					"type": "string"
 				},
-				"cloud_name": {
-					"type": "string"
-				},
 				"byod": {
 					"$ref": "#/definitions/Byod"
 				}
