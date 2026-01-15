@@ -48,7 +48,7 @@ The algorithm should reach the default reward threshold of XX on Breakout
 within 10 million timesteps (40 million frames with 4x frame stacking,
 see: `default_timesteps` in the code).
 Training performance scales with the number of learners and env runners.
-The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
+The entropy coefficient schedule (decaying from 0.025 to 0.0 over 1 million
 timesteps) is crucial for achieving good final performance - removing this
 schedule will likely result in suboptimal policies.
 """
@@ -67,7 +67,7 @@ from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
     default_reward=18.0,
-    default_timesteps=10_000_000,  # 40 million steps
+    default_timesteps=10_000_000,  # 40 million frames
 )
 parser.set_defaults(
     env="ale_py:ALE/Pong-v5",
@@ -122,16 +122,15 @@ config = (
     )
     .training(
         learner_connector=_make_learner_connector,
-        train_batch_size_per_learner=500,
+        train_batch_size_per_learner=1280,
         target_network_update_freq=2,
-        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
-        vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
+        lr=0.0006,
+        vf_loss_coeff=1.7,
+        entropy_coeff=[[0, 0.025], [1_000_000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
-        broadcast_interval=5,
-        # learner_queue_size=1,
+        broadcast_interval=8,
         circular_buffer_num_batches=4,
-        circular_buffer_iterations_per_batch=2,
+        circular_buffer_iterations_per_batch=4,
     )
     .rl_module(
         model_config=DefaultModelConfig(

@@ -266,7 +266,7 @@ py_test(
         "--num-learners=1",
         "--num-gpus-per-learner=1",
         "--stop-iters=50",
-        "--stop-reward=5.0",
+        "--stop-reward=-5.0",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
@@ -287,7 +287,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--stop-iters=50",
-        "--stop-reward=5.0",
+        "--stop-reward=-5.0",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
