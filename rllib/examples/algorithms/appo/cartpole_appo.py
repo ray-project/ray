@@ -18,10 +18,10 @@ To run with default settings:
 `python cartpole_appo.py`
 
 To scale up with distributed learning using multiple learners and env-runners:
-`python atari_appo.py --num-learners=2 --num-env-runners=8`
+`python cartpole_appo.py --num-learners=2 --num-env-runners=8`
 
 To use a GPU-based learner add the number of GPUs per learners:
-`python atari_appo.py --num-learners=1 --num-gpus-per-learner=1`
+`python cartpole_appo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -38,7 +38,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 450.0 within
-approximately 1 million timesteps (see: `default_timesteps` in the code).
+approximately 4 million timesteps (see: `default_timesteps` in the code).
 The number of environment steps can be
 through changed `default_timesteps`. Training is fast on this simple environment,
 typically converging in under a minute on a single machine. The low value

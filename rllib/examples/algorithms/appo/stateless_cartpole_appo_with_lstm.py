@@ -16,8 +16,7 @@ This example:
     - uses `StatelessCartPole` environment to create a partially observable setting
     - configures an LSTM model with `use_lstm=True`, `max_seq_len=20`, and shared
     layers between policy and value function
-    - applies `MeanStdFilter` for observation normalization (note: there's a known
-    issue that may cause NaNs during training, marked with TODO)
+    - applies `MeanStdFilter` for observation normalization
     - demonstrates how recurrent models enable learning in POMDPs where standard
     feedforward networks would fail
 
@@ -25,7 +24,7 @@ How to run this script
 ----------------------
 `python stateless_cartpole_appo_with_lstm.py [options]`
 
-To run with default settings (3 env runners):
+To run with default settings (4 env runners):
 `python stateless_cartpole_appo_with_lstm.py`
 
 To scale up with distributed learning using multiple learners and env-runners:
@@ -48,16 +47,16 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The algorithm should reach the default reward threshold of 300.0 (500.0 is the
-maximum) within approximately 2 million timesteps (see: `default_timesteps`
+The algorithm should reach the default reward threshold of 350.0 (500.0 is the
+maximum) within approximately 5 million timesteps (see: `default_timesteps`
 in the code). The number of environment
 steps can be changed through argparser's `default_timesteps`.
-The LSTM should successfully learns to maintain an internal state that
+The LSTM should successfully learn to maintain an internal state that
 tracks velocity by observing sequential position changes.
 This mean result in training taking significantly longer than the fully
 observable CartPole version due to the additional complexity of learning
 with partial observability and the need for the LSTM to develop useful hidden
-state representations. Additional, the learning curve may show more variance
+state representations. Additionally, the learning curve may show more variance
 as the LSTM figures out how to use its memory effectively.
 """
 from ray.rllib.algorithms.appo import APPOConfig

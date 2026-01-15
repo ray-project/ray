@@ -11,7 +11,7 @@ adaptive KL coefficient (`kl_coeff=1.0`, `kl_target=0.04`) for improved policy
 stability in continuous action spaces.
 
 This example:
-    - uses 32 parallel environments per env runner for high-throughput sampling
+    - uses 16 parallel environments per env runner for high-throughput sampling
     - configures the circular buffer with 16 batches and 20 iterations per batch,
     allowing substantial reuse of collected experiences (these are the paper's
     recommended settings for continuous action tasks)
@@ -27,7 +27,7 @@ How to run this script
 ----------------------
 `python mujoco_appo.py [options]`
 
-To run with default settings on HalfCheetah:
+To run with default settings on Humanoid-v4:
 `python mujoco_appo.py`
 
 To run on a different MuJoCo environment:
@@ -53,8 +53,8 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The algorithm should reach the default reward threshold of 9000.0 within
-2 million timesteps (see: `default_timesteps` in the code).
+The algorithm should reach the default reward threshold of 800.0 within
+3 million timesteps (see: `default_timesteps` in the code).
 The number of environment steps can be changed through
 `default_timesteps`. The learning curve may show some initial instability
 before stabilizing as the KL coefficient adapts.

@@ -12,7 +12,7 @@ This example:
     - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
     ConnectorV2 pieces for proper frame stacking
     - uses 2 aggregator actors per learner for efficient experience collection (see: `num_aggregator_actors_per_learner=2` in the learner configuration)
-    - schedules the entropy coefficient to decay from 0.01 to 0.0 over training
+    - schedules the entropy coefficient to decay from 0.025 to 0.0 over training
 
 How to run this script
 ----------------------
@@ -44,7 +44,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The algorithm should reach the default reward threshold of XX on Breakout
+The algorithm should reach the default reward threshold of 18.0 on Pong
 within 10 million timesteps (40 million frames with 4x frame stacking,
 see: `default_timesteps` in the code).
 Training performance scales with the number of learners and env runners.
