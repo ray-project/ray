@@ -797,6 +797,8 @@ class ServeController:
     def _kill_actors_in_serve_subnamespaces(self) -> None:
         """Kill all actors in namespaces that start with 'serve::'."""
         from ray.util.state import list_actors
+        # Lazy import required. Since `list_actors` is client code, importing at the top level 
+        # will tell poison the linter to think that internal Serve APIs need to be publicly documented
 
         try:
             gcs_address = ray.get_runtime_context().gcs_address
