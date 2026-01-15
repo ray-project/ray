@@ -142,10 +142,10 @@ class SessionFileHandler(logging.Handler):
         os.makedirs(log_directory, exist_ok=True)
 
         self._path = os.path.join(log_directory, self._filename)
-        encoding = self._encoding
-        if encoding is None and os.name == "nt":
-            encoding = "utf-8"
-        self._handler = logging.FileHandler(self._path, encoding=encoding)
+        effective_encoding = self._encoding
+        if effective_encoding is None and os.name == "nt":
+            effective_encoding = "utf-8"
+        self._handler = logging.FileHandler(self._path, encoding=effective_encoding)
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
 
