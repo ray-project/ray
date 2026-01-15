@@ -281,6 +281,29 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   RAY_CHECK(!resource_request_list.empty());
 
   auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
+
+  // Node selected for STRICT_PACK must satisfy all label constraints. We check
+  // labels here before they are dropped in the aggregated resource request.
+  for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
+    const auto &node_resources = it->second->GetLocalView();
+    bool satisfies_all_labels = true;
+
+    for (const auto *req : resource_request_list) {
+      // IsFeasible includes a check whether the label_selector was satisfied
+      // for that request.
+      if (!node_resources.IsFeasible(*req)) {
+        satisfies_all_labels = false;
+        break;
+      }
+    }
+
+    if (!satisfies_all_labels) {
+      candidate_nodes.erase(it++);
+    } else {
+      ++it;
+    }
+  }
+
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
