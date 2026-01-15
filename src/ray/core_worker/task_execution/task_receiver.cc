@@ -185,7 +185,8 @@ void TaskReceiver::EnqueueTask(rpc::PushTaskRequest request,
     }
   };
 
-  TaskSpecification task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
+  TaskSpecification task_spec =
+      TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
     reply->set_was_cancelled_before_running(true);
     if (task_spec.IsActorTask()) {
