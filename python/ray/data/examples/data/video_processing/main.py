@@ -12,7 +12,7 @@ import pyarrow as pa
 import ray
 import ray.data
 from ray.data.examples.data.video_processing.video_processor import VideoProcessor
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 
 EXAMPLE_VIDEO_PATH = (
     "https://videos.pexels.com/video-files/30527638/13076846_2160_3240_30fps.mp4"
@@ -136,7 +136,7 @@ def run_dataset_pipeline(model_path: str) -> None:
     )
     decode_udf = DecodeFramesUDF()
     ds_decoded = ds.map_batches(decode_udf, batch_format="pyarrow", batch_size=1)
-    inference_stage = build_llm_processor(
+    inference_stage = build_processor(
         config,
         preprocess=_preprocess,
         postprocess=lambda row: {

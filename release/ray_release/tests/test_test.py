@@ -85,75 +85,8 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.9"
+    assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
-
-
-def test_get_ray_image():
-    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
-
-    # These images are NOT saved on Docker Hub, but on private ECR.
-    assert (
-        _stub_test(
-            {
-                "python": "3.9",
-                "cluster": {"byod": {}},
-            }
-        ).get_ray_image()
-        == "rayproject/ray:a1b2c3d4-py39-cpu"
-    )
-    assert (
-        _stub_test(
-            {
-                "python": "3.9",
-                "cluster": {
-                    "byod": {
-                        "type": "gpu",
-                    }
-                },
-            }
-        ).get_ray_image()
-        == "rayproject/ray-ml:a1b2c3d4-py39-gpu"
-    )
-    assert (
-        _stub_test(
-            {
-                "python": "3.11",
-                "cluster": {
-                    "byod": {
-                        "type": "llm-cu124",
-                    }
-                },
-            }
-        ).get_ray_image()
-        == "rayproject/ray-llm:a1b2c3d4-py311-cu124"
-    )
-
-    # When RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
-    with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:my_tag"
-        )
-
-    with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
-        # Even on release branches, we also use the RAYCI_BUILD_ID.
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:a1b2c3d4-py39-cpu"
-        )
-        with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
-            assert (
-                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-                == "rayproject/ray:a1b2c3d4-py39-cpu"
-            )
-
-        # Unless RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
-        with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
-            assert (
-                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-                == "rayproject/ray:my_tag"
-            )
 
 
 def test_get_byod_runtime_env():
@@ -168,7 +101,6 @@ def test_get_byod_runtime_env():
         }
     )
     runtime_env = test.get_byod_runtime_env()
-    assert runtime_env.get("RAY_BACKEND_LOG_JSON") == "1"
     assert runtime_env.get("a") == "b"
 
 

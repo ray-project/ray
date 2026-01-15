@@ -6,12 +6,14 @@
 
 app-builder-guide
 advanced-autoscaling
+asyncio-best-practices
 performance
 dyn-req-batch
 inplace-updates
 dev-workflow
 grpc-guide
 replica-ranks
+replica-scheduling
 managing-java-deployments
 deploy-vm
 multi-app-container
@@ -24,12 +26,14 @@ If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-gettin
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)
 - [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling)
+- [Asyncio and Concurrency best practices in Ray Serve](serve-asyncio-best-practices)
 - [Performance Tuning](serve-perf-tuning)
 - [Dynamic Request Batching](serve-performance-batching-requests)
 - [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
 - [gRPC Support](serve-set-up-grpc-service)
 - [Replica Ranks](serve-replica-ranks)
+- [Replica Scheduling](serve-replica-scheduling)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)

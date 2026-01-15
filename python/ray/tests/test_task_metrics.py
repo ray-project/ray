@@ -77,10 +77,18 @@ import time
 ray.init("auto")
 
 @ray.remote
-def f():
+def a():
     time.sleep(999)
-a = [f.remote() for _ in range(10)]
-ray.get(a)
+
+@ray.remote
+def b():
+    time.sleep(999)
+
+@ray.remote
+def c():
+    time.sleep(999)
+
+ray.get([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
 """
     proc = run_string_as_driver_nonblocking(driver)
     timeseries = PrometheusTimeseries()
@@ -94,9 +102,64 @@ ray.get(a)
         retry_interval_ms=500,
     )
     assert tasks_by_name_and_state(info, timeseries) == {
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+        ("a", "RUNNING"): 1.0,
+        ("b", "RUNNING"): 1.0,
+        ("c", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
+    proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_task_custom_name_metrics(shutdown_only):
+    """Verify that custom task names set via .options(name=...) are used in metrics.
+
+    This tests that RUNNING tasks use the custom name consistently with
+    FINISHED/FAILED tasks. Previously there was a bug where RUNNING metrics used
+    the function name (FunctionDescriptor->CallString()) but FINISHED/FAILED used
+    the custom name (TaskSpec::GetName()).
+    """
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+
+ray.init("auto")
+
+@ray.remote
+def my_function():
+    time.sleep(999)
+
+# Submit tasks with custom names
+a = [my_function.options(name="custom_task_name").remote() for _ in range(4)]
+ray.get(a)
+"""
+    proc = run_string_as_driver_nonblocking(driver)
+    timeseries = PrometheusTimeseries()
+
+    # Verify that RUNNING tasks use the custom name, not the function name.
+    # With 2 CPUs, 2 tasks should be running and 2 should be pending.
+    expected = {
+        ("custom_task_name", "RUNNING"): 2.0,
+        ("custom_task_name", "PENDING_NODE_ASSIGNMENT"): 2.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Verify the original function name is NOT used in metrics
+    breakdown = tasks_by_name_and_state(info, timeseries)
+    assert (
+        "my_function",
+        "RUNNING",
+    ) not in breakdown, "RUNNING tasks should use custom name, not function name"
+    assert (
+        "my_function",
+        "PENDING_NODE_ASSIGNMENT",
+    ) not in breakdown, "PENDING tasks should use custom name, not function name"
+
     proc.kill()
 
 
@@ -110,12 +173,16 @@ import time
 ray.init("auto")
 
 @ray.remote(num_cpus=0)
-def f():
+def {func_name}():
     time.sleep(999)
-a = [f.remote() for _ in range(1)]
+a = [{func_name}.remote() for _ in range(1)]
 ray.get(a)
 """
-    procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
+    # We make sure the task name is unique for each job so that we can distinguish the metric sample by task name across jobs.
+    procs = [
+        run_string_as_driver_nonblocking(driver.format(func_name=f"f_{i}"))
+        for i in range(3)
+    ]
 
     expected = {
         "RUNNING": 3.0,
@@ -150,10 +217,18 @@ ray.init("auto")
 @ray.remote(num_cpus=0)
 def wrapper():
     @ray.remote
-    def f():
+    def a():
         time.sleep(999)
 
-    ray.get([f.remote() for _ in range(10)])
+    @ray.remote
+    def b():
+        time.sleep(999)
+
+    @ray.remote
+    def c():
+        time.sleep(999)
+
+    ray.get([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
 
 w = wrapper.remote()
 ray.get(w)
@@ -171,13 +246,14 @@ ray.get(w)
 
     wait_for_assertion(
         check_task_state,
-        timeout=20,
+        timeout=30,
         retry_interval_ms=2000,
     )
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+        ("a", "RUNNING"): 1.0,
+        ("b", "RUNNING"): 1.0,
+        ("c", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
     proc.kill()
 
@@ -194,10 +270,18 @@ ray.init("auto")
 @ray.remote(num_cpus=0)
 def wrapper():
     @ray.remote
-    def f():
+    def a():
         time.sleep(999)
 
-    ray.wait([f.remote() for _ in range(10)])
+    @ray.remote
+    def b():
+        time.sleep(999)
+
+    @ray.remote
+    def c():
+        time.sleep(999)
+
+    ray.wait([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
 
 w = wrapper.remote()
 ray.get(w)
@@ -215,13 +299,14 @@ ray.get(w)
 
     wait_for_assertion(
         check_task_state,
-        timeout=20,
+        timeout=30,
         retry_interval_ms=2000,
     )
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+        ("a", "RUNNING"): 1.0,
+        ("b", "RUNNING"): 1.0,
+        ("c", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
     proc.kill()
 
@@ -583,17 +668,18 @@ import time
 ray.init("auto")
 
 @ray.remote
-def f():
+def {func_name}():
     pass
-a = [f.remote() for _ in range(10)]
+a = [{func_name}.remote() for _ in range(10)]
 ray.get(a)
 """
 
     # If force export at process death is broken, we won't see the recently completed
-    # tasks from the drivers.
+    # tasks from the drivers. We also make sure the task name is unique for each job so
+    # that we can distinguish the metric sample by task name across jobs.
     for i in range(10):
         print("Run job", i)
-        run_string_as_driver(driver)
+        run_string_as_driver(driver.format(func_name=f"f_{i}"))
         tasks_by_state(info, timeseries)
 
     expected = {
@@ -624,10 +710,19 @@ for _ in range(100):
     buf.append(ray.put(np.ones(10 * 1024 * 1024, dtype=np.uint8)))
 
 @ray.remote
-def f(x):
+def a(x):
     time.sleep(999)
 
-ray.get([f.remote(x) for x in buf])"""
+@ray.remote
+def b(x):
+    time.sleep(999)
+
+@ray.remote
+def c(x):
+    time.sleep(999)
+
+ray.get([a.remote(buf[0]), b.remote(buf[1])] + [c.remote(x) for x in buf[2:]])
+"""
 
     proc = run_string_as_driver_nonblocking(driver)
 

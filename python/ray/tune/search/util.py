@@ -18,9 +18,7 @@ def _set_search_properties_backwards_compatible(
     try:
         return set_search_properties_func(metric, mode, config, **spec)
     except TypeError as e:
-        if str(e).startswith(
-            "set_search_properties() got an unexpected keyword argument"
-        ):
+        if "set_search_properties() got an unexpected keyword argument" in str(e):
             logger.warning(
                 "Please update custom Searcher to take in function signature "
                 "as ``def set_search_properties(metric, mode, config, "

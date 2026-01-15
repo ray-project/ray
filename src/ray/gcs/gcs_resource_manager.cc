@@ -47,11 +47,7 @@ void GcsResourceManager::ConsumeSyncMessage(
   io_context_.dispatch(
       [this, message]() {
         if (message->message_type() == syncer::MessageType::COMMANDS) {
-          syncer::CommandsSyncMessage commands_sync_message;
-          commands_sync_message.ParseFromString(message->sync_message());
-          UpdateClusterFullOfActorsDetected(
-              NodeID::FromBinary(message->node_id()),
-              commands_sync_message.cluster_full_of_actors_detected());
+          // COMMANDS channel is currently unused.
         } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
           syncer::ResourceViewSyncMessage resource_view_sync_message;
           resource_view_sync_message.ParseFromString(message->sync_message());
@@ -206,12 +202,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       cluster_lease_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
-      // We only export gcs's pending info without adding the corresponding
-      // `ResourcesData` to the `batch` list. So if gcs has detected cluster full of
-      // actors, set the dedicated field in reply.
-      if (gcs_resources_data.cluster_full_of_actors_detected()) {
-        reply->set_cluster_full_of_actors_detected_by_gcs(true);
-      }
     }
 
     for (const auto &demand : aggregate_load) {
@@ -242,18 +232,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
-}
-
-void GcsResourceManager::UpdateClusterFullOfActorsDetected(
-    const NodeID &node_id, bool cluster_full_of_actors_detected) {
-  auto iter = node_resource_usages_.find(node_id);
-  if (iter == node_resource_usages_.end()) {
-    return;
-  }
-
-  // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
-  // This is being populated from NodeManager as part of COMMANDS
-  iter->second.set_cluster_full_of_actors_detected(cluster_full_of_actors_detected);
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(

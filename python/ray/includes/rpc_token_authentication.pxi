@@ -1,9 +1,12 @@
+from libcpp cimport bool as c_bool
+from libcpp.memory cimport shared_ptr
 from ray.includes.rpc_token_authentication cimport (
     CAuthenticationMode,
     GetAuthenticationMode,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
     CAuthenticationTokenValidator,
+    CTokenLoadResult,
 )
 from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
 import logging
@@ -27,33 +30,27 @@ def get_authentication_mode():
     return GetAuthenticationMode()
 
 
-def validate_authentication_token(provided_token: str) -> bool:
+def validate_authentication_token(provided_metadata: str) -> bool:
     """Validate provided authentication token.
 
     For TOKEN mode, compares against the expected token.
     For K8S mode, validates against the Kubernetes API.
 
     Args:
-        provided_token: Full authorization header value (e.g., "Bearer <token>")
+        provided_metadata: Full authorization header value (e.g., "Bearer <token>")
 
     Returns:
         bool: True if token is valid, False otherwise
     """
-    cdef optional[CAuthenticationToken] expected_opt
-    cdef CAuthenticationToken provided
+    cdef shared_ptr[const CAuthenticationToken] expected_ptr
 
     if get_authentication_mode() == CAuthenticationMode.TOKEN:
-        expected_opt = CAuthenticationTokenLoader.instance().GetToken(False)
-        if not expected_opt.has_value():
+        expected_ptr = CAuthenticationTokenLoader.instance().GetToken(False)
+        if not expected_ptr:
             return False
 
-    # Parse provided token from Bearer format
-    provided = CAuthenticationToken.FromMetadata(provided_token.encode())
-
-    if provided.empty():
-        return False
-
-    return CAuthenticationTokenValidator.instance().ValidateToken(expected_opt, provided)
+    return CAuthenticationTokenValidator.instance().ValidateToken(
+        expected_ptr, provided_metadata.encode())
 
 
 class AuthenticationTokenLoader:
@@ -73,8 +70,23 @@ class AuthenticationTokenLoader:
 
         Returns:
             bool: True if a token exists, False otherwise
+
+        Raises:
+            AuthenticationError: If any issues loading the token
         """
-        return CAuthenticationTokenLoader.instance().HasToken(ignore_auth_mode)
+        cdef CTokenLoadResult result
+        cdef c_bool c_ignore_auth_mode = ignore_auth_mode
+
+        with nogil:
+            result = CAuthenticationTokenLoader.instance().TryLoadToken(c_ignore_auth_mode)
+
+        if result.hasError():
+            from ray.exceptions import AuthenticationError
+            raise AuthenticationError(result.error_message.decode('utf-8'))
+
+        if not result.token.has_value() or result.token.value().empty():
+            return False
+        return True
 
     def reset_cache(self):
         """Reset the C++ authentication token cache.
@@ -103,13 +115,14 @@ class AuthenticationTokenLoader:
         if not self.has_token(ignore_auth_mode):
             return {}
 
-        # Get the token from C++ layer
-        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken(ignore_auth_mode)
+        # Get the token from C++ layer (returns shared_ptr)
+        cdef shared_ptr[const CAuthenticationToken] token_ptr = \
+            CAuthenticationTokenLoader.instance().GetToken(ignore_auth_mode)
 
-        if not token_opt.has_value() or token_opt.value().empty():
+        if not token_ptr or token_ptr.get().empty():
             return {}
 
-        return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
+        return {AUTHORIZATION_HEADER_NAME: token_ptr.get().ToAuthorizationHeaderValue().decode('utf-8')}
 
     def get_raw_token(self, ignore_auth_mode=False) -> str:
         """Get the raw authentication token value.
@@ -124,10 +137,11 @@ class AuthenticationTokenLoader:
         if not self.has_token(ignore_auth_mode):
             return ""
 
-        # Get the token from C++ layer
-        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken(ignore_auth_mode)
+        # Get the token from C++ layer (returns shared_ptr)
+        cdef shared_ptr[const CAuthenticationToken] token_ptr = \
+            CAuthenticationTokenLoader.instance().GetToken(ignore_auth_mode)
 
-        if not token_opt.has_value() or token_opt.value().empty():
+        if not token_ptr or token_ptr.get().empty():
             return ""
 
-        return token_opt.value().GetRawValue().decode('utf-8')
+        return token_ptr.get().GetRawValue().decode('utf-8')

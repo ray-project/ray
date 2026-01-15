@@ -4,7 +4,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 py_binary(
     name = "scheduler",
     srcs = ["scheduler.py"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [":pipeline"],
 )
 
@@ -26,7 +26,7 @@ py_test(
     name = "test_gap_filling_scheduler",
     size = "small",
     srcs = ["test_gap_filling_scheduler.py"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",

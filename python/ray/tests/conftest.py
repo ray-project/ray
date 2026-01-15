@@ -290,7 +290,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._common.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_default_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -327,7 +327,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._common.utils.get_ray_temp_dir()
+            temp_dir = ray._common.utils.get_default_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -1492,6 +1492,34 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
         server.stop()
 
 
+@pytest.fixture(scope="function")
+def event_routing_config(request, monkeypatch):
+    """
+    fixture to toggle event routing modes.
+    Modes:
+      - "default": Uses the existing core_worker to gcs code path.
+      - "aggregator": Enable publishing events to GCS through the Aggregator agent.
+    """
+    mode = getattr(request, "param", "default")
+    # clear envs to ensure default behavior
+    monkeypatch.delenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
+    )
+    monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
+
+    if mode == "aggregator":
+        print("using aggregator mode")
+        # Enable aggregator path in core worker
+        monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
+        monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+        # Ensure aggregator agent publishes to GCS
+        monkeypatch.setenv(
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
+        )
+    yield
+
+
 @pytest.fixture
 def cleanup_auth_token_env():
     """Reset authentication environment variables, files, and caches."""
@@ -1513,7 +1541,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
@@ -1537,7 +1567,9 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
@@ -1549,3 +1581,20 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.fixture
+def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
+    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
+    with monkeypatch.context() as m:
+        # Enable zero-copy sharing of PyTorch tensors in Ray
+        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
+
+        # Initialize Ray with the required environment variable.
+        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
+
+        # Yield control to the test session
+        yield
+
+        # Shutdown Ray after tests complete
+        ray.shutdown()
