@@ -3,6 +3,7 @@ import enum
 import math
 import pickle
 import re
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -177,27 +178,37 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
     4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
 
+    Batch Format:
+        The ``batch_format`` parameter controls the data format passed to ``aggregate()``:
+
+        - ``"pyarrow"``: Receives a ``pyarrow.Table`` (default, recommended for performance)
+        - ``"pandas"``: Receives a ``pandas.DataFrame``
+        - ``"numpy"``: Receives a ``Dict[str, np.ndarray]``
+
+        If the ``on`` parameter is specified, the batch will contain only that column
+        but still as the same container type (e.g., a single-column Table or DataFrame).
+
     Generic Type Parameters:
         This class is parameterized by two type variables:
 
         - ``AccumulatorType``: The type of the intermediate state (accumulator) used
-          during aggregation. This is what `aggregate_block` returns, what `combine`
-          takes as inputs and returns, and what `finalize` receives. For simple
-          aggregations like `Sum`, this might just be a numeric type. For more complex
-          aggregations like `Mean`, this could be a composite type like
+          during aggregation. This is what ``aggregate`` returns, what ``combine``
+          takes as inputs and returns, and what ``finalize`` receives. For simple
+          aggregations like ``Sum``, this might just be a numeric type. For more complex
+          aggregations like ``Mean``, this could be a composite type like
           ``List[Union[int, float]]`` representing ``[sum, count]``.
 
-        - ``AggOutputType``: The type of the final result after `finalize` is called.
-          This is what gets written to the output dataset. For `Sum`, this is the
-          same as the accumulator type (a number). For `Mean`, the accumulator is
+        - ``AggOutputType``: The type of the final result after ``finalize`` is called.
+          This is what gets written to the output dataset. For ``Sum``, this is the
+          same as the accumulator type (a number). For ``Mean``, the accumulator is
           ``[sum, count]`` but the output is a single ``float`` (the computed mean).
 
         Examples of type parameterization in built-in aggregations::
 
-            Count(AggregateFnV2[int, int])               # accumulator: int, output: int
-            Sum(AggregateFnV2[Union[int, float], ...])   # accumulator: number, output: number
-            Mean(AggregateFnV2[List[...], float])        # accumulator: [sum, count], output: float
-            Std(AggregateFnV2[List[...], float])         # accumulator: [M2, mean, count], output: float
+            Count(AggregateFunction[int, int])               # accumulator: int, output: int
+            Sum(AggregateFunction[Union[int, float], ...])   # accumulator: number, output: number
+            Mean(AggregateFunction[List[...], float])        # accumulator: [sum, count], output: float
+            Std(AggregateFunction[List[...], float])         # accumulator: [M2, mean, count], output: float
 
     Args:
         name: The name of the aggregation. This will be used as the column name
@@ -212,9 +223,9 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
             If `True`, nulls are skipped.
             If `False`, the presence of a null value might result in a null output,
             depending on the aggregation logic.
-        batch_format: The format for the batch data passed to `aggregate()`.
+        batch_format: The format for the batch data passed to ``aggregate()``.
             Supported values: "pyarrow", "pandas", "numpy", or None.
-            If `on` is specified, the batch will contain only that column.
+            If ``on`` is specified, the batch will contain only that column.
             Default is "pyarrow".
 
     Example:
@@ -244,6 +255,13 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
             ds = ray.data.range(100)
             result = ds.aggregate(CustomSum("id"))
             # result: {'custom_sum(id)': 4950}
+
+    .. note::
+        **Migration from aggregate_block**: If you have existing custom aggregations
+        that override ``aggregate_block(self, block)``, they will continue to work
+        but this approach is deprecated. Please migrate to the new ``aggregate(self, batch)``
+        method which receives data in the format specified by ``batch_format``.
+        See :ref:`aggregations` for more details on the new API.
     """
 
     def __init__(
@@ -286,6 +304,17 @@ class AggregateFunction(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutput
         # (aggregate_block is not defined on AggregateFunction base class)
         if hasattr(self, "aggregate_block") and callable(self.aggregate_block):
             # Legacy API: use raw block (for backwards compatibility)
+            # Warn users about the deprecated approach (but not for internal classes)
+            if not self.__class__.__module__.startswith("ray.data"):
+                warnings.warn(
+                    f"The `aggregate_block` method in {self.__class__.__name__} is "
+                    "deprecated. Please migrate to the new `aggregate(self, batch)` "
+                    "method which receives data in the format specified by "
+                    "`batch_format`. See https://docs.ray.io/en/latest/data/"
+                    "aggregating-data.html for details on the new API.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         else:
             # New API: use batch format conversion
