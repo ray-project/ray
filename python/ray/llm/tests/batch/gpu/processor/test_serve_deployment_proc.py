@@ -38,6 +38,7 @@ def test_serve_deployment_processor(dtype_mapping):
         "deployment_name": deployment_name,
         "app_name": app_name,
         "dtype_mapping": dtype_mapping,
+        "should_continue_on_error": False,
     }
 
     assert "compute" in stage.map_batches_kwargs
@@ -86,6 +87,68 @@ def test_simple_serve_deployment(serve_cleanup):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
     assert all(out["resp"] == out["id"] + 1 for out in outs)
+
+
+def test_serve_deployment_continue_on_error(serve_cleanup):
+    @serve.deployment
+    class FailingServeDeployment:
+        async def process(self, request: Dict[str, Any]):
+            x = request["x"]
+            if x % 10 == 0:  # Fail every 10th row
+                raise ValueError(f"Intentional failure for x={x}")
+            yield {"result": x * 2}
+
+    app_name = "failing_serve_deployment_app"
+    deployment_name = "FailingServeDeployment"
+
+    serve.run(FailingServeDeployment.bind(), name=app_name)
+
+    config = ServeDeploymentProcessorConfig(
+        deployment_name=deployment_name,
+        app_name=app_name,
+        batch_size=16,
+        concurrency=1,
+        should_continue_on_error=True,
+    )
+
+    processor = build_processor(
+        config,
+        preprocess=lambda row: dict(
+            method="process",
+            dtype=None,
+            request_kwargs=dict(x=row["id"]),
+        ),
+        # Error rows will bypass this postprocess and return raw data with
+        # __inference_error__ set. Only success rows get resp/id keys.
+        postprocess=lambda row: dict(
+            resp=row.get("result"),
+            id=row.get("id"),
+        ),
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"]})
+    ds = processor(ds)
+
+    outs = ds.take_all()
+    assert len(outs) == 60
+
+    # Check __inference_error__ directly
+    errors = [o for o in outs if o.get("__inference_error__") is not None]
+    successes = [o for o in outs if o.get("__inference_error__") is None]
+
+    assert len(errors) == 6, f"Expected 6 errors, got {len(errors)}: {errors[:3]}..."
+    assert len(successes) == 54
+
+    for e in errors:
+        error_msg = e["__inference_error__"]
+        assert "ValueError" in error_msg, f"Expected ValueError in: {error_msg}"
+        assert (
+            "Intentional failure" in error_msg
+        ), f"Expected 'Intentional failure' in: {error_msg}"
+
+    for s in successes:
+        assert s.get("resp") is not None, f"Missing resp in success row: {s}"
 
 
 def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
