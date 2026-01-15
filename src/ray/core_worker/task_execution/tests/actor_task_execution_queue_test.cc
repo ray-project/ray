@@ -24,9 +24,8 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
-#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
-#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
+#include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
 // using namespace std::chrono_literals;
 using std::chrono_literals::operator""s;
@@ -34,12 +33,12 @@ using std::chrono_literals::operator""s;
 namespace ray {
 namespace core {
 
-class MockWaiter : public DependencyWaiter {
+class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-            std::function<void()> on_dependencies_available) override {
+  void AsyncWait(const std::vector<rpc::ObjectReference> &dependencies,
+                 std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }
 
@@ -95,7 +94,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   NodeID GetNodeID() const override { return NodeID::Nil(); }
 };
 
-TEST(ActorSchedulingQueueTest, TestTaskEvents) {
+TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -105,7 +104,8 @@ TEST(ActorSchedulingQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -167,7 +167,7 @@ TEST(ActorSchedulingQueueTest, TestTaskEvents) {
   queue.Stop();
 }
 
-TEST(ActorSchedulingQueueTest, TestInOrder) {
+TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -176,7 +176,8 @@ TEST(ActorSchedulingQueueTest, TestInOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -202,7 +203,7 @@ TEST(ActorSchedulingQueueTest, TestInOrder) {
   queue.Stop();
 }
 
-TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
+TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -211,7 +212,8 @@ TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
@@ -260,7 +262,7 @@ TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   ASSERT_EQ(n_rejected.load(), 1);
 }
 
-TEST(ActorSchedulingQueueTest, TestWaitForObjects) {
+TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -270,7 +272,8 @@ TEST(ActorSchedulingQueueTest, TestWaitForObjects) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -311,7 +314,7 @@ TEST(ActorSchedulingQueueTest, TestWaitForObjects) {
   queue.Stop();
 }
 
-TEST(ActorSchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
+TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -321,7 +324,8 @@ TEST(ActorSchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -355,7 +359,7 @@ TEST(ActorSchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   queue.Stop();
 }
 
-TEST(ActorSchedulingQueueTest, TestSeqWaitTimeout) {
+TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -364,7 +368,8 @@ TEST(ActorSchedulingQueueTest, TestSeqWaitTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -396,7 +401,7 @@ TEST(ActorSchedulingQueueTest, TestSeqWaitTimeout) {
   queue.Stop();
 }
 
-TEST(ActorSchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
+TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -405,7 +410,8 @@ TEST(ActorSchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -448,7 +454,7 @@ TaskSpecification CreateActorTaskSpec(int64_t seq_no,
 
 }  // namespace
 
-TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
+TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecutionQueue) {
   // Setup
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -457,7 +463,8 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  ActorSchedulingQueue queue(io_service, waiter, task_event_buffer, pool_manager, 2);
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 2);
   std::vector<int64_t> accept_seq_nos;
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
@@ -504,62 +511,7 @@ TEST(ActorSchedulingQueueTest, TestRetryInOrderSchedulingQueue) {
   queue.Stop();
 }
 
-TEST(NormalSchedulingQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<NormalSchedulingQueue> queue =
-      std::make_unique<NormalSchedulingQueue>();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) { n_rej++; };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
-  ASSERT_FALSE(queue->TaskQueueEmpty());
-  queue->ScheduleRequests();
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 1);
-
-  queue->Stop();
-}
-
-TEST(NormalSchedulingQueueTest, StopCancelsQueuedTasks) {
-  std::unique_ptr<NormalSchedulingQueue> queue =
-      std::make_unique<NormalSchedulingQueue>();
-  int n_ok = 0;
-  std::atomic<int> n_rej{0};
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    n_rej.fetch_add(1);
-  };
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-
-  // Enqueue several normal tasks but do not schedule them.
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-
-  // Stopping should cancel all queued tasks without running them.
-  queue->Stop();
-
-  ASSERT_EQ(n_ok, 0);
-  ASSERT_EQ(n_rej.load(), 3);
-}
-
-TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
+TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -569,14 +521,14 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OutOfOrderActorSchedulingQueue queue(io_service,
-                                       waiter,
-                                       task_event_buffer,
-                                       pool_manager,
-                                       /*fiber_state_manager=*/nullptr,
-                                       /*is_asyncio=*/false,
-                                       /*fiber_max_concurrency=*/1,
-                                       /*concurrency_groups=*/{});
+  UnorderedActorTaskExecutionQueue queue(io_service,
+                                         waiter,
+                                         task_event_buffer,
+                                         pool_manager,
+                                         /*fiber_state_manager=*/nullptr,
+                                         /*is_asyncio=*/false,
+                                         /*fiber_max_concurrency=*/1,
+                                         /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -638,13 +590,13 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
   queue.Stop();
 }
 
-TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
+TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   // Test that if multiple attempts of the same task are received,
   // the next attempt only runs after the previous attempt finishes.
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  OutOfOrderActorSchedulingQueue queue(
+  UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,
@@ -709,11 +661,11 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
   queue.Stop();
 }
 
-TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellation) {
+TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellation) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  OutOfOrderActorSchedulingQueue queue(
+  UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,

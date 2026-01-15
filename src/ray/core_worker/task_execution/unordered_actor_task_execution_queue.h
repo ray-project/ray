@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -24,23 +25,23 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
-#include "ray/core_worker/task_execution/scheduling_queue.h"
-#include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {
 
-/// This queue schedule the actor tasks as soon as the dependency is resolved,
-/// and ignores the ordering (sequence_no) by the submitting client.
-class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
+/// Schedules actor tasks as soon as their dependencies are resolved.
+/// Does not guarantee that tasks are executed in submission order.
+class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
-  OutOfOrderActorSchedulingQueue(
+  UnorderedActorTaskExecutionQueue(
       instrumented_io_context &task_execution_service,
-      DependencyWaiter &waiter,
+      ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
@@ -49,10 +50,6 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
       const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;
-
-  bool TaskQueueEmpty() const override;
-
-  size_t Size() const override;
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no,
@@ -71,26 +68,21 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() override;
-
-  /// Cancel all pending (not yet accepted/executing) requests in the queue.
-  void CancelAllPending(const Status &status) override;
-
  private:
-  void RunRequest(InboundRequest request);
+  void CancelAllQueuedTasks(const std::string &msg);
 
-  void RunRequestWithResolvedDependencies(InboundRequest &request);
+  void RunRequest(TaskToExecute request);
 
-  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  void RunRequestWithResolvedDependencies(TaskToExecute &request);
+
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
 
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
-  /// Reference to the waiter owned by the task receiver.
-  DependencyWaiter &waiter_;
+  ActorTaskExecutionArgWaiterInterface &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
@@ -107,13 +99,13 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This can happen if transient network error happens after an actor
   /// task is submitted and received by the actor and the caller retries
   /// the same task.
-  absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, TaskToExecute> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
-  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts);
-  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest,
+  FRIEND_TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts);
+  FRIEND_TEST(UnorderedActorTaskExecutionQueueTest,
               TestSameTaskMultipleAttemptsCancellation);
 };
 

@@ -15,13 +15,13 @@
 #pragma once
 
 #include <deque>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/task_execution/scheduling_queue.h"
-#include "ray/core_worker/task_execution/scheduling_util.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
@@ -29,13 +29,11 @@ namespace core {
 
 /// Used to implement the non-actor task queue. These tasks do not have ordering
 /// constraints.
-class NormalSchedulingQueue : public SchedulingQueue {
+class NormalTaskExecutionQueue {
  public:
-  NormalSchedulingQueue();
+  NormalTaskExecutionQueue();
 
-  void Stop() override;
-  bool TaskQueueEmpty() const override;
-  size_t Size() const override;
+  void Stop();
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no,
@@ -46,25 +44,28 @@ class NormalSchedulingQueue : public SchedulingQueue {
                               const Status &,
                               rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+           TaskSpecification task_spec);
 
-  // Search for an InboundRequest associated with the task that we are trying to cancel.
-  // If found, remove the InboundRequest from the queue and return true. Otherwise,
-  // return false.
-  bool CancelTaskIfFound(TaskID task_id) override;
+  /// Search for a TaskToExecute associated with the task that we are trying to cancel.
+  /// If found, remove the TaskToExecute from the queue and return true. Else,
+  /// return false.
+  bool CancelTaskIfFound(TaskID task_id);
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() override;
-
-  /// Cancel all queued (waiting or deferred) requests in a thread-safe manner.
-  void CancelAllPending(const Status &status) override;
+  /// Execute as many queued tasks as possible.
+  void ExecuteQueuedTasks();
 
  private:
+  /// Cancel all tasks queued for execution.
+  void CancelAllQueuedTasks(const std::string &msg);
+
+  // Get the next queued task to execute if available.
+  std::optional<TaskToExecute> TryPopQueuedTask();
+
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
-  /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
-  friend class SchedulingQueueTest;
+
+  /// Queue of tasks to execute.
+  std::deque<TaskToExecute> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace core

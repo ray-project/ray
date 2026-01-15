@@ -242,7 +242,6 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    "serve/tutorials/asynchronous-inference/content/asynchronous-inference.ipynb",
     "ray-overview/examples/ray_train_workloads/content/workload-patterns/README.ipynb",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
