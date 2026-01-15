@@ -40,7 +40,7 @@ Run with 4 parallel trials (default):
 
 Run with custom number of parallel trials (max-concurrent-trials) and
 the total number of trials (num_samples):
-`python cartpole_hyperopt.p --max-concurrent-trials=2 --num_samples=20`
+`python cartpole_hyperopt.py --max-concurrent-trials=2 --num_samples=20`
 
 Run on a cluster with cloud or shared filesystem storage:
 `python cartpole_hyperopt.py --storage-path=s3://my-bucket/appo-hyperopt`
