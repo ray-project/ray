@@ -3474,13 +3474,13 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->EnqueueTask(std::move(request), reply, send_reply_callback);
+          task_receiver_->QueueTaskForExecution(std::move(request), reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
-    task_receiver_->EnqueueTask(std::move(request), reply, send_reply_callback);
+    task_receiver_->QueueTaskForExecution(std::move(request), reply, send_reply_callback);
     task_execution_service_.post(
         [this, func_name] {
           // We have posted an exit task onto the main event loop,

@@ -24,7 +24,7 @@
 namespace ray {
 namespace core {
 
-void TaskReceiver::EnqueueTask(rpc::PushTaskRequest request,
+void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                rpc::PushTaskReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources

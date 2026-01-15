@@ -81,7 +81,7 @@ class TaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The reply callback.
-  void EnqueueTask(rpc::PushTaskRequest request,
+  void QueueTaskForExecution(rpc::PushTaskRequest request,
                    rpc::PushTaskReply *reply,
                    rpc::SendReplyCallback send_reply_callback);
 
