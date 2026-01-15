@@ -152,7 +152,10 @@ steps:
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: default minimal"
-    tags: python
+    tags:
+      - python
+      - serve
+      - min_build
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve
@@ -165,8 +168,9 @@ steps:
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
-      - serve
       - python
+      - serve
+      - min_build
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
