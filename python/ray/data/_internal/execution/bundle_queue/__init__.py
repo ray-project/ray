@@ -2,13 +2,9 @@ from __future__ import annotations
 
 from .base import (
     BaseBundleQueue,
-    SupportsRemoval,
+    QueueWithRemoval,
 )
 from .hash_link import HashLinkedQueue
-
-
-class QueueWithRemoval(BaseBundleQueue, SupportsRemoval):
-    pass
 
 
 def create_bundle_queue() -> QueueWithRemoval:
@@ -18,7 +14,6 @@ def create_bundle_queue() -> QueueWithRemoval:
 __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
-    "SupportsRemoval",
-    "HashLinkedQueue",
     "QueueWithRemoval",
+    "HashLinkedQueue",
 ]

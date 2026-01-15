@@ -135,7 +135,7 @@ class BaseBundleQueue:
         return None
 
 
-class SupportsRemoval:
+class QueueWithRemoval(BaseBundleQueue):
     """Base class for storing bundles AND supporting remove(bundle)
     and contains(bundle) operations."""
 
@@ -145,4 +145,9 @@ class SupportsRemoval:
 
     def remove(self, bundle: RefBundle) -> RefBundle:
         """Remove the specified bundle from the queue. If multiple instances exist, remove the first one."""
-        ...
+        bundle = self._remove_inner(bundle)
+        self._on_dequeue_bundle(bundle)
+        return bundle
+
+    def _remove_inner(self, bundle: RefBundle) -> RefBundle:
+        raise NotImplementedError
