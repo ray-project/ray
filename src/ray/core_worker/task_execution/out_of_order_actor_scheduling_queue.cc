@@ -15,6 +15,7 @@
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 
 #include <memory>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>

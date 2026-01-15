@@ -16,6 +16,7 @@
 
 #include <list>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "absl/base/thread_annotations.h"
