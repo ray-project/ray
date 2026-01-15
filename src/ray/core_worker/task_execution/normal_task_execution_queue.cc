@@ -64,19 +64,20 @@ bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   return false;
 }
 
-void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
-  while (true) {
-    TaskToExecute head;
-    {
-      absl::MutexLock lock(&mu_);
-      if (pending_normal_tasks_.empty()) {
-        return;
-      }
+std::optional<TaskToExecute> NormalTaskExecutionQueue::TryPopQueuedTask() {
+  absl::MutexLock lock(&mu_);
+  if (pending_normal_tasks_.empty()) {
+    return std::nullopt;
+  }
 
-      head = std::move(pending_normal_tasks_.front());
-      pending_normal_tasks_.pop_front();
-    }
-    head.Accept();
+  TaskToExecute task = std::move(pending_normal_tasks_.front());
+  pending_normal_tasks_.pop_front();
+  return task;
+}
+
+void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
+  while (auto task = TryPopQueuedTask()) {
+    task->Accept();
   }
 }
 

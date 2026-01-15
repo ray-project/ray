@@ -58,6 +58,9 @@ class NormalTaskExecutionQueue : public SchedulingQueue {
   void CancelAllPending(const Status &status) override;
 
  private:
+  // Get the next queued task to execute if available.
+  std::optional<TaskToExecute> TryPopQueuedTask();
+
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
