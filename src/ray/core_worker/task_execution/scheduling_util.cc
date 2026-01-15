@@ -81,7 +81,9 @@ void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReferen
 
 void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
   auto it = in_flight_waits_.find(tag);
-  RAY_CHECK(it != in_flight_waits_.end()) << "MarkReady called on a non-existent tag. This likely means it was called twice for the same tag mistakenly.";
+  RAY_CHECK(it != in_flight_waits_.end())
+      << "MarkReady called on a non-existent tag. This likely means it was called twice "
+         "for the same tag mistakenly.";
   it->second();
   in_flight_waits_.erase(it);
 }
