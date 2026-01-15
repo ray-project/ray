@@ -45,6 +45,11 @@ def transform_cifar(row: dict):
     return row
 
 
+validation_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
+    transform_cifar
+)
+
+
 def create_model():
     return VisionTransformer(
         image_size=32,  # CIFAR-10 image size is 32x32
@@ -77,9 +82,9 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_with_map_batches(checkpoint, dataset):
+def validate_with_map_batches(checkpoint):
     start_time = time.time()
-    eval_res = dataset.map_batches(
+    eval_res = validation_dataset.map_batches(
         Predictor,
         batch_size=128,
         num_gpus=1,
@@ -128,13 +133,13 @@ def eval_only_train_func(config_dict):
     )
 
 
-def validate_with_torch_trainer(checkpoint, dataset, parent_run_name, epoch, batch_idx):
+def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
     start_time = time.time()
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
-        datasets={"test": dataset},
+        datasets={"test": validation_dataset},
         run_config=ray.train.RunConfig(
             name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
         ),
@@ -195,27 +200,22 @@ def validate_and_report(
         )
         start_time = time.time()
         if validation_type == ValidationType.TORCH_TRAINER:
-            validate_task_config = ValidationTaskConfig(
+            validation = ValidationTaskConfig(
                 func_kwargs={
-                    "dataset": config["test"],
                     "parent_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
                     "batch_idx": batch_idx,
                 }
             )
         elif validation_type == ValidationType.MAP_BATCHES:
-            validate_task_config = ValidationTaskConfig(
-                func_kwargs={
-                    "dataset": config["test"],
-                }
-            )
+            validation = True
         else:
-            validate_task_config = None
+            validation = False
         ray.train.report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validation=validate_task_config,
+            validation=validation,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -274,7 +274,6 @@ def run_training_with_validation(
     validate_within_trainer: bool,
     num_epochs: int,
     train_dataset: ray.data.Dataset,
-    test_dataset: ray.data.Dataset,
     training_rows: int,
 ):
     # Launch distributed training job.
@@ -295,9 +294,7 @@ def run_training_with_validation(
         "validation_type": validation_type,
     }
     if validate_within_trainer:
-        datasets["test"] = test_dataset
-    else:
-        train_loop_config["test"] = test_dataset
+        datasets["test"] = validation_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
         validation_config=ValidationConfig(validate_fn=validate_fn)
@@ -337,9 +334,6 @@ def main():
         transform_cifar
     )
     training_rows = train_dataset.count()
-    test_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
-        transform_cifar
-    )
     consolidated_metrics = {}
     num_epochs = 10
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
@@ -348,7 +342,6 @@ def main():
         True,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     consolidated_metrics[
@@ -359,7 +352,6 @@ def main():
         False,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     consolidated_metrics[
@@ -370,7 +362,6 @@ def main():
         False,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     logger.info(consolidated_metrics)

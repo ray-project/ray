@@ -19,9 +19,9 @@ Tutorial
 --------
 
 First, define a ``validate_fn`` that takes a :class:`ray.train.Checkpoint` to validate
-and any number of keyword arguments. These keyword arguments should contain information needed
-for validation, such as the validation dataset. Your function should return a dictionary of metrics
-from that validation. The following is a simple example for teaching purposes only. It is impractical
+and any number of json-serializable keyword arguments. This function should return a dictionary
+of metrics from that validation.
+The following is a simple example for teaching purposes only. It is impractical
 because the validation task always runs on cpu; for a more realistic example, see
 :ref:`train-distributed-validate-fn`.
 
@@ -29,6 +29,12 @@ because the validation task always runs on cpu; for a more realistic example, se
     :language: python
     :start-after: __validate_fn_simple_start__
     :end-before: __validate_fn_simple_end__
+
+.. note::
+
+    In this example, the validation dataset is a ray.data.Dataset object, which is not
+    json-serializable. We therefore include it with the validate_fn closure instead of passing
+    it as a keyword argument.
 
 .. warning::
 
@@ -63,7 +69,7 @@ The ``validate_fn`` above runs in a single Ray task, but you can improve its per
 even more Ray tasks or actors. The Ray team recommends doing this with one of the following approaches:
 
 * Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
-* Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
+* (Experimental) Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
 
 Choose an approach
 ~~~~~~~~~~~~~~~~~~
@@ -75,6 +81,9 @@ You should use ``TorchTrainer`` if:
 * Your validation code depends on running within a Torch process group — for example, your
   metric aggregation logic uses collective communication calls, or your model parallelism
   setup requires cross-GPU communication during the forward pass.
+* You want a more consistent training and validation experience. The ``map_batches`` approach involves
+  running multiple Ray Data Datasets in a single ray cluster; we are currently working on better support
+  for this.
 
 You should use ``map_batches`` if:
 
@@ -100,7 +109,7 @@ loss on a validation set. Note the following about this example:
     :start-after: __validate_fn_torch_trainer_start__
     :end-before: __validate_fn_torch_trainer_end__
 
-Example: validation with Ray Data map_batches
+(Experimental) Example: validation with Ray Data map_batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
