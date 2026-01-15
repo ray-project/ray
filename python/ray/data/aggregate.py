@@ -62,10 +62,10 @@ AggOutputType = TypeVar("AggOutputType")
 _AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
-@Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
+@Deprecated(message="AggregateFn is deprecated, please use AggregateFunction")
 @PublicAPI
 class AggregateFn:
-    """NOTE: THIS IS DEPRECATED, PLEASE USE :class:`AggregateFnV2` INSTEAD
+    """NOTE: THIS IS DEPRECATED, PLEASE USE :class:`AggregateFunction` INSTEAD
 
     Defines how to perform a custom aggregation in Ray Data.
 

@@ -7,7 +7,7 @@ import pyarrow as pa
 
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 from ray.data.aggregate import (
-    AggregateFnV2,
+    AggregateFunction,
     ApproximateQuantile,
     ApproximateTopK,
     Count,
@@ -199,10 +199,10 @@ class _DtypeAggregators:
     """
 
     column_to_dtype: Dict[str, str]
-    aggregators: List[AggregateFnV2]
+    aggregators: List[AggregateFunction]
 
 
-def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
+def _numerical_aggregators(column: str) -> List[AggregateFunction]:
     """Generate default metrics for numerical columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -219,7 +219,7 @@ def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
         column: The name of the numerical column to compute metrics for.
 
     Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+        A list of AggregateFunction instances that can be used with Dataset.aggregate()
     """
     return [
         Count(on=column, ignore_nulls=False),
@@ -233,7 +233,7 @@ def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def _temporal_aggregators(column: str) -> List[AggregateFnV2]:
+def _temporal_aggregators(column: str) -> List[AggregateFunction]:
     """Generate default metrics for temporal columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -246,7 +246,7 @@ def _temporal_aggregators(column: str) -> List[AggregateFnV2]:
         column: The name of the temporal column to compute metrics for.
 
     Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+        A list of AggregateFunction instances that can be used with Dataset.aggregate()
     """
     return [
         Count(on=column, ignore_nulls=False),
@@ -256,7 +256,7 @@ def _temporal_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def _basic_aggregators(column: str) -> List[AggregateFnV2]:
+def _basic_aggregators(column: str) -> List[AggregateFunction]:
     """Generate default metrics for all columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -268,7 +268,7 @@ def _basic_aggregators(column: str) -> List[AggregateFnV2]:
         column: The name of the column to compute metrics for.
 
     Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+        A list of AggregateFunction instances that can be used with Dataset.aggregate()
     """
     return [
         Count(on=column, ignore_nulls=False),
@@ -278,7 +278,7 @@ def _basic_aggregators(column: str) -> List[AggregateFnV2]:
 
 
 def _default_dtype_aggregators() -> Dict[
-    Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]
+    Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFunction]]
 ]:
     """Get default mapping from Ray Data DataType to aggregator factory functions.
 
@@ -321,7 +321,9 @@ def _default_dtype_aggregators() -> Dict[
     }
 
 
-def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateFnV2]:
+def _get_fallback_aggregators(
+    column: str, dtype: "DataType"
+) -> List[AggregateFunction]:
     """Get aggregators using heuristic-based type detection.
 
     This is a fallback when no explicit mapping is found for the dtype.
@@ -357,9 +359,9 @@ def _get_aggregators_for_dtype(
     column: str,
     dtype: "DataType",
     dtype_agg_mapping: Dict[
-        Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]
+        Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFunction]]
     ],
-) -> List[AggregateFnV2]:
+) -> List[AggregateFunction]:
     """Get aggregators for a specific column based on its DataType.
 
     Attempts to match the dtype against the provided mapping first, then
@@ -390,7 +392,9 @@ def _dtype_aggregators_for_dataset(
     schema: Optional["Schema"],
     columns: Optional[List[str]] = None,
     dtype_agg_mapping: Optional[
-        Dict[Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]]
+        Dict[
+            Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFunction]]
+        ]
     ] = None,
 ) -> _DtypeAggregators:
     """Generate aggregators for columns in a dataset based on their DataTypes.
@@ -454,7 +458,7 @@ def _dtype_aggregators_for_dataset(
 
 
 def _format_stats(
-    agg: AggregateFnV2, value: Any, agg_type: pa.DataType
+    agg: AggregateFunction, value: Any, agg_type: pa.DataType
 ) -> Dict[str, Tuple[Any, pa.DataType]]:
     """Format aggregation result into stat entries.
 
@@ -505,7 +509,7 @@ def _parse_summary_stats(
     agg_result: Dict[str, any],
     original_schema: pa.Schema,
     agg_schema: pa.Schema,
-    aggregators: List[AggregateFnV2],
+    aggregators: List[AggregateFunction],
 ) -> tuple:
     """Parse aggregation results into schema-matching and schema-changing stats.
 

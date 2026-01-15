@@ -98,7 +98,7 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import (
     AggregateFn,
-    AggregateFnV2,
+    AggregateFunction,
     Max,
     Mean,
     Min,
@@ -3299,7 +3299,7 @@ class Dataset:
         self,
         columns: Optional[List[str]] = None,
         override_dtype_agg_mapping: Optional[
-            Dict[DataType, Callable[[str], List[AggregateFnV2]]]
+            Dict[DataType, Callable[[str], List[AggregateFunction]]]
         ] = None,
     ) -> "DatasetSummary":
         """Generate a statistical summary of the dataset, organized by data type.
