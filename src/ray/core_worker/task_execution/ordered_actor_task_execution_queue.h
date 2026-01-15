@@ -16,6 +16,7 @@
 
 #include <list>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "absl/base/thread_annotations.h"
@@ -26,10 +27,10 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
-#include "ray/core_worker/task_execution/scheduling_queue.h"
-#include "ray/core_worker/task_execution/scheduling_util.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -39,9 +40,9 @@ namespace core {
 
 /// Used to ensure serial order of task execution per actor handle.
 /// See core_worker.proto for a description of the ordering protocol.
-class ActorSchedulingQueue : public SchedulingQueue {
+class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
-  ActorSchedulingQueue(
+  OrderedActorTaskExecutionQueue(
       instrumented_io_context &task_execution_service,
       ActorTaskExecutionArgWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
@@ -49,10 +50,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
       int64_t reorder_wait_seconds);
 
   void Stop() override;
-
-  bool TaskQueueEmpty() const override;
-
-  size_t Size() const override;
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no,
@@ -71,26 +68,26 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
-  /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() override;
-
-  /// Cancel all pending (not yet accepted/executing) requests in the queue.
-  void CancelAllPending(const Status &status) override;
-
  private:
-  /// Accept the given InboundRequest or reject it if a task id is canceled via
-  /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+  /// Cancel all tasks queued for execution.
+  void CancelAllQueuedTasks(const std::string &msg);
 
-  void ExecuteRequest(InboundRequest &&request);
+  /// Executes as many queued tasks as are ready to execute.
+  void ExecuteQueuedTasks();
+
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+
+  void ExecuteRequest(TaskToExecute &&request);
 
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  absl::btree_map<int64_t, InboundRequest> pending_actor_tasks_;
+  absl::btree_map<int64_t, TaskToExecute> pending_actor_tasks_;
   /// List of task retry requests. This is a separate from the map because retries don't
   /// need to be ordered.
-  std::list<InboundRequest> pending_retry_actor_tasks_;
+  std::list<TaskToExecute> pending_retry_actor_tasks_;
   /// Set of sequence numbers that can be skipped because they were retry seq no's.
   absl::flat_hash_set<int64_t> seq_no_to_skip_;
   /// The next sequence number we are waiting for to arrive.
@@ -111,7 +108,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
-  friend class SchedulingQueueTest;
+  friend class OrderedActorTaskExecutionQueueTest;
 };
 
 }  // namespace core

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/scheduling_util.h"
+#include "ray/core_worker/task_execution/common.h"
 
 #include <string>
 #include <utility>
@@ -21,9 +21,9 @@
 namespace ray {
 namespace core {
 
-InboundRequest::InboundRequest() {}
+TaskToExecute::TaskToExecute() {}
 
-InboundRequest::InboundRequest(
+TaskToExecute::TaskToExecute(
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
         accept_callback,
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
@@ -36,37 +36,35 @@ InboundRequest::InboundRequest(
       task_spec_(std::move(task_spec)),
       pending_dependencies_(task_spec_.GetDependencies()) {}
 
-void InboundRequest::Accept() {
+void TaskToExecute::Accept() {
   accept_callback_(task_spec_, std::move(send_reply_callback_));
 }
 
-void InboundRequest::Cancel(const Status &status) {
+void TaskToExecute::Cancel(const Status &status) {
   reject_callback_(task_spec_, status, std::move(send_reply_callback_));
 }
 
-ray::TaskID InboundRequest::TaskID() const { return task_spec_.TaskId(); }
+ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
 
-uint64_t InboundRequest::AttemptNumber() const { return task_spec_.AttemptNumber(); }
+uint64_t TaskToExecute::AttemptNumber() const { return task_spec_.AttemptNumber(); }
 
-const std::string &InboundRequest::ConcurrencyGroupName() const {
+const std::string &TaskToExecute::ConcurrencyGroupName() const {
   return task_spec_.ConcurrencyGroupName();
 }
 
-ray::FunctionDescriptor InboundRequest::FunctionDescriptor() const {
+ray::FunctionDescriptor TaskToExecute::FunctionDescriptor() const {
   return task_spec_.FunctionDescriptor();
 }
 
-const std::vector<rpc::ObjectReference> &InboundRequest::PendingDependencies() const {
+const std::vector<rpc::ObjectReference> &TaskToExecute::PendingDependencies() const {
   return pending_dependencies_;
 };
 
-bool InboundRequest::DependenciesResolved() const {
-  return pending_dependencies_.empty();
-}
+bool TaskToExecute::DependenciesResolved() const { return pending_dependencies_.empty(); }
 
-void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear(); }
+void TaskToExecute::MarkDependenciesResolved() { pending_dependencies_.clear(); }
 
-const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
+const TaskSpecification &TaskToExecute::TaskSpec() const { return task_spec_; }
 
 ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
     AsyncWaitForArgs async_wait_for_args)

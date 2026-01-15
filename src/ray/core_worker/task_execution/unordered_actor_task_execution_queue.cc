@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
 #include <memory>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -24,7 +25,7 @@
 namespace ray {
 namespace core {
 
-OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
+UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
@@ -52,32 +53,31 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::Stop() {
+void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
+  absl::MutexLock lock(&mu_);
+
+  Status status = Status::SchedulingCancelled(msg);
+
+  while (!queued_actor_tasks_.empty()) {
+    auto it = queued_actor_tasks_.begin();
+    it->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(it->first);
+    queued_actor_tasks_.erase(it);
+  }
+}
+
+void UnorderedActorTaskExecutionQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
   if (fiber_state_manager_) {
     fiber_state_manager_->Stop();
   }
-  CancelAllPending(Status::SchedulingCancelled(
-      "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
+
+  CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
-bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
-  RAY_LOG(FATAL) << "TaskQueueEmpty() not implemented for actor queues";
-  return false;
-}
-
-size_t OutOfOrderActorSchedulingQueue::Size() const {
-  RAY_LOG(FATAL) << "Size() not implemented for actor queues";
-  return 0;
-}
-
-void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
-  RAY_LOG(FATAL) << "ScheduleRequests() not implemented for actor queues";
-}
-
-void OutOfOrderActorSchedulingQueue::Add(
+void UnorderedActorTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
@@ -94,12 +94,12 @@ void OutOfOrderActorSchedulingQueue::Add(
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   auto task_id = task_spec.TaskId();
-  auto request = InboundRequest(std::move(accept_request),
-                                std::move(reject_request),
-                                std::move(send_reply_callback),
-                                std::move(task_spec));
+  auto request = TaskToExecute(std::move(accept_request),
+                               std::move(reject_request),
+                               std::move(send_reply_callback),
+                               std::move(task_spec));
   bool run_request = true;
-  std::optional<InboundRequest> request_to_cancel;
+  std::optional<TaskToExecute> request_to_cancel;
   {
     absl::MutexLock lock(&mu_);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
@@ -138,7 +138,7 @@ void OutOfOrderActorSchedulingQueue::Add(
   }
 }
 
-bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
+bool UnorderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
   if (pending_task_id_to_is_canceled.find(task_id) !=
       pending_task_id_to_is_canceled.end()) {
@@ -150,8 +150,8 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
-    InboundRequest &request) {
+void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
+    TaskToExecute &request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
@@ -176,7 +176,7 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithResolvedDependencies(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
+void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -216,8 +216,8 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
   }
 }
 
-void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, InboundRequest &request) {
+void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
+    TaskID task_id, TaskToExecute &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -235,7 +235,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
     request.Accept();
   }
 
-  std::optional<InboundRequest> request_to_run;
+  std::optional<TaskToExecute> request_to_run;
   {
     absl::MutexLock lock(&mu_);
     if (queued_actor_tasks_.contains(task_id)) {
@@ -251,17 +251,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
         [this, request = std::move(*request_to_run)]() mutable {
           RunRequest(std::move(request));
         },
-        "OutOfOrderActorSchedulingQueue.RunRequest");
-  }
-}
-
-void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
-  absl::MutexLock lock(&mu_);
-  while (!queued_actor_tasks_.empty()) {
-    auto it = queued_actor_tasks_.begin();
-    it->second.Cancel(status);
-    pending_task_id_to_is_canceled.erase(it->first);
-    queued_actor_tasks_.erase(it);
+        "UnorderedActorTaskExecutionQueue.RunRequest");
   }
 }
 

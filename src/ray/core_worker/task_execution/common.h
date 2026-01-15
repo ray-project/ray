@@ -25,17 +25,18 @@
 namespace ray {
 namespace core {
 
-/// Object dependency and RPC state of an inbound request.
-class InboundRequest {
+/// Wraps the state and callbacks associated with a task queued for execution on this
+/// worker.
+class TaskToExecute {
  public:
-  InboundRequest();
-  InboundRequest(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-                     accept_callback,
-                 std::function<void(const TaskSpecification &,
-                                    const Status &,
-                                    rpc::SendReplyCallback)> reject_callback,
-                 rpc::SendReplyCallback send_reply_callback,
-                 TaskSpecification task_spec);
+  TaskToExecute();
+  TaskToExecute(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+                    accept_callback,
+                std::function<void(const TaskSpecification &,
+                                   const Status &,
+                                   rpc::SendReplyCallback)> reject_callback,
+                rpc::SendReplyCallback send_reply_callback,
+                TaskSpecification task_spec);
 
   void Accept();
   void Cancel(const Status &status);
