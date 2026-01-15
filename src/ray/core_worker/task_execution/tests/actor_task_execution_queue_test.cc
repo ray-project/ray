@@ -33,11 +33,11 @@ using std::chrono_literals::operator""s;
 namespace ray {
 namespace core {
 
-class MockWaiter : public ActorTaskExecutionArgWaiter {
+class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+  void AsyncWait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }

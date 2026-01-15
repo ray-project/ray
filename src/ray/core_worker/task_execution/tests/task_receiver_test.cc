@@ -89,14 +89,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int64_t acked_seqno = 0;
 };
 
-class MockActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface {
- public:
-  MockActorTaskExecutionArgWaiter() = default;
-  MOCK_METHOD2(AsyncWait,
-               void(const std::vector<rpc::ObjectReference> &dependencies,
-                    std::function<void()> on_dependencies_available));
-};
-
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
@@ -132,7 +124,7 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(
-            std::make_unique<MockActorTaskExecutionArgWaiter>()) {
+            std::make_unique<ActorTaskExecutionArgWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,

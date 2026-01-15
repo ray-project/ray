@@ -44,7 +44,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
   OrderedActorTaskExecutionQueue(
       instrumented_io_context &task_execution_service,
-      ActorTaskExecutionArgWaiter &waiter,
+      ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       int64_t reorder_wait_seconds);
@@ -97,8 +97,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
-  /// Reference to the waiter owned by the task receiver.
-  ActorTaskExecutionArgWaiter &waiter_;
+  ActorTaskExecutionArgWaiterInterface &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
