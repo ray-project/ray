@@ -98,7 +98,3 @@ class MockGcsActorScheduler : public GcsActorScheduler {
 
 }  // namespace gcs
 }  // namespace ray
-
-namespace ray {
-namespace gcs {}  // namespace gcs
-}  // namespace ray
