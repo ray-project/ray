@@ -418,11 +418,12 @@ class ReportHead(SubprocessModule):
         This is a Torch-specific API. It is not supported for other frameworks.
 
         Params:
-            task_id: Required. The ID of the task.
-            attempt_number: Required. The attempt number of the task.
-            node_id: Required. The ID of the node.
-            num_iterations: Optional. Number of training steps for profiling. Defaults to 4.
-                This is the number of calls to the torch Optimizer.step().
+            req: A request with the following query parameters:
+                task_id: Required. The ID of the task.
+                attempt_number: Required. The attempt number of the task.
+                node_id: Required. The ID of the node.
+                num_iterations: Optional. Number of training steps for profiling. Defaults to 4.
+                    This is the number of calls to the torch Optimizer.step().
 
         Returns:
             A redirect to the log API to download the GPU profiling trace file.
