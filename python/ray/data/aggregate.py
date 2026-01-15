@@ -554,7 +554,7 @@ class Sum(AggregateFunction[Union[int, float], Union[int, float]]):
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
@@ -614,7 +614,7 @@ class Min(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonTy
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("+inf"),
@@ -677,7 +677,7 @@ class Max(AggregateFunction[SupportsRichComparisonType, SupportsRichComparisonTy
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("-inf"),
@@ -736,7 +736,7 @@ class Mean(AggregateFunction[List[Union[int, float]], float]):
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
@@ -825,7 +825,7 @@ class Std(AggregateFunction[List[Union[int, float]], float]):
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
@@ -998,7 +998,7 @@ class Quantile(AggregateFunction[List[Any], List[Any]]):
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         q: float = 0.5,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
