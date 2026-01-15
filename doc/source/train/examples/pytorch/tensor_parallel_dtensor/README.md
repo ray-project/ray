@@ -235,6 +235,7 @@ def setup_model_with_tp(
     world_rank: int,
     world_size: int,
     device: torch.device,
+    seed: int,
 ):
     """
     Set up the model with tensor parallelism (DTensor) and data parallelism (FSDP2).
@@ -278,6 +279,9 @@ def setup_model_with_tp(
     dtype = get_mixed_precision_dtype()
     prev_device = torch.get_default_device()
     try:
+        # Ensure all TP ranks start from identical weights.
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
         torch.set_default_device(device)
         model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
     finally:
@@ -404,6 +408,7 @@ def train_func(config):
         world_rank=world_rank,
         world_size=world_size,
         device=device,
+        seed=config.get("seed", 42),
     )
 
     # Create optimizer
