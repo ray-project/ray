@@ -214,7 +214,7 @@ def group_rules_by_time_needed(
 def allocate_slots_to_shards(
     rules_grouped_by_time: List[Tuple[float, List[BazelRule]]],
     count: int,
-) -> Tuple[List[dict], float]:
+) -> List[dict]:
     """
     Allocate test slots to shards using least-loaded strategy.
 
@@ -223,45 +223,20 @@ def allocate_slots_to_shards(
     allowing tests to be assigned in name order later.
 
     Returns:
-        A tuple of (shard_slots, optimum) where shard_slots[i] is a dict
-        mapping timeout -> number of slots for shard i.
+        shard_slots where shard_slots[i] is a dict mapping timeout -> number
+        of slots for shard i.
     """
     shard_times = [0.0] * count
     shard_slots = [defaultdict(int) for _ in range(count)]
 
-    # The theoretical optimum we are aiming for. Note that this may be unattainable
-    # as it doesn't take into account that tests are discrete and cannot be split.
-    # This is however fine, because it should only serve as a guide which shard to
-    # add the next test to.
-    optimum = (
-        sum(timeout * len(rules) for timeout, rules in rules_grouped_by_time) / count
-    )
-
     for timeout, rules in rules_grouped_by_time:
         for _ in range(len(rules)):
-            # Find the least-loaded shard below optimum, or closest to optimum
-            best_below_idx = None
-            best_below_time = None
-            best_above_idx = None
-            best_above_time = None
-
-            for i, shard_time in enumerate(shard_times):
-                time_with_slot = shard_time + timeout
-                # Among shards below optimum, pick the least loaded
-                if time_with_slot < optimum:
-                    if best_below_idx is None or shard_time < best_below_time:
-                        best_below_idx = i
-                        best_below_time = shard_time
-                # Among shards at/above optimum, pick closest to optimum
-                elif best_above_idx is None or time_with_slot < best_above_time:
-                    best_above_idx = i
-                    best_above_time = time_with_slot
-
-            best_idx = best_below_idx if best_below_idx is not None else best_above_idx
+            # Always pick the least-loaded shard
+            best_idx = min(range(count), key=lambda i: shard_times[i])
             shard_slots[best_idx][timeout] += 1
             shard_times[best_idx] += timeout
 
-    return shard_slots, optimum
+    return shard_slots
 
 
 def get_rules_for_shard_naive(
@@ -291,7 +266,7 @@ def get_rules_for_shard_optimal(
     (timeout in seconds, list of rules) sorted by timeout descending.
     """
     # Phase 1: Determine slot allocation for all shards
-    shard_slots, optimum = allocate_slots_to_shards(rules_grouped_by_time, count)
+    shard_slots = allocate_slots_to_shards(rules_grouped_by_time, count)
 
     # Phase 2: Assign tests to this shard by name order within each timeout group
     result = []
@@ -340,12 +315,10 @@ def get_rules_for_shard_optimal(
     )
 
     print(
-        f"get_rules_for_shard statistics:\n\tOptimum: {optimum} seconds\n"
+        "get_rules_for_shard statistics:\n"
         + "\n".join(
-            (
-                f"\tShard {i}: {len(shard)} rules, "
-                f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
-            )
+            f"\tShard {i}: {len(shard)} rules, "
+            f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
             for i, shard in enumerate(all_shard_rules)
         ),
         file=sys.stderr,

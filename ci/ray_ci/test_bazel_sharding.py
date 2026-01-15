@@ -85,19 +85,19 @@ def test_allocate_slots_to_shards():
     # If we start with empty shards, distribute evenly
     rules = [bazel_sharding.BazelRule(f"test_{i}", "medium") for i in range(4)]
     rules_grouped_by_time = [(300.0, rules)]
-    shard_slots, _ = bazel_sharding.allocate_slots_to_shards(
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=4
     )
     for i in range(4):
         assert shard_slots[i][300.0] == 1
 
-    # Add to least-loaded shard below optimum (not first shard)
+    # Add to least-loaded shard (not first shard)
     eternal_rules = [
         bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(8)
     ]
     small_rules = [bazel_sharding.BazelRule(f"small_{i}", "small") for i in range(16)]
     rules_grouped_by_time = [(3600.0, eternal_rules), (60.0, small_rules)]
-    shard_slots, _ = bazel_sharding.allocate_slots_to_shards(
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=24
     )
     for i in range(8):
@@ -107,12 +107,12 @@ def test_allocate_slots_to_shards():
         assert shard_slots[i][3600.0] == 0
         assert shard_slots[i][60.0] == 1
 
-    # If all shards are above optimum, add to the one closest to optimum
+    # More shards than needed, still distributes evenly
     eternal_rules = [
         bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(4)
     ]
     rules_grouped_by_time = [(3600.0, eternal_rules)]
-    shard_slots, _ = bazel_sharding.allocate_slots_to_shards(
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
         rules_grouped_by_time, count=2
     )
     assert shard_slots[0][3600.0] == 2
