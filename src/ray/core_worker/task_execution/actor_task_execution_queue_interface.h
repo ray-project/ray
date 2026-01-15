@@ -20,7 +20,6 @@
 namespace ray {
 namespace core {
 
-/// Interface for actor task execution queue implementations.
 class ActorTaskExecutionQueueInterface {
  public:
   virtual ~ActorTaskExecutionQueueInterface() = default;
