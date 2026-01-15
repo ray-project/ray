@@ -114,6 +114,7 @@ class TestGC:
         class A:
             def test_import(self):
                 import pip_install_test  # noqa: F401
+
                 import test_module
 
                 test_module.one()
@@ -240,6 +241,7 @@ class TestGC:
         class A:
             def test_import(self):
                 import pip_install_test  # noqa: F401
+
                 import test_module
 
                 test_module.one()

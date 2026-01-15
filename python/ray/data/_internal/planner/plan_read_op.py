@@ -7,7 +7,10 @@ from ray import ObjectRef
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+    _split_blocks,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
@@ -107,24 +110,46 @@ def plan_read_op(
         for read_task in blocks:
             yield from read_task()
 
-    # Create a MapTransformer for a read operator
-    map_transformer = MapTransformer(
-        [
-            BlockMapTransformFn(
-                do_read,
-                is_udf=False,
-                output_block_size_option=OutputBlockSizeOption.of(
-                    target_max_block_size=data_context.target_max_block_size,
-                ),
+    transform_fns = [
+        BlockMapTransformFn(
+            do_read,
+            is_udf=False,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=data_context.target_max_block_size,
             ),
-        ]
-    )
+        ),
+    ]
+
+    split_factor = op.get_additional_split_factor()
+    should_split = split_factor is not None and split_factor > 1
+
+    # TODO elaborate why block-splitting is applied after block shaping
+    if should_split:
+
+        def do_split(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+            yield from _split_blocks(blocks, split_factor)
+
+        transform_fns.append(
+            BlockMapTransformFn(
+                do_split,
+                is_udf=False,
+                disable_block_shaping=True,
+            )
+        )
 
     return MapOperator.create(
-        map_transformer,
+        MapTransformer(transform_fns),
         inputs,
         data_context,
-        name=op.name,
+        name=(
+            # Build operator name with split suffix if applicable
+            f"{op.name}->SplitBlocks({split_factor})"
+            if should_split
+            else op.name
+        ),
         compute_strategy=op._compute,
         ray_remote_args=op._ray_remote_args,
+        # Disable fusion when splitting to ensure downstream operators
+        # receive the split blocks as separate tasks
+        supports_fusion=not should_split,
     )

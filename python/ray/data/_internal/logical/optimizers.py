@@ -30,6 +30,7 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineRepartitions,
+        SetReadParallelismRule,
     ]
 )
 
@@ -37,7 +38,6 @@ _LOGICAL_RULESET = Ruleset(
 _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
-        SetReadParallelismRule,
         FuseOperators,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]
