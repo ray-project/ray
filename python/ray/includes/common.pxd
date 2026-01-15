@@ -348,6 +348,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
         optional[c_string] GetTensorTransport() const
+        void SetDirectTransportMetadata(c_string direct_transport_metadata)
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":
@@ -426,7 +427,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
-        const CNodeID &GetPrimaryNodeID() const
         const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const
@@ -831,6 +831,8 @@ cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
     cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
         CRayletClientWithIoContext(const c_string &ip_address, int port)
         CRayStatus GetWorkerPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
+                                 int64_t timeout_ms)
+        CRayStatus GetAgentPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
                                  int64_t timeout_ms)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:

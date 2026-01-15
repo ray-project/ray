@@ -328,6 +328,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
+          RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
           // retry granting the lease once another lease finishes and releases
@@ -391,16 +392,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and lease id, we're
-              // able to get physical execution context.
-              //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
-              //
-              // - PID: could get from available worker
-              // - Attempt id: could pass a global attempt id generator from raylet
-              // - Cgroup application folder: could pass from raylet
-
               return PoppedWorkerHandler(worker,
                                          status,
                                          lease_id,
@@ -746,8 +737,6 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   auto sched_cls = lease.GetLeaseSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
-    // TODO(hjiang): After remove the lease id from `granted_leases`, corresponding cgroup
-    // will be updated.
     it->second.granted_leases.erase(lease.GetLeaseSpecification().LeaseId());
     if (it->second.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(it);
@@ -1214,6 +1203,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting leases size: " << waiting_leases_index_.size() << "\n";
   buffer << "Number of granted lease arguments: " << granted_lease_args_.size() << "\n";
   buffer << "Number of pinned lease arguments: " << pinned_lease_arguments_.size()
+         << "\n";
+  buffer << "Total size of pinned lease arguments: " << pinned_lease_arguments_bytes_
          << "\n";
   buffer << "Number of total spilled leases: " << num_lease_spilled_ << "\n";
   buffer << "Number of spilled waiting leases: " << num_waiting_lease_spilled_ << "\n";
