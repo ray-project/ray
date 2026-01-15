@@ -733,12 +733,14 @@ class RequestRouter(ABC):
         self._replicas.pop(replica_id, None)
         self._replicas_list = list(self._replicas.values())
         self._replica_id_set.discard(replica_id)
+        self._queue_len_gauge_last_update.pop(replica_id, None)
         if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
             self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
         self._replica_queue_len_cache.invalidate_key(replica_id)
+        self._queue_len_gauge_last_update.pop(replica_id, None)
 
     def _add_pending_request_to_indices(self, pending_request: PendingRequest):
         """Add a pending request to the dict indices for O(1) lookups."""
