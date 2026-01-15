@@ -7,6 +7,11 @@ efficient Bayesian optimization of the hyperparameter search space.
 
 The script runs 4 parallel trials by default, with HyperOpt suggesting new
 hyperparameter configurations based on results from completed trials.
+For each trial, it defaults to using a 1 GPU per learner, meaning that
+you need to be running on a cluster with 4 GPUs available.
+Due to this compute requirement, we recommend users run this script within an
+anyscale job on an AWS with a g6.12xlarge worker node. Otherwise, we recommend
+users change the num_gpus_per_leaner to zero or the max_concurrent_trials to one.
 
 Key hyperparameters being tuned:
 - lr: Learning rate
@@ -18,26 +23,28 @@ Key hyperparameters being tuned:
 - target_network_update_freq: Target network update frequency
 - broadcast_interval: Weight synchronization interval
 
+Note on storage for multi-node clusters
+---------------------------------------
+Ray Tune requires centralized storage accessible by all nodes in a multi-node cluster.
+This script defaults to using the ANYSCALE_ARTIFACT_STORAGE environment variable,
+which is automatically set in Anyscale jobs. For other environments, override with:
+`python cartpole_hyperopt.py --storage-path=s3://my-bucket/path`
+For local development, override with a local path:
+`python cartpole_hyperopt.py --storage-path=~/ray_results`
+See https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html for more details.
+
 How to run this script
 ----------------------
 Run with 4 parallel trials (default):
 `python cartpole_hyperopt.py`
 
-Run with custom number of parallel trials:
-`python cartpole_hyperopt.py --num-samples=8 --max-concurrent-trials=4`
+Run with custom number of parallel trials (max-concurrent-trials) and
+the total number of trials (num_samples):
+`python cartpole_hyperopt.p --max-concurrent-trials=2 --num_samples=20`
 
 Run on a cluster with cloud or shared filesystem storage:
 `python cartpole_hyperopt.py --storage-path=s3://my-bucket/appo-hyperopt`
 `python cartpole_hyperopt.py --storage-path=/mnt/nfs/appo-hyperopt`
-
-Note on storage for multi-node clusters
----------------------------------------
-The default storage path is /mnt/cluster_storage, which assumes a shared filesystem
-is mounted at that location on all cluster nodes. For cloud storage, override with:
-`python cartpole_hyperopt.py --storage-path=s3://my-bucket/path`
-For local development, override with a local path:
-`python cartpole_hyperopt.py --storage-path=~/ray_results`
-See: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html
 
 Results to expect
 -----------------
@@ -66,7 +73,11 @@ parser = add_rllib_example_script_args(
     default_reward=475.0,
     default_timesteps=2_000_000,
 )
-parser.add_argument(default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"))
+parser.add_argument(
+    "--storage-path",
+    default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"),
+    help="The storage path for checkpoints and related tuning data."
+)
 parser.set_defaults(
     num_env_runners=4,
     num_envs_per_env_runner=6,
