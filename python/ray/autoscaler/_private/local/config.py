@@ -17,11 +17,13 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
-        if field == "available_node_types" and LOCAL_CLUSTER_NODE_TYPE in config.get(
-            field, {}
-        ):
-            continue
         if config.get(field):
+            # If the config already contains the internal node type, it's been prepared already hence return as-is.
+            if (
+                field == "available_node_types"
+                and LOCAL_CLUSTER_NODE_TYPE in config.get(field, {})
+            ):
+                return config
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
     # We use a config with a single node type for on-prem clusters.
