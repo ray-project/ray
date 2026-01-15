@@ -21,7 +21,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/task_execution/scheduling_util.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
