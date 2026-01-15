@@ -33,7 +33,7 @@ steps:
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
-    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
+    wanda: docker/base-extra-testdeps/llm.wanda.yaml
     matrix:
       setup:
         python:
@@ -44,7 +44,6 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
-      REQUIREMENTS_FILE: "release/ray_release/byod/requirements_llm_byod_{{matrix.python}}.txt"
     depends_on:
       - ray-llmbaseextra
 
