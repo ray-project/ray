@@ -282,7 +282,11 @@ def main(
         )
     if not test_targets:
         print("--- No tests to run", file=sys.stderr)
-        sys.exit(0)
+        # sys.exit(0)
+        print(
+            "Did not find any test targets to run defaulting to: //python/ray/tests:test_object_spilling"
+        )
+        test_targets = ["//python/ray/tests:test_object_spilling"]
 
     print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
