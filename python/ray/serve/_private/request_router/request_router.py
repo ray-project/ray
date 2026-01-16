@@ -732,6 +732,9 @@ class RequestRouter(ABC):
     def _add_pending_request_to_indices(self, pending_request: PendingRequest):
         """Add a pending request to the dict indices for O(1) lookups."""
         internal_id = pending_request.metadata.internal_request_id
+        if internal_id in self._pending_requests_by_id:
+            # Retry path: avoid duplicating entries (especially for model_id lists).
+            return
         self._pending_requests_by_id[internal_id] = pending_request
         model_id = pending_request.metadata.multiplexed_model_id
         if model_id:
