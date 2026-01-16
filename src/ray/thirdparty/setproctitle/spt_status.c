@@ -38,7 +38,6 @@
  * PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
  */
 
-#include "spt.h"
 #include "spt_config.h"
 
 /* note: VC doesn't have this, but it was working on mingw instead
@@ -59,7 +58,6 @@
 #endif
 #if defined(__darwin__)
 #include <crt_externs.h>
-#include "darwin_set_process_name.h"
 #endif
 
 #include "spt_status.h"
@@ -112,11 +110,8 @@ bool        update_process_title = true;
 #define PS_USE_PS_STRINGS
 #elif (defined(BSD) || defined(__bsdi__) || defined(__hurd__)) && !defined(__darwin__)
 #define PS_USE_CHANGE_ARGV
-#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(ultrix) || defined(__ksr__) || defined(__osf__) || defined(__svr4__) || defined(__svr5__) 
+#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(ultrix) || defined(__ksr__) || defined(__osf__) || defined(__svr4__) || defined(__svr5__) || defined(__darwin__)
 #define PS_USE_CLOBBER_ARGV
-#elif defined(__darwin__)
-#define PS_USE_CLOBBER_ARGV
-#define PS_USE_DARWIN
 #elif defined(WIN32)
 #define PS_USE_WIN32
 #else
@@ -201,7 +196,7 @@ save_ps_display_args(int argc, char **argv)
             /*
              * Clobbering environ works fine from within the process, but some
              * external utils use /proc/PID/environ and they would find noting,
-             * or mess, if we clobber it. A user can define SPT_NOENV to limit
+             * or mess, if we clobber it. An user can define SPT_NOENV to limit
              * clobbering to argv (see ticket #16).
              */
             char *noenv;
@@ -221,7 +216,6 @@ save_ps_display_args(int argc, char **argv)
                 /*
                  * move the environment out of the way
                  */
-                spt_debug("environ has been copied");
                 new_environ = (char **) malloc((i + 1) * sizeof(char *));
                 for (i = 0; environ[i] != NULL; i++)
                     new_environ[i] = strdup(environ[i]);
@@ -350,10 +344,6 @@ set_ps_display(const char *activity, bool force)
             ps_buffer_size - ps_buffer_fixed_size);
 
     /* Transmit new setting to kernel, if necessary */
-
-#ifdef PS_USE_DARWIN
-    darwin_set_process_title(ps_buffer);
-#endif
 
 #ifdef PS_USE_SETPROCTITLE
     setproctitle("%s", ps_buffer);

@@ -90,15 +90,11 @@
 				"project_id": {
 					"type": "string"
 				},
-				"cloud_name": {
-					"type": "string"
-				},
 				"byod": {
 					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
-				"byod",
 				"cluster_compute"
 			],
 			"title": "Cluster"

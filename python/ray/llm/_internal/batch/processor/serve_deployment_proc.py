@@ -31,6 +31,13 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
         description="A dictionary mapping data type names to their corresponding request classes for the serve deployment.",
         default=None,
     )
+    should_continue_on_error: bool = Field(
+        default=False,
+        description="If True, continue processing when inference fails for a row "
+        "instead of raising an exception. Failed rows will have a non-null "
+        "'__inference_error__' column containing the error message. Error rows "
+        "bypass postprocess. If False (default), any inference error raises.",
+    )
 
 
 def build_serve_deployment_processor(
@@ -63,6 +70,7 @@ def build_serve_deployment_processor(
                 deployment_name=config.deployment_name,
                 app_name=config.app_name,
                 dtype_mapping=config.dtype_mapping,
+                should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
                 compute=ActorPoolStrategy(
