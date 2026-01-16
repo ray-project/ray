@@ -3013,7 +3013,7 @@ Status CoreWorker::ExecuteTask(
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
 
-  if (task_spec.IsActorCreationTask()) {
+  if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
     RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
         << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
   }
