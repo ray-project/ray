@@ -145,17 +145,27 @@ void TaskReceiver::HandleTaskExecutionResult(
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                          rpc::PushTaskReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  // Only assign resources for non-actor tasks. Actor tasks inherit the resources
-  // assigned at initial actor creation time.
-  std::optional<ResourceMappingType> resource_ids;
 
-  auto make_accept_callback = [&]() {
-    // Capture resource_ids by value at the time of callback creation, AFTER it
-    // has been populated for non-actor tasks inside the critical section.
-    return [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](
-               const TaskSpecification &accepted_task_spec) mutable {
+  auto accept_callback = [this, reply, send_reply_callback](
+               const TaskSpecification &task_spec) mutable {
+
+      // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+      // assigned at initial actor creation time.
+      std::optional<ResourceMappingType> resource_ids;
+      if (!task_spec.IsActorTask()) {
+        resource_ids.emplace();
+        for (auto &mapping : *request.mutable_resource_mapping()) {
+          std::vector<std::pair<int64_t, double>> rids;
+          rids.reserve(mapping.resource_ids().size());
+          for (const auto &ids : mapping.resource_ids()) {
+            rids.emplace_back(ids.index(), ids.quantity());
+          }
+          resource_ids->emplace(std::move(*mapping.mutable_name()), std::move(rids));
+        }
+      }
+
       TaskExecutionResult result;
-      auto status = task_handler_(accepted_task_spec,
+      auto status = task_handler_(task_spec,
                                   std::move(resource_ids),
                                   &result.return_objects,
                                   &result.dynamic_return_objects,
@@ -165,14 +175,13 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                   &result.application_error);
 
       HandleTaskExecutionResult(
-          status, accepted_task_spec, result, send_reply_callback, reply);
-    };
+          status, task_spec, result, send_reply_callback, reply);
   };
 
   auto cancel_callback = [this, reply, send_reply_callback](
-                             const TaskSpecification &canceled_task_spec,
+                             const TaskSpecification &task_spec,
                              const Status &status) {
-    if (canceled_task_spec.IsActorTask()) {
+    if (task_spec.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
       if (stopping_) {
@@ -188,8 +197,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
   };
 
-   TaskSpecification task_spec =
-          TaskSpecification(std::move(*request.mutable_task_spec()));
+  TaskSpecification task_spec =
+      TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
     reply->set_was_cancelled_before_running(true);
     if (task_spec.IsActorTask()) {
@@ -205,23 +214,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                task_spec.AllowOutOfOrderExecution());
   }
 
-  if (!task_spec.IsActorTask()) {
-    resource_ids.emplace();
-    for (auto &mapping : *request.mutable_resource_mapping()) {
-      std::vector<std::pair<int64_t, double>> rids;
-      rids.reserve(mapping.resource_ids().size());
-      for (const auto &ids : mapping.resource_ids()) {
-        rids.emplace_back(ids.index(), ids.quantity());
-      }
-      resource_ids->emplace(std::move(*mapping.mutable_name()), std::move(rids));
-    }
-  }
-
-  TaskToExecute task = TaskToExecute(
-      make_accept_callback(),
-      cancel_callback,
-      std::move(task_spec),
-  );
+  TaskToExecute task =
+      TaskToExecute(make_accept_callback(), cancel_callback, std::move(task_spec));
   if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
@@ -249,9 +243,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                      .actor_scheduling_queue_max_reorder_wait_seconds())))
                .first;
     }
-    it->second->Add(request.sequence_number(),
-                    request.client_processed_up_to(),
-                    task);
+    it->second->Add(request.sequence_number(), request.client_processed_up_to(), task);
   } else {
     normal_task_execution_queue_->Add(task);
   }

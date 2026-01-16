@@ -215,8 +215,8 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
-  auto fn_ok_blocking = [&running_started, &allow_finish](
-                            const TaskSpecification &task_spec) {
+  auto fn_ok_blocking = [&running_started,
+                         &allow_finish](const TaskSpecification &task_spec) {
     running_started.set_value();
     allow_finish.get_future().wait();
   };
@@ -237,9 +237,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   ts_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       ObjectID::FromRandom().Binary());
-  queue.Add(1,
-            -1,
-            TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
+  queue.Add(1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
   io_service.poll();
   running_started.get_future().wait();
 

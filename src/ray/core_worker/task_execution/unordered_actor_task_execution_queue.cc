@@ -77,11 +77,9 @@ void UnorderedActorTaskExecutionQueue::Stop() {
   CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
-void UnorderedActorTaskExecutionQueue::Add(
-    int64_t seq_no,
-    int64_t client_processed_up_to,
-    const TaskToExecute &task) {
-
+void UnorderedActorTaskExecutionQueue::Add(int64_t seq_no,
+                                           int64_t client_processed_up_to,
+                                           const TaskToExecute &task) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -104,8 +102,7 @@ void UnorderedActorTaskExecutionQueue::Add(
       if (queued_actor_tasks_.contains(task_id)) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
-        RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(),
-                     task.AttemptNumber());
+        RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(), task.AttemptNumber());
         if (queued_actor_tasks_[task_id].AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
           task_to_cancel = task;
