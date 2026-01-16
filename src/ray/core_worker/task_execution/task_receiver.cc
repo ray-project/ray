@@ -209,7 +209,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
                task_spec.AllowOutOfOrderExecution());
-    normal_task_execution_queue_->Add(TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+    normal_task_execution_queue_->Add(
+        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
   } else if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
@@ -237,9 +238,13 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                      .actor_scheduling_queue_max_reorder_wait_seconds())))
                .first;
     }
-    it->second->Add(request.sequence_number(), request.client_processed_up_to(), TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+    it->second->Add(
+        request.sequence_number(),
+        request.client_processed_up_to(),
+        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
   } else {
-    normal_task_execution_queue_->Add(TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+    normal_task_execution_queue_->Add(
+        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
   }
 }
 
