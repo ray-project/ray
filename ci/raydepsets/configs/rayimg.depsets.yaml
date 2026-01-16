@@ -43,7 +43,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -62,7 +62,7 @@ depsets:
       - docker/base-extra/requirements.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_llm_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -80,7 +80,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_gpu_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_gpu-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -99,7 +99,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_ml-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray

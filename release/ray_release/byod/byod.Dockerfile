@@ -6,7 +6,7 @@ FROM "$BASE_IMAGE"
 
 ARG PYTHON_VERSION=3.10
 ARG IMAGE_TYPE="ray"
-ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}_base_extra_testdeps_py${PYTHON_VERSION}.lock"
+ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
