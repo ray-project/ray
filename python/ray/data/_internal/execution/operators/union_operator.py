@@ -138,8 +138,8 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         """Try to move blocks from input buffers to output in round-robin order.
 
         Pulls one block from the current input, then advances to the next.
-        If the current input's buffer is empty but not exhausted, stops and
-        waits (blocking behavior) to maintain deterministic ordering.
+        If the current input's buffer is empty but not exhausted we return
+        without advancing to the next input so the scheduling won't be blocked.
         """
         num_inputs = len(self._input_buffers)
 
