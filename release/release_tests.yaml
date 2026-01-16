@@ -2048,10 +2048,11 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/cartpole_appo.py \
-      --num-env-runners=4 \
-      --num-learners=1 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
-      --as-release-test
+      --num-cpus-per-learner=1 \
+      --num-env-runners=4 \
+      --num-learners=1
 
 - name: rllib_stateless_cartpole_local
   python: "3.10"
