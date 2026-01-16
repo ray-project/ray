@@ -71,6 +71,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
+    default_iters=200,
     default_reward=-0.5,
     default_timesteps=10_000_000,
 )
