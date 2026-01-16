@@ -441,7 +441,7 @@ class ActorDiedError(RayActorError):
                 f"{cause.__str__()}"
             )
         else:
-            # Inidicating system-level actor failures.
+            # Indicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
             error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
@@ -1016,7 +1016,7 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exception serializers <custom-exception-serializer>`
 
     Args:
         original_stack_trace: The string representation and stack trace of the
