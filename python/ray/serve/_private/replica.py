@@ -938,7 +938,7 @@ class ReplicaBase(ABC):
         # We fall back to using that if _ray_trace_ctx is not in kwargs.
         ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
         if ray_trace_ctx is None:
-            ray_trace_ctx = request_metadata.tracing_context
+            ray_trace_ctx = getattr(request_metadata, "tracing_context", None) or {}
 
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
