@@ -1,9 +1,9 @@
 import math
 import time
-from collections import deque
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.bundle_queue import (
+    FIFOBundleQueue,
     HashLinkedQueue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -55,7 +55,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: HashLinkedQueue = HashLinkedQueue()
         # The outputted bundles with output_split attribute set.
-        self._output_queue: deque[RefBundle] = deque()
+        self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
         # The time of the overhead for the output splitter (operator level)
@@ -106,10 +106,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return True
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        output = self._output_queue.popleft()
+        output = self._output_queue.get_next()
         self._metrics.on_output_dequeued(output)
         return output
 
@@ -157,7 +157,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             bundles = self._split_from_buffer(count)
             for b in bundles:
                 b.output_split_idx = i
-                self._output_queue.append(b)
+                self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
         self._buffer.clear()
 
@@ -168,10 +168,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return self._buffer.estimate_size_bytes()
 
     def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._output_queue)
+        return self._output_queue.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return sum(b.size_bytes() for b in self._output_queue)
+        return self._output_queue.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""
@@ -181,8 +181,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_queue:
-            bundle = self._output_queue.popleft()
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def progress_str(self) -> str:
@@ -199,13 +199,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             dispatch_all or len(self._buffer) >= self._min_buffer_size
         ):
             target_index = self._select_output_index()
-            target_bundle = self._peek_bundle_to_dispatch(target_index)
+            target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
-                target_bundle = self._buffer.remove(target_bundle)
-                self._metrics.on_input_dequeued(target_bundle)
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
-                self._output_queue.append(target_bundle)
+                self._output_queue.add(target_bundle)
                 self._metrics.on_output_queued(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
@@ -214,7 +212,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     else:
                         self._locality_misses += 1
             else:
-                # Abort.
+                # Put it back and abort.
+                self._buffer.add_to_front(target_bundle)
+                self._metrics.on_input_queued(target_bundle)
                 break
         self._output_splitter_overhead_time += time.perf_counter() - start_time
 
@@ -223,14 +223,18 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         i, _ = min(enumerate(self._num_output), key=lambda t: t[1])
         return i
 
-    def _peek_bundle_to_dispatch(self, target_index: int) -> RefBundle:
+    def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
                 if preferred_loc in self._get_locations(bundle):
+                    self._buffer.remove(bundle)
+                    self._metrics.on_input_dequeued(bundle)
                     return bundle
 
-        return self._buffer.peek_next()
+        bundle = self._buffer.get_next()
+        self._metrics.on_input_dequeued(bundle)
+        return bundle
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
         if not self._equal:
@@ -240,8 +244,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output_distribution[target_index] += nrow
         buffer_requirement = self._calculate_buffer_requirement(output_distribution)
         buffer_size = self._buffer.num_rows()
-        # Check if we have enough rows LEFT after dispatching to equalize.
-        return buffer_size - nrow >= buffer_requirement
+        return buffer_size >= buffer_requirement
 
     def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
         # Calculate the new number of rows that we'd need to equalize the row
@@ -262,7 +265,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.add(right)
+                self._buffer.add_to_front(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
