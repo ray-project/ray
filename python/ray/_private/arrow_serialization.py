@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 from ray._private.utils import is_in_test
 
@@ -111,7 +111,9 @@ def _register_arrow_data_serializer(serialization_context):
     serialization_context._register_cloudpickle_reducer(pa.Schema, _arrow_schema_reduce)
 
 
-def _arrow_schema_reduce(schema: "pyarrow.Schema"):
+def _arrow_schema_reduce(
+    schema: "pyarrow.Schema",
+) -> Tuple[Callable[["bytes"], "pyarrow.Schema"], Tuple[bytes]]:
     """Custom reducer for Arrow Schema that uses IPC serialization for performance.
 
     Arrow's native IPC serialization for schemas is significantly faster than
