@@ -82,10 +82,8 @@ def get_conda_bin_executable(executable_name: str) -> str:
 
 
 def _get_conda_env_name(conda_env_path: str) -> str:
-    with open(conda_env_path) as f:
-        conda_env_contents = f.read()
-    hash_value = hashlib.sha256(conda_env_contents.encode("utf-8")).hexdigest()
-    return f"ray-{hash_value}"
+    conda_env_contents = open(conda_env_path).read()
+    return "ray-%s" % hashlib.sha1(conda_env_contents.encode("utf-8")).hexdigest()
 
 
 def create_conda_env_if_needed(
