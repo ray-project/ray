@@ -862,6 +862,15 @@ class StaticPlacementConfig:
                 f"Found duplicate indices in mapping: {self.replica_bundle_mapping}"
             )
 
+        # Check that all bundle indices are within bounds of the placement group
+        num_bundles = len(self.placement_group.bundle_specs)
+        max_bundle_index = max(all_bundle_indices)
+        if max_bundle_index >= num_bundles:
+            raise ValueError(
+                f"Bundle index {max_bundle_index} is out of bounds. "
+                f"Placement group has {num_bundles} bundles (indices 0-{num_bundles - 1})."
+            )
+
     @property
     def num_replicas(self) -> int:
         """Return the number of replicas defined by this configuration."""

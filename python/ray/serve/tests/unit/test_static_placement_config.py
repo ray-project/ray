@@ -7,8 +7,10 @@ from ray.serve.config import StaticPlacementConfig
 class FakePlacementGroup:
     """Fake placement group for unit testing."""
 
-    def __init__(self, name="fake_pg"):
+    def __init__(self, name="fake_pg", num_bundles=4):
         self.name = name
+        # Simulate bundle_specs as a list of bundle resource dicts
+        self.bundle_specs = [{"CPU": 1}] * num_bundles
 
 
 class TestStaticPlacementConfig:
@@ -135,6 +137,18 @@ class TestStaticPlacementConfig:
                 replica_bundle_mapping={
                     0: [0, 1],
                     1: [1, 2],  # Bundle 1 is duplicated
+                },
+            )
+
+    def test_bundle_index_out_of_bounds_raises_error(self):
+        """Test that bundle indices exceeding placement group size raise ValueError."""
+        pg = FakePlacementGroup(num_bundles=2)  # Only bundles 0 and 1 exist
+        with pytest.raises(ValueError, match="Bundle index 2 is out of bounds"):
+            StaticPlacementConfig(
+                placement_group=pg,
+                replica_bundle_mapping={
+                    0: [0],
+                    1: [2],  # Bundle 2 doesn't exist
                 },
             )
 
