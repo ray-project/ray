@@ -60,6 +60,20 @@ def test_monotonically_increasing_id_structurally_equals_always_false():
     assert not expr1.structurally_equals(expr1)
 
 
+def test_monotonically_increasing_id_shuffle_and_sort(ray_start_regular_shared):
+    """Test monotonically_increasing_id() in shuffle and sort."""
+    ds = ray.data.range(20, override_num_blocks=5)
+    ds = ds.with_column("uid", monotonically_increasing_id())
+    ds = ds.random_shuffle()
+    ds = ds.sort("uid")
+
+    result = ds.take_all()
+    uids = [row["uid"] for row in result]
+
+    assert len(uids) == len(set(uids)), "ids are not unique"
+    assert uids == sorted(uids), "ids are not sorted"
+
+
 if __name__ == "__main__":
     import sys
 
