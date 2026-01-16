@@ -369,7 +369,7 @@ def test_report_validation_fn_error():
     assert len(result.best_checkpoints) == 2
 
 
-def test_report_validate_fn_success_after_retry():
+def test_report_validation_fn_success_after_retry():
     @ray.remote
     class Counter:
         def __init__(self):
@@ -381,7 +381,7 @@ def test_report_validate_fn_success_after_retry():
 
     counter = Counter.remote()
 
-    def validate_fn(checkpoint):
+    def validation_fn(checkpoint):
         if ray.get(counter.increment.remote()) < 2:
             raise ValueError("validation failed")
         return {"score": 100}
@@ -402,7 +402,7 @@ def test_report_validate_fn_success_after_retry():
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=1),
-        validation_config=ValidationConfig(validate_fn=validate_fn),
+        validation_config=ValidationConfig(validation_fn=validation_fn),
     )
     result = trainer.fit()
     assert result.best_checkpoints[0][1] == {"score": 100}

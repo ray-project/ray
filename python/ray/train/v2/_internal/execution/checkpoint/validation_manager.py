@@ -132,9 +132,13 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
             # TODO: handle timeouts - ray.remote() does not have them
-            validate_task = run_validation_fn.options(
-                **training_report.validation.ray_remote_kwargs,
-            ).remote(
+            if isinstance(training_report.validation, ValidationTaskConfig):
+                run_validation_fn_with_options = run_validation_fn.options(
+                    **training_report.validation.ray_remote_kwargs,
+                )
+            else:
+                run_validation_fn_with_options = run_validation_fn
+            validate_task = run_validation_fn_with_options.remote(
                 self._validation_config,
                 training_report.validation,
                 training_report.checkpoint,

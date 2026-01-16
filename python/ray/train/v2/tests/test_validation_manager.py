@@ -187,8 +187,8 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
 
     counter = Counter.remote()
 
-    def one_time_failing_validate_fn(checkpoint):
-        print("one_time_failing_validate_fn called")
+    def one_time_failing_validation_fn(checkpoint):
+        print("one_time_failing_validation_fn called")
         if ray.get(counter.increment.remote()) < 2:
             raise ValueError("Fail on first attempt")
         return {"score": 100}
@@ -196,7 +196,7 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validate_fn=one_time_failing_validate_fn),
+        validation_config=ValidationConfig(validation_fn=one_time_failing_validation_fn),
     )
     training_result = create_dummy_training_results(
         num_results=1,
