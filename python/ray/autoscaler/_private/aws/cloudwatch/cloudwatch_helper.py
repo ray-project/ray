@@ -397,7 +397,7 @@ class CloudwatchHelper:
     def _hash_json(self, value: str) -> str:
         """Calculate the SHA-256 hash of a JSON string."""
         hash_obj = hashlib.sha256()
-        binary_value = value.encode("ascii")
+        binary_value = value.encode("utf-8")
         hash_obj.update(binary_value)
         hash_result = hash_obj.hexdigest()
         return hash_result
