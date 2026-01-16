@@ -1524,7 +1524,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                actor_id,
                *actor->GetMutableTaskSpec(),
                {[this, actor, actor_id, mutable_actor_table_data, done_callback](
-                    Status statue) {
+                    Status status) {
                   if (done_callback) {
                     done_callback();
                   }
