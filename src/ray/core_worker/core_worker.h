@@ -1499,10 +1499,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// arguments and recursively, any object IDs that were contained in those objects.
   /// \param is_retryable_error[out] Whether the task failed with a retryable
   /// error.
-  /// \param actor_repr_name[out] The user-specified repr name for the actor in this process if one has been set.
-  /// \param application_error[out] The error message if the task failed during
-  /// execution or cancelled.
-  /// \return Status.
+  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
+  /// process if one has been set. \param application_error[out] The error message if the
+  /// task failed during execution or cancelled. \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
