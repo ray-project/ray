@@ -16,9 +16,10 @@ steps:
     tags: release_wheels
 
   - name: ray-dashboard-build
-    label: "wanda: dashboard"
+    label: "wanda: dashboard (x86_64)"
     wanda: ci/docker/ray-dashboard.wanda.yaml
     env:
+      ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
