@@ -228,25 +228,12 @@ class MultiplexMixin:
 
         model_id = request_metadata.multiplexed_model_id
         candidates = self._pending_requests_by_model_id.get(model_id)
-        if candidates is None:
-            return None
-
-        # Clean done entries from front using O(1) popleft.
-        # Since fulfillment is roughly FIFO, done entries accumulate at the front.
-        while candidates and candidates[0].future.done():
-            candidates.popleft()
-
-        if len(candidates) == 0:
-            # Clean up empty deques to prevent memory leak.
-            self._pending_requests_by_model_id.pop(model_id, None)
-            return None
-
-        # Find first non-done request. Usually at front after cleanup,
-        # but there may be done entries in the middle from out-of-order fulfillment.
-        for pr in candidates:
+        while candidates:
+            pr = candidates[0]
             if not pr.future.done():
                 return pr
-
+            candidates.popleft()
+        self._pending_requests_by_model_id.pop(model_id, None)
         return None
 
     def _update_multiplexed_model_ids_with_replicas(
