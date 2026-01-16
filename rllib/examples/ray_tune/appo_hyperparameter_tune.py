@@ -28,23 +28,26 @@ Note on storage for multi-node clusters
 Ray Tune requires centralized storage accessible by all nodes in a multi-node cluster.
 This script defaults to using the ANYSCALE_ARTIFACT_STORAGE environment variable,
 which is automatically set in Anyscale jobs. For other environments, override with:
-`python cartpole_hyperopt.py --storage-path=s3://my-bucket/path`
+`python appo_hyperparameter_tune.py --storage-path=s3://my-bucket/path`
 For local development, override with a local path:
-`python cartpole_hyperopt.py --storage-path=~/ray_results`
+`python appo_hyperparameter_tune.py --storage-path=~/ray_results`
 See https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html for more details.
 
 How to run this script
 ----------------------
 Run with 4 parallel trials (default):
-`python cartpole_hyperopt.py`
+`python appo_hyperparameter_tune.py`
 
 Run with custom number of parallel trials (max-concurrent-trials) and
 the total number of trials (num_samples):
-`python cartpole_hyperopt.py --max-concurrent-trials=2 --num_samples=20`
+`python appo_hyperparameter_tune.py --max-concurrent-trials=2 --num_samples=20`
 
-Run on a cluster with cloud or shared filesystem storage:
-`python cartpole_hyperopt.py --storage-path=s3://my-bucket/appo-hyperopt`
-`python cartpole_hyperopt.py --storage-path=/mnt/nfs/appo-hyperopt`
+Run on a cluster with cloud or local filesystem storage:
+`python appo_hyperparameter_tune.py --storage-path=s3://my-bucket/appo-hyperopt`
+`python appo_hyperparameter_tune.py --storage-path=/mnt/nfs/appo-hyperopt`
+
+Run locally with only a single GPU
+`python appo_hyperparameter_tune.py --max-concurrent-trials=1 --num_samples=5 --storage-path=/mnt/nfs/appo-hyperopt`
 
 Results to expect
 -----------------
@@ -83,8 +86,8 @@ parser.set_defaults(
     num_envs_per_env_runner=6,
     num_learners=1,
     num_gpus_per_learner=1,
-    num_samples=40,  # Run 40 training sweeps
-    max_concurrent_trials=4,  # Run all 4 in parallel
+    num_samples=16,  # Run 16 training trials
+    max_concurrent_trials=4,  # Run 4 trials in parallel
 )
 args = parser.parse_args()
 
@@ -120,7 +123,6 @@ config = (
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
-    TRAINING_ITERATION: args.stop_iters,
 }
 
 

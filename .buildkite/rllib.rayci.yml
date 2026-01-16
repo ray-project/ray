@@ -61,6 +61,15 @@ steps:
         --build-name rllibbuild-py3.10
         --python-version 3.10
         --skip-ray-installation # reuse the same docker image as the previous run
+      # Tests all examples with gpu or multi_gpu
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --only-tags examples,gpu,multi_gpu
+        --except-tags manual
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+        --build-name rllibbuild-py3.10
+        --python-version 3.10
+        --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
 
   - label: ":brain: rllib: learning tests"
