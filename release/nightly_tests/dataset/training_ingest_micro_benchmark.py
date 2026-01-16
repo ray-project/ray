@@ -1,229 +1,494 @@
-"""Benchmark script for iterating through Ray Data parquet datasets with different hyperparameters.
+"""Benchmark script for training data ingest with Ray Data.
 
-This script:
-- Loads parquet files
-- Applies different map operations (various crop/scale transforms)
-- Iterates through batches with different batch sizes and prefetch values
-- Cycles through all hyperparameter combinations
+This script benchmarks different approaches for loading and preprocessing images:
+- Loads images from S3 (parquet or JPEG format)
+- Applies image transforms (crop, scale, flip)
+- Iterates through batches with configurable batch sizes and prefetch settings
+- Tests all hyperparameter combinations
+
+Supported data formats:
+- images_with_read_parquet: Uses ray.data.read_parquet() with embedded image bytes
+- images_with_map_batches: Lists JPEG files via torchdata, downloads with map_batches
+- images_with_read_images: Uses ray.data.read_images() with Partitioning
 """
 
 import io
 import itertools
+import logging
 import time
-from typing import Callable, Dict, List, Union
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 import argparse
 import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image
 from tabulate import tabulate
 from benchmark import Benchmark
+from dataset_benchmark_util import IMAGENET_WNID_TO_ID
 import ray
 import ray.data
 
-# Standalone constants
-IMAGENET_PARQUET_SPLIT_S3_ROOT = (
-    "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split"
-)
-IMAGENET_PARQUET_SPLIT_S3_DIRS = {
-    "train": f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/train",
-    "val": f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/val",
-    "test": f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/test",
-}
-
-# ============================================================================
-# HYPERPARAMETERS - Modify these to change benchmark configuration
-# ============================================================================
-
-# Transform types to test
-TRANSFORM_TYPES = [
-    "random_crop",
-    "large_crop",
-    "small_crop",
-    "center_crop",
-    "scale_up",
-    "scale_down",
-]
-
-# Batch sizes
-BATCH_SIZES = [16, 32, 64, 128]
-
-# Prefetch batches
-PREFETCH_BATCHES_LIST = [1, 2, 4, 8]
-
-# Number of image columns per row
-NUM_IMAGE_COLUMNS_LIST = [64]
-
-# Number of batches to process
-DEFAULT_NUM_BATCHES = 16
-
-# Simulated training time per batch in seconds
-SIMULATED_TRAINING_TIME_PER_BATCH = 0.5
-
-# Data directory to use
-DATA_DIR = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-
-# Dynamic label mapping - builds mapping as labels are encountered
-_label_to_id_map: Dict[str, int] = {}
-_label_counter = 0
+logger = logging.getLogger(__name__)
 
 
-def get_label_id(label: str) -> int:
-    """Get integer ID for a label (WNID), creating mapping dynamically.
+@dataclass
+class BenchmarkConfig:
+    """Configuration for the training ingest benchmark."""
 
-    Args:
-        label: String label (WNID format)
+    # Data format options
+    data_format: str = "images_with_read_parquet"
 
-    Returns:
-        Integer ID for the label
-    """
-    global _label_to_id_map, _label_counter
-
-    if label not in _label_to_id_map:
-        _label_to_id_map[label] = _label_counter
-        _label_counter += 1
-
-    return _label_to_id_map[label]
-
-
-def get_map_fn_with_transform(
-    transform_type: str, decode_image: bool = True, num_image_columns: int = 1
-) -> Callable[[Dict[str, Union[bytes, str]]], Dict[str, Union[np.ndarray, int]]]:
-    """Get a map function with a specific transform type.
-
-    Args:
-        transform_type: Type of transform to apply. Options:
-            - "random_crop": RandomResizedCrop with default scale/ratio
-            - "large_crop": RandomResizedCrop with larger scale range
-            - "small_crop": RandomResizedCrop with smaller scale range
-            - "center_crop": CenterCrop with resize
-            - "scale_up": Resize to larger size then crop
-            - "scale_down": Resize to smaller size then crop
-        decode_image: Whether to decode the image bytes into a tensor
-        num_image_columns: Number of image columns per row (simulated by duplicating the image)
-
-    Returns:
-        A map function that processes a row dict
-    """
-    # Create transform based on type
-    if transform_type == "random_crop":
-        transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    antialias=True,
-                    size=224,
-                    scale=(0.05, 1.0),
-                    ratio=(0.75, 1.33),
-                ),
-                transforms.RandomHorizontalFlip(),
-            ]
-        )
-    elif transform_type == "large_crop":
-        transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    antialias=True,
-                    size=224,
-                    scale=(0.2, 1.0),  # Larger minimum scale
-                    ratio=(0.5, 2.0),  # Wider ratio range
-                ),
-                transforms.RandomHorizontalFlip(),
-            ]
-        )
-    elif transform_type == "small_crop":
-        transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    antialias=True,
-                    size=224,
-                    scale=(0.05, 0.5),  # Smaller maximum scale
-                    ratio=(0.9, 1.1),  # Narrower ratio range
-                ),
-                transforms.RandomHorizontalFlip(),
-            ]
-        )
-    elif transform_type == "center_crop":
-        transform = transforms.Compose(
-            [
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
-            ]
-        )
-    elif transform_type == "scale_up":
-        transform = transforms.Compose(
-            [
-                transforms.Resize(320),  # Scale up first
-                transforms.RandomCrop(224),
-                transforms.RandomHorizontalFlip(),
-            ]
-        )
-    elif transform_type == "scale_down":
-        transform = transforms.Compose(
-            [
-                transforms.Resize(180),  # Scale down first
-                transforms.RandomCrop(180),
-                transforms.Resize(224),
-                transforms.RandomHorizontalFlip(),
-            ]
-        )
-    else:
-        raise ValueError(f"Unknown transform_type: {transform_type}")
-
-    # Add ToTensor and normalization
-    transform = transforms.Compose(
-        [
-            transform,
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    # Transform types to benchmark
+    transform_types: List[str] = field(
+        default_factory=lambda: [
+            "random_crop",
+            "large_crop",
+            "small_crop",
+            "center_crop",
+            "scale_up",
+            "scale_down",
         ]
     )
 
-    def map_fn(row: Dict[str, Union[bytes, str]]) -> Dict[str, Union[np.ndarray, int]]:
-        """Process a single row into the expected format."""
-        assert "image" in row and "label" in row, row.keys()
+    # Batch sizes to test
+    batch_sizes: List[int] = field(default_factory=lambda: [16])
 
-        # Process the original image
-        if decode_image:
-            # Decode image from bytes to PIL Image
+    # Prefetch batch counts to test
+    prefetch_batches_list: List[int] = field(default_factory=lambda: [1, 2, 4])
+
+    # Number of image columns per row to test
+    num_image_columns_list: List[int] = field(default_factory=lambda: [64])
+
+    # Number of batches to process per benchmark run
+    num_batches: int = 16
+
+    # Optional simulated training time (seconds) per batch
+    simulated_training_time: Optional[float] = None
+
+    # Data split to use
+    split: str = "train"
+
+    @property
+    def supported_formats(self) -> List[str]:
+        """Return list of supported data formats."""
+        return [
+            "images_with_read_parquet",
+            "images_with_map_batches",
+            "images_with_read_images",
+        ]
+
+    def validate(self):
+        """Validate configuration values."""
+        if self.data_format not in self.supported_formats:
+            raise ValueError(
+                f"Unknown data format: {self.data_format}. "
+                f"Supported: {self.supported_formats}"
+            )
+
+    def log_config(self):
+        """Log the current configuration."""
+        logger.info("=" * 80)
+        logger.info("BENCHMARK CONFIGURATION")
+        logger.info("=" * 80)
+        logger.info(f"Data format: {self.data_format}")
+        logger.info(f"Split: {self.split}")
+        logger.info(f"Transform types: {self.transform_types}")
+        logger.info(f"Batch sizes: {self.batch_sizes}")
+        logger.info(f"Prefetch batches: {self.prefetch_batches_list}")
+        logger.info(f"Number of image columns: {self.num_image_columns_list}")
+        logger.info(f"Number of batches: {self.num_batches}")
+        logger.info(f"Simulated training time: {self.simulated_training_time}")
+        logger.info("=" * 80)
+
+
+class BaseDataLoader(ABC):
+    """Abstract base class for benchmark data loaders.
+
+    Provides shared functionality for loading and transforming image datasets.
+    Subclasses implement format-specific data loading logic.
+    """
+
+    # Transform configurations: {name: (base_transforms, use_horizontal_flip)}
+    TRANSFORM_CONFIGS = {
+        "random_crop": (
+            lambda: transforms.RandomResizedCrop(
+                antialias=True, size=224, scale=(0.05, 1.0), ratio=(0.75, 1.33)
+            ),
+            True,
+        ),
+        "large_crop": (
+            lambda: transforms.RandomResizedCrop(
+                antialias=True, size=224, scale=(0.2, 1.0), ratio=(0.5, 2.0)
+            ),
+            True,
+        ),
+        "small_crop": (
+            lambda: transforms.RandomResizedCrop(
+                antialias=True, size=224, scale=(0.05, 0.5), ratio=(0.9, 1.1)
+            ),
+            True,
+        ),
+        "center_crop": (
+            lambda: transforms.Compose(
+                [transforms.Resize(256), transforms.CenterCrop(224)]
+            ),
+            False,
+        ),
+        "scale_up": (
+            lambda: transforms.Compose(
+                [transforms.Resize(320), transforms.RandomCrop(224)]
+            ),
+            True,
+        ),
+        "scale_down": (
+            lambda: transforms.Compose(
+                [
+                    transforms.Resize(180),
+                    transforms.RandomCrop(180),
+                    transforms.Resize(224),
+                ]
+            ),
+            True,
+        ),
+    }
+
+    def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
+        """Initialize the data loader.
+
+        Args:
+            data_dir: Path to data directory
+            label_to_id_map: Mapping from label strings to integer IDs
+        """
+        self.data_dir = data_dir
+        self.label_to_id_map = label_to_id_map or IMAGENET_WNID_TO_ID
+
+    @classmethod
+    def get_transform(cls, transform_type: str) -> transforms.Compose:
+        """Get an image transform pipeline for the specified transform type."""
+        if transform_type not in cls.TRANSFORM_CONFIGS:
+            raise ValueError(f"Unknown transform_type: {transform_type}")
+
+        base_fn, use_flip = cls.TRANSFORM_CONFIGS[transform_type]
+        transform_list = [base_fn()]
+        if use_flip:
+            transform_list.append(transforms.RandomHorizontalFlip())
+
+        return transforms.Compose(
+            [
+                transforms.Compose(transform_list),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    @staticmethod
+    def tensor_to_numpy(tensor) -> np.ndarray:
+        """Convert a tensor to numpy array."""
+        if hasattr(tensor, "detach"):
+            return tensor.detach().cpu().numpy()
+        elif hasattr(tensor, "numpy"):
+            return tensor.numpy()
+        return np.array(tensor)
+
+    @staticmethod
+    def add_image_columns(result: Dict, processed_image: np.ndarray, num_columns: int):
+        """Add multiple image columns to result dict."""
+        result["image"] = processed_image
+        for i in range(1, num_columns):
+            result[f"image_{i}"] = processed_image.copy()
+
+    def convert_label(self, label: str) -> int:
+        """Convert a string label to integer ID."""
+        return self.label_to_id_map.get(label, -1)
+
+    @abstractmethod
+    def create_dataset(
+        self,
+        transform_type: str,
+        batch_size: int,
+        num_batches: int,
+        num_image_columns: int,
+    ) -> ray.data.Dataset:
+        """Create a Ray dataset with the specified configuration.
+
+        Args:
+            transform_type: Type of image transform to apply
+            batch_size: Batch size for processing
+            num_batches: Number of batches to prepare (for limiting data)
+            num_image_columns: Number of image columns per row
+
+        Returns:
+            Configured Ray dataset ready for iteration
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def parse_s3_url(s3_url: str) -> tuple:
+        """Parse an S3 URL into bucket and key components."""
+        if not s3_url.startswith("s3://"):
+            raise ValueError(f"Invalid S3 URL: {s3_url}")
+        s3_parts = s3_url.replace("s3://", "").split("/", 1)
+        return s3_parts[0], s3_parts[1] if len(s3_parts) > 1 else ""
+
+
+class ParquetS3Loader(BaseDataLoader):
+    """Data loader for parquet format with embedded image bytes."""
+
+    # S3 configuration
+    S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split"
+    SPLIT_DIRS = {
+        "train": f"{S3_ROOT}/train",
+        "val": f"{S3_ROOT}/val",
+        "test": f"{S3_ROOT}/test",
+    }
+
+    @classmethod
+    def get_data_dir(cls, split: str = "train") -> str:
+        """Get the data directory for the specified split."""
+        if split not in cls.SPLIT_DIRS:
+            raise ValueError(f"Unknown split: {split}")
+        return cls.SPLIT_DIRS[split]
+
+    def create_dataset(
+        self,
+        transform_type: str,
+        batch_size: int,
+        num_batches: int,
+        num_image_columns: int,
+    ) -> ray.data.Dataset:
+        """Create dataset from parquet files."""
+        limit = batch_size * num_batches + batch_size
+        transform = self.get_transform(transform_type)
+
+        # Capture instance variables for closure
+        label_to_id_map = self.label_to_id_map
+
+        def process_row(row: Dict) -> Dict:
             image_pil = Image.open(io.BytesIO(row["image"]))
-        else:
-            # If already decoded, convert tensor/array to PIL
-            if isinstance(row["image"], np.ndarray):
-                image_pil = Image.fromarray(row["image"])
-            else:
-                # Assume it's a tensor, convert to numpy then PIL
-                if hasattr(row["image"], "numpy"):
-                    image_pil = Image.fromarray(row["image"].numpy().transpose(1, 2, 0))
-                else:
-                    image_pil = Image.fromarray(row["image"])
+            processed = BaseDataLoader.tensor_to_numpy(transform(image_pil))
+            BaseDataLoader.add_image_columns(row, processed, num_image_columns)
+            row["label"] = label_to_id_map.get(row["label"], -1)
+            return row
 
-        # Apply transform (expects PIL Image, returns tensor)
-        image_tensor = transform(image_pil)
+        ds = ray.data.read_parquet(self.data_dir, columns=["image", "label"])
+        ds = ds.limit(limit)
+        return ds.map(process_row)
 
-        # Convert tensor to numpy array (CHW format)
-        if hasattr(image_tensor, "numpy"):
-            processed_image = image_tensor.numpy()
-        elif hasattr(image_tensor, "detach"):
-            # PyTorch tensor
-            processed_image = image_tensor.detach().cpu().numpy()
-        else:
-            processed_image = np.array(image_tensor)
 
-        # Create multiple image columns by duplicating the processed image
-        # Store each image as a separate column (image_0, image_1, etc.)
-        for i in range(num_image_columns):
-            if i == 0:
-                # Keep the original "image" column for backward compatibility
-                row["image"] = processed_image
-            else:
-                # Create additional columns for each image
-                row[f"image_{i}"] = processed_image
+class MapBatchesS3Loader(BaseDataLoader):
+    """Data loader for JPEG files stored in S3.
 
-        # Convert label to integer ID
-        row["label"] = get_label_id(row["label"])
+    Uses torchdata for S3 file listing (same approach as multi_node_train_benchmark.py).
+    """
 
-        return row
+    # S3 configuration
+    AWS_REGION = "us-west-2"
+    S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/jpeg_split"
+    SPLIT_DIRS = {
+        "train": f"{S3_ROOT}/train",
+        "val": f"{S3_ROOT}/val",
+        "test": f"{S3_ROOT}/test",
+    }
 
-    return map_fn
+    @classmethod
+    def get_data_dir(cls, split: str = "train") -> str:
+        """Get the data directory for the specified split."""
+        if split not in cls.SPLIT_DIRS:
+            raise ValueError(f"Unknown split: {split}")
+        return cls.SPLIT_DIRS[split]
+
+    def _list_files(self, limit: int = None) -> List[Dict[str, str]]:
+        """List JPEG files from S3 with class labels extracted from path.
+
+        Uses torchdata's S3 listing.
+        """
+        import os
+        from torchdata.datapipes.iter import IterableWrapper
+
+        # Required for torchdata S3 access
+        os.environ.setdefault("S3_VERIFY_SSL", "0")
+        os.environ.setdefault("AWS_REGION", self.AWS_REGION)
+
+        # List all files using torchdata
+        file_url_dp = IterableWrapper([self.data_dir]).list_files_by_s3()
+        all_files = list(file_url_dp)
+
+        # Extract class labels from path structure: .../class_name/image.jpg
+        file_records = []
+        for file_path in all_files:
+            if not file_path.lower().endswith((".jpg", ".jpeg")):
+                continue
+
+            # Extract class from path: s3://bucket/prefix/class/image.jpg
+            parts = file_path.rstrip("/").split("/")
+            if len(parts) >= 2:
+                class_name = parts[-2]  # Parent directory is the class
+                file_records.append({"path": file_path, "class": class_name})
+
+            if limit and len(file_records) >= limit:
+                break
+
+        logger.info(f"Listed {len(file_records)} JPEG files from {self.data_dir}")
+        return file_records[:limit] if limit else file_records
+
+    def create_dataset(
+        self,
+        transform_type: str,
+        batch_size: int,
+        num_batches: int,
+        num_image_columns: int,
+    ) -> ray.data.Dataset:
+        """Create dataset by listing JPEG files and downloading via map_batches."""
+        limit = batch_size * num_batches + batch_size
+
+        logger.info(f"Listing JPEG files from {self.data_dir} (limit={limit})...")
+        file_records = self._list_files(limit=limit)
+
+        transform = self.get_transform(transform_type)
+        label_to_id_map = self.label_to_id_map
+
+        def download_and_process_batch(
+            batch: Dict[str, np.ndarray]
+        ) -> Dict[str, np.ndarray]:
+            from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+
+            processed_images = []
+            labels = []
+
+            # Use torchdata's S3FileLoader for downloading
+            paths = list(batch["path"])
+            classes = list(batch["class"])
+            file_dp = S3FileLoader(IterableWrapper(paths))
+
+            for (url, fd), wnid in zip(file_dp, classes):
+                data = fd.file_obj.read()
+                image_pil = Image.open(io.BytesIO(data)).convert("RGB")
+                processed_images.append(
+                    BaseDataLoader.tensor_to_numpy(transform(image_pil))
+                )
+                labels.append(label_to_id_map.get(wnid, -1))
+
+            result = {"label": np.array(labels)}
+            BaseDataLoader.add_image_columns(
+                result, np.stack(processed_images), num_image_columns
+            )
+            return result
+
+        ds = ray.data.from_items(file_records)
+        return ds.map_batches(download_and_process_batch, batch_size=batch_size)
+
+
+class ReadImagesS3Loader(BaseDataLoader):
+    """Data loader using ray.data.read_images() with Partitioning.
+
+    Uses the same approach as multi_node_train_benchmark.py for reading images.
+    """
+
+    # S3 configuration
+    AWS_REGION = "us-west-2"
+    S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/jpeg_split"
+    SPLIT_DIRS = {
+        "train": f"{S3_ROOT}/train",
+        "val": f"{S3_ROOT}/val",
+        "test": f"{S3_ROOT}/test",
+    }
+
+    @classmethod
+    def get_data_dir(cls, split: str = "train") -> str:
+        """Get the data directory for the specified split."""
+        if split not in cls.SPLIT_DIRS:
+            raise ValueError(f"Unknown split: {split}")
+        return cls.SPLIT_DIRS[split]
+
+    @staticmethod
+    def _get_s3fs_with_boto_creds():
+        """Get S3 filesystem with boto credentials.
+
+        Same as multi_node_train_benchmark.py to avoid ACCESS_DENIED errors.
+        """
+        import boto3
+        from pyarrow import fs
+
+        credentials = boto3.Session().get_credentials()
+        s3fs = fs.S3FileSystem(
+            access_key=credentials.access_key,
+            secret_key=credentials.secret_key,
+            session_token=credentials.token,
+            region=ReadImagesS3Loader.AWS_REGION,
+        )
+        return s3fs
+
+    def create_dataset(
+        self,
+        transform_type: str,
+        batch_size: int,
+        num_batches: int,
+        num_image_columns: int,
+    ) -> ray.data.Dataset:
+        """Create dataset using ray.data.read_images() with Partitioning."""
+        from ray.data.datasource.partitioning import Partitioning
+
+        limit = batch_size * num_batches + batch_size
+
+        # Use partitioning to extract class from directory structure
+        partitioning = Partitioning(
+            "dir",
+            field_names=["class"],
+            base_dir=self.data_dir,
+        )
+
+        # Use S3 filesystem with boto credentials
+        fs = self._get_s3fs_with_boto_creds()
+
+        logger.info(f"Reading images from {self.data_dir} using read_images()...")
+        ds = ray.data.read_images(
+            self.data_dir,
+            filesystem=fs,
+            mode="RGB",
+            partitioning=partitioning,
+        )
+        ds = ds.limit(limit)
+
+        transform = self.get_transform(transform_type)
+        label_to_id_map = self.label_to_id_map
+
+        def process_row(row: Dict) -> Dict:
+            # Image is already loaded as numpy array by read_images
+            image_pil = Image.fromarray(row["image"])
+            processed = BaseDataLoader.tensor_to_numpy(transform(image_pil))
+            BaseDataLoader.add_image_columns(row, processed, num_image_columns)
+            row["label"] = label_to_id_map.get(row["class"], -1)
+            del row["class"]
+            return row
+
+        return ds.map(process_row)
+
+
+def get_data_loader(data_format: str, split: str = "train") -> BaseDataLoader:
+    """Factory function to create the appropriate data loader.
+
+    Args:
+        data_format: One of "images_with_read_parquet", "images_with_map_batches",
+            or "images_with_read_images"
+        split: Data split to use ("train", "val", or "test")
+
+    Returns:
+        Configured data loader instance
+    """
+    if data_format == "images_with_read_parquet":
+        data_dir = ParquetS3Loader.get_data_dir(split)
+        return ParquetS3Loader(data_dir)
+    elif data_format == "images_with_map_batches":
+        data_dir = MapBatchesS3Loader.get_data_dir(split)
+        return MapBatchesS3Loader(data_dir)
+    elif data_format == "images_with_read_images":
+        data_dir = ReadImagesS3Loader.get_data_dir(split)
+        return ReadImagesS3Loader(data_dir)
+    else:
+        raise ValueError(f"Unknown data format: {data_format}")
 
 
 def benchmark_iteration(
@@ -231,6 +496,7 @@ def benchmark_iteration(
     batch_size: int,
     prefetch_batches: int,
     num_batches: int = 100,
+    simulated_training_time: float = None,
 ) -> Dict[str, float]:
     """Benchmark iterating through batches.
 
@@ -239,6 +505,8 @@ def benchmark_iteration(
         batch_size: Batch size for iter_torch_batches
         prefetch_batches: Number of batches to prefetch
         num_batches: Number of batches to iterate through for timing
+        simulated_training_time: Time in seconds to sleep per batch to simulate training.
+            If None, no sleep is performed.
 
     Returns:
         Dictionary with timing metrics
@@ -261,8 +529,9 @@ def benchmark_iteration(
         if "image" in batch:
             total_rows += len(batch["image"])
 
-        # Simulate training time
-        time.sleep(SIMULATED_TRAINING_TIME_PER_BATCH)
+        # Simulate training time if configured
+        if simulated_training_time is not None:
+            time.sleep(simulated_training_time)
 
         if batch_count >= num_batches:
             break
@@ -278,75 +547,60 @@ def benchmark_iteration(
     }
 
 
-def run_benchmark(
-    data_dir: str,
-    transform_types: List[str],
-    batch_sizes: List[int],
-    prefetch_batches_list: List[int],
-    num_image_columns_list: List[int],
-    num_batches: int,
-) -> List[Dict]:
+def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
     """Run benchmarks with all hyperparameter combinations.
 
     Args:
-        data_dir: Path to parquet data directory
-        transform_types: List of transform types to test
-        batch_sizes: List of batch sizes to test
-        prefetch_batches_list: List of prefetch_batches values to test
-        num_image_columns_list: List of number of image columns per row to test
-        num_batches: Number of batches to process per benchmark
+        config: Benchmark configuration
 
     Returns:
         List of benchmark results
     """
+    config.validate()
     results = []
+
+    # Create data loader for the specified format
+    data_loader = get_data_loader(config.data_format, config.split)
+    logger.info(
+        f"Using {data_loader.__class__.__name__} with "
+        f"{len(data_loader.label_to_id_map)} classes"
+    )
+    logger.info(f"Data directory: {data_loader.data_dir}")
 
     # Generate all combinations
     combinations = list(
         itertools.product(
-            transform_types, batch_sizes, prefetch_batches_list, num_image_columns_list
+            config.transform_types,
+            config.batch_sizes,
+            config.prefetch_batches_list,
+            config.num_image_columns_list,
         )
     )
 
-    print(f"Running {len(combinations)} benchmark combinations...")
-    print(f"Transform types: {transform_types}")
-    print(f"Batch sizes: {batch_sizes}")
-    print(f"Prefetch batches: {prefetch_batches_list}")
-    print(f"Number of image columns: {num_image_columns_list}")
-    print(f"Number of batches: {num_batches}")
+    logger.info(f"Running {len(combinations)} benchmark combinations...")
 
     for transform_type, batch_size, prefetch_batches, num_image_columns in combinations:
-        print(
+        logger.info(
             f"Benchmarking: transform={transform_type}, "
             f"batch_size={batch_size}, prefetch_batches={prefetch_batches}, "
             f"num_image_columns={num_image_columns}"
         )
 
-        # Calculate limit based on batch_size and num_batches
-        # Need enough rows for num_batches of batch_size, plus a small buffer for drop_last
-        limit = batch_size * num_batches + batch_size
-
-        # Load dataset
-        ds = ray.data.read_parquet(
-            data_dir,
-            columns=["image", "label"],
+        # Create dataset using the data loader
+        ds = data_loader.create_dataset(
+            transform_type=transform_type,
+            batch_size=batch_size,
+            num_batches=config.num_batches,
+            num_image_columns=num_image_columns,
         )
-
-        # Apply limit based on batch size and num batches
-        ds = ds.limit(limit)
-
-        # Apply map with transform
-        map_fn = get_map_fn_with_transform(
-            transform_type, decode_image=True, num_image_columns=num_image_columns
-        )
-        ds = ds.map(map_fn)
 
         # Run benchmark
         metrics = benchmark_iteration(
             dataset=ds,
             batch_size=batch_size,
             prefetch_batches=prefetch_batches,
-            num_batches=num_batches,
+            num_batches=config.num_batches,
+            simulated_training_time=config.simulated_training_time,
         )
 
         # Store results
@@ -359,11 +613,10 @@ def run_benchmark(
         }
         results.append(result)
 
-        print(
+        logger.info(
             f"  Results: {metrics['rows_per_second']:.2f} rows/sec, "
             f"{metrics['batches_per_second']:.2f} batches/sec"
         )
-        print()
 
     return results
 
@@ -371,7 +624,7 @@ def run_benchmark(
 def print_summary(results: List[Dict]):
     """Print summary of benchmark results using tabulate."""
     if not results:
-        print("No results to display.")
+        logger.warning("No results to display.")
         return
 
     # Sort results by batch_size, prefetch_batches, and num_image_columns
@@ -410,24 +663,63 @@ def print_summary(results: List[Dict]):
         )
 
     # Print table to stdout
-    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    logger.info("\n" + tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
 def main():
     """Main entry point for the benchmark."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--num-batches", type=int, default=DEFAULT_NUM_BATCHES)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    # Create default config to get supported formats
+    default_config = BenchmarkConfig()
+
+    parser = argparse.ArgumentParser(
+        description="Benchmark Ray Data image loading with parquet or JPEG formats."
+    )
+    parser.add_argument(
+        "--num-batches",
+        type=int,
+        default=default_config.num_batches,
+        help=f"Number of batches to process. Default: {default_config.num_batches}",
+    )
+    parser.add_argument(
+        "--simulated-training-time",
+        type=float,
+        default=default_config.simulated_training_time,
+        help="Time in seconds to sleep per batch to simulate training.",
+    )
+    parser.add_argument(
+        "--data-format",
+        type=str,
+        choices=default_config.supported_formats,
+        default=default_config.data_format,
+        help=f"Data format. Default: {default_config.data_format}",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["train", "val", "test"],
+        default=default_config.split,
+        help=f"Data split to use. Default: {default_config.split}",
+    )
     args = parser.parse_args()
 
-    # Run benchmarks using hyperparameters
-    results = run_benchmark(
-        data_dir=DATA_DIR,
-        transform_types=TRANSFORM_TYPES,
-        batch_sizes=BATCH_SIZES,
-        prefetch_batches_list=PREFETCH_BATCHES_LIST,
-        num_image_columns_list=NUM_IMAGE_COLUMNS_LIST,
+    # Build configuration from CLI args
+    config = BenchmarkConfig(
+        data_format=args.data_format,
         num_batches=args.num_batches,
+        simulated_training_time=args.simulated_training_time,
+        split=args.split,
     )
+
+    # Log benchmark configuration
+    config.log_config()
+
+    # Run benchmarks
+    results = run_benchmark(config)
 
     # Print summary table
     print_summary(results)
@@ -435,11 +727,12 @@ def main():
     if results:
         return {
             "results": results,
-            "transform_types": TRANSFORM_TYPES,
-            "batch_sizes": BATCH_SIZES,
-            "prefetch_batches_list": PREFETCH_BATCHES_LIST,
-            "num_image_columns_list": NUM_IMAGE_COLUMNS_LIST,
-            "num_batches": args.num_batches,
+            "data_format": config.data_format,
+            "transform_types": config.transform_types,
+            "batch_sizes": config.batch_sizes,
+            "prefetch_batches_list": config.prefetch_batches_list,
+            "num_image_columns_list": config.num_image_columns_list,
+            "num_batches": config.num_batches,
         }
 
 

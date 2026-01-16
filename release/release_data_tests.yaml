@@ -323,15 +323,26 @@
     cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
 
   variations:
-    - __suffix__: small
+    - __suffix__: read_parquet
       run:
-        timeout: 3600
-        script: python dataset/training_ingest_micro_benchmark.py --num-batches 8
+        timeout: 900
+        script: >
+          python dataset/training_ingest_micro_benchmark.py
+          --data-format images_with_read_parquet
 
-    - __suffix__: large
+    - __suffix__: map_batches
       run:
-        timeout: 3600
-        script: python dataset/training_ingest_micro_benchmark.py --num-batches 128
+        timeout: 900
+        script: >
+          python dataset/training_ingest_micro_benchmark.py
+          --data-format images_with_map_batches
+
+    - __suffix__: read_images
+      run:
+        timeout: 900
+        script: >
+          python dataset/training_ingest_micro_benchmark.py
+          --data-format images_with_read_images
 
 #################
 # Iteration tests
