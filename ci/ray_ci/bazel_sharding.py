@@ -264,33 +264,22 @@ def get_rules_for_shard_optimal(
     # Phase 1: Determine slot allocation for all shards
     shard_slots = allocate_slots_to_shards(rules_grouped_by_time, count)
 
-    # Phase 2: Assign tests to this shard by name order within each timeout group
-    result = []
+    # Phase 2: Assign tests to all shards by name order within each timeout group
+    all_shard_rules: List[List[BazelRule]] = [[] for _ in range(count)]
     for timeout, rules in rules_grouped_by_time:
         # Sort rules by name for deterministic, contiguous assignment
         sorted_rules = sorted(rules, key=lambda r: r.name)
-
-        # Calculate which tests belong to this shard
-        # Tests are assigned contiguously: shard 0 gets first N, shard 1 gets next M
-        start_idx = sum(shard_slots[i][timeout] for i in range(index))
-        num_slots = shard_slots[index][timeout]
-        end_idx = start_idx + num_slots
-
-        result.extend(sorted_rules[start_idx:end_idx])
+        for i in range(count):
+            # Calculate which tests belong to each shard
+            # Tests are assigned contiguously: shard 0 gets first N, shard 1 gets next M
+            start_idx = sum(shard_slots[j][timeout] for j in range(i))
+            end_idx = start_idx + shard_slots[i][timeout]
+            all_shard_rules[i].extend(sorted_rules[start_idx:end_idx])
 
     # Collect all rules for sanity checks
     all_rules = []
     for _, rules in rules_grouped_by_time:
         all_rules.extend(rules)
-
-    # Compute all shard contents for statistics
-    all_shard_rules: List[List[BazelRule]] = [[] for _ in range(count)]
-    for timeout, rules in rules_grouped_by_time:
-        sorted_rules = sorted(rules, key=lambda r: r.name)
-        for i in range(count):
-            start = sum(shard_slots[j][timeout] for j in range(i))
-            end = start + shard_slots[i][timeout]
-            all_shard_rules[i].extend(sorted_rules[start:end])
 
     # Sanity checks
     num_all_rules = sum(len(shard) for shard in all_shard_rules)
@@ -319,7 +308,7 @@ def get_rules_for_shard_optimal(
         ),
         file=sys.stderr,
     )
-    return sorted([rule.name for rule in result])
+    return sorted([rule.name for rule in all_shard_rules[index]])
 
 
 def main(
