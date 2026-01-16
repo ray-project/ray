@@ -32,8 +32,6 @@
 #    autosuspend_mins: 10
 #    # Optional cloud_id to use instead of the default cloud
 #    cloud_id: cld_12345678
-#    # Alternatively, you can specify a cloud name
-#    cloud_name: anyscale_default_cloud
 #
 #  # Run configuration for the test
 #  run:
@@ -87,7 +85,6 @@
   working_dir: hello_world_tests
 
   cluster:
-    byod: {}
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -169,7 +166,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
@@ -495,7 +491,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -541,7 +536,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x16.yaml
 
   run:
@@ -572,7 +566,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -606,7 +599,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -639,7 +631,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -674,7 +665,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -713,7 +703,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -742,7 +731,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -774,7 +762,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -849,7 +836,6 @@
   team: rllib
 
   cluster:
-    byod: {}
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -1390,7 +1376,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: rte_small.yaml
 
   run:
@@ -1420,7 +1405,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1474,7 +1458,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1498,7 +1481,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1554,7 +1536,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1653,7 +1634,6 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1900,7 +1880,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2073,7 +2052,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2101,7 +2079,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2125,7 +2102,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: decision_tree/autoscaling_compute.yaml
 
   run:
@@ -2149,7 +2125,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2174,7 +2149,6 @@
   working_dir: microbenchmark
 
   cluster:
-    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2201,7 +2175,6 @@
   working_dir: microbenchmark
 
   cluster:
-    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2329,7 +2302,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2354,7 +2326,6 @@
   team: data
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2463,7 +2434,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2504,7 +2474,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2547,7 +2516,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2608,7 +2576,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2667,7 +2634,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -2687,7 +2653,6 @@
   frequency: nightly-3x
   team: core
   cluster:
-    byod: {}
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -2730,7 +2695,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -2753,7 +2717,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -3112,7 +3075,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3137,7 +3099,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3163,7 +3124,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3215,7 +3175,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3240,7 +3199,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3266,7 +3224,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3318,7 +3275,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3343,7 +3299,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3369,7 +3324,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3421,7 +3375,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3446,7 +3399,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3472,7 +3424,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3618,7 +3569,6 @@
   frequency: manual
   team: serve
   cluster:
-    byod: {}
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -3659,7 +3609,6 @@
   team: clusters
 
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3682,7 +3631,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3705,7 +3653,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3728,7 +3675,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3752,7 +3698,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3775,7 +3720,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3801,7 +3745,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3827,7 +3770,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3852,7 +3794,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3878,7 +3819,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3904,7 +3844,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3930,7 +3869,6 @@
   frequency: weekly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -4516,6 +4454,56 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
+- name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_multiplexing_forecast.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: model_composition_recsys  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_composition_recsys.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: asynchronous_inference  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
@@ -4541,6 +4529,32 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+
+- name: video_analysis_pipeline  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.10"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/video-analysis
+
+  cluster:
+    byod:
+      type: cpu
+      post_build_script: byod_serve_video_analysis.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    # probably wont work on gce as tests depend on s3 access
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   python: "3.10"

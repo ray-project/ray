@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStage,
     SGLangEngineStageUDF,
@@ -116,7 +117,7 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
-            concurrency=1,
+            compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
             accelerator_type=gpu_type,
         ),
@@ -131,9 +132,14 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
             "dp_size": 2,
         },
     }
+
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ActorPoolStrategy)
+    assert compute.min_size == 1
+    assert compute.max_size == 1
+
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,

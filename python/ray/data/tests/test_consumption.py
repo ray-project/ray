@@ -552,7 +552,12 @@ def test_take_all(ray_start_regular_shared):
         assert ray.data.range(5).take_all(4)
 
 
-def test_union(ray_start_regular_shared):
+def test_union(ray_start_regular_shared, restore_data_context):
+    # Set aggregator CPU to 0 to avoid deadlock in resource-constrained test env.
+    # Without this, the shuffle task (1 CPU) + aggregator actor (~0.25 CPU) would
+    # exceed the 1 CPU available in the test cluster, causing scheduler deadlock.
+    restore_data_context.hash_aggregate_operator_actor_num_cpus_override = 0
+
     ds = ray.data.range(20, override_num_blocks=10).materialize()
 
     # Test lazy union.
