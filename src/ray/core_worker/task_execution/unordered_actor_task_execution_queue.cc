@@ -79,7 +79,7 @@ void UnorderedActorTaskExecutionQueue::Stop() {
 
 void UnorderedActorTaskExecutionQueue::Add(int64_t seq_no,
                                            int64_t client_processed_up_to,
-                                           const TaskToExecute &task) {
+                                           TaskToExecute task) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -105,13 +105,13 @@ void UnorderedActorTaskExecutionQueue::Add(int64_t seq_no,
         RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(), task.AttemptNumber());
         if (queued_actor_tasks_[task_id].AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
-          task_to_cancel = task;
+          task_to_cancel = std::move(task);
         } else {
           task_to_cancel = queued_actor_tasks_[task_id];
-          queued_actor_tasks_[task_id] = task;
+          queued_actor_tasks_[task_id] = std::move(task);
         }
       } else {
-        queued_actor_tasks_[task_id] = task;
+        queued_actor_tasks_[task_id] = std::move(task);
       }
     } else {
       pending_task_id_to_is_canceled.emplace(task_id, false);

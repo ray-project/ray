@@ -26,7 +26,7 @@ class ActorTaskExecutionQueueInterface {
   virtual ~ActorTaskExecutionQueueInterface() = default;
   virtual void Add(int64_t seq_no,
                    int64_t client_processed_up_to,
-                   const TaskToExecute &task) = 0;
+                   TaskToExecute task) = 0;
   virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
 };

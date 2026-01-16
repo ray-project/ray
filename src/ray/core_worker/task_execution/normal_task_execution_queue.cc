@@ -39,9 +39,9 @@ void NormalTaskExecutionQueue::Stop() {
       "Normal task execution queue stopped; canceling all queued tasks.");
 }
 
-void NormalTaskExecutionQueue::Add(const TaskToExecute &task) {
+void NormalTaskExecutionQueue::Add(TaskToExecute task) {
   absl::MutexLock lock(&mu_);
-  pending_normal_tasks_.push_back(task);
+  pending_normal_tasks_.push_back(std::move(task));
 }
 
 bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
