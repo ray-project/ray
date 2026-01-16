@@ -596,7 +596,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            self._metrics.on_task_output_generated(task_index)
+            self._metrics.on_task_output_generated(task_index, output)
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 

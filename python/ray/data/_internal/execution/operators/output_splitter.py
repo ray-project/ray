@@ -201,6 +201,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             target_index = self._select_output_index()
             target_bundle = self._peek_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
+                target_bundle = self._buffer.remove(target_bundle)
+                self._metrics.on_input_dequeued(target_bundle)
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.add(target_bundle)
