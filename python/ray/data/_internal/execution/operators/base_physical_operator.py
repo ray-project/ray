@@ -1,4 +1,5 @@
 import abc
+import typing
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -11,6 +12,9 @@ from ray.data._internal.execution.operators.sub_progress import SubProgressBarMi
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
@@ -147,7 +151,7 @@ class AllToAllOperator(
         )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
@@ -219,16 +223,12 @@ class AllToAllOperator(
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         return self._sub_progress_bar_names
 
-    def set_sub_progress_bar(self, name, pg):
-        # not type-checking due to circular imports
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self._sub_progress_bar_dict is None:
             self._sub_progress_bar_dict = {}
         self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
-        return True
-
-    def implements_accurate_memory_accounting(self):
         return True
 
 
