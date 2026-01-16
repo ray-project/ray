@@ -50,13 +50,6 @@ _SYSTEM_CONFIG = {
 }
 
 
-def init_ray_for_task_events(*args, **kwargs):
-    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
-        # Use dynamic port for dashboard agent listen port
-        kwargs.setdefault("dashboard_agent_listen_port", 0)
-    return ray.init(*args, **kwargs)
-
-
 @ray.remote
 class ActorOk:
     def ready(self):
@@ -73,7 +66,7 @@ class ActorInitFailed:
 
 
 def test_actor_creation_task_ok(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
     a = ActorOk.remote()
     ray.get(a.ready.remote())
 
@@ -93,7 +86,7 @@ def test_actor_creation_task_ok(shutdown_only):
 
 
 def test_actor_creation_task_failed(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
     a = ActorInitFailed.remote()
 
     with pytest.raises(ray.exceptions.RayActorError):
@@ -116,7 +109,7 @@ def test_actor_creation_task_failed(shutdown_only):
 
 
 def test_actor_creation_nested_failure_from_actor(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     @ray.remote
     class NestedActor:
@@ -154,7 +147,7 @@ def test_actor_creation_nested_failure_from_actor(shutdown_only):
 
 
 def test_actor_creation_canceled(shutdown_only):
-    init_ray_for_task_events(num_cpus=2, _system_config=_SYSTEM_CONFIG)
+    ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
 
     # An actor not gonna be scheduled
     a = ActorOk.options(num_cpus=10).remote()
@@ -179,7 +172,7 @@ def test_actor_creation_canceled(shutdown_only):
 
 
 def test_handle_driver_tasks(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     job_id = ray.get_runtime_context().get_job_id()
     script = """
@@ -242,7 +235,7 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     """
     Tests that tasks from a detached actor **shouldn't** be marked as failed
     """
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     pid_actor = PidActor.remote()
 
@@ -320,7 +313,7 @@ def test_fault_tolerance_job_failed(shutdown_only):
         "gcs_mark_task_failed_on_worker_dead_delay_ms": 30000,
     }
     sys_config.update(config)
-    init_ray_for_task_events(num_cpus=8, _system_config=sys_config)
+    ray.init(num_cpus=8, _system_config=sys_config)
     script = """
 import ray
 import time
@@ -465,7 +458,7 @@ class Actor:
 
 
 def test_fault_tolerance_actor_tasks_failed(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
     # Test actor tasks
     pid_actor = PidActor.remote()
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -483,7 +476,7 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
 
 
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
     pid_actor = PidActor.remote()
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -525,7 +518,7 @@ def test_ray_intentional_errors(shutdown_only):
     # Avoid worker-dead marking racing with max_calls task completion.
     sys_config = _SYSTEM_CONFIG.copy()
     sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
-    init_ray_for_task_events(num_cpus=1, _system_config=sys_config)
+    ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
     ray.get(a.ready.remote())
@@ -620,7 +613,7 @@ def test_ray_intentional_errors(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-    ray_context = init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray_context = ray.init(_system_config=_SYSTEM_CONFIG)
     address = ray_context.address_info["address"]
     node_id = ray_context.address_info["node_id"]
     # TODO(#57203): remove this once task event buffer handles this internally.
@@ -727,7 +720,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         "Abbaa": [(NORMAL_TASK, "Abbaaa"), (ACTOR_TASK, "Abbaab")],
     }
 
-    init_ray_for_task_events(_system_config=_SYSTEM_CONFIG)
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     @ray.remote
     class Killer:
@@ -888,7 +881,7 @@ def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
     to files have the correct task log info
     """
-    init_ray_for_task_events(num_cpus=1)
+    ray.init(num_cpus=1)
 
     def do_print(x):
         out_msg = ""
@@ -950,7 +943,7 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
     with monkeypatch.context() as m:
         m.setenv(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE, "1")
 
-        init_ray_for_task_events(num_cpus=1)
+        ray.init(num_cpus=1)
 
         @ray.remote
         def f():
@@ -973,7 +966,7 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_running_task(shutdown_only):
-    init_ray_for_task_events(num_cpus=1)
+    ray.init(num_cpus=1)
 
     @ray.remote
     def do_print_sleep(out_msg, err_msg):
@@ -999,7 +992,7 @@ async def test_task_events_gc_jobs(shutdown_only):
     """
     Test that later jobs should override previous jobs' task events.
     """
-    ctx = init_ray_for_task_events(
+    ctx = ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 3,
@@ -1073,7 +1066,7 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
-    ray_context = init_ray_for_task_events(
+    ray_context = ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
