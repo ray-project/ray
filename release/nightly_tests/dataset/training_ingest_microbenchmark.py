@@ -345,7 +345,11 @@ class MapBatchesS3Loader(BaseDataLoader):
                 logger.info(
                     f"Using cached file list ({len(self._file_records_cache)} files)"
                 )
-                return self._file_records_cache[:limit] if limit else self._file_records_cache
+                return (
+                    self._file_records_cache[:limit]
+                    if limit
+                    else self._file_records_cache
+                )
 
         import os
         from torchdata.datapipes.iter import IterableWrapper
