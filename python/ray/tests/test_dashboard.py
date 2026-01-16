@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import sys
@@ -23,7 +24,7 @@ def search_agents(cluster):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15] in c:
+                    if os.path.join("dashboard", "agent.py") in c:
                         return p
             except Exception:
                 pass

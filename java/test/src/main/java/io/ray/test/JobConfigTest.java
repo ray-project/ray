@@ -11,6 +11,7 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
+    System.setProperty("ray.raylet.startup-token", "0");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
   }

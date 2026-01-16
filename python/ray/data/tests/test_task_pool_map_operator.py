@@ -30,8 +30,7 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
     assert min_resource_usage_bound == ExecutionResources(
         cpu=1, gpu=0, object_store_memory=3
     )
-    # For CPU-only operators, max GPU/memory is 0 (not inf) to prevent hoarding.
-    assert max_resource_usage_bound == ExecutionResources.for_limits(gpu=0, memory=0)
+    assert max_resource_usage_bound == ExecutionResources.for_limits()
 
 
 if __name__ == "__main__":

@@ -728,19 +728,7 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
-    # Tracing context
-    tracing_context: Optional[Dict[str, str]] = None
-
-    # Whether it is a direct ingress request
-    is_direct_ingress: bool = False
-
-    # By reference or value
     _by_reference: bool = True
-    _on_separate_loop: bool = True
-
-    # gRPC serialization options
-    request_serialization: str = "cloudpickle"
-    response_serialization: str = "cloudpickle"
 
     @property
     def is_http_request(self) -> bool:

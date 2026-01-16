@@ -1,10 +1,10 @@
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
     MIN_PYARROW_VERSION_VIEW_TYPES,
@@ -12,8 +12,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
-    ShuffleAggregation,
-    _combine,
+    StatefulShuffleAggregation,
 )
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB, MiB
@@ -52,69 +51,92 @@ _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
 logger = logging.getLogger(__name__)
 
 
-class JoiningAggregation(ShuffleAggregation):
-    """Stateless aggregation for distributed joining of 2 sequences.
+class JoiningShuffleAggregation(StatefulShuffleAggregation):
+    """Aggregation performing distributed joining of the 2 sequences,
+    by utilising hash-based shuffling.
 
-    This implementation performs hash-based distributed joining by:
-        - Accumulating identical keys from both sequences into the same partition
-        - Performing join on individual partitions independently
+    Hash-based shuffling applied to 2 input sequences and employing the same
+    partitioning scheme allows to
 
-    For actual joining, Pyarrow native joining functionality is utilised.
+        - Accumulate identical keys from both sequences into the same
+        (numerical) partition. In other words, all keys such that
+
+            hash(key) % num_partitions = partition_id
+
+        - Perform join on individual partitions independently (from other partitions)
+
+    For actual joining Pyarrow native joining functionality is utilised, providing
+    incredible performance while allowing keep the data from being deserialized.
     """
 
     def __init__(
         self,
         *,
+        aggregator_id: int,
         join_type: JoinType,
-        left_key_col_names: Tuple[str, ...],
-        right_key_col_names: Tuple[str, ...],
+        left_key_col_names: Tuple[str],
+        right_key_col_names: Tuple[str],
+        target_partition_ids: List[int],
+        data_context: DataContext,
         left_columns_suffix: Optional[str] = None,
         right_columns_suffix: Optional[str] = None,
-        data_context: DataContext,
     ):
+        super().__init__(aggregator_id)
+
         assert (
             len(left_key_col_names) > 0
         ), "At least 1 column to join on has to be provided"
         assert len(right_key_col_names) == len(
             left_key_col_names
-        ), "Number of columns for both left and right join operands has to match"
+        ), "Number of column for both left and right join operands has to match"
 
         assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
 
-        self._left_key_col_names: Tuple[str, ...] = left_key_col_names
-        self._right_key_col_names: Tuple[str, ...] = right_key_col_names
+        self._left_key_col_names: Tuple[str] = left_key_col_names
+        self._right_key_col_names: Tuple[str] = right_key_col_names
         self._join_type: JoinType = join_type
 
         self._left_columns_suffix: Optional[str] = left_columns_suffix
         self._right_columns_suffix: Optional[str] = right_columns_suffix
 
-    def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
-        """Performs join on blocks from left (seq 0) and right (seq 1) sequences."""
+        # Partition builders for the partition corresponding to
+        # left and right input sequences respectively
+        self._left_input_seq_partition_builders: Dict[int, ArrowBlockBuilder] = {
+            partition_id: ArrowBlockBuilder() for partition_id in target_partition_ids
+        }
 
-        assert (
-            len(partition_shards_map) == 2
-        ), f"Two input-sequences are expected (got {len(partition_shards_map)})"
+        self._right_input_seq_partition_builders: Dict[int, ArrowBlockBuilder] = {
+            partition_id: ArrowBlockBuilder() for partition_id in target_partition_ids
+        }
+        self.data_context = data_context
 
-        left_partition_shards = partition_shards_map[0]
-        right_partition_shards = partition_shards_map[1]
+    def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
+        assert 0 <= input_seq_id < 2
 
-        left_table = _combine(left_partition_shards)
-        right_table = _combine(right_partition_shards)
+        partition_builder = self._get_partition_builder(
+            input_seq_id=input_seq_id,
+            partition_id=partition_id,
+        )
 
-        left_on = list(self._left_key_col_names)
-        right_on = list(self._right_key_col_names)
+        partition_builder.add_block(partition_shard)
 
-        # Preprocess: split unsupported columns and add index columns if needed
+    def finalize(self, partition_id: int) -> Block:
+
+        left_on, right_on = list(self._left_key_col_names), list(
+            self._right_key_col_names
+        )
+
         preprocess_result_l, preprocess_result_r = self._preprocess(
-            left_table, right_table, left_on, right_on
+            left_on, right_on, partition_id
         )
 
         # Perform the join on supported columns
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
+        # Perform the join on supported columns
         supported = preprocess_result_l.supported_projection.join(
             preprocess_result_r.supported_projection,
             join_type=arrow_join_type,
@@ -124,26 +146,36 @@ class JoiningAggregation(ShuffleAggregation):
             right_suffix=self._right_columns_suffix,
         )
 
-        # Add back unsupported columns
-        result = self._postprocess(
+        # Add back unsupported columns (join type logic is in should_index_* variables)
+        supported = self._postprocess(
             supported,
             preprocess_result_l.unsupported_projection,
             preprocess_result_r.unsupported_projection,
         )
 
-        yield result
+        return supported
 
     def _preprocess(
         self,
-        left_table: "pa.Table",
-        right_table: "pa.Table",
         left_on: List[str],
         right_on: List[str],
+        partition_id: int,
     ) -> Tuple[_DatasetPreprocessingResult, _DatasetPreprocessingResult]:
-        """Preprocesses tables by splitting unsupported columns and adding indices."""
+        import pyarrow as pa
+
+        left_seq_partition: pa.Table = self._get_partition_builder(
+            input_seq_id=0, partition_id=partition_id
+        ).build()
+
+        right_seq_partition: pa.Table = self._get_partition_builder(
+            input_seq_id=1, partition_id=partition_id
+        ).build()
+
         # Get supported columns
-        supported_l, unsupported_l = self._split_unsupported_columns(left_table)
-        supported_r, unsupported_r = self._split_unsupported_columns(right_table)
+        supported_l, unsupported_l = self._split_unsupported_columns(left_seq_partition)
+        supported_r, unsupported_r = self._split_unsupported_columns(
+            right_seq_partition
+        )
 
         # Handle joins on unsupported columns
         conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
@@ -215,6 +247,21 @@ class JoiningAggregation(ShuffleAggregation):
 
     def _index_name(self, suffix: str) -> str:
         return f"__rd_index_level_{suffix}__"
+
+    def clear(self, partition_id: int):
+        self._left_input_seq_partition_builders.pop(partition_id)
+        self._right_input_seq_partition_builders.pop(partition_id)
+
+    def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
+        if input_seq_id == 0:
+            partition_builder = self._left_input_seq_partition_builders[partition_id]
+        elif input_seq_id == 1:
+            partition_builder = self._right_input_seq_partition_builders[partition_id]
+        else:
+            raise ValueError(
+                f"Unexpected inpt sequence id of '{input_seq_id}' (expected 0 or 1)"
+            )
+        return partition_builder
 
     def _should_index_side(
         self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
@@ -356,28 +403,16 @@ class JoinOperator(HashShufflingOperatorBase):
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        shuffle_aggregation_type: Optional[Type[ShuffleAggregation]] = None,
+        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
-        # Use new stateless JoiningAggregation factory
-        def _create_joining_aggregation() -> JoiningAggregation:
-            if shuffle_aggregation_type is not None:
-                if not issubclass(shuffle_aggregation_type, ShuffleAggregation):
-                    raise TypeError(
-                        f"shuffle_aggregation_type must be a subclass of {ShuffleAggregation}, "
-                        f"got {shuffle_aggregation_type}"
-                    )
+        if shuffle_aggregation_type is not None:
+            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
+                raise TypeError(
+                    f"shuffle_aggregation_type must be a subclass of StatefulShuffleAggregation, "
+                    f"got {shuffle_aggregation_type}"
+                )
 
-            aggregation_class = shuffle_aggregation_type or JoiningAggregation
-
-            return aggregation_class(
-                join_type=join_type,
-                left_key_col_names=left_key_columns,
-                right_key_col_names=right_key_columns,
-                left_columns_suffix=left_columns_suffix,
-                right_columns_suffix=right_columns_suffix,
-                data_context=data_context,
-            )
-
+        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"Join(num_partitions={num_partitions})"
@@ -385,10 +420,20 @@ class JoinOperator(HashShufflingOperatorBase):
             input_ops=[left_input_op, right_input_op],
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
-            num_input_seqs=2,
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
-            partition_aggregation_factory=_create_joining_aggregation,
+            partition_aggregation_factory=(
+                lambda aggregator_id, target_partition_ids: aggregation_class(
+                    aggregator_id=aggregator_id,
+                    join_type=join_type,
+                    left_key_col_names=left_key_columns,
+                    right_key_col_names=right_key_columns,
+                    target_partition_ids=target_partition_ids,
+                    data_context=data_context,
+                    left_columns_suffix=left_columns_suffix,
+                    right_columns_suffix=right_columns_suffix,
+                )
+            ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             shuffle_progress_bar_name="Shuffle",
             finalize_progress_bar_name="Join",

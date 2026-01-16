@@ -83,16 +83,15 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
   bool IsFake() const { return is_fake_; }
 
   void AsyncGet(const ActorID &actor_id,
-                const rpc::OptionalItemCallback<rpc::ActorTableData> &callback) override {
-  }
+                const OptionalItemCallback<rpc::ActorTableData> &callback) override {}
   void AsyncGetAllByFilter(const std::optional<ActorID> &actor_id,
                            const std::optional<JobID> &job_id,
                            const std::optional<std::string> &actor_state_name,
-                           const rpc::MultiItemCallback<rpc::ActorTableData> &callback,
+                           const MultiItemCallback<rpc::ActorTableData> &callback,
                            int64_t timeout_ms = -1) override {}
   void AsyncGetByName(const std::string &name,
                       const std::string &ray_namespace,
-                      const rpc::OptionalItemCallback<rpc::ActorTableData> &callback,
+                      const OptionalItemCallback<rpc::ActorTableData> &callback,
                       int64_t timeout_ms = -1) override {}
   Status SyncGetByName(const std::string &name,
                        const std::string &ray_namespace,
@@ -108,15 +107,15 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
   }
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  const rpc::StatusCallback &callback,
+                                  const StatusCallback &callback,
                                   int64_t timeout_ms = -1) override {}
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          const rpc::StatusCallback &callback,
+                          const StatusCallback &callback,
                           int64_t timeout_ms = -1) override {}
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      const rpc::StatusCallback &callback,
+      const StatusCallback &callback,
       int64_t timeout_ms = -1) override {}
   Status SyncRegisterActor(const ray::TaskSpecification &task_spec) override {
     return Status::OK();
@@ -124,15 +123,14 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
   void AsyncKillActor(const ActorID &actor_id,
                       bool force_kill,
                       bool no_restart,
-                      const rpc::StatusCallback &callback,
+                      const StatusCallback &callback,
                       int64_t timeout_ms = -1) override {}
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
-  void AsyncSubscribe(
-      const ActorID &actor_id,
-      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const rpc::StatusCallback &done) override {}
+  void AsyncSubscribe(const ActorID &actor_id,
+                      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                      const StatusCallback &done) override {}
   void AsyncResubscribe() override {}
   void AsyncUnsubscribe(const ActorID &actor_id) override {}
   bool IsActorUnsubscribed(const ActorID &actor_id) override { return false; }

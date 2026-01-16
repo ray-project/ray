@@ -2508,7 +2508,6 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
-    sql_params: Optional[Any] = None,
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
@@ -2586,8 +2585,6 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-        sql_params: Parameters to bind to the SQL query. Use the placeholder style
-            required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
         shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
             For other databases, common alternatives include "hash" and "SHA".
@@ -2614,7 +2611,6 @@ def read_sql(
     """
     datasource = SQLDatasource(
         sql=sql,
-        sql_params=sql_params,
         shard_keys=shard_keys,
         shard_hash_fn=shard_hash_fn,
         connection_factory=connection_factory,
@@ -4093,7 +4089,7 @@ def read_unity_catalog(
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/external-access/credential-vending.html>`_),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 

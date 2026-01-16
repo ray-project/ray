@@ -20,15 +20,14 @@
 #include <vector>
 
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
-#include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
 namespace ray {
 namespace core {
 
-void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
-                                         rpc::PushTaskReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
+                              rpc::PushTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) {
+  TaskSpecification task_spec;
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::optional<ResourceMappingType> resource_ids;
@@ -39,7 +38,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     return [this, reply, resource_ids = std::move(resource_ids)](
                const TaskSpecification &accepted_task_spec,
                const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
-      uint64_t num_returns = accepted_task_spec.NumReturns();
+      auto num_returns = accepted_task_spec.NumReturns();
+      RAY_CHECK(num_returns >= 0);
 
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
@@ -187,8 +187,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
   };
 
-  TaskSpecification task_spec =
-      TaskSpecification(std::move(*request.mutable_task_spec()));
+  task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
     reply->set_was_cancelled_before_running(true);
     if (task_spec.IsActorTask()) {
@@ -217,14 +216,14 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
   }
 
   if (task_spec.IsActorTask()) {
-    auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
-    if (it == actor_task_execution_queues_.end()) {
-      it = actor_task_execution_queues_
+    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+    if (it == actor_scheduling_queues_.end()) {
+      it = actor_scheduling_queues_
                .emplace(
                    task_spec.CallerWorkerId(),
                    allow_out_of_order_execution_
-                       ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
-                             std::make_unique<UnorderedActorTaskExecutionQueue>(
+                       ? std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<OutOfOrderActorSchedulingQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
@@ -233,8 +232,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                  is_asyncio_,
                                  fiber_max_concurrency_,
                                  concurrency_groups_))
-                       : std::unique_ptr<ActorTaskExecutionQueueInterface>(
-                             std::make_unique<OrderedActorTaskExecutionQueue>(
+                       : std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<ActorSchedulingQueue>(
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
@@ -255,24 +254,30 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
     auto accept_callback = make_accept_callback();
-    normal_task_execution_queue_->Add(request.sequence_number(),
-                                      request.client_processed_up_to(),
-                                      std::move(accept_callback),
-                                      std::move(cancel_callback),
-                                      std::move(send_reply_callback),
-                                      std::move(task_spec));
+    normal_scheduling_queue_->Add(request.sequence_number(),
+                                  request.client_processed_up_to(),
+                                  std::move(accept_callback),
+                                  std::move(cancel_callback),
+                                  std::move(send_reply_callback),
+                                  std::move(task_spec));
   }
 }
 
-void TaskReceiver::ExecuteQueuedNormalTasks() {
-  normal_task_execution_queue_->ExecuteQueuedTasks();
+void TaskReceiver::RunNormalTasksFromQueue() {
+  // If the scheduling queue is empty, return.
+  if (normal_scheduling_queue_->TaskQueueEmpty()) {
+    return;
+  }
+
+  // Execute as many tasks as there are in the queue, in sequential order.
+  normal_scheduling_queue_->ScheduleRequests();
 }
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
                                          const TaskID &task_id) {
   bool task_found = false;
-  auto it = actor_task_execution_queues_.find(caller_worker_id);
-  if (it != actor_task_execution_queues_.end()) {
+  auto it = actor_scheduling_queues_.find(caller_worker_id);
+  if (it != actor_scheduling_queues_.end()) {
     task_found = it->second->CancelTaskIfFound(task_id);
   }
 
@@ -285,7 +290,7 @@ bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
 bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
-  return normal_task_execution_queue_->CancelTaskIfFound(task_id);
+  return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
 void TaskReceiver::SetupActor(bool is_asyncio,
@@ -306,11 +311,11 @@ void TaskReceiver::Stop() {
   if (stopping_.exchange(true)) {
     return;
   }
-  for (const auto &[_, scheduling_queue] : actor_task_execution_queues_) {
+  for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
-  if (normal_task_execution_queue_) {
-    normal_task_execution_queue_->Stop();
+  if (normal_scheduling_queue_) {
+    normal_scheduling_queue_->Stop();
   }
 }
 

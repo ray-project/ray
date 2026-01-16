@@ -225,6 +225,11 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
         self._worker_thread = None
 
+    def shutdown(self):
+        logger.info("Shutting down Celery worker...")
+        self._app.control.shutdown()
+        logger.info("Celery worker shutdown complete...")
+
     def cancel_task_sync(self, task_id):
         """
         Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.

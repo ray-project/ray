@@ -13,6 +13,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
+    get_ineligible_op_usage,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -111,8 +112,22 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
         assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
         # Test max_task_output_bytes_to_read.
-        assert allocator.max_task_output_bytes_to_read(o2) == 500
-        assert allocator.max_task_output_bytes_to_read(o3) == 500
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 500
+        )
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 500
+        )
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -143,9 +158,23 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert allocator.max_task_output_bytes_to_read(o2) == 138
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 138
+        )
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert allocator.max_task_output_bytes_to_read(o3) == 257
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 257
+        )
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -177,9 +206,23 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert allocator.max_task_output_bytes_to_read(o2) == 50
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 50
+        )
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert allocator.max_task_output_bytes_to_read(o3) == 145
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 145
+        )
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
@@ -720,97 +763,6 @@ class TestReservationOpResourceAllocator:
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
         assert allocator._op_budgets[o3].gpu == 6
 
-    @pytest.mark.parametrize("max_actors", [4, float("inf")])
-    def test_gpu_not_reserved_for_non_gpu_operators(
-        self, restore_data_context, max_actors
-    ):
-        """Test that GPU budget is not reserved for operators that don't use GPUs.
-
-        This tests a realistic inference pipeline DAG:
-            Read (CPU) -> Infer1 (GPU) -> Infer2 (GPU) -> Write (CPU)
-
-        Non-GPU operators (Read, Write) should have 0 GPUs reserved, ensuring
-        all GPUs are available for GPU operators (Infer1, Infer2).
-        """
-        DataContext.get_current().op_resource_reservation_enabled = True
-        DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-
-        # Read: CPU-only operator (unbounded, gpu=0 in max since it doesn't use GPUs)
-        read_op = mock_map_op(o1, name="Read")
-        read_op.min_max_resource_requirements = MagicMock(
-            return_value=(
-                ExecutionResources(cpu=1, gpu=0, object_store_memory=0),
-                ExecutionResources.for_limits(gpu=0),
-            )
-        )
-
-        # Infer1: GPU operator
-        infer1_op = mock_map_op(read_op, ray_remote_args={"num_gpus": 1}, name="Infer1")
-        infer1_op.min_max_resource_requirements = MagicMock(
-            return_value=(
-                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
-                ExecutionResources(
-                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
-                ),
-            )
-        )
-
-        # Infer2: GPU operator
-        infer2_op = mock_map_op(
-            infer1_op, ray_remote_args={"num_gpus": 1}, name="Infer2"
-        )
-        infer2_op.min_max_resource_requirements = MagicMock(
-            return_value=(
-                ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
-                ExecutionResources(
-                    cpu=0, gpu=max_actors, object_store_memory=float("inf")
-                ),
-            )
-        )
-
-        # Write: CPU-only operator (unbounded, gpu=0 in max since it doesn't use GPUs)
-        write_op = mock_map_op(infer2_op, name="Write")
-        write_op.min_max_resource_requirements = MagicMock(
-            return_value=(
-                ExecutionResources(cpu=1, gpu=0, object_store_memory=0),
-                ExecutionResources.for_limits(gpu=0),
-            )
-        )
-
-        topo = build_streaming_topology(write_op, ExecutionOptions())
-
-        global_limits = ExecutionResources(cpu=8, gpu=8, object_store_memory=10_000_000)
-        ops = [o1, read_op, infer1_op, infer2_op, write_op]
-        op_usages = {op: ExecutionResources.zero() for op in ops}
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
-        resource_manager._mem_op_internal = dict.fromkeys(ops, 0)
-        resource_manager._mem_op_outputs = dict.fromkeys(ops, 0)
-        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-        allocator = resource_manager._op_resource_allocator
-        allocator.update_budgets(limits=global_limits)
-
-        # Non-GPU operators should have 0 GPUs reserved
-        assert allocator._op_reserved[read_op].gpu == 0
-        assert allocator._op_reserved[write_op].gpu == 0
-
-        # GPU operators should have GPUs reserved
-        assert allocator._op_reserved[infer1_op].gpu > 0
-        assert allocator._op_reserved[infer2_op].gpu > 0
-
-        # All 8 GPUs should be available (reserved for GPU ops + shared pool)
-        total_gpu_reserved = sum(
-            allocator._op_reserved[op].gpu
-            for op in [read_op, infer1_op, infer2_op, write_op]
-        )
-        assert total_gpu_reserved + allocator._total_shared.gpu == 8
-
     def test_get_ineligible_op_usage(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
@@ -838,7 +790,7 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
         # Ineligible: o1 (finished), o2 (finished), o3 (throttling disabled)
-        ineligible_usage = resource_manager.get_ineligible_op_usage()
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
         # Expected: o1 + o2 + o3 = (0+1+2, 0+10+20)
         assert ineligible_usage == ExecutionResources(cpu=3, object_store_memory=3)
@@ -899,7 +851,7 @@ class TestReservationOpResourceAllocator:
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        ineligible_usage = resource_manager.get_ineligible_op_usage()
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
         # Ineligible: o1, o2, o3, o4, o5, o7 -> sum = 2+3+5 = 10
         assert ineligible_usage == ExecutionResources(cpu=10, object_store_memory=10)

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <atomic>
-#include <future>
 #include <memory>
 #include <string_view>
 
@@ -49,17 +47,11 @@ class CoreWorker;
 ///   idleness and only proceeds when idle; otherwise it is ignored.
 class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
  public:
-  /// Constructor with CoreWorker shared_ptr for safe access to internals
-  /// \param core_worker Shared pointer to the CoreWorker instance
-  explicit CoreWorkerShutdownExecutor(std::shared_ptr<CoreWorker> core_worker);
+  /// Constructor with CoreWorker reference for accessing internals
+  /// \param core_worker Reference to the CoreWorker instance
+  explicit CoreWorkerShutdownExecutor(CoreWorker *core_worker);
 
   ~CoreWorkerShutdownExecutor() override = default;
-
-  /// Wait for shutdown to complete with timeout.
-  /// Blocks until shutdown operations finish or timeout expires.
-  /// If timeout, calls QuickExit to prevent undefined behavior.
-  /// \param timeout_ms Maximum time to wait
-  void WaitForCompletion(std::chrono::milliseconds timeout_ms) override;
 
   /// Execute graceful shutdown sequence.
   /// Stops task execution, flushes task events, stops IO/gRPC services, joins IO
@@ -93,15 +85,8 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   bool ShouldWorkerIdleExit() const override;
 
  private:
-  // Weak pointer prevents use-after-free during async shutdown operations.
-  std::weak_ptr<CoreWorker> core_worker_;
-
-  // Shutdown completion tracking
-  std::promise<void> shutdown_complete_promise_;
-  std::shared_future<void> shutdown_complete_future_;
-  std::atomic<bool> shutdown_notified_{false};
-
-  void NotifyComplete();
+  /// Reference to CoreWorker for accessing shutdown operations
+  CoreWorker *core_worker_;
 
   void DisconnectServices(
       std::string_view exit_type,

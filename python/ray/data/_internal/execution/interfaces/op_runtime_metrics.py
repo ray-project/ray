@@ -138,7 +138,6 @@ class RunningTaskInfo:
     num_rows_produced: int
     start_time: float
     cum_block_gen_time: float
-    task_id: ray.TaskID
 
 
 @dataclass
@@ -841,12 +840,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.row_outputs_taken += output.num_rows() or 0
         self.bytes_outputs_taken += output.size_bytes()
 
-    def on_task_submitted(
-        self,
-        task_index: int,
-        inputs: RefBundle,
-        task_id: Optional[ray.TaskID] = None,
-    ):
+    def on_task_submitted(self, task_index: int, inputs: RefBundle):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
@@ -860,7 +854,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             num_rows_produced=0,
             start_time=time.perf_counter(),
             cum_block_gen_time=0,
-            task_id=ray.TaskID.nil() if task_id is None else task_id,
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):

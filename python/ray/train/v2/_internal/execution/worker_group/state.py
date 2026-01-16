@@ -1,17 +1,13 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
+from typing import List
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2._internal.util import time_monotonic
-
-if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
-        PlacementGroupHandle,
-    )
+from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +20,12 @@ class WorkerGroupState:
         start_time: The time when the worker group was started.
         workers: The workers in the worker group.
             These should always be in sorted order by world rank.
-        placement_group_handle: The placement group handle for the worker group.
+        placement_group: The placement group for the worker group.
         sync_actor: The synchronization actor for the worker group.
     """
 
     start_time: float
-    placement_group_handle: "PlacementGroupHandle"
+    placement_group: PlacementGroup
     workers: List[Worker]
     sync_actor: ActorHandle
 
@@ -39,8 +35,8 @@ class WorkerGroupState:
 
     def shutdown(self):
         _shutdown_workers(self.workers)
+        _shutdown_placement_group(self.placement_group)
         _shutdown_sync_actor(self.sync_actor)
-        self.placement_group_handle.shutdown()
 
 
 class WorkerGroupStateBuilder:
@@ -49,7 +45,7 @@ class WorkerGroupStateBuilder:
     Example usage:
         ```python
         builder = WorkerGroupStateBuilder()
-        builder.with_placement_group_handle(placement_group_handle)
+        builder.with_placement_group(placement_group)
         builder.with_workers(workers)
         builder.with_sync_actor(sync_actor)
         state = builder.build()
@@ -59,14 +55,14 @@ class WorkerGroupStateBuilder:
     """
 
     def __init__(self):
-        self.placement_group_handle = None
+        self.placement_group = None
         self.workers = None
         self.sync_actor = None
 
-    def with_placement_group_handle(
-        self, placement_group_handle: "PlacementGroupHandle"
+    def with_placement_group(
+        self, placement_group: PlacementGroup
     ) -> "WorkerGroupStateBuilder":
-        self.placement_group_handle = placement_group_handle
+        self.placement_group = placement_group
         return self
 
     def with_workers(self, workers: List[Worker]) -> "WorkerGroupStateBuilder":
@@ -81,7 +77,7 @@ class WorkerGroupStateBuilder:
 
     def build(self) -> WorkerGroupState:
         required_attrs = {
-            "placement_group_handle": self.placement_group_handle,
+            "placement_group": self.placement_group,
             "workers": self.workers,
             "sync_actor": self.sync_actor,
         }
@@ -92,7 +88,7 @@ class WorkerGroupStateBuilder:
             )
         return WorkerGroupState(
             start_time=time_monotonic(),
-            placement_group_handle=self.placement_group_handle,
+            placement_group=self.placement_group,
             workers=self.workers,
             sync_actor=self.sync_actor,
         )
@@ -101,30 +97,39 @@ class WorkerGroupStateBuilder:
         if self.workers:
             _shutdown_workers(self.workers)
             self.workers = None
-
+        if self.placement_group:
+            _shutdown_placement_group(self.placement_group)
+            self.placement_group = None
         if self.sync_actor:
             _shutdown_sync_actor(self.sync_actor)
             self.sync_actor = None
 
-        if self.placement_group_handle:
-            self.placement_group_handle.shutdown()
-            self.placement_group_handle = None
-
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
-    """Shuts down workers after allowing a maximum of patience_s seconds for shutdown hooks to run."""
-    if patience_s < 0:
-        raise ValueError("Invalid patience_s: must be non-negative")
-
-    done_refs = [w.actor.shutdown.remote() for w in workers]
+    # Run the worker shutdown logic on each of the workers. This should
+    # be a non-blocking call to realize forceful shutdown after patience_s.
+    _ = [w.actor.shutdown.remote() for w in workers]
 
     logger.debug(f"Shutting down {len(workers)} workers.")
-
-    ray.wait(done_refs, num_returns=len(done_refs), timeout=patience_s)
-
-    for worker in workers:
-        ray.kill(worker.actor)
+    if patience_s <= 0:
+        for worker in workers:
+            ray.kill(worker.actor)
+    else:
+        done_refs = [w.actor.__ray_terminate__.remote() for w in workers]
+        # Wait for actors to die gracefully.
+        _, not_done = ray.wait(
+            done_refs, num_returns=len(done_refs), timeout=patience_s
+        )
+        if not_done:
+            logger.debug("Graceful termination failed. Falling back to force kill.")
+            # If all actors are not able to die gracefully, then kill them.
+            for worker in workers:
+                ray.kill(worker.actor)
 
 
 def _shutdown_sync_actor(sync_actor: SynchronizationActor):
     ray.kill(sync_actor)
+
+
+def _shutdown_placement_group(placement_group: PlacementGroup):
+    remove_placement_group(placement_group)

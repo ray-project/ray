@@ -98,8 +98,7 @@ def search_agent(processes):
     for p in processes:
         try:
             for c in p.cmdline():
-                # in case linux truncates the proctitle
-                if ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT[:15] in c:
+                if os.path.join("runtime_env", "agent", "main.py") in c:
                     return p
         except Exception:
             pass

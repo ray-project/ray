@@ -2,7 +2,7 @@
 [Ss]tderr
 [Ss]tdout
 job_id
-[Aa]utoscaler
+Autoscaler
 ANSI
 PID
 tqdm

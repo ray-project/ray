@@ -3,8 +3,10 @@ from typing import TYPE_CHECKING, List, Optional
 
 import ray
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
-    CommunicatorMetadata,
     TensorTransportManager,
+)
+from ray.experimental.gpu_object_manager.types import (
+    CommunicatorMetadata,
     TensorTransportMetadata,
 )
 
@@ -32,10 +34,12 @@ class CollectiveCommunicatorMetadata(CommunicatorMetadata):
 
 
 class CollectiveTensorTransport(TensorTransportManager):
+    def __init__(self, tensor_transport_backend: str):
+        self._tensor_transport_backend = tensor_transport_backend
+
+    @property
     def tensor_transport_backend(self) -> str:
-        raise NotImplementedError(
-            "NCCLTensorTransport or GLOOTensorTransport should be used instead of this base class."
-        )
+        return self._tensor_transport_backend
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -49,7 +53,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         from ray.experimental.collective import get_collective_groups
 
         communicators = get_collective_groups(
-            [actor], backend=self.tensor_transport_backend()
+            [actor], backend=self.tensor_transport_backend
         )
         return len(communicators) > 0
 
@@ -123,34 +127,12 @@ class CollectiveTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
+        tensors,
         obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
+        tensor_transport_metadata: CollectiveTransportMetadata,
+        communicator_metadata: CollectiveCommunicatorMetadata,
     ):
-        from ray.experimental.gpu_object_manager.util import (
-            create_empty_tensors_from_metadata,
-        )
         from ray.util.collective.collective import recv
-
-        assert isinstance(tensor_transport_metadata, CollectiveTransportMetadata)
-        assert isinstance(communicator_metadata, CollectiveCommunicatorMetadata)
-
-        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
-        for tensor in tensors:
-            recv(
-                tensor,
-                communicator_metadata.src_rank,
-                communicator_metadata.communicator_name,
-            )
-        return tensors
-
-    def send_multiple_tensors(
-        self,
-        tensors: List["torch.Tensor"],
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
-    ):
-        import ray.util.collective as collective
 
         assert isinstance(
             tensor_transport_metadata, CollectiveTransportMetadata
@@ -158,6 +140,21 @@ class CollectiveTensorTransport(TensorTransportManager):
         assert isinstance(
             communicator_metadata, CollectiveCommunicatorMetadata
         ), "metadata must be a CollectiveCommunicatorMetadata object for non-NIXL transport"
+
+        for tensor in tensors:
+            recv(
+                tensor,
+                communicator_metadata.src_rank,
+                communicator_metadata.communicator_name,
+            )
+
+    def send_multiple_tensors(
+        self,
+        tensors: List["torch.Tensor"],
+        tensor_transport_metadata: CollectiveTransportMetadata,
+        communicator_metadata: CollectiveCommunicatorMetadata,
+    ):
+        import ray.util.collective as collective
 
         device = tensors[0].device if tensors else None
 
@@ -173,25 +170,15 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self, obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
     ):
         pass
 
     def abort_transport(
         self,
         obj_id: str,
-        communicator_metadata: CommunicatorMetadata,
+        communicator_metadata: CollectiveCommunicatorMetadata,
     ):
         raise NotImplementedError(
             "Collective transport does not support abort_transport for now."
         )
-
-
-class NCCLTensorTransport(CollectiveTensorTransport):
-    def tensor_transport_backend(self) -> str:
-        return "NCCL"
-
-
-class GLOOTensorTransport(CollectiveTensorTransport):
-    def tensor_transport_backend(self) -> str:
-        return "GLOO"

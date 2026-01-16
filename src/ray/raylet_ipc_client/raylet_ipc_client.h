@@ -55,6 +55,7 @@ class RayletIpcClient : public RayletIpcClientInterface {
                         const rpc::Language &language,
                         const std::string &ip_address,
                         const std::string &serialized_job_config,
+                        const StartupToken &startup_token,
                         NodeID *node_id,
                         int *assigned_port) override;
 

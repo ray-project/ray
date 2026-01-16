@@ -32,7 +32,6 @@ from ray._common.ray_constants import (
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
-    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
@@ -100,8 +99,7 @@ def search_agent(processes):
     for p in processes:
         try:
             for c in p.cmdline():
-                # in case linux truncates the proctitle
-                if AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15] in c:
+                if os.path.join("dashboard", "agent.py") in c:
                     return p
         except Exception:
             pass

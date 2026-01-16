@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
+#include "ray/common/gcs_callback_types.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
 #include "ray/gcs_rpc_client/gcs_client_context.h"
 #include "ray/rpc/rpc_callback_types.h"
@@ -26,8 +27,8 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation = std::function<void(const rpc::StatusCallback &done)>;
-using FetchDataOperation = std::function<void(const rpc::StatusCallback &done)>;
+using SubscribeOperation = std::function<void(const StatusCallback &done)>;
+using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 /**
   @class ActorInfoAccessor
@@ -47,7 +48,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param callback Callback that will be called after lookup finishes.
    */
   void AsyncGet(const ActorID &actor_id,
-                const rpc::OptionalItemCallback<rpc::ActorTableData> &callback) override;
+                const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
   /**
     Get all actor specification from the GCS asynchronously.
@@ -61,7 +62,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
   void AsyncGetAllByFilter(const std::optional<ActorID> &actor_id,
                            const std::optional<JobID> &job_id,
                            const std::optional<std::string> &actor_state_name,
-                           const rpc::MultiItemCallback<rpc::ActorTableData> &callback,
+                           const MultiItemCallback<rpc::ActorTableData> &callback,
                            int64_t timeout_ms = -1) override;
 
   /**
@@ -74,7 +75,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
    */
   void AsyncGetByName(const std::string &name,
                       const std::string &ray_namespace,
-                      const rpc::OptionalItemCallback<rpc::ActorTableData> &callback,
+                      const OptionalItemCallback<rpc::ActorTableData> &callback,
                       int64_t timeout_ms = -1) override;
 
   /**
@@ -120,7 +121,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
    */
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  const rpc::StatusCallback &callback,
+                                  const StatusCallback &callback,
                                   int64_t timeout_ms = -1) override;
 
   /**
@@ -131,7 +132,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param timeout_ms RPC timeout ms. -1 means there's no timeout.
    */
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          const rpc::StatusCallback &callback,
+                          const StatusCallback &callback,
                           int64_t timeout_ms = -1) override;
 
   /**
@@ -146,7 +147,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      const rpc::StatusCallback &callback,
+      const StatusCallback &callback,
       int64_t timeout_ms = -1) override;
 
   /**
@@ -173,7 +174,7 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
   void AsyncKillActor(const ActorID &actor_id,
                       bool force_kill,
                       bool no_restart,
-                      const rpc::StatusCallback &callback,
+                      const StatusCallback &callback,
                       int64_t timeout_ms = -1) override;
 
   /**
@@ -198,10 +199,9 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param subscribe Callback that will be called each time when the actor is updated.
     @param done Callback that will be called when subscription is complete.
    */
-  void AsyncSubscribe(
-      const ActorID &actor_id,
-      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const rpc::StatusCallback &done) override;
+  void AsyncSubscribe(const ActorID &actor_id,
+                      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                      const StatusCallback &done) override;
 
   /**
     Cancel subscription to an actor.

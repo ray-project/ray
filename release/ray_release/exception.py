@@ -2,6 +2,8 @@ import enum
 
 
 class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     SUCCESS = 0  # Do not set/return this manually
     UNCAUGHT = 1  # Do not set/return this manually
 
@@ -15,8 +17,8 @@ class ExitCode(enum.Enum):
     CLUSTER_RESOURCE_ERROR = 13
     CLUSTER_ENV_BUILD_ERROR = 14
     CLUSTER_STARTUP_ERROR = 15
-    # LOCAL_ENV_SETUP_ERROR = 16   # not used anymore
-    # REMOTE_ENV_SETUP_ERROR = 17  # not used anymore
+    LOCAL_ENV_SETUP_ERROR = 16
+    REMOTE_ENV_SETUP_ERROR = 17
     FETCH_RESULT_ERROR = 18
     ANYSCALE_ERROR = 19
 
@@ -53,6 +55,18 @@ class ReleaseTestSetupError(ReleaseTestPackageError):
     exit_code = ExitCode.SETUP_ERROR
 
 
+class RayWheelsError(ReleaseTestError):
+    exit_code = ExitCode.CLI_ERROR
+
+
+class RayWheelsUnspecifiedError(RayWheelsError):
+    exit_code = ExitCode.CLI_ERROR
+
+
+class RayWheelsTimeoutError(RayWheelsError):
+    exit_code = ExitCode.RAY_WHEELS_TIMEOUT
+
+
 class ClusterManagerError(ReleaseTestError):
     exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
@@ -73,6 +87,14 @@ class ClusterComputeCreateError(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
+class ClusterCreationError(ClusterManagerError):
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
+
+
+class ClusterStartupError(ClusterManagerError):
+    exit_code = ExitCode.CLUSTER_STARTUP_ERROR
+
+
 class CloudInfoError(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
@@ -85,12 +107,32 @@ class ClusterStartupFailed(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_STARTUP_ERROR
 
 
+class EnvironmentSetupError(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_STARTUP_ERROR
+
+
+class LocalEnvSetupError(EnvironmentSetupError):
+    exit_code = ExitCode.LOCAL_ENV_SETUP_ERROR
+
+
+class RemoteEnvSetupError(EnvironmentSetupError):
+    exit_code = ExitCode.REMOTE_ENV_SETUP_ERROR
+
+
 class FileManagerError(ReleaseTestError):
     pass
 
 
 class FileUploadError(FileManagerError):
     pass
+
+
+class FileDownloadError(FileManagerError):
+    pass
+
+
+class ClusterNodesWaitTimeout(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
 
 
 class CommandTimeout(ReleaseTestError):

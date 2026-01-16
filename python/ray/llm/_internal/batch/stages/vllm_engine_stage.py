@@ -5,10 +5,10 @@ import copy
 import dataclasses
 import logging
 import math
-import os
 import time
 import uuid
 from collections import Counter
+from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
@@ -22,15 +22,11 @@ else:
     MultiModalDataDict = Any
 
 import ray
-from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages.common import (
-    maybe_convert_ndarray_to_list,
-    truncate_str,
-)
+from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -58,6 +54,22 @@ except ImportError:
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
 
 
+class vLLMTaskType(str, Enum):
+    """The type of task to run on the vLLM engine."""
+
+    """Generate text."""
+    GENERATE = "generate"
+
+    """Generate embeddings."""
+    EMBED = "embed"
+
+    """Classification (e.g., sequence classification models)."""
+    CLASSIFY = "classify"
+
+    """Scoring (e.g., cross-encoder models)."""
+    SCORE = "score"
+
+
 class vLLMEngineRequest(BaseModel):
     """A request to the vLLM engine."""
 
@@ -66,8 +78,7 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    # Either prompt or prompt_token_ids must be provided.
-    prompt: Optional[str] = None
+    prompt: str
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
@@ -83,12 +94,6 @@ class vLLMEngineRequest(BaseModel):
     params: Any
     # LoRA request.
     lora_request: Optional[Any] = None
-
-    @root_validator(pre=True)
-    def validate_prompt_or_prompt_token_ids(cls, values):
-        if not values.get("prompt") and not values.get("prompt_token_ids"):
-            raise ValueError("Either 'prompt' or 'prompt_token_ids' must be provided.")
-        return values
 
     class Config:
         validate_assignment = True
@@ -201,7 +206,6 @@ class vLLMOutputData(BaseModel):
                 and data.embeddings.dtype == torch.bfloat16
             ):
                 data.embeddings = data.embeddings.to(torch.float32)
-            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -231,9 +235,7 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        # Flag to log deprecation warning only once
-        self._guided_decoding_warning_logged = False
+        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -247,18 +249,8 @@ class vLLMEngineWrapper:
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
-        # Set runner and convert based on task type.
-        if self.task_type == vLLMTaskType.GENERATE:
-            kwargs["runner"] = "generate"
-        elif self.task_type == vLLMTaskType.EMBED:
-            kwargs["runner"] = "pooling"
-            kwargs["convert"] = "embed"
-        elif self.task_type == vLLMTaskType.CLASSIFY:
-            kwargs["runner"] = "pooling"
-            kwargs["convert"] = "classify"
-        elif self.task_type == vLLMTaskType.SCORE:
-            kwargs["runner"] = "pooling"
-            kwargs["convert"] = "reward"
+        # Convert the task type back to a string to pass to the engine.
+        kwargs["task"] = self.task_type.value
 
         try:
             import vllm
@@ -352,7 +344,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt", None)
+        prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -386,31 +378,11 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            structured_outputs_config = None
-            # Handle new structured_outputs parameter (preferred)
-            if "structured_outputs" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("structured_outputs")
-                )
-                # Remove guided_decoding if present to avoid passing it to SamplingParams
-                sampling_params.pop("guided_decoding", None)
-            # Handle legacy guided_decoding parameter for backward compatibility
-            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
-            elif "guided_decoding" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("guided_decoding")
-                )
-                # Log deprecation warning only once to avoid log spam
-                if not self._guided_decoding_warning_logged:
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_outputs' in sampling_params instead."
-                    )
-                    self._guided_decoding_warning_logged = True
-
-            if structured_outputs_config:
+            if "guided_decoding" in sampling_params:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **structured_outputs_config
+                    **maybe_convert_ndarray_to_list(
+                        sampling_params.pop("guided_decoding")
+                    )
                 )
             else:
                 structured_outputs = None
@@ -426,7 +398,7 @@ class vLLMEngineWrapper:
             pooling_params = row.pop("pooling_params", {})
             params = vllm.PoolingParams(
                 **maybe_convert_ndarray_to_list(pooling_params),
-                task=self.task_type,
+                task=self.task_type.value,
             )
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
@@ -533,9 +505,7 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = (
-                    request.prompt if request.prompt is not None else ""
-                )
+                request_output.prompt = request.prompt
                 return request_output
 
         raise RuntimeError(
@@ -565,7 +535,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
+        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
@@ -593,7 +563,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
 
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
@@ -645,21 +615,19 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
+        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
+            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
             The normalized kwargs.
         """
-        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
-        # instance keys before __init__, so in-place changes cause KeyError.
-        engine_kwargs = engine_kwargs.copy()
-
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -670,6 +638,17 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 self.model,
             )
 
+        # Override the task if it is different from the stage.
+        task = vLLMTaskType(engine_kwargs.get("task", task_type))
+        if task != task_type:
+            logger.warning(
+                "The task set in engine kwargs (%s) is different from the "
+                "stage (%s). Overriding the task in engine kwargs to %s.",
+                task,
+                task_type,
+                task_type,
+            )
+        engine_kwargs["task"] = task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
@@ -698,28 +677,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "params": str(request.params),
                 "__inference_error__": None,
             }
-        except _VLLM_FATAL_ERRORS as e:
-            # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
-            # engine subprocess is dead, but the Ray actor is still alive.
-            #
-            # Simply re-raising would cause task retries to go to the SAME
-            # actor (actor methods are bound to specific instances), creating
-            # an infinite retry loop on the broken actor.
-            #
-            # The fix: exit the actor so Ray can restart it with a fresh
-            # engine. Ray Data's max_restarts=-1 (default) will create a
-            # replacement actor, and task retries will go to healthy actors.
-            #
-            # NOTE: We use os._exit(1) instead of ray.actor.exit_actor() because:
-            # - os._exit(1) -> SYSTEM_ERROR -> raises RaySystemError -> task IS retried
-            # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> raises ActorDiedError
-            #   -> task is NOT retried (ActorDiedError is not a RaySystemError)
-            #
-            # See: https://github.com/ray-project/ray/issues/59522
-            logger.error(
-                f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
-            )
-            os._exit(1)
+        except _VLLM_FATAL_ERRORS:
+            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
+            # The engine is dead and all subsequent requests would fail.
+            raise
         except Exception as e:
             if not self.should_continue_on_error:
                 raise
@@ -730,8 +691,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
-            # Include snippet of failed prompt for debuggability
-            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+            # Include snippet of failed prompt
+            prompt = row.get("prompt", "")
+            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
+                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
@@ -908,12 +871,12 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
-    def _get_task_type(self) -> TypeVLLMTaskType:
+    def _get_task_type(self) -> vLLMTaskType:
         return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {}
+        ret = {"prompt": "The text prompt (str)."}
         if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
@@ -925,8 +888,7 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         ret = {
-            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
-            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",

@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from pydantic import Field, field_validator, model_validator
 
+import ray
 from ray.data import Dataset
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.stages import (
@@ -91,44 +92,39 @@ class ProcessorConfig(BaseModelExtended):
             )
         return concurrency
 
-    def get_concurrency(self, autoscaling_enabled: bool = True) -> Dict[str, int]:
-        """Return a normalized dict of worker pool parameters from `self.concurrency`.
+    def get_concurrency(self, autoscaling_enabled: bool = True) -> Tuple[int, int]:
+        """Return a normalized `(min, max)` worker range from `self.concurrency`.
 
         Behavior:
         - If `concurrency` is an int `n`:
-          - `autoscaling_enabled` is True  -> return `{"min_size": 1, "max_size": n}` (autoscaling).
-          - `autoscaling_enabled` is False -> return `{"size": n}` (fixed-size pool).
-        - If `concurrency` is a 2-tuple `(m, n)`, return `{"min_size": m, "max_size": n}`
+          - `autoscaling_enabled` is True  -> return `(1, n)` (autoscaling).
+          - `autoscaling_enabled` is False -> return `(n, n)` (fixed-size pool).
+        - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged
           (the `autoscaling_enabled` flag is ignored).
 
         Args:
-            autoscaling_enabled: When False, treat an integer `concurrency` as fixed size;
-                otherwise treat it as an autoscaling range from 1 to n. Defaults to True.
+            autoscaling_enabled: When False, treat an integer `concurrency` as fixed `(n, n)`;
+                otherwise treat it as a range `(1, n)`. Defaults to True.
 
         Returns:
-            Dict[str, int]: A dictionary with either:
-                - `{"size": n}` for fixed-size pools
-                - `{"min_size": m, "max_size": n}` for autoscaling pools
+            tuple[int, int]: The allowed worker range `(min, max)`.
 
         Examples:
             >>> self.concurrency = (2, 4)
             >>> self.get_concurrency()
-            {'min_size': 2, 'max_size': 4}
+            (2, 4)
             >>> self.concurrency = 4
             >>> self.get_concurrency()
-            {'min_size': 1, 'max_size': 4}
+            (1, 4)
             >>> self.get_concurrency(autoscaling_enabled=False)
-            {'size': 4}
+            (4, 4)
         """
         if isinstance(self.concurrency, int):
             if autoscaling_enabled:
-                return {"min_size": 1, "max_size": self.concurrency}
+                return 1, self.concurrency
             else:
-                return {"size": self.concurrency}
-        return {
-            "min_size": self.concurrency[0],
-            "max_size": self.concurrency[1],
-        }
+                return self.concurrency, self.concurrency
+        return self.concurrency
 
     class Config:
         validate_assignment = True
@@ -329,6 +325,14 @@ class Processor:
         self.preprocess_map_kwargs = preprocess_map_kwargs or {}
         self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+
+        # FIXES: https://github.com/ray-project/ray/issues/53124
+        # TODO (Kourosh): Remove this once the issue is fixed
+        data_context = ray.data.DataContext.get_current()
+        data_context.wait_for_min_actors_s = 600
+        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
+        # is fixed.
+        data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column

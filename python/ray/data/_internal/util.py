@@ -1716,12 +1716,15 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     if len(actual) == 0:
         return True
 
-    pd.testing.assert_frame_equal(
-        _sort_df(actual).reset_index(drop=True),
-        _sort_df(expected).reset_index(drop=True),
-        check_dtype=False,
-    )
-    return True
+    try:
+        pd.testing.assert_frame_equal(
+            _sort_df(actual).reset_index(drop=True),
+            _sort_df(expected).reset_index(drop=True),
+            check_dtype=False,
+        )
+        return True
+    except AssertionError:
+        return False
 
 
 def merge_resources_to_ray_remote_args(

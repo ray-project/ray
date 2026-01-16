@@ -60,8 +60,7 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
-  // Worker ID assigned by raylet when starting the worker process (hex string).
-  std::string worker_id = "";
+  StartupToken startup_token;
 
   std::vector<std::string> head_args = {};
 

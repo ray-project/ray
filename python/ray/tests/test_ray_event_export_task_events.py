@@ -117,25 +117,17 @@ def get_job_id_and_driver_script_task_id_from_events(
     return driver_script_job_id, driver_task_id
 
 
-def check_task_event_base_fields(
-    event: json, preserve_proto_field_name: bool, head_node_id: str = None
-):
+def check_task_event_base_fields(event: json, preserve_proto_field_name: bool):
     assert event["timestamp"] is not None
     assert event["severity"] == "INFO"
     if preserve_proto_field_name:
         assert event["event_id"] is not None
         assert event["source_type"] == "CORE_WORKER"
         assert event["session_name"] is not None
-        if head_node_id is not None:
-            assert "node_id" in event
-            assert base64.b64decode(event["node_id"]).hex() == head_node_id
     else:
         assert event["eventId"] is not None
         assert event["sourceType"] == "CORE_WORKER"
         assert event["sessionName"] is not None
-        if head_node_id is not None:
-            assert "nodeId" in event
-            assert base64.b64decode(event["nodeId"]).hex() == head_node_id
 
 
 def check_task_lifecycle_event_states_and_error_info(
@@ -231,12 +223,7 @@ def run_driver_script_and_wait_for_events(script, httpserver, cluster, validatio
     # issue to track this: https://github.com/ray-project/ray/issues/58007
     assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
     run_string_as_driver_nonblocking(script)
-    wait_for_condition(
-        lambda: get_and_validate_events(
-            httpserver,
-            lambda events: validation_func(events, cluster.head_node.node_id),
-        )
-    )
+    wait_for_condition(lambda: get_and_validate_events(httpserver, validation_func))
 
 
 class TestNormalTaskEvents:
@@ -257,7 +244,7 @@ def normal_task():
 ray.get(normal_task.remote())
     """
 
-        def validate_events(events, head_node_id):
+        def validate_events(events):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -280,9 +267,7 @@ ray.get(normal_task.remote())
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             if (
@@ -346,9 +331,7 @@ ray.get(normal_task.remote())
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             if event["taskDefinitionEvent"]["taskId"] != driver_task_id:
@@ -445,7 +428,7 @@ except Exception as e:
     pass
         """
 
-        def validate_events(events: json, head_node_id):
+        def validate_events(events: json):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -460,9 +443,7 @@ except Exception as e:
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             if (
@@ -531,9 +512,7 @@ except Exception as e:
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             if event["taskDefinitionEvent"]["taskId"] != driver_task_id:
@@ -672,7 +651,7 @@ except Exception as e:
     pass
         """
         # Run the driver script and wait for the sleep task to be executing
-        def validate_task_running(events: json, head_node_id):
+        def validate_task_running(events: json):
             # Obtain the task id of the sleep task
             normal_task_id = None
             for event in events:
@@ -727,7 +706,7 @@ except Exception as e:
         cluster.remove_node(node)
 
         # Wait and verify the task events
-        def validate_task_killed(events: json, head_node_id):
+        def validate_task_killed(events: json):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -741,9 +720,7 @@ except Exception as e:
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             if (
@@ -807,9 +784,7 @@ except Exception as e:
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             if event["taskDefinitionEvent"]["taskId"] != driver_task_id:
@@ -931,7 +906,7 @@ obj = ray.put("test")
 ray.get(actor.task.remote(obj))
         """
 
-        def validate_events(events: json, head_node_id):
+        def validate_events(events: json):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -945,9 +920,7 @@ ray.get(actor.task.remote(obj))
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1063,9 +1036,7 @@ ray.get(actor.task.remote(obj))
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1237,7 +1208,7 @@ wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=
 ray.get(actor.task.options().remote())
         """
 
-        def validate_events(events: json, head_node_id):
+        def validate_events(events: json):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -1251,9 +1222,7 @@ ray.get(actor.task.options().remote())
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1367,9 +1336,7 @@ ray.get(actor.task.options().remote())
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1551,7 +1518,7 @@ actor = Actor.remote()
 ray.kill(actor)
         """
 
-        def validate_events(events: json, head_node_id):
+        def validate_events(events: json):
             (
                 driver_script_job_id,
                 driver_task_id,
@@ -1564,9 +1531,7 @@ ray.kill(actor)
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
                             driver_task_definition_received = True
@@ -1632,9 +1597,7 @@ ray.kill(actor)
                         assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
                 else:
                     if event["eventType"] == "TASK_DEFINITION_EVENT":
-                        check_task_event_base_fields(
-                            event, preserve_proto_field_name, head_node_id
-                        )
+                        check_task_event_base_fields(event, preserve_proto_field_name)
 
                         if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
                             driver_task_definition_received = True

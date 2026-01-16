@@ -7,7 +7,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -157,7 +156,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     op = Write(
         read_op,
         datasink,
-        compute=TaskPoolStrategy(concurrency),
+        concurrency=concurrency,
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag

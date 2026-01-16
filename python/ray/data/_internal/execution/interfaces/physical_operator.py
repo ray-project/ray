@@ -75,23 +75,20 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
-        is_actor_task = not self.get_task_id().actor_id().is_nil()
-
-        ray.cancel(
-            self.get_waitable(),
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
-
-    def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
         # Get generator's `ObjectRef`
         if isinstance(object_ref, ObjectRefGenerator):
             object_ref = object_ref._generator_ref
-        return object_ref.task_id()
+
+        is_actor_task = not object_ref.task_id().actor_id().is_nil()
+
+        ray.cancel(
+            object_ref,
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
 
 
 class DataOpTask(OpTask):
@@ -431,7 +428,7 @@ class PhysicalOperator(Operator):
             and internal_input_queue_num_blocks == 0
         )
 
-    def has_completed(self) -> bool:
+    def completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
@@ -588,7 +585,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has_completed().
+        """Called when the upstream operator at index `input_index` has completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -596,7 +593,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators has_completed().
+        """Called when all upstream operators have completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.

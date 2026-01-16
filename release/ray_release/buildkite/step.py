@@ -1,6 +1,5 @@
 import copy
 import os
-import shlex
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
@@ -27,9 +26,9 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
 RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
-DOCKER_PLUGIN_KEY = "docker#v5.8.0"
+DOCKER_PLUGIN_KEY = "docker#v5.2.0"
 
-_DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
+DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
         "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
@@ -43,8 +42,7 @@ _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "plugins": [
         {
             DOCKER_PLUGIN_KEY: {
-                "image": "python:3.10",
-                "shell": ["/bin/bash", "-elic"],
+                "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
@@ -122,20 +120,20 @@ def get_step(
     block_step_key: Optional[str] = None,
 ):
     env = env or {}
-    step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
+    step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = [
         "./release/run_release_test.sh",
-        shlex.quote(test["name"]),
+        test["name"],
         "--log-streaming-limit",
         "100",
     ]
 
     for file in test_collection_file or []:
-        cmd += ["--test-collection-file", shlex.quote(file)]
+        cmd += ["--test-collection-file", file]
 
     if global_config:
-        cmd += ["--global-config", shlex.quote(global_config)]
+        cmd += ["--global-config", global_config]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
         cmd += ["--report"]
@@ -147,7 +145,7 @@ def get_step(
     if num_retries:
         step["retry"]["automatic"][0]["limit"] = num_retries
 
-    step["commands"] = [" ".join(cmd)]
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
@@ -161,6 +159,7 @@ def get_step(
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.10"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")

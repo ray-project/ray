@@ -3,7 +3,7 @@ import math
 import time
 import unittest
 from collections import defaultdict
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -244,13 +244,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         map_op.metrics.num_tasks_running = 5
         self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
 
-    @patch(
-        "ray.data._internal.execution.backpressure_policy."
-        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
-    )
-    def test_can_add_input_with_object_store_memory_usage_ratio_above_threshold(
-        self, mock_get_budget_fraction
-    ):
+    def test_can_add_input_with_object_store_memory_usage_ratio_above_threshold(self):
         """Test can_add_input when object store memory usage ratio is above threshold."""
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op = TaskPoolMapOperator(
@@ -265,12 +259,23 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         mock_resource_manager = MagicMock()
 
-        # Mock available object store memory budget fraction above threshold to skip dynamic backpressure
+        # Mock object store memory usage ratio above threshold
+        # Ratio = budget / (usage + budget) > AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         threshold = (
             ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         )
-        # Set fraction above threshold to skip dynamic backpressure
-        mock_get_budget_fraction.return_value = threshold + 0.05
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000  # usage
+        mock_budget = MagicMock()
+        # Calculate budget so ratio > threshold
+        # budget / (usage + budget) > threshold
+        # budget > threshold * usage / (1 - threshold)
+        mock_budget.object_store_memory = int(
+            threshold * 1000 / (1 - threshold) + 1
+        )  # budget above threshold
+
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
         mock_resource_manager.is_op_eligible.return_value = True
         mock_resource_manager.has_materializing_downstream_op.return_value = False
 
@@ -299,13 +304,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         self.assertEqual(policy._q_level_nbytes[map_op], initial_level)
         self.assertEqual(policy._q_level_dev[map_op], initial_dev)
 
-    @patch(
-        "ray.data._internal.execution.backpressure_policy."
-        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
-    )
-    def test_can_add_input_with_object_store_memory_usage_ratio_below_threshold(
-        self, mock_get_budget_fraction
-    ):
+    def test_can_add_input_with_object_store_memory_usage_ratio_below_threshold(self):
         """Test can_add_input when object store memory usage ratio is below threshold."""
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op = TaskPoolMapOperator(
@@ -320,12 +319,23 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         mock_resource_manager = MagicMock()
 
-        # Mock available object store memory budget fraction below threshold to apply dynamic backpressure
+        # Mock object store memory usage ratio below threshold
+        # Ratio = budget / (usage + budget) < AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         threshold = (
             ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         )
-        # Set fraction below threshold to apply dynamic backpressure
-        mock_get_budget_fraction.return_value = threshold - 0.05
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000  # usage
+        mock_budget = MagicMock()
+        # Calculate budget so ratio < threshold
+        # budget / (usage + budget) < threshold
+        # budget < threshold * usage / (1 - threshold)
+        mock_budget.object_store_memory = max(
+            0, int(threshold * 1000 / (1 - threshold) - 1)
+        )  # below threshold
+
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
         mock_resource_manager.is_op_eligible.return_value = True
         mock_resource_manager.has_materializing_downstream_op.return_value = False
 
@@ -362,11 +372,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Dev should also be updated
         self.assertNotEqual(policy._q_level_dev[map_op], initial_dev)
 
-    @patch(
-        "ray.data._internal.execution.backpressure_policy."
-        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
-    )
-    def test_can_add_input_effective_cap_calculation(self, mock_get_budget_fraction):
+    def test_can_add_input_effective_cap_calculation(self):
         """Test that effective cap calculation works correctly with different queue sizes."""
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op = TaskPoolMapOperator(
@@ -383,8 +389,18 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         threshold = (
             ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         )
-        # Set fraction below threshold to apply dynamic backpressure
-        mock_get_budget_fraction.return_value = threshold - 0.05
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000
+        mock_budget = MagicMock()
+        # Calculate budget so ratio < threshold
+        # budget / (usage + budget) < threshold
+        # budget < threshold * usage / (1 - threshold)
+        mock_budget.object_store_memory = max(
+            0, int(threshold * 1000 / (1 - threshold) - 1)
+        )  # below threshold
+
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
         mock_resource_manager.is_op_eligible.return_value = True
         mock_resource_manager.has_materializing_downstream_op.return_value = False
 

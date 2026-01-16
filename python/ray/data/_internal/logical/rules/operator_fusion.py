@@ -355,7 +355,6 @@ class FuseOperators(Rule):
             name,
             input_op,
             up_logical_op._fn,
-            can_modify_num_rows=up_logical_op.can_modify_num_rows(),
             fn_args=up_logical_op._fn_args,
             fn_kwargs=up_logical_op._fn_kwargs,
             fn_constructor_args=up_logical_op._fn_constructor_args,
@@ -504,10 +503,6 @@ class FuseOperators(Rule):
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
-
-        can_modify_num_rows = (
-            up_logical_op.can_modify_num_rows() or down_logical_op.can_modify_num_rows()
-        )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
                 name,
@@ -519,7 +514,6 @@ class FuseOperators(Rule):
                 fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 compute=compute,
-                can_modify_num_rows=can_modify_num_rows,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -528,7 +522,6 @@ class FuseOperators(Rule):
             logical_op = AbstractMap(
                 name,
                 input_op,
-                can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,

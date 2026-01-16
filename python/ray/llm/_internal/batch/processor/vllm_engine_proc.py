@@ -1,6 +1,5 @@
 """The vLLM engine processor."""
 
-import logging
 from typing import Any, Dict, List, Literal, Optional
 
 import transformers
@@ -8,7 +7,6 @@ from pydantic import ConfigDict, Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
-from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -40,6 +38,7 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
+from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
@@ -47,9 +46,6 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
 )
-
-logger = logging.getLogger(__name__)
-
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -79,7 +75,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "https://docs.vllm.ai/en/latest/serving/engine_args.html "
         "for more details.",
     )
-    task_type: TypeVLLMTaskType = Field(
+    task_type: vLLMTaskType = Field(
         default=vLLMTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
@@ -104,23 +100,8 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
-        task_type = values.get("task_type", vLLMTaskType.GENERATE)
-        if task_type not in vLLMTaskType.values():
-            raise ValueError(f"Invalid task type: {task_type}")
-
-        engine_kwargs = values.get("engine_kwargs", {})
-        engine_kwargs_task_type = engine_kwargs.get("task_type", "")
-        if engine_kwargs_task_type != task_type:
-            if engine_kwargs_task_type:
-                logger.warning(
-                    "The task_type set in engine kwargs (%s) is different from the "
-                    "config (%s). Overriding the task_type in engine kwargs to %s.",
-                    engine_kwargs_task_type,
-                    task_type,
-                    task_type,
-                )
-            engine_kwargs["task_type"] = task_type
-        values["engine_kwargs"] = engine_kwargs
+        task_type_str = values.get("task_type", "generate")
+        values["task_type"] = vLLMTaskType(task_type_str)
         return values
 
     @root_validator(pre=True)
@@ -284,7 +265,8 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    **config.get_concurrency(autoscaling_enabled=False),
+                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
+                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -343,7 +325,7 @@ def build_vllm_engine_processor(
             batch_size=config.batch_size,
             accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
             concurrency=config.concurrency,
-            task_type=config.task_type,
+            task_type=vLLMTaskType(config.task_type),
             pipeline_parallel_size=config.engine_kwargs.get(
                 "pipeline_parallel_size", 1
             ),

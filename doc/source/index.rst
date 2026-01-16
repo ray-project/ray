@@ -23,4 +23,3 @@
    Developer Guides <ray-contribute/index>
    Glossary <ray-references/glossary>
    Security <ray-security/index>
-   Project Governance <ray-governance/index>

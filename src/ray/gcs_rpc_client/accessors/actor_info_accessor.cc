@@ -31,8 +31,7 @@ namespace gcs {
 ActorInfoAccessor::ActorInfoAccessor(GcsClientContext *context) : context_(context) {}
 
 void ActorInfoAccessor::AsyncGet(
-    const ActorID &actor_id,
-    const rpc::OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId()) << "Getting actor info";
   rpc::GetActorInfoRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -53,7 +52,7 @@ void ActorInfoAccessor::AsyncGetAllByFilter(
     const std::optional<ActorID> &actor_id,
     const std::optional<JobID> &job_id,
     const std::optional<std::string> &actor_state_name,
-    const rpc::MultiItemCallback<rpc::ActorTableData> &callback,
+    const MultiItemCallback<rpc::ActorTableData> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
@@ -87,7 +86,7 @@ void ActorInfoAccessor::AsyncGetAllByFilter(
 void ActorInfoAccessor::AsyncGetByName(
     const std::string &name,
     const std::string &ray_namespace,
-    const rpc::OptionalItemCallback<rpc::ActorTableData> &callback,
+    const OptionalItemCallback<rpc::ActorTableData> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
@@ -149,7 +148,7 @@ Status ActorInfoAccessor::SyncListNamedActors(
 void ActorInfoAccessor::AsyncRestartActorForLineageReconstruction(
     const ray::ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
-    const rpc::StatusCallback &callback,
+    const ray::gcs::StatusCallback &callback,
     int64_t timeout_ms) {
   rpc::RestartActorForLineageReconstructionRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -181,7 +180,7 @@ Status ComputeGcsStatus(const Status &grpc_status, const rpc::GcsStatus &gcs_sta
 }  // namespace
 
 void ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
-                                           const rpc::StatusCallback &callback,
+                                           const ray::gcs::StatusCallback &callback,
                                            int64_t timeout_ms) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::RegisterActorRequest request;
@@ -207,7 +206,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
 void ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
                                        bool force_kill,
                                        bool no_restart,
-                                       const rpc::StatusCallback &callback,
+                                       const ray::gcs::StatusCallback &callback,
                                        int64_t timeout_ms) {
   rpc::KillActorViaGcsRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -239,7 +238,7 @@ void ActorInfoAccessor::AsyncCreateActor(
 void ActorInfoAccessor::AsyncReportActorOutOfScope(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
-    const rpc::StatusCallback &callback,
+    const StatusCallback &callback,
     int64_t timeout_ms) {
   rpc::ReportActorOutOfScopeRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -257,14 +256,14 @@ void ActorInfoAccessor::AsyncReportActorOutOfScope(
 
 void ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
-    const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const rpc::StatusCallback &done) {
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
   RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
       << "Subscribing update operations of actor";
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
   auto fetch_data_operation =
-      [this, actor_id, subscribe](const rpc::StatusCallback &fetch_done) {
+      [this, actor_id, subscribe](const StatusCallback &fetch_done) {
         auto callback = [actor_id, subscribe, fetch_done](
                             const Status &status,
                             std::optional<rpc::ActorTableData> &&result) {
@@ -281,7 +280,7 @@ void ActorInfoAccessor::AsyncSubscribe(
   {
     absl::MutexLock lock(&mutex_);
     resubscribe_operations_[actor_id] = [this, actor_id, subscribe](
-                                            const rpc::StatusCallback &subscribe_done) {
+                                            const StatusCallback &subscribe_done) {
       context_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe, subscribe_done);
     };
     fetch_data_operations_[actor_id] = fetch_data_operation;

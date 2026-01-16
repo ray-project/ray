@@ -23,30 +23,27 @@ class MockJobInfoAccessor : public JobInfoAccessor {
   MOCK_METHOD(void,
               AsyncAdd,
               (const std::shared_ptr<rpc::JobTableData> &data_ptr,
-               const rpc::StatusCallback &callback),
+               const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncMarkFinished,
-              (const JobID &job_id, const rpc::StatusCallback &callback),
+              (const JobID &job_id, const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncSubscribeAll,
-              ((const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
-               const rpc::StatusCallback &done),
+              ((const SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
+               const StatusCallback &done),
               (override));
   MOCK_METHOD(void,
               AsyncGetAll,
               (const std::optional<std::string> &job_or_submission_id,
                bool skip_submission_job_info_field,
                bool skip_is_running_tasks_field,
-               const rpc::MultiItemCallback<rpc::JobTableData> &callback,
+               const MultiItemCallback<rpc::JobTableData> &callback,
                int64_t timeout_ms),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(void,
-              AsyncGetNextJobID,
-              (const rpc::ItemCallback<JobID> &callback),
-              (override));
+  MOCK_METHOD(void, AsyncGetNextJobID, (const ItemCallback<JobID> &callback), (override));
 };
 
 }  // namespace gcs
@@ -59,27 +56,27 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
   MOCK_METHOD(void,
               RegisterSelf,
-              (rpc::GcsNodeInfo && local_node_info, const rpc::StatusCallback &callback),
+              (rpc::GcsNodeInfo && local_node_info, const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncRegister,
-              (const rpc::GcsNodeInfo &node_info, const rpc::StatusCallback &callback),
+              (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,
               (const std::vector<NodeID> &node_ids,
                int64_t timeout_ms,
-               const rpc::MultiItemCallback<bool> &callback),
+               const MultiItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+              (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                int64_t timeout_ms,
                const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
-              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+              (const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                int64_t timeout_ms,
                const std::vector<NodeID> &node_ids),
               (override));
@@ -87,7 +84,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
       void,
       AsyncSubscribeToNodeAddressAndLivenessChange,
       (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
-       rpc::StatusCallback done),
+       StatusCallback done),
       (override));
   MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
@@ -118,11 +115,11 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(void,
               AsyncGetAllAvailableResources,
-              (const rpc::MultiItemCallback<rpc::AvailableResources> &callback),
+              (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetAllResourceUsage,
-              (const rpc::ItemCallback<rpc::ResourceUsageBatchData> &callback),
+              (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
               (override));
 };
 
@@ -147,8 +144,7 @@ class MockTaskInfoAccessor : public TaskInfoAccessor {
  public:
   MOCK_METHOD(void,
               AsyncAddTaskEventData,
-              (std::unique_ptr<rpc::TaskEventData> data_ptr,
-               rpc::StatusCallback callback),
+              (std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback),
               (override));
 };
 
@@ -162,27 +158,27 @@ class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
   MOCK_METHOD(void,
               AsyncSubscribeToWorkerFailures,
-              (const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
-               const rpc::StatusCallback &done),
+              (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+               const StatusCallback &done),
               (override));
   MOCK_METHOD(void,
               AsyncReportWorkerFailure,
               (const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-               const rpc::StatusCallback &callback),
+               const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGet,
               (const WorkerID &worker_id,
-               const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback),
+               const OptionalItemCallback<rpc::WorkerTableData> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const rpc::MultiItemCallback<rpc::WorkerTableData> &callback),
+              (const MultiItemCallback<rpc::WorkerTableData> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncAdd,
               (const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-               const rpc::StatusCallback &callback),
+               const StatusCallback &callback),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
 };
@@ -202,18 +198,18 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   MOCK_METHOD(void,
               AsyncGet,
               (const PlacementGroupID &placement_group_id,
-               const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
+               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetByName,
               (const std::string &placement_group_name,
                const std::string &ray_namespace,
-               const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
                int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const rpc::MultiItemCallback<rpc::PlacementGroupTableData> &callback),
+              (const MultiItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(Status,
               SyncRemovePlacementGroup,
@@ -238,14 +234,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               (const std::string &ns,
                const std::string &prefix,
                const int64_t timeout_ms,
-               const rpc::OptionalItemCallback<std::vector<std::string>> &callback),
+               const OptionalItemCallback<std::vector<std::string>> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncInternalKVGet,
               (const std::string &ns,
                const std::string &key,
                const int64_t timeout_ms,
-               const rpc::OptionalItemCallback<std::string> &callback),
+               const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncInternalKVPut,
@@ -254,14 +250,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &value,
                bool overwrite,
                const int64_t timeout_ms,
-               const rpc::OptionalItemCallback<bool> &callback),
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncInternalKVExists,
               (const std::string &ns,
                const std::string &key,
                const int64_t timeout_ms,
-               const rpc::OptionalItemCallback<bool> &callback),
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncInternalKVDel,
@@ -269,11 +265,11 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &key,
                bool del_by_prefix,
                const int64_t timeout_ms,
-               const rpc::OptionalItemCallback<int> &callback),
+               const OptionalItemCallback<int> &callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetInternalConfig,
-              (const rpc::OptionalItemCallback<std::string> &callback),
+              (const OptionalItemCallback<std::string> &callback),
               (override));
 };
 

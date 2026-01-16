@@ -6,12 +6,10 @@ Ray Data API
 .. toctree::
     :maxdepth: 2
 
-    loading_data.rst
-    saving_data.rst
+    input_output.rst
     dataset.rst
     data_iterator.rst
     execution_options.rst
-    checkpoint.rst
     aggregate.rst
     grouped_data.rst
     expressions.rst

@@ -232,7 +232,7 @@ class GlobalStateAccessor {
   ///
   /// \return MultiItemCallback within in rpc type DATA.
   template <class DATA>
-  rpc::MultiItemCallback<DATA> TransformForMultiItemCallback(
+  MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
     return [&data_vec, &promise](const Status &status, std::vector<DATA> result) {
       RAY_CHECK_OK(status);
@@ -248,7 +248,7 @@ class GlobalStateAccessor {
   ///
   /// \return OptionalItemCallback within in rpc type DATA.
   template <class DATA>
-  rpc::OptionalItemCallback<DATA> TransformForOptionalItemCallback(
+  OptionalItemCallback<DATA> TransformForOptionalItemCallback(
       std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
     return [&data, &promise](const Status &status, const std::optional<DATA> &result) {
       RAY_CHECK_OK(status);
@@ -263,8 +263,8 @@ class GlobalStateAccessor {
   ///
   /// \return ItemCallback within in rpc type DATA.
   template <class DATA>
-  rpc::ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
-                                                   std::promise<bool> &promise) {
+  ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
+                                              std::promise<bool> &promise) {
     return [&data, &promise](const DATA &result) {
       data.reset(new std::string(result.SerializeAsString()));
       promise.set_value(true);

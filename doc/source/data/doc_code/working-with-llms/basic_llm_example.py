@@ -179,8 +179,8 @@ embedding_config = vLLMEngineProcessorConfig(
     ),
     batch_size=32,
     concurrency=1,
-    chat_template_stage=False,  # Skip chat templating for embeddings
-    detokenize_stage=False,     # Skip detokenization for embeddings
+    apply_chat_template=False,
+    detokenize=False,
 )
 
 # Example usage for embeddings
