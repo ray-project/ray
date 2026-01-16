@@ -1179,15 +1179,6 @@ class ReplicaBase(ABC):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
-    def _get_request_context_kwargs(
-        self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
-    ) -> dict:
-        """Override this to add additional kwargs to _RequestContext.
-
-        This is a hook for subclasses to extend the request context.
-        """
-        return {}
-
     @contextmanager
     def _wrap_request(
         self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
@@ -1198,7 +1189,6 @@ class ReplicaBase(ABC):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        extra_kwargs = self._get_request_context_kwargs(request_metadata, ray_trace_ctx)
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
@@ -1208,7 +1198,6 @@ class ReplicaBase(ABC):
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
                 _ray_trace_ctx=ray_trace_ctx,
-                **extra_kwargs,
             )
         )
 
