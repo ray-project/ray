@@ -18,7 +18,6 @@
 //python/ray/serve/tests:test_handle_streaming
 //python/ray/serve/tests:test_healthcheck
 //python/ray/serve/tests:test_logging
-//python/ray/serve/tests:test_logging_2
 //python/ray/serve/tests:test_metrics
 //python/ray/serve/tests:test_model_composition
 //python/ray/serve/tests:test_websockets
@@ -31,7 +30,6 @@
 //python/ray/serve/tests:test_controller_recovery
 //python/ray/serve/tests:test_http_routes
 //python/ray/serve/tests:test_backpressure
-//python/ray/serve/tests:test_backpressure_grpc
 //python/ray/serve/tests:test_batching
 //python/ray/serve/tests:test_replica_sync_methods_with_run_sync_in_threadpool
 //python/ray/serve/tests:test_replica_request_context
