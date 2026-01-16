@@ -241,11 +241,27 @@ steps:
       - python
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --only-tags direct_ingress
+      - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
         --parallelism-per-worker 3
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    depends_on: servebuild-multipy
+
+  - label: ":ray-serve: serve: direct ingress tests (same loop)"
+    tags:
+      - serve
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
+        --parallelism-per-worker 3
+        --build-name servebuild-py3.10 --python-version 3.10
+        --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: doc gpu tests"

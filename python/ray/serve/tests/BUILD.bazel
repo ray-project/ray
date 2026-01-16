@@ -610,3 +610,57 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_direct_ingress.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_direct_ingress_standalone.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_handle.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
