@@ -414,11 +414,12 @@ def test_parquet_read_partitioned_excludes_unrequested_partition_columns(
         partition_cols=["partition_col0", "partition_col1"],
     )
 
-    # Request only data columns via select_columns, excluding partition columns
+    # Request only data columns excluding partition columns
     ds = ray.data.read_parquet(
         tmp_path,
+        columns=["data_col0"],
         partitioning=Partitioning("hive"),
-    ).select_columns(["data_col0"])
+    )
 
     # Verify only the requested column is present
     assert ds.columns() == ["data_col0"]
