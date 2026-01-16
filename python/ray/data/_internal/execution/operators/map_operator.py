@@ -19,12 +19,6 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
-from python.ray.data._internal.execution.bundle_queue import (
-    BaseBundleQueue,
-    FIFOBundleQueue,
-)
-from python.ray.data._internal.execution.bundle_queue.ordered import OrderedBundleQueue
-
 import ray
 from ray import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -32,6 +26,11 @@ from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+)
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    OrderedBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
