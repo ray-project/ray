@@ -162,7 +162,6 @@ steps:
     tags:
       - release_wheels
       - linux_wheels
-      - oss
     depends_on:
       - ray-core-build-aarch64
       - ray-java-build-aarch64
@@ -213,7 +212,6 @@ steps:
     tags:
       - release_wheels
       - linux_wheels
-      - oss
     depends_on:
       - ray-core-build-aarch64
       - ray-cpp-core-build-aarch64
