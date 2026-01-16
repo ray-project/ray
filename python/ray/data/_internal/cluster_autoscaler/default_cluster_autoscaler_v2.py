@@ -74,7 +74,7 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
     ]
     for r in node_resources:
         node_resource_spec = _NodeResourceSpec.of(
-            cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
+            cpu=r.get("CPU", 0), gpu=r.get("GPU", 0), mem=r["memory"]
         )
         nodes_resource_spec_count[node_resource_spec] += 1
 
