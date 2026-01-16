@@ -84,6 +84,7 @@ build:windows --experimental_repository_cache_hardlinks
 # For colored output (seems necessary on Windows)
 build:windows --color=yes
 # For compiler colored output (seems necessary on Windows)
+build:windows --features=compiler_param_file
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 
