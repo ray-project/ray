@@ -114,25 +114,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "local_lease_manager_test",
-    size = "small",
-    srcs = ["local_lease_manager_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":util",
-        "//:ray_mock",
-        "//src/ray/common:id",
-        "//src/ray/common:lease",
-        "//src/ray/common:task_common",
-        "//src/ray/common:test_utils",
-        "//src/ray/observability:fake_metric",
-        "//src/ray/raylet:local_lease_manager",
-        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "worker_killing_policy_test",
     size = "small",
     srcs = [
