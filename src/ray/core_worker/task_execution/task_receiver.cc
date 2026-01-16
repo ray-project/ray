@@ -173,9 +173,9 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
 
   auto execute_callback =
       [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](
-          const TaskSpecification &task_spec) mutable {
+          const TaskSpecification &t) mutable {
         TaskExecutionResult result;
-        auto status = task_handler_(task_spec,
+        auto status = task_handler_(t,
                                     std::move(resource_ids),
                                     &result.return_objects,
                                     &result.dynamic_return_objects,
@@ -184,12 +184,12 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                     &result.is_retryable_error,
                                     &result.application_error);
 
-        HandleTaskExecutionResult(status, task_spec, result, send_reply_callback, reply);
+        HandleTaskExecutionResult(status, t, result, send_reply_callback, reply);
       };
 
   auto cancel_callback = [this, reply, send_reply_callback](
-                             const TaskSpecification &task_spec, const Status &status) {
-    if (task_spec.IsActorTask()) {
+                             const TaskSpecification &t, const Status &status) {
+    if (t.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
       if (stopping_) {
