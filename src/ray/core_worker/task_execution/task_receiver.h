@@ -114,12 +114,11 @@ class TaskReceiver {
                   int fiber_max_concurrency,
                   bool allow_out_of_order_execution);
 
-  void HandleTaskExecutionResult(
-      Status status,
-      const TaskSpecification &task_spec,
-      const TaskExecutionResult &result,
-      const rpc::SendReplyCallback &send_reply_callback,
-      rpc::PushTaskReply *reply);
+  void HandleTaskExecutionResult(Status status,
+                                 const TaskSpecification &task_spec,
+                                 const TaskExecutionResult &result,
+                                 const rpc::SendReplyCallback &send_reply_callback,
+                                 rpc::PushTaskReply *reply);
 
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;

@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include <string>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -33,11 +33,10 @@ namespace core {
 class TaskToExecute {
  public:
   TaskToExecute();
-  TaskToExecute(std::function<void(const TaskSpecification &)>
-                    accept_callback,
-                std::function<void(const TaskSpecification &,
-                                   const Status &)> reject_callback,
-                TaskSpecification task_spec);
+  TaskToExecute(
+      std::function<void(const TaskSpecification &)> accept_callback,
+      std::function<void(const TaskSpecification &, const Status &)> reject_callback,
+      TaskSpecification task_spec);
 
   void Accept();
   void Cancel(const Status &status);

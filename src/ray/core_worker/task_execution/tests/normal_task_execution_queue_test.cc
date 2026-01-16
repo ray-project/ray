@@ -34,10 +34,9 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
   TaskToExecute task = TaskToExecute(
-    [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-    [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status) { n_rej++; },
-    task_spec);
+      [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
+      [&n_rej](const TaskSpecification &task_spec, const Status &status) { n_rej++; },
+      task_spec);
 
   queue->Add(task);
   queue->Add(task);
@@ -61,15 +60,13 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = TaskToExecute(
-    [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-    [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status) {
-
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    n_rej.fetch_add(1);},
-    task_spec);
-
+  TaskToExecute task =
+      TaskToExecute([&n_ok](const TaskSpecification &task_spec) { n_ok++; },
+                    [&n_rej](const TaskSpecification &task_spec, const Status &status) {
+                      ASSERT_TRUE(status.IsSchedulingCancelled());
+                      n_rej.fetch_add(1);
+                    },
+                    task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
   queue->Add(task);
