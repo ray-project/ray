@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import jsonschema
 import yaml
 
-from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -348,21 +347,7 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 
 def get_test_cloud_id(test: Test) -> str:
-    cloud_id = test["cluster"].get("cloud_id", None)
-    cloud_name = test["cluster"].get("cloud_name", None)
-    if cloud_id and cloud_name:
-        raise RuntimeError(
-            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
-            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
-            f"Please provide only one."
-        )
-    elif cloud_name and not cloud_id:
-        cloud_id = find_cloud_by_name(cloud_name)
-        if not cloud_id:
-            raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
-    else:
-        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
-    return cloud_id
+    return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
