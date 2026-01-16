@@ -931,14 +931,7 @@ class ReplicaBase(ABC):
         # Design: We return it so it can be passed to _wrap_request() which
         # stores it in _RequestContext. Users can then access it via serve.context
         # if needed (advanced use case), while keeping it out of their method signatures.
-        #
-        # For gRPC requests (when using RAY_SERVE_USE_GRPC_BY_DEFAULT),
-        # the _ray_trace_ctx is not injected into kwargs since there's no Ray actor
-        # call. Instead, the tracing context is passed via request_metadata.tracing_context.
-        # We fall back to using that if _ray_trace_ctx is not in kwargs.
         ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
-        if ray_trace_ctx is None:
-            ray_trace_ctx = getattr(request_metadata, "tracing_context", None) or {}
 
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
