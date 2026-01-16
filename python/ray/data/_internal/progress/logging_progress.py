@@ -207,14 +207,19 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
         op_metrics = self._get_as_logging_metrics(opstate.progress_manager_uuid)
-        op_metrics.completed = opstate.output_row_count
-        total = opstate.op.num_output_rows_total()
-        if total is not None:
-            op_metrics.total = total
-        op_metrics.desc = opstate.summary_str_raw(resource_manager)
+        if op_metrics is not None:
+            op_metrics.completed = opstate.output_row_count
+            total = opstate.op.num_output_rows_total()
+            if total is not None:
+                op_metrics.total = total
+            op_metrics.desc = opstate.summary_str_raw(resource_manager)
 
     # Utilities
-    def _get_as_logging_metrics(self, uid: uuid.UUID) -> _LoggingMetrics:
-        metrics = self._metric_dict[uid]
+    def _get_as_logging_metrics(self, uid: uuid.UUID) -> Optional[_LoggingMetrics]:
+        if uid is None:
+            return None
+        metrics = self._metric_dict.get(uid)
+        if metrics is None:
+            return None
         assert isinstance(metrics, _LoggingMetrics)
         return metrics
