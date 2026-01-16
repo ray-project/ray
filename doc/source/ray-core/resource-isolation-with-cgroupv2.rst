@@ -194,7 +194,7 @@ If you enable resource isolation but don't specify ``system-reserved-cpu`` or ``
 
    # Memory
    RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = 0.10
-   RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = 0.5 * 1024**3
+   RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = 0.5 * 1024**3 #500MiB
    RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = 10 * 1024**3 #10GiB
 
 You can override these default parameters using environment variables.
