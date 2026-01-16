@@ -62,7 +62,7 @@ depsets:
       - docker/base-extra/requirements.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray-llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -80,7 +80,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_gpu-base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray-gpu-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -99,7 +99,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: python/deplocks/base_extra_testdeps/ray_ml-base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray-ml-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -133,7 +133,7 @@ depsets:
     source_depset: ray_base_extra_testdeps_${PYTHON_SHORT}
     requirements:
       - docker/base-deps/requirements.in
-    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_deps/ray-base_deps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -153,7 +153,7 @@ depsets:
     requirements:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra/ray-base_extra_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
