@@ -2070,10 +2070,10 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py \
-      --num-env-runners=4 \
-      --num-learners=0 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
-      --as-release-test
+      --num-env-runners=4 \
+      --num-learners=0
 
 
 - name: rllib_stateless_cartpole_gpu
