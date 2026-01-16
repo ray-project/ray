@@ -24,7 +24,7 @@ default_logger = logging.getLogger(__name__)
 def _get_uv_hash(uv_dict: Dict) -> str:
     """Get a deterministic hash value for `uv` related runtime envs."""
     serialized_uv_spec = json.dumps(uv_dict, sort_keys=True)
-    hash_val = hashlib.sha1(serialized_uv_spec.encode("utf-8")).hexdigest()
+    hash_val = hashlib.sha256(serialized_uv_spec.encode("utf-8")).hexdigest()
     return hash_val
 
 
