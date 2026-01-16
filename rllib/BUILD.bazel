@@ -71,7 +71,7 @@ py_library(
 )
 
 # --------------------------------------------------------------------
-# Algorithms learning regression tests (rllib/examples/algorithm/[algo-name]).
+# Algorithms learning tests (rllib/examples/algorithm/[algo-name]).
 #
 # Tag: learning_tests
 #
