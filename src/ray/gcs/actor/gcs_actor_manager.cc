@@ -1519,12 +1519,13 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
+        {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+             Status actor_table_status) {
            gcs_table_storage_->ActorTaskSpecTable().Put(
                actor_id,
                *actor->GetMutableTaskSpec(),
                {[this, actor, actor_id, mutable_actor_table_data, done_callback](
-                    Status status) {
+                    Status actor_task_spec_table_status) {
                   if (done_callback) {
                     done_callback();
                   }
