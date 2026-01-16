@@ -379,23 +379,21 @@ class Test(dict):
         """
         return self.get("stable", True)
 
+    def get_cloud_env(self) -> str:
+        """Returns the cloud environment of the test."""
+        return self.get("env", "aws").lower()
+
     def is_gce(self) -> bool:
-        """
-        Returns whether this test is running on GCE.
-        """
-        return self.get("env") == "gce"
+        """Returns whether this test is running on GCE."""
+        return self.get_cloud_env() == "gce"
 
     def is_kuberay(self) -> bool:
-        """
-        Returns whether this test is running on KubeRay.
-        """
-        return self.get("env") == "kuberay"
+        """Returns whether this test is running on KubeRay."""
+        return self.get_cloud_env() == "kuberay"
 
     def is_azure(self) -> bool:
-        """
-        Returns whether this test is running on Azure.
-        """
-        return self.get("env") == "azure"
+        """Returns whether this test is running on Azure."""
+        return self.get_cloud_env() == "azure"
 
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is

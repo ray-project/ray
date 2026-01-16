@@ -32,8 +32,6 @@
 #    autosuspend_mins: 10
 #    # Optional cloud_id to use instead of the default cloud
 #    cloud_id: cld_12345678
-#    # Alternatively, you can specify a cloud name
-#    cloud_name: anyscale_default_cloud
 #
 #  # Run configuration for the test
 #  run:
@@ -4514,6 +4512,56 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+
+- name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_multiplexing_forecast.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: model_composition_recsys  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_composition_recsys.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: asynchronous_inference  # do not use dashes (regex sensitive)
   frequency: weekly

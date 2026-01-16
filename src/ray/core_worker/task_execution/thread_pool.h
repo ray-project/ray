@@ -28,8 +28,8 @@
 namespace ray {
 namespace core {
 
-/// Wraps a thread-pool to block posts until the pool has free slots. This is used
-/// by the SchedulingQueue to provide backpressure to clients.
+/// Thread pool implementation that provides backpressure by blocking until there is
+/// a thread available.
 class BoundedExecutor {
  public:
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
