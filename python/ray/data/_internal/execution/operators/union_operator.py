@@ -1,7 +1,7 @@
 import collections
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import BundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -35,9 +35,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._preserve_order = False
 
         # Intermediary buffers used to store blocks from each input dependency.
-        # Only used when `self._preserve_order` is True.
-        self._input_buffers: List[BundleQueue] = [
-            FIFOBundleQueue() for _ in range(len(input_ops))
+        # Only used when `self._prserve_order` is True.
+        self._input_buffers: List[HashLinkedQueue] = [
+            HashLinkedQueue() for _ in range(len(input_ops))
         ]
 
         self._input_done_flags: List[bool] = [False] * len(input_ops)
