@@ -1499,6 +1499,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// arguments and recursively, any object IDs that were contained in those objects.
   /// \param is_retryable_error[out] Whether the task failed with a retryable
   /// error.
+  /// \param actor_repr_name[out] TODO.
   /// \param application_error[out] The error message if the task failed during
   /// execution or cancelled.
   /// \return Status.
@@ -1511,6 +1512,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error);
 
   /// Put an object in the local plasma store.

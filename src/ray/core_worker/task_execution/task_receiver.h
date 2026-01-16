@@ -51,6 +51,7 @@ class TaskReceiver {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       RepeatedObjectRefCount *borrower_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error)>;
 
   using OnActorCreationTaskDone = std::function<Status()>;
@@ -100,12 +101,6 @@ class TaskReceiver {
   bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
 
   void Stop();
-
-  /// Set the actor repr name for an actor.
-  ///
-  /// The actor repr name is only available after actor creation task has been run since
-  /// the repr name could include data only initialized during the creation task.
-  void SetActorReprName(const std::string &repr_name);
 
  private:
   // True once shutdown begins. Requests to execute new tasks will be rejected.
