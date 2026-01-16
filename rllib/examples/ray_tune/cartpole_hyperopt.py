@@ -10,8 +10,8 @@ The script runs 4 parallel trials by default, with HyperOpt suggesting new
 hyperparameter configurations based on results from completed trials.
 For each trial, it defaults to using a 1 GPU per learner, meaning that
 you need to be running on a cluster with 4 GPUs available.
-Otherwise, we recommend
-users change the num_gpus_per_learner to zero or the max_concurrent_trials to one.
+Otherwise, we recommend users change the `num_gpus_per_learner` to zero
+or the `max_concurrent_trials` to one (if only single GPU is available).
 
 Key hyperparameters being tuned:
 - lr: Learning rate
