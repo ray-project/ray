@@ -119,7 +119,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used

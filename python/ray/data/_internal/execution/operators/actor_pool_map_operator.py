@@ -453,16 +453,11 @@ class ActorPoolMapOperator(MapOperator):
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
-        max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
         num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
         num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
         memory_per_actor = self._ray_remote_args.get("memory", 0)
-
-        obj_store_mem_per_task = (
-            self._metrics.obj_store_mem_max_pending_output_per_task or 0
-        )
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
@@ -470,21 +465,13 @@ class ActorPoolMapOperator(MapOperator):
             memory=memory_per_actor * min_actors,
             # To ensure that all actors are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            object_store_memory=obj_store_mem_per_task * min_actors,
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            )
+            * min_actors,
         )
 
-        # Cap resources to 0 if this operator doesn't use them.
-        # This prevents operators from hoarding resource budget they don't need.
-        max_resource_usage = ExecutionResources(
-            cpu=0 if num_cpus_per_actor == 0 else num_cpus_per_actor * max_actors,
-            gpu=0 if num_gpus_per_actor == 0 else num_gpus_per_actor * max_actors,
-            memory=0 if memory_per_actor == 0 else memory_per_actor * max_actors,
-            # Set the max `object_store_memory` requirement to 'inf', because we
-            # don't know how much data each task can output.
-            object_store_memory=float("inf"),
-        )
-
-        return min_resource_usage, max_resource_usage
+        return min_resource_usage, ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.

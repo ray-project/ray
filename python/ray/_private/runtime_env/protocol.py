@@ -3,7 +3,6 @@ import os
 from urllib.parse import urlparse
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
-RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
 _DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
 
 
@@ -203,18 +202,12 @@ class ProtocolsProvider:
 
     @classmethod
     def _http_headers(cls) -> dict:
-        headers = {
+        return {
             "User-Agent": os.environ.get(
                 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR, _DEFAULT_HTTP_USER_AGENT
             ),
             "Accept": "*/*",
         }
-
-        bearer_token = os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR)
-        if bearer_token:
-            headers["Authorization"] = f"Bearer {bearer_token}"
-
-        return headers
 
     @classmethod
     def _handle_https_protocol(cls):

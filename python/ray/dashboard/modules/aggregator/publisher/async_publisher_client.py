@@ -57,7 +57,6 @@ class PublisherClientInterface(ABC):
 
     def __init__(self):
         self._exposable_event_types_list: List[str] = []
-        self._allow_all_event_types: bool = False
 
     def count_num_events_in_batch(self, batch: PublishBatch) -> int:
         """Count the number of events in a given PublishBatch."""
@@ -67,10 +66,8 @@ class PublisherClientInterface(ABC):
         """
         Check if an event should be allowed to be published.
         """
-        if self._allow_all_event_types:
-            return True
         if not self._exposable_event_types_list:
-            return False
+            return True
 
         event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
             event.event_type
@@ -105,15 +102,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._session = None
         self._preserve_proto_field_name = preserve_proto_field_name
 
-        if HTTP_EXPOSABLE_EVENT_TYPES.strip().upper() == "ALL":
-            self._allow_all_event_types = True
-            self._exposable_event_types_list = []
-        else:
-            self._exposable_event_types_list = [
-                event_type.strip()
-                for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
-                if event_type.strip()
-            ]
+        self._exposable_event_types_list = [
+            event_type.strip()
+            for event_type in HTTP_EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        ]
 
     async def publish(self, batch: PublishBatch) -> PublishStats:
         events_batch: list[events_base_event_pb2.RayEvent] = batch.events

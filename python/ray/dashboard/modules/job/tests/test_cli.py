@@ -158,7 +158,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -175,7 +174,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -191,7 +189,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
@@ -214,7 +211,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             # Test passing via json.
@@ -232,7 +228,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             # Test passing both throws an error.
@@ -275,7 +270,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -300,7 +294,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     def test_job_id(self, mock_sdk_client):
@@ -319,7 +312,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -336,7 +328,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_num_cpus(self, mock_sdk_client):
@@ -358,7 +349,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_num_gpus(self, mock_sdk_client):
@@ -380,7 +370,6 @@ class TestSubmit:
                 entrypoint_num_gpus=2,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_memory(self, mock_sdk_client):
@@ -402,7 +391,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=4,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
             )
 
     @pytest.mark.parametrize(
@@ -436,7 +424,6 @@ class TestSubmit:
                 "entrypoint_num_gpus": None,
                 "entrypoint_memory": None,
                 "entrypoint_resources": None,
-                "entrypoint_label_selector": None,
             }
             expected_kwargs.update(resources[1])
             mock_client_instance.submit_job.assert_called_with(**expected_kwargs)
@@ -457,33 +444,6 @@ class TestSubmit:
             print(result.output)
             assert result.exit_code == 1
             assert "not a valid JSON string" in result.output
-
-    def test_entrypoint_label_selector(self, mock_sdk_client):
-        runner = CliRunner()
-        mock_client_instance = mock_sdk_client.return_value
-
-        with set_env_var("RAY_ADDRESS", "env_addr"):
-            result = runner.invoke(
-                job_cli_group,
-                [
-                    "submit",
-                    """--entrypoint-label-selector={"fragile_node":"!1"}""",
-                    "--",
-                    "echo hello",
-                ],
-            )
-            assert result.exit_code == 0
-            mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
-                submission_id=None,
-                runtime_env={},
-                metadata=None,
-                entrypoint_num_cpus=None,
-                entrypoint_num_gpus=None,
-                entrypoint_memory=None,
-                entrypoint_resources=None,
-                entrypoint_label_selector={"fragile_node": "!1"},
-            )
 
     def test_metadata(self, mock_sdk_client):
         runner = CliRunner()
@@ -509,7 +469,6 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
-                entrypoint_label_selector=None,
                 metadata={"key": "value"},
             )
 

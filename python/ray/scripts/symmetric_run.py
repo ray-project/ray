@@ -11,7 +11,6 @@ import click
 import ray
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
-from ray.exceptions import RpcError
 
 import psutil
 
@@ -51,12 +50,9 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        try:
-            gcs_client.check_alive([], timeout=1)
+        if gcs_client.check_alive([], timeout=1):
             click.echo("Ray cluster is ready!")
             return True
-        except RpcError:
-            pass
         time.sleep(5)
     return False
 

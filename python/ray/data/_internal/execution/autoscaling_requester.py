@@ -56,7 +56,7 @@ class AutoscalingRequester:
         # Purge expired requests before making request to autoscaler.
         self._purge()
         # For the same execution_id, we track the latest resource request and
-        # its expiration timestamp.
+        # the its expiration timestamp.
         self._resource_requests[execution_id] = (
             req,
             time.time() + self._timeout,

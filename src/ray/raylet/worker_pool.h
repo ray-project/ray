@@ -228,6 +228,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
 
   virtual Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                 pid_t pid,
+                                StartupToken worker_startup_token,
                                 std::function<void(Status, int)> send_reply_callback) = 0;
 
   virtual boost::optional<const rpc::JobConfig &> GetJobConfig(
@@ -369,12 +370,15 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
+  /// \param[in] worker_startup_token The startup token of the process assigned to
+  /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                         pid_t pid,
+                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback) override;
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -557,6 +561,8 @@ class WorkerPool : public WorkerPoolInterface {
       const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override;
 
  protected:
+  void update_worker_startup_token_counter();
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -577,9 +583,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
   ///   this duration even if it's idle. This is only applicable before a lease is
   ///   assigned to the worker.
-  /// \return The process that we started and the worker ID assigned to it. If the worker
-  /// ID is nil, we didn't start a process.
-  std::tuple<Process, WorkerID> StartWorkerProcess(
+  /// \return The process that we started and a token. If the token is less than 0,
+  /// we didn't start a process.
+  std::tuple<Process, StartupToken> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
       const JobID &job_id,
@@ -597,11 +603,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param worker_command_args The command arguments of new worker process.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
-  /// \param[in] worker_id The WorkerID assigned to this worker process.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env,
-                               const WorkerID &worker_id);
+                               const ProcessEnvironment &env);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -611,10 +615,14 @@ class WorkerPool : public WorkerPoolInterface {
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
 
-  /// Look up worker's dynamic options by worker ID.
+  /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
-  const std::vector<std::string> &LookupWorkerDynamicOptions(
-      const WorkerID &worker_id) const;
+  const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
+
+  /// Global startup token variable. Incremented once assigned
+  /// to a worker process and is added to
+  /// state.worker_processes.
+  StartupToken worker_startup_token_counter_;
 
   struct IOWorkerState {
     /// The pool of idle I/O workers.
@@ -663,10 +671,10 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// A map from worker IDs, assigned by the raylet when starting worker processes, to
+    /// A map from the startup tokens of worker processes, assigned by the raylet, to
     /// the extra information of the process. Note that the shim process PID is the
     /// same with worker process PID, except worker process in container.
-    absl::flat_hash_map<WorkerID, WorkerProcessInfo> worker_processes;
+    absl::flat_hash_map<StartupToken, WorkerProcessInfo> worker_processes;
     /// FIFO queue of pending requests with workers STARTED but pending registration.
     /// If a request stays in this status for >= worker_register_timeout_seconds, we'll
     /// fail the request and kill the worker process.
@@ -708,7 +716,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const WorkerID &worker_id,
+  void MonitorStartingWorkerProcess(StartupToken proc_startup_token,
                                     const Language &language,
                                     rpc::WorkerType worker_type);
 
@@ -817,7 +825,6 @@ class WorkerPool : public WorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const WorkerID &worker_id,
                         rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
@@ -825,7 +832,7 @@ class WorkerPool : public WorkerPoolInterface {
                         const std::vector<std::string> &dynamic_options,
                         std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
-  void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
+  void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.
@@ -836,7 +843,6 @@ class WorkerPool : public WorkerPoolInterface {
       rpc::JobConfig *job_config,
       rpc::WorkerType worker_type,
       const JobID &job_id,
-      const WorkerID &worker_id,
       const std::vector<std::string> &dynamic_options,
       int runtime_env_hash,
       const std::string &serialized_runtime_env_context,

@@ -19,7 +19,9 @@ namespace raylet_scheduling_policy {
 
 double LeastResourceScorer::Score(const ResourceRequest &required_resources,
                                   const NodeResources &node_resources) {
-  if (!node_resources.IsAvailable(required_resources)) {
+  // Check if the node has required labels before scoring on the resources.
+  const auto &label_selector = required_resources.GetLabelSelector();
+  if (!node_resources.HasRequiredLabels(label_selector)) {
     return -1.;
   }
 
@@ -40,16 +42,22 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   for (auto &resource_id : required_resources.ResourceIds()) {
     const auto &request_resource = required_resources.Get(resource_id);
     const auto &node_available_resource = node_resources_ptr->available.Get(resource_id);
-    node_score += Calculate(request_resource, node_available_resource);
+    auto score = Calculate(request_resource, node_available_resource);
+    if (score < 0.) {
+      return -1.;
+    }
+    node_score += score;
   }
   return node_score;
 }
 
-// This function assumes the resource request has already passed the availability check
 double LeastResourceScorer::Calculate(const FixedPoint &requested,
                                       const FixedPoint &available) {
   RAY_CHECK(available >= 0) << "Available resource " << available.Double()
                             << " should be nonnegative.";
+  if (requested > available) {
+    return -1;
+  }
 
   if (available == 0) {
     return 0;

@@ -261,7 +261,6 @@ steps:
       - python
       - dashboard
       - oss
-      - min_build
     instance_type: medium
     commands:
       # validate minimal installation
@@ -433,6 +432,7 @@ steps:
     tags:
       - java
       - python
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -484,6 +484,7 @@ steps:
     # avoid running them for every C++ code change.
     tags:
       - spark_on_ray
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core

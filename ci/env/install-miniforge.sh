@@ -95,12 +95,6 @@ install_miniforge() {
     )
   fi
 
-  (
-    set +x
-    echo "Cleaning conda caches..."
-    "${WORKSPACE_DIR}"/ci/suppress_output conda clean --all -q -y
-  )
-
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }

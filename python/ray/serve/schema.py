@@ -1583,6 +1583,13 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
+    def shutdown(self):
+        """
+        Shutdown the task processor and clean up resources.
+        """
+        pass
+
+    @abstractmethod
     def cancel_task_sync(self, task_id: str):
         """
         Cancel a task synchronously.

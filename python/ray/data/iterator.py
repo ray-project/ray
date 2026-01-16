@@ -42,7 +42,6 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
 
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -93,17 +92,15 @@ class DataIterator(abc.ABC):
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
-    ]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple containing:
-            - An iterator over RefBundles.
-            - A DatasetStats object used for recording stats during iteration.
-            - A boolean indicating if the blocks can be safely cleared after use.
-            - An optional executor (StreamingExecutor) for reporting prefetched bytes.
+            A tuple. The first item of the tuple is an iterator over RefBundles.
+            The second item of the tuple is a DatasetStats object used for recording
+            stats during iteration.
+            The third item is a boolean indicating if the blocks can be safely cleared
+            after use.
         """
         ...
 
@@ -164,16 +161,9 @@ class DataIterator(abc.ABC):
         )
 
     def _create_batch_iterator(
-        self,
-        ref_bundles_iter: Iterator[RefBundle],
-        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
-        **kwargs,
+        self, ref_bundles_iter: Iterator[RefBundle], **kwargs
     ) -> BatchIterator:
-        return BatchIterator(
-            ref_bundles_iter,
-            prefetch_bytes_callback=prefetch_bytes_callback,
-            **kwargs,
-        )
+        return BatchIterator(ref_bundles_iter, **kwargs)
 
     def _iter_batches(
         self,
@@ -200,22 +190,9 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats,
                 blocks_owned_by_consumer,
-                executor,
             ) = self._to_ref_bundle_iterator()
 
             dataset_tag = self._get_dataset_tag()
-
-            # Create a callback to report prefetched bytes to the executor's
-            # resource manager.
-            def make_prefetch_callback(exec):
-                def callback(num_bytes: int) -> None:
-                    exec.set_external_consumer_bytes(num_bytes)
-
-                return callback
-
-            prefetch_bytes_callback = (
-                make_prefetch_callback(executor) if executor is not None else None
-            )
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
@@ -230,7 +207,6 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
-                prefetch_bytes_callback=prefetch_bytes_callback,
             )
 
             if stats:
@@ -1041,7 +1017,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(

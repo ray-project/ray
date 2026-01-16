@@ -99,7 +99,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
-      LineageReconstructionEligibility lineage_eligibility,
+      bool is_reconstructable,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       const std::optional<std::string> &tensor_transport = std::nullopt) override
@@ -244,8 +244,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const rpc::Address &borrower_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  LineageReconstructionEligibility GetLineageReconstructionEligibility(
-      const ObjectID &object_id) const override;
+  bool IsObjectReconstructable(const ObjectID &object_id,
+                               bool *lineage_evicted) const override;
+
   int64_t EvictLineage(int64_t min_bytes_to_evict) override;
 
   void UpdateObjectPendingCreation(const ObjectID &object_id,
@@ -313,7 +314,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     Reference(rpc::Address owner_address,
               std::string call_site,
               int64_t object_size,
-              LineageReconstructionEligibility lineage_eligibility,
+              bool is_reconstructable,
               std::optional<NodeID> pinned_at_node_id,
               std::optional<std::string> tensor_transport)
         : call_site_(std::move(call_site)),
@@ -322,7 +323,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
           pinned_at_node_id_(std::move(pinned_at_node_id)),
           tensor_transport_(std::move(tensor_transport)),
           owned_by_us_(true),
-          lineage_eligibility_(lineage_eligibility),
+          is_reconstructable_(is_reconstructable),
           pending_creation_(!pinned_at_node_id_.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
@@ -356,8 +357,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us_ &&
-          lineage_eligibility_ != LineageReconstructionEligibility::ELIGIBLE) {
+      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -443,11 +443,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// (see task_manager.h).
     bool owned_by_us_ = false;
 
-    /// Whether the object is eligible for lineage reconstruction, determined before
-    /// task resubmission. See https://github.com/ray-project/ray/pull/59625.
-    LineageReconstructionEligibility lineage_eligibility_ =
-        LineageReconstructionEligibility::ELIGIBLE;
-
+    // Whether this object can be reconstructed via lineage. If false, then the
+    // object's value will be pinned as long as it is referenced by any other
+    // object's lineage. This should be set to false if the object was created
+    // by ray.put(), a task that cannot be retried, or its lineage was evicted.
+    bool is_reconstructable_ = false;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
@@ -518,7 +520,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                               const rpc::Address &owner_address,
                               const std::string &call_site,
                               const int64_t object_size,
-                              LineageReconstructionEligibility lineage_eligibility,
+                              bool is_reconstructable,
                               bool add_local_ref,
                               const std::optional<NodeID> &pinned_at_node_id,
                               const std::optional<std::string> &tensor_transport)

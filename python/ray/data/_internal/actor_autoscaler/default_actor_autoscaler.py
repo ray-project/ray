@@ -102,7 +102,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         op_state: "OpState",
     ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
-        if op.has_completed() or (
+        if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
         ):
             num_to_scale_down = self._compute_downscale_delta(actor_pool)
@@ -121,11 +121,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
             )
-
-        # To prevent unexpected downscaling from the initial size, short-circuit if
-        # the operator hasn't received any inputs.
-        if op.metrics.num_inputs_received == 0:
-            return ActorPoolScalingRequest.no_op(reason="no inputs received")
 
         # Determine whether to scale up based on the actor pool utilization.
         util = self._compute_utilization(actor_pool)

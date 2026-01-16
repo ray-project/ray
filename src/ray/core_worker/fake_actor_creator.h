@@ -31,23 +31,23 @@ class FakeActorCreator : public ActorCreatorInterface {
   };
 
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          rpc::StatusCallback callback) override {}
+                          gcs::StatusCallback callback) override {}
 
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      rpc::StatusCallback callback) override {}
+      gcs::StatusCallback callback) override {}
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  rpc::StatusCallback callback) override {}
+                                  gcs::StatusCallback callback) override {}
 
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       rpc::StatusCallback callback) override {
+                                       gcs::StatusCallback callback) override {
     callbacks.push_back(callback);
   }
 
@@ -55,7 +55,7 @@ class FakeActorCreator : public ActorCreatorInterface {
     return actor_pending;
   }
 
-  std::list<rpc::StatusCallback> callbacks;
+  std::list<gcs::StatusCallback> callbacks;
   bool actor_pending = false;
 };
 

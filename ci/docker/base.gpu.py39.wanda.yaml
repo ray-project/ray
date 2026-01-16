@@ -1,0 +1,21 @@
+# This is a clone and python3.9 version of ci/docker/base.gpu.wanda.yaml. The latter one
+# is a multi-py version. This file exists due to the historical reason that Ray CI only
+# supports one python version which is python 3.9.
+#
+# TODO(can-anyscale): migrate all jobs to use the multi-py version
+
+name: "oss-ci-base_gpu"
+froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
+dockerfile: ci/docker/base.gpu.Dockerfile
+srcs:
+  - .bazelrc
+  - .bazelversion
+  - ci/env/install-dependencies.sh
+  - ci/env/install-llvm-binaries.sh
+  - ci/env/install-bazel.sh
+  - ci/env/install-miniforge.sh
+  - ci/suppress_output
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_gpu

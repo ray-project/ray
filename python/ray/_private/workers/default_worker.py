@@ -18,7 +18,6 @@ from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
-from ray._raylet import WorkerID
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -155,10 +154,10 @@ parser.add_argument(
     help="The computed hash of the runtime env for this worker.",
 )
 parser.add_argument(
-    "--worker-id",
+    "--startup-token",
     required=True,
-    type=str,
-    help="The worker ID assigned to this worker process by the raylet (hex string).",
+    type=int,
+    help="The startup token assigned to this worker process by the raylet.",
 )
 parser.add_argument(
     "--ray-debugger-external",
@@ -268,7 +267,7 @@ if __name__ == "__main__":
         node.session_name,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
-        worker_id=WorkerID.from_hex(args.worker_id),
+        startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,

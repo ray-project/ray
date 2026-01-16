@@ -193,7 +193,6 @@ def get_provider():
 def test_node_providers_basic(get_provider, provider_name):
     # Test launching.
     provider = get_provider(name=provider_name)
-    timeout_s = 30 if provider_name == "fake_multi" else 10
     provider.launch(
         shape={"worker_nodes": 2},
         request_id="1",
@@ -213,7 +212,7 @@ def test_node_providers_basic(get_provider, provider_name):
         assert nodes_by_type == {"worker_nodes": 4, "worker_nodes1": 1}
         return True
 
-    wait_for_condition(verify, timeout=timeout_s)
+    wait_for_condition(verify)
 
     nodes = provider.get_non_terminated().keys()
 
@@ -239,7 +238,7 @@ def test_node_providers_basic(get_provider, provider_name):
             assert node.request_id == "4"
         return True
 
-    wait_for_condition(verify, timeout=timeout_s)
+    wait_for_condition(verify)
 
 
 @pytest.mark.parametrize(

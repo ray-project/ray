@@ -3,7 +3,6 @@ from typing import Optional
 import click
 
 from ray_release.byod.build import build_anyscale_custom_byod_image
-from ray_release.byod.build_context import BuildContext
 
 
 @click.command()
@@ -21,12 +20,9 @@ def main(
         raise click.UsageError(
             "Either post_build_script or python_depset must be provided"
         )
-    build_context: BuildContext = {}
-    if post_build_script:
-        build_context["post_build_script"] = post_build_script
-    if python_depset:
-        build_context["python_depset"] = python_depset
-    build_anyscale_custom_byod_image(image_name, base_image, build_context)
+    build_anyscale_custom_byod_image(
+        image_name, base_image, post_build_script, python_depset
+    )
 
 
 if __name__ == "__main__":

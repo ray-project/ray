@@ -111,7 +111,8 @@ def handle_timeout_errors(
 
                 # Build error message
                 base_msg = (
-                    f"Failed to {operation_name} for {requester_id}.{consecutive_msg}"
+                    f"Failed to {operation_name} for {requester_id}."
+                    f"{consecutive_msg}"
                 )
                 if error_msg_suffix is not None:
                     msg = f"{base_msg} {error_msg_suffix}"
@@ -240,18 +241,7 @@ class _AutoscalingCoordinatorActor:
 
     TICK_INTERVAL_S = 20
 
-    def __init__(
-        self,
-        get_current_time: Callable[[], float] = time.time,
-        send_resources_request: Callable[
-            [List[ResourceDict]], None
-        ] = lambda bundles: ray.autoscaler.sdk.request_resources(bundles=bundles),
-        get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
-    ):
-        self._get_current_time = get_current_time
-        self._send_resources_request = send_resources_request
-        self._get_cluster_nodes = get_cluster_nodes
-
+    def __init__(self):
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
         self._cluster_node_resources: List[ResourceDict] = []
         self._update_cluster_node_resources()
@@ -293,7 +283,7 @@ class _AutoscalingCoordinatorActor:
         for r in resources:
             for k in r:
                 r[k] = math.ceil(r[k])
-        now = self._get_current_time()
+        now = time.time()
         request_updated = False
         old_req = self._ongoing_reqs.get(requester_id)
         if old_req is not None:
@@ -335,7 +325,7 @@ class _AutoscalingCoordinatorActor:
         self._reallocate_resources()
 
     def _purge_expired_requests(self):
-        now = self._get_current_time()
+        now = time.time()
         self._ongoing_reqs = {
             requester_id: req
             for requester_id, req in self._ongoing_reqs.items()
@@ -348,7 +338,7 @@ class _AutoscalingCoordinatorActor:
         merged_req = []
         for req in self._ongoing_reqs.values():
             merged_req.extend(req.requested_resources)
-        self._send_resources_request(merged_req)
+        ray.autoscaler.sdk.request_resources(bundles=merged_req)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""
@@ -382,7 +372,7 @@ class _AutoscalingCoordinatorActor:
                 return False
             return True
 
-        nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
+        nodes = list(filter(_is_node_eligible, ray.nodes()))
         nodes = sorted(nodes, key=lambda node: node.get("NodeID", ""))
         cluster_node_resources = [node["Resources"] for node in nodes]
         if cluster_node_resources == self._cluster_node_resources:
@@ -394,7 +384,7 @@ class _AutoscalingCoordinatorActor:
 
     def _reallocate_resources(self):
         """Reallocate cluster resources."""
-        now = self._get_current_time()
+        now = time.time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
         ongoing_reqs = sorted(
             [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]
@@ -409,22 +399,15 @@ class _AutoscalingCoordinatorActor:
                         ongoing_req.allocated_resources.append(req)
                         break
         # Allocate remaining resources.
-        # NOTE: to handle the case where multiple datasets are running concurrently,
-        # we divide remaining resources equally to all requesters with `request_remaining=True`.
-        remaining_resource_requesters = [
-            req for req in ongoing_reqs if req.request_remaining
-        ]
-        num_remaining_requesters = len(remaining_resource_requesters)
-        if num_remaining_requesters > 0:
-            for node_resource in cluster_node_resources:
-                # Divide remaining resources equally among requesters.
-                # NOTE: Integer division may leave some resources unallocated.
-                divided_resource = {
-                    k: v // num_remaining_requesters for k, v in node_resource.items()
-                }
-                for ongoing_req in remaining_resource_requesters:
-                    if any(v > 0 for v in divided_resource.values()):
-                        ongoing_req.allocated_resources.append(divided_resource)
+        # NOTE, to handle the case where multiple datasets are running concurrently,
+        # now we double-allocate remaining resources to all requesters with
+        # `request_remaining=True`.
+        # This achieves parity with the behavior before Ray Data was integrated with
+        # AutoscalingCoordinator, where each dataset assumes it has the whole cluster.
+        # TODO(hchen): handle multiple request_remaining requests better.
+        for ongoing_req in ongoing_reqs:
+            if ongoing_req.request_remaining:
+                ongoing_req.allocated_resources.extend(cluster_node_resources)
 
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"

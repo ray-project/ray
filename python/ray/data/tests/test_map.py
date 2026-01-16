@@ -5,8 +5,9 @@ import os
 import random
 import threading
 import time
+from asyncio import AbstractEventLoop
 from typing import Iterator, Literal
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
@@ -1033,21 +1034,17 @@ def test_async_flat_map(
 class TestGenerateTransformFnForAsyncMap:
     @pytest.fixture
     def mock_actor_async_ctx(self):
-        # Use new signature: only is_async and udf_instances
-        _map_actor_ctx = _MapActorContext(is_async=True, udf_instances={})
+        _map_actor_ctx = _MapActorContext(Mock(), Mock(), is_async=True)
 
-        import ray
+        loop: AbstractEventLoop = _map_actor_ctx.udf_map_asyncio_loop
+        assert loop is not None
 
-        ray.data._map_actor_context = _map_actor_ctx
-        yield _map_actor_ctx
-        # Shutdown async loop thread before cleanup to prevent hanging
-        if _map_actor_ctx.udf_map_asyncio_loop is not None:
-            _map_actor_ctx.udf_map_asyncio_loop.call_soon_threadsafe(
-                _map_actor_ctx.udf_map_asyncio_loop.stop
-            )
-        if _map_actor_ctx.udf_map_asyncio_thread is not None:
-            _map_actor_ctx.udf_map_asyncio_thread.join(timeout=5.0)
-        ray.data._map_actor_context = None
+        with patch("ray.data._map_actor_context", _map_actor_ctx):
+
+            yield _map_actor_ctx
+
+            loop.call_soon_threadsafe(loop.stop)
+            _map_actor_ctx.udf_map_asyncio_thread.join()
 
     def test_non_coroutine_function_assertion(
         self, target_max_block_size_infinite_or_default

@@ -11,7 +11,6 @@ import ray
 from ray._private.ray_constants import env_bool, env_float, env_integer
 from ray._private.worker import WORKER_MODE
 from ray.data._internal.logging import update_dataset_logger_for_worker
-from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -72,6 +71,10 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
+
+DEFAULT_ITER_GET_BLOCK_BATCH_SIZE = env_integer(
+    "RAY_DATA_ITER_GET_BLOCK_BATCH_SIZE", 32
+)
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
@@ -248,14 +251,8 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
 )
 
 
-# Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
-    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
-)
-
-
-DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
-    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", True
 )
 
 
@@ -360,6 +357,8 @@ class DataContext:
             remote storage.
         enable_pandas_block: Whether pandas block format is enabled.
         actor_prefetcher_enabled: Whether to use actor based block prefetcher.
+        iter_get_block_batch_size: Maximum number of block object references to resolve
+            in a single ``ray.get()`` call when iterating over datasets.
         autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
@@ -486,9 +485,11 @@ class DataContext:
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
-            later. If `None`, this backpressure policy is disabled.
+            later. If `None`, this type of backpressure is disabled.
+        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
+            bundles before applying backpressure. If `None`, no limit is applied.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
-            of an operator based on its and downstream operators' queue size.
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -500,6 +501,7 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+    iter_get_block_batch_size: int = DEFAULT_ITER_GET_BLOCK_BATCH_SIZE
 
     autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
@@ -608,7 +610,6 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    # This setting serves as a global override
     max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
@@ -628,9 +629,8 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: Optional[
-        float
-    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
@@ -639,8 +639,6 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
-
-    _checkpoint_config: Optional[CheckpointConfig] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -833,34 +831,6 @@ class DataContext:
         workers.
         """
         self.dataset_logger_id = dataset_id
-
-    @property
-    def checkpoint_config(self) -> Optional[CheckpointConfig]:
-        """Get the checkpoint configuration."""
-        return self._checkpoint_config
-
-    @checkpoint_config.setter
-    def checkpoint_config(
-        self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
-    ) -> None:
-        """Set the checkpoint configuration."""
-        if value is None:
-            self._checkpoint_config = None
-        elif isinstance(value, dict):
-            if "override_backend" in value:
-                if not isinstance(value["override_backend"], str):
-                    raise TypeError(
-                        "Expected 'override_backend' to be a string,"
-                        f" but got {type(value['override_backend'])}."
-                    )
-                value["override_backend"] = CheckpointBackend[value["override_backend"]]
-            self._checkpoint_config = CheckpointConfig(**value)
-        elif isinstance(value, CheckpointConfig):
-            self._checkpoint_config = value
-        else:
-            raise TypeError(
-                "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
-            )
 
 
 # Backwards compatibility alias.

@@ -22,16 +22,12 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
-    DetokenizeRequest,
-    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorInfo,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
-    TokenizeRequest,
-    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
 )
@@ -55,7 +51,6 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
     from vllm.entrypoints.openai.serving_score import ServingScores
-    from vllm.entrypoints.openai.serving_tokenization import OpenAIServingTokenization
     from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
 
 vllm = try_import("vllm")
@@ -213,7 +208,6 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
-        self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -281,7 +275,6 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding = state.openai_serving_embedding
         self._oai_serving_transcription = state.openai_serving_transcription
         self._oai_serving_scores = state.openai_serving_scores
-        self._oai_serving_tokenization = state.openai_serving_tokenization
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -323,14 +316,6 @@ class VLLMEngine(LLMEngine):
         assert hasattr(
             self._oai_serving_scores, "create_score"
         ), "oai_serving_scores must have a create_score attribute"
-
-    def _validate_openai_serving_tokenization(self):
-        assert hasattr(
-            self._oai_serving_tokenization, "create_tokenize"
-        ), "oai_serving_tokenization must have a create_tokenize attribute"
-        assert hasattr(
-            self._oai_serving_tokenization, "create_detokenize"
-        ), "oai_serving_tokenization must have a create_detokenize attribute"
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -567,48 +552,6 @@ class VLLMEngine(LLMEngine):
             yield ErrorResponse(**score_response.model_dump())
         else:
             yield ScoreResponse(**score_response.model_dump())
-
-    async def tokenize(
-        self,
-        request: TokenizeRequest,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
-        self._validate_openai_serving_tokenization()
-
-        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
-            raw_request_info
-        )
-        tokenize_response = await self._oai_serving_tokenization.create_tokenize(
-            request,
-            raw_request=raw_request,
-        )
-
-        if isinstance(tokenize_response, VLLMErrorResponse):
-            yield ErrorResponse(error=ErrorInfo(**tokenize_response.error.model_dump()))
-        else:
-            yield TokenizeResponse(**tokenize_response.model_dump())
-
-    async def detokenize(
-        self,
-        request: DetokenizeRequest,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
-        self._validate_openai_serving_tokenization()
-
-        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
-            raw_request_info
-        )
-        detokenize_response = await self._oai_serving_tokenization.create_detokenize(
-            request,
-            raw_request=raw_request,
-        )
-
-        if isinstance(detokenize_response, VLLMErrorResponse):
-            yield ErrorResponse(
-                error=ErrorInfo(**detokenize_response.error.model_dump())
-            )
-        else:
-            yield DetokenizeResponse(**detokenize_response.model_dump())
 
     async def check_health(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"

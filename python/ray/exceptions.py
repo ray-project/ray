@@ -13,7 +13,6 @@ from ray.core.generated.common_pb2 import (
     PYTHON,
     ActorDiedErrorContext,
     Address,
-    ErrorType,
     Language,
     NodeDeathInfo,
     RayException,
@@ -179,20 +178,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                # Store args separately to avoid writing to user-defined
-                # read-only or property-based `args`.
-                self._ray_task_error_args = (cause,)
-
-            @property
-            def args(self):
-                return self._ray_task_error_args
-
-            @args.setter
-            def args(self, value):
-                self._ray_task_error_args = value
+                self.args = (cause,)
 
             def __reduce__(self):
-                return (cls, self._ray_task_error_args)
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -217,18 +206,10 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                self._ray_task_error_args = (cause,)
-
-            @property
-            def args(self):
-                return self._ray_task_error_args
-
-            @args.setter
-            def args(self, value):
-                self._ray_task_error_args = value
+                self.args = (cause,)
 
             def __reduce__(self):
-                return (cls, self._ray_task_error_args)
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -263,15 +244,6 @@ class RayTaskError(RayError):
                 " be subclassed! This exception is raised as"
                 " RayTaskError only. You can use `ray_task_error.cause` to"
                 f" access the user exception. Failure in subclassing: {e}"
-            )
-            return self
-        except Exception as e:
-            logger.warning(
-                "Failed to combine RayTaskError with user exception type "
-                f"{type(self.cause)}; raising RayTaskError only. This can "
-                "happen when the user exception overrides attributes like "
-                "`args` or otherwise blocks subclass construction. "
-                f"Failure in subclassing: {e}"
             )
             return self
 
@@ -781,85 +753,66 @@ class OwnerDiedError(ObjectLostError):
 
 @PublicAPI
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed."""
+    """Indicates that the object cannot be reconstructed.
 
-    REASON_MESSAGES = {
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED: (
-            "The object cannot be reconstructed because the maximum number of "
-            "task retries has been exceeded. "
-            "Consider increasing the number of retries using `@ray.remote(max_retries=N)`."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED: (
-            "The object cannot be reconstructed because its lineage has been "
-            "evicted to reduce memory pressure. "
-            "To prevent this error, set the environment variable "
-            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_PUT: (
-            "The object cannot be reconstructed because it was created by "
-            "ray.put(), which has no task lineage. "
-            "To prevent this error, return the value from a task instead."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED: (
-            "The object cannot be reconstructed because the task was created "
-            "with max_retries=0. "
-            "Consider enabling retries using `@ray.remote(max_retries=N)`."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED: (
-            "The object cannot be reconstructed because it crossed an ownership "
-            "boundary. Only the owner of an object can trigger reconstruction, "
-            "but this worker borrowed the object from another worker."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE: (
-            "The object cannot be reconstructed because Ray is running in "
-            "local mode. Local mode does not support object reconstruction."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
-            "The object cannot be reconstructed because its reference was "
-            "not found in the reference counter. "
-            "Please file an issue at https://github.com/ray-project/ray/issues."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED: (
-            "The object cannot be reconstructed because the task that would "
-            "produce it was cancelled."
-        ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED: (
-            "The object cannot be reconstructed because lineage reconstruction "
-            "is disabled system-wide (object_reconstruction_enabled=False)."
-        ),
-    }
-
-    def __init__(
-        self,
-        object_ref_hex: str,
-        reason: "ErrorType" = None,
-        reason_message: str = None,
-        owner_address: Optional[Address] = None,
-        call_site: str = "",
-    ):
-        """Initialize ObjectReconstructionFailedError.
-
-        Args:
-            object_ref_hex: Hex string of the object reference.
-            reason: ErrorType enum value indicating why reconstruction failed.
-            reason_message: Human-readable explanation of the failure.
-            owner_address: Address of the object's owner.
-            call_site: Call site where the object was created.
-        """
-        super().__init__(object_ref_hex, owner_address, call_site)
-        self.reason = reason
-        self.reason_message = reason_message or self.REASON_MESSAGES.get(
-            self.reason,
-            "Unknown error reason. This should not happen, please file an issue "
-            "at https://github.com/ray-project/ray/issues.",
-        )
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
 
     def __str__(self):
-        base = self._base_str()
-        if self.reason_message:
-            reason_name = ErrorType.Name(self.reason) if self.reason else "UNKNOWN"
-            return base + f"\n\n[{reason_name}] {self.reason_message}"
-        return base
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed "
+                "because it was created by an actor, ray.put() call, or its "
+                "ObjectRef was created by a different worker."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the maximum
+    number of task retries has been exceeded.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed "
+                "because the maximum number of task retries has been exceeded. "
+                "To prevent this error, set "
+                "`@ray.remote(max_retries=<num retries>)` (default 3)."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because its lineage
+    was evicted due to memory pressure.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed because its lineage has been "
+                "evicted to reduce memory pressure. "
+                "To prevent this error, set the environment variable "
+                "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
+            )
+        )
 
 
 @PublicAPI
@@ -1001,13 +954,6 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 
 @PublicAPI(stability="alpha")
-class RayDirectTransportError(RaySystemError):
-    """Raised when there is an error during a Ray direct transport transfer."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
 class UnserializableException(RayError):
     """Raised when there is an error deserializing a serialized exception.
 
@@ -1052,28 +998,6 @@ class ActorAlreadyExistsError(ValueError, RayError):
         return self.error_message
 
 
-@DeveloperAPI
-class ActorHandleNotFoundError(ValueError, RayError):
-    """Raised when trying to kill an actor handle that doesn't exist.
-
-    This typically happens when using an actor handle from a previous Ray session
-    after calling ray.shutdown() and ray.init().
-
-    Note that this error is not only a subclass of RayError, but also a subclass of ValueError,
-    to maintain backward compatibility.
-
-    Args:
-        error_message: The error message that contains information about the actor handle.
-    """
-
-    def __init__(self, error_message: str):
-        super().__init__(error_message)
-        self.error_message = error_message
-
-    def __str__(self):
-        return self.error_message
-
-
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -1085,6 +1009,8 @@ RAY_EXCEPTION_TYPES = [
     ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
@@ -1103,6 +1029,5 @@ RAY_EXCEPTION_TYPES = [
     RayCgraphCapacityExceeded,
     UnserializableException,
     ActorAlreadyExistsError,
-    ActorHandleNotFoundError,
     AuthenticationError,
 ]

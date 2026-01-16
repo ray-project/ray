@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -250,10 +250,11 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",
-            "py-spy >= 0.4.0; python_version >= '3.12'",
+            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
+            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
             "requests",
-            "grpcio >= 1.42.0",
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -298,7 +299,8 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.42.0",
+                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
                 "pyOpenSSL",
             ]
         )
@@ -322,7 +324,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack>=1.7.0",
+        "ormsgpack==1.7.0",
         "pyyaml",
         "scipy",
     ]
@@ -371,7 +373,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.13.0",
+                "vllm[audio]>=0.12.0",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
@@ -757,13 +759,6 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
-    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
-    # older versions require the wheel package
-    try:
-        from setuptools.command.bdist_wheel import bdist_wheel
-    except ImportError:
-        from wheel.bdist_wheel import bdist_wheel
-
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -771,22 +766,6 @@ if __name__ == "__main__":
     class BinaryDistribution(setuptools.Distribution):
         def has_ext_modules(self):
             return True
-
-    class RayCppBdistWheel(bdist_wheel):
-        """Build a Python-agnostic wheel for ray-cpp.
-
-        The wheel contains platform-specific C++ binaries, so we keep a platform
-        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
-        """
-
-        def finalize_options(self):
-            super().finalize_options()
-            # Wheel contains C++ binaries, so force a real platform tag, not "any".
-            self.root_is_pure = False
-
-        def get_tag(self):
-            _, _, platform_tag = super().get_tag()
-            return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
@@ -804,12 +783,6 @@ if __name__ == "__main__":
         # If the license text has multiple lines, add an ending endline.
         license_text += "\n"
 
-    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
-    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
-    cmdclass = {"build_ext": build_ext}
-    if setup_spec.type == SetupType.RAY_CPP:
-        cmdclass["bdist_wheel"] = RayCppBdistWheel
-
     setuptools.setup(
         name=setup_spec.name,
         version=setup_spec.version,
@@ -822,15 +795,16 @@ if __name__ == "__main__":
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.10",
+        python_requires=">=3.9",
         classifiers=[
+            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
-        cmdclass=cmdclass,
+        cmdclass={"build_ext": build_ext},
         distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),

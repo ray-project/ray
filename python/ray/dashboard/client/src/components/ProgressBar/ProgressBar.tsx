@@ -135,7 +135,7 @@ export const ProgressBar = ({
                     height: 16,
                     borderRadius: "4px",
                     marginRight: 1,
-                    backgroundColor: "text.primary",
+                    backgroundColor: "black",
                   }}
                 />
                 <Typography>Total: {finalTotal}</Typography>
@@ -293,7 +293,7 @@ const LegendTooltip = ({
                   height: 16,
                   borderRadius: "4px",
                   marginRight: 1,
-                  backgroundColor: "text.primary",
+                  backgroundColor: "black",
                 }}
               />
               <Typography>Total: {total}</Typography>

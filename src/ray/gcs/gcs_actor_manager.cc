@@ -26,7 +26,6 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 
@@ -1949,7 +1948,7 @@ const GcsActor *GcsActorManager::GetActor(const ActorID &actor_id) const {
 }
 
 bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
-  const ActorID &actor_id = actor->GetActorID();
+  const auto &actor_id = actor->GetActorID();
   auto pending_it = std::find_if(pending_actors_.begin(),
                                  pending_actors_.end(),
                                  [actor_id](const std::shared_ptr<GcsActor> &this_actor) {
@@ -1961,7 +1960,7 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
     pending_actors_.erase(pending_it);
     return true;
   }
-  return false;
+  return gcs_actor_scheduler_->CancelInFlightActorScheduling(actor);
 }
 
 void GcsActorManager::RunAndClearActorCreationCallbacks(
@@ -1977,7 +1976,9 @@ void GcsActorManager::RunAndClearActorCreationCallbacks(
   }
 }
 
-size_t GcsActorManager::GetPendingActorsCount() const { return pending_actors_.size(); }
+size_t GcsActorManager::GetPendingActorsCount() const {
+  return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
+}
 
 std::string GcsActorManager::DebugString() const {
   uint64_t num_named_actors = 0;

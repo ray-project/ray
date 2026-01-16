@@ -26,8 +26,8 @@ def run_embedding_example():
         ),
         batch_size=32,
         concurrency=1,
-        chat_template_stage=False,  # Skip chat templating for embeddings
-        detokenize_stage=False,     # Skip detokenization for embeddings
+        apply_chat_template=False,
+        detokenize=False,
     )
 
     embedding_processor = build_processor(
