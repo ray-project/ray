@@ -200,10 +200,6 @@ class BaseDataLoader(ABC):
         for i in range(1, num_columns):
             result[f"image_{i}"] = processed_image.copy()
 
-    def convert_label(self, label: str) -> int:
-        """Convert a string label to integer ID."""
-        return self.label_to_id_map.get(label, -1)
-
     @abstractmethod
     def create_dataset(
         self,
@@ -224,14 +220,6 @@ class BaseDataLoader(ABC):
             Configured Ray dataset ready for iteration
         """
         raise NotImplementedError
-
-    @staticmethod
-    def parse_s3_url(s3_url: str) -> tuple:
-        """Parse an S3 URL into bucket and key components."""
-        if not s3_url.startswith("s3://"):
-            raise ValueError(f"Invalid S3 URL: {s3_url}")
-        s3_parts = s3_url.replace("s3://", "").split("/", 1)
-        return s3_parts[0], s3_parts[1] if len(s3_parts) > 1 else ""
 
 
 class ParquetS3Loader(BaseDataLoader):
