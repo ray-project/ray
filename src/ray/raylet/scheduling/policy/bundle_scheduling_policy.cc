@@ -281,29 +281,6 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   RAY_CHECK(!resource_request_list.empty());
 
   auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
-
-  // Node selected for STRICT_PACK must satisfy all label constraints. We check
-  // labels here before they are dropped in the aggregated resource request.
-  for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
-    const auto &node_resources = it->second->GetLocalView();
-    bool satisfies_all_labels = true;
-
-    for (const auto *req : resource_request_list) {
-      // IsFeasible includes a check whether the label_selector was satisfied
-      // for that request.
-      if (!node_resources.IsFeasible(*req)) {
-        satisfies_all_labels = false;
-        break;
-      }
-    }
-
-    if (!satisfies_all_labels) {
-      candidate_nodes.erase(it++);
-    } else {
-      ++it;
-    }
-  }
-
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -311,25 +288,36 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
+  LabelSelector aggregated_label_selector;
   for (const auto &resource_request : resource_request_list) {
     for (auto &resource_id : resource_request->ResourceIds()) {
       auto value = aggregated_resource_request.Get(resource_id) +
                    resource_request->Get(resource_id);
       aggregated_resource_request.Set(resource_id, value);
     }
+    // Aggregate label constraints from all requests. The selected node
+    // must satisfy the union of all label constraints.
+    const auto &label_selector = resource_request->GetLabelSelector();
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      aggregated_label_selector.AddConstraint(constraint);
+    }
+  }
+  aggregated_resource_request.SetLabelSelector(std::move(aggregated_label_selector));
+
+  // Remove any node that does not satisfy the aggregated request.
+  for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
+    const auto &node_resources = it->second->GetLocalView();
+    if (!node_resources.IsFeasible(aggregated_resource_request)) {
+      candidate_nodes.erase(it++);
+    } else {
+      ++it;
+    }
   }
 
-  const auto &right_node_it =
-      std::find_if(candidate_nodes.begin(),
-                   candidate_nodes.end(),
-                   [&aggregated_resource_request](const auto &entry) {
-                     const auto &node_resources = entry.second->GetLocalView();
-                     return node_resources.IsFeasible(aggregated_resource_request);
-                   });
-
-  if (right_node_it == candidate_nodes.end()) {
+  if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
-                      "whole cluster, schedule failed.";
+                      "whole cluster or no node satisfies the label constraints, "
+                      "schedule failed.";
     return SchedulingResult::Infeasible();
   }
 
