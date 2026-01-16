@@ -4,7 +4,11 @@ This script benchmarks different approaches for loading and preprocessing images
 - Loads images from S3 (parquet or JPEG format)
 - Applies image transforms (crop, scale, flip)
 - Iterates through batches with configurable batch sizes and prefetch settings
-- Tests all hyperparameter combinations
+- Tests all hyperparameter combinations:
+  - transform_type: Image transform (random_crop, large_crop, small_crop, etc.)
+  - batch_size: Batch size for processing
+  - prefetch_batches: Number of batches to prefetch
+  - num_image_columns: Number of image columns per row
 
 Supported data formats:
 - images_with_read_parquet: Uses ray.data.read_parquet() with embedded image bytes
@@ -12,22 +16,29 @@ Supported data formats:
 - images_with_read_images: Uses ray.data.read_images() with Partitioning
 """
 
+import argparse
 import io
 import itertools
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-import argparse
+
+import boto3
 import numpy as np
-import torchvision.transforms as transforms
-from PIL import Image
-from tabulate import tabulate
-from benchmark import Benchmark
-from dataset_benchmark_util import IMAGENET_WNID_TO_ID
 import ray
 import ray.data
+import torchvision.transforms as transforms
+from PIL import Image
+from pyarrow import fs
+from ray.data.datasource.partitioning import Partitioning
+from tabulate import tabulate
+from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+
+from benchmark import Benchmark
+from dataset_benchmark_util import IMAGENET_WNID_TO_ID
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +211,15 @@ class BaseDataLoader(ABC):
         for i in range(1, num_columns):
             result[f"image_{i}"] = processed_image.copy()
 
+    @staticmethod
+    def make_split_dirs(s3_root: str) -> Dict[str, str]:
+        """Generate split directories from an S3 root path."""
+        return {
+            "train": f"{s3_root}/train",
+            "val": f"{s3_root}/val",
+            "test": f"{s3_root}/test",
+        }
+
     @abstractmethod
     def create_dataset(
         self,
@@ -230,11 +250,7 @@ class ParquetS3Loader(BaseDataLoader):
 
     # S3 configuration
     S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split"
-    SPLIT_DIRS = {
-        "train": f"{S3_ROOT}/train",
-        "val": f"{S3_ROOT}/val",
-        "test": f"{S3_ROOT}/test",
-    }
+    SPLIT_DIRS = BaseDataLoader.make_split_dirs(S3_ROOT)
 
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with base dataset cache."""
@@ -299,14 +315,10 @@ class MapBatchesS3Loader(BaseDataLoader):
     Caches the file listing and base dataset to avoid repeated slow listings.
     """
 
-    # S3 configuration
+    # S3 configuration (shared with ReadImagesS3Loader)
     AWS_REGION = "us-west-2"
     S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
-    SPLIT_DIRS = {
-        "train": f"{S3_ROOT}/train",
-        "val": f"{S3_ROOT}/val",
-        "test": f"{S3_ROOT}/test",
-    }
+    SPLIT_DIRS = BaseDataLoader.make_split_dirs(S3_ROOT)
 
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with file listing cache."""
@@ -338,9 +350,6 @@ class MapBatchesS3Loader(BaseDataLoader):
                     if limit
                     else self._file_records_cache
                 )
-
-        import os
-        from torchdata.datapipes.iter import IterableWrapper
 
         # Required for torchdata S3 access
         os.environ.setdefault("S3_VERIFY_SSL", "0")
@@ -409,8 +418,6 @@ class MapBatchesS3Loader(BaseDataLoader):
         def download_and_process_batch(
             batch: Dict[str, np.ndarray]
         ) -> Dict[str, np.ndarray]:
-            from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
-
             processed_images = []
             labels = []
 
@@ -443,14 +450,10 @@ class ReadImagesS3Loader(BaseDataLoader):
     Caches the base dataset (before map) to avoid repeated file listings.
     """
 
-    # S3 configuration
-    AWS_REGION = "us-west-2"
-    S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
-    SPLIT_DIRS = {
-        "train": f"{S3_ROOT}/train",
-        "val": f"{S3_ROOT}/val",
-        "test": f"{S3_ROOT}/test",
-    }
+    # S3 configuration (shared with MapBatchesS3Loader)
+    AWS_REGION = MapBatchesS3Loader.AWS_REGION
+    S3_ROOT = MapBatchesS3Loader.S3_ROOT
+    SPLIT_DIRS = MapBatchesS3Loader.SPLIT_DIRS
 
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with base dataset cache."""
@@ -471,9 +474,6 @@ class ReadImagesS3Loader(BaseDataLoader):
 
         Same as multi_node_train_benchmark.py to avoid ACCESS_DENIED errors.
         """
-        import boto3
-        from pyarrow import fs
-
         credentials = boto3.Session().get_credentials()
         s3fs = fs.S3FileSystem(
             access_key=credentials.access_key,
@@ -492,8 +492,6 @@ class ReadImagesS3Loader(BaseDataLoader):
         if self._base_dataset_cache is not None and limit <= self._cached_limit:
             logger.info(f"Using cached base dataset (limit={self._cached_limit})")
             return self._base_dataset_cache
-
-        from ray.data.datasource.partitioning import Partitioning
 
         # Use partitioning to extract class from directory structure
         partitioning = Partitioning(
