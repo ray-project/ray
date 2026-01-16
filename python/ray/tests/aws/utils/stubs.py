@@ -498,7 +498,8 @@ def get_param_ssm_same(ssm_client_stub, ssm_param_name, cloudwatch_helper, confi
 
 
 def get_sha1_hash_of_cloudwatch_config_file(config_type, cloudwatch_helper):
-    cw_value_file = cloudwatch_helper._sha1_hash_file(config_type)
+    """Get hash of cloudwatch config file. Note: Now uses SHA-256 despite function name."""
+    cw_value_file = cloudwatch_helper._hash_file(config_type)
     return cw_value_file
 
 

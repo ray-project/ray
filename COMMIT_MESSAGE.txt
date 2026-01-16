@@ -1,0 +1,23 @@
+[core] Replace SHA-1 with SHA-256 for internal hash operations
+
+This commit addresses security concerns by migrating all internal
+hash operations from SHA-1 to SHA-256 across the Ray codebase.
+
+Changes:
+- Runtime environment hashing (pip, conda, uv, packaging)
+- Autoscaler configuration hashing (launch, runtime, SSH)
+- AWS CloudWatch helper hash operations
+- Service hashing (Serve, Data, AIR, Tune, Collective)
+- Function manager collision detection
+- Test fixtures and examples
+
+Impact:
+- Hash outputs change from 40-char to 64-char hex strings
+- Cache invalidation expected for runtime environments
+- Improved security and FIPS compliance readiness
+- No functional changes to core behavior
+
+Fixes #53435
+
+Signed-off-by: Purushotham P <purushotham.p@example.com>
+

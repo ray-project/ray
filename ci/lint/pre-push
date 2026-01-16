@@ -2,8 +2,42 @@
 
 echo "Linting changes as part of pre-push hook"
 echo ""
+
+# Try to find pre-commit command
+if command -v pre-commit >/dev/null 2>&1; then
+	PRE_COMMIT_CMD="pre-commit"
+elif command -v python3 >/dev/null 2>&1 && python3 -m pre_commit --version >/dev/null 2>&1; then
+	PRE_COMMIT_CMD="python3 -m pre_commit"
+else
+	echo "ERROR: pre-commit is not installed or not found in PATH."
+	echo ""
+	echo "To install pre-commit, run:"
+	echo "  pip install -c python/requirements_compiled.txt pre-commit==3.5.0"
+	echo ""
+	echo "If pre-commit is installed but not in PATH, ensure the Python bin directory"
+	echo "is in your PATH, or use 'python3 -m pre_commit' instead."
+	echo ""
+	echo "If you want to ignore this and push anyways, re-run with '--no-verify'."
+	exit 1
+fi
+
+# Determine the base branch (try master first, then main, then origin/master)
+BASE_REF="master"
+if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+	if git rev-parse --verify "main" >/dev/null 2>&1; then
+		BASE_REF="main"
+	elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+		BASE_REF="origin/master"
+	else
+		echo "WARNING: Could not find base branch (master/main/origin/master)."
+		echo "Running pre-commit on all files in HEAD..."
+		$PRE_COMMIT_CMD run --all-files
+		exit $?
+	fi
+fi
+
 echo "pre-commit:"
-pre-commit run --from-ref master --to-ref HEAD
+$PRE_COMMIT_CMD run --from-ref "$BASE_REF" --to-ref HEAD
 
 lint_exit_status=$?
 if [ $lint_exit_status -ne 0 ]; then
