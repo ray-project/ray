@@ -13,14 +13,24 @@ ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
 ARG RAY_INSTALL_MASK=
 
-ENV CC=clang
-ENV CXX=clang++-12
-
 # Disable C++ API/worker building by default on CI.
 # To use C++ API/worker, set BUILD_TYPE to "multi-lang".
 ENV RAY_DISABLE_EXTRA_CPP=1
 
-RUN mkdir /rayci
+RUN <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+# For backward compatibility.
+# base images should already have /rayci directory created.
+if [[ ! -d /rayci ]]; then
+  echo "WARNING: /rayci directory not found, creating it..."
+  mkdir /rayci
+fi
+
+EOF
+
 WORKDIR /rayci
 COPY . .
 

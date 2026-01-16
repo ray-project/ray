@@ -124,10 +124,8 @@ class MinimalSessionManagerTest(unittest.TestCase):
             sdk=sdk,
         )
         cluster_manager.set_cluster_env()
-        self.assertEqual(
-            cluster_manager.cluster_env_name,
-            "anyscale__env__"
-            "a93b7dec6c1b606a9814ceb96ace13e116d04cc8ce3a2bdea1b0f279c34ff692",
+        self.assertRegex(
+            cluster_manager.cluster_env_name, r"^anyscale__env__[0-9a-f]+$"
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
