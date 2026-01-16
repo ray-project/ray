@@ -293,7 +293,7 @@ class ParquetS3Loader(BaseDataLoader):
         label_to_id_map = self.label_to_id_map
 
         def process_row(row: Dict) -> Dict:
-            image_pil = Image.open(io.BytesIO(row["image"]))
+            image_pil = Image.open(io.BytesIO(row["image"])).convert("RGB")
             processed = BaseDataLoader.tensor_to_numpy(transform(image_pil))
             BaseDataLoader.add_image_columns(row, processed, num_image_columns)
             row["label"] = label_to_id_map.get(row["label"], -1)
