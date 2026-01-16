@@ -776,8 +776,8 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
 
 @pytest.mark.asyncio
-async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
-    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
+async def test_vllm_udf_fatal_error_exits_actor(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) trigger actor exit for recovery, not error rows."""
     from vllm.v1.engine.exceptions import EngineDeadError
 
     mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
@@ -790,14 +790,28 @@ async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        should_continue_on_error=True,  # Even with this True, fatal errors should raise
+        should_continue_on_error=True,  # Even with this True, fatal errors should not yield error rows
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
 
-    with pytest.raises(EngineDeadError):
-        async for _ in udf(batch):
-            pass
+    # Fatal errors trigger actor exit for recovery (not error rows, not simple re-raise).
+    # We use os._exit(1) instead of ray.actor.exit_actor() because:
+    # - os._exit(1) -> SYSTEM_ERROR -> RaySystemError -> task IS retried
+    # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> ActorDiedError -> NOT retried
+    # We mock os._exit to verify it was called with exit code 1.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.os._exit"
+    ) as mock_os_exit:
+        # Don't actually exit - let code continue and fail naturally
+        # The important thing is verifying os._exit was called
+        try:
+            async for _ in udf(batch):
+                pass
+        except Exception:
+            pass  # Code may fail after mock returns None - that's OK for this test
+
+        mock_os_exit.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

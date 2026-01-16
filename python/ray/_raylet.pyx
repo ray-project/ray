@@ -506,11 +506,6 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         node_id = c_node_ids[i].Hex().decode("ascii")
         node_ids.add(node_id)
 
-    # add primary_node_id into node_ids
-    if not c_object_location.GetPrimaryNodeID().IsNil():
-        node_ids.add(
-            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
-
     # add spilled_node_id into node_ids
     if not c_object_location.GetSpilledNodeID().IsNil():
         node_ids.add(
