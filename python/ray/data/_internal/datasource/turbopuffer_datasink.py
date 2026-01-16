@@ -10,7 +10,7 @@ This is based on [Turbopuffer Write API](https://turbopuffer.com/docs/write)
 import logging
 import os
 import uuid
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -50,7 +50,8 @@ class TurbopufferDatasink(Datasink):
             Mutually exclusive with ``namespace_column``.
         namespace_column: Name of the column whose values determine the target
             namespace for each row (multi-namespace mode). Mutually exclusive
-            with ``namespace``.
+            with ``namespace``. Must not be the same as ``id_column`` or
+            ``vector_column``.
         namespace_format: Python format string used to construct namespace
             names in multi-namespace mode. It must contain the
             ``\"{namespace}\"`` placeholder, which is replaced with the raw
@@ -58,7 +59,6 @@ class TurbopufferDatasink(Datasink):
         api_key: Turbopuffer API key. If omitted, the value is read from the
             ``TURBOPUFFER_API_KEY`` environment variable.
         region: Turbopuffer region identifier (for example, ``\"gcp-us-central1\"``).
-            If omitted, defaults to ``\"gcp-us-central1\"``.
         schema: Optional Turbopuffer schema definition to pass along with
             writes. If provided, it is forwarded as the ``schema`` argument
             to ``namespace.write``.
@@ -119,11 +119,11 @@ class TurbopufferDatasink(Datasink):
 
     def __init__(
         self,
+        region: str,
         namespace: Optional[str] = None,
         namespace_column: Optional[str] = None,
         namespace_format: str = "{namespace}",
         api_key: Optional[str] = None,
-        region: Optional[str] = None,
         schema: Optional[dict] = None,
         id_column: str = "id",
         vector_column: str = "vector",
@@ -152,6 +152,21 @@ class TurbopufferDatasink(Datasink):
             raise ValueError(
                 "namespace_format must contain '{namespace}' placeholder "
                 "when using namespace_column"
+            )
+
+        # Validate namespace_column doesn't overlap with id_column or vector_column
+        if namespace_column and namespace_column == id_column:
+            raise ValueError(
+                f"namespace_column ('{namespace_column}') cannot be the same as "
+                f"id_column ('{id_column}'). The namespace column identifies the "
+                "target namespace, while id_column identifies documents within a namespace."
+            )
+
+        if namespace_column and namespace_column == vector_column:
+            raise ValueError(
+                f"namespace_column ('{namespace_column}') cannot be the same as "
+                f"vector_column ('{vector_column}'). The namespace column must be a "
+                "separate column from the embedding vector."
             )
 
         # Store configuration
@@ -198,13 +213,10 @@ class TurbopufferDatasink(Datasink):
         self._turbopuffer = turbopuffer
 
     def _get_client(self):
-        """Lazy initialize Turbopuffer client"""
+        """Lazy initialize Turbopuffer client."""
         if self._client is None:
-            # Initialize with api_key and region (default to "gcp-us-central1" if not specified)
-            region = self.region or "gcp-us-central1"
-            # Use the new v0.5+ API: turbopuffer.Turbopuffer(api_key=..., region=...)
             self._client = self._turbopuffer.Turbopuffer(
-                api_key=self.api_key, region=region
+                api_key=self.api_key, region=self.region
             )
         return self._client
 
@@ -330,27 +342,9 @@ class TurbopufferDatasink(Datasink):
         Write table to multiple namespaces grouped by namespace_column.
         Uses PyArrow's group_by() for efficient grouping in a single pass.
         """
-        # Determine the actual column name in the prepared table that should be
-        # used for namespace grouping. The configured namespace_column may have
-        # been renamed in _prepare_arrow_table when it overlaps with the id or
-        # vector columns.
+        # Validation in __init__ ensures namespace_column doesn't overlap with
+        # id_column or vector_column, so no column name resolution is needed.
         group_col_name = self.namespace_column
-
-        # If the namespace column is the configured id_column and that was
-        # renamed to "id", use "id" for grouping.
-        if (
-            self.id_column != _ID_COLUMN
-            and self.namespace_column == self.id_column
-            and _ID_COLUMN in table.column_names
-        ):
-            group_col_name = _ID_COLUMN
-        # Likewise for the vector column.
-        elif (
-            self.vector_column != _VECTOR_COLUMN
-            and self.namespace_column == self.vector_column
-            and _VECTOR_COLUMN in table.column_names
-        ):
-            group_col_name = _VECTOR_COLUMN
 
         if group_col_name not in table.column_names:
             raise ValueError(
@@ -423,60 +417,60 @@ class TurbopufferDatasink(Datasink):
 
         # Split into batches
         for batch in table.to_batches(max_chunksize=self.batch_size):
-            batch_table = pa.Table.from_batches([batch])
-
             # Transform to Turbopuffer format
-            batch_data = self._transform_to_turbopuffer_format(batch_table)
+            batch_data = self._transform_to_turbopuffer_format(batch)
 
             # Write with retry
             self._write_batch_with_retry(ns, batch_data, namespace_name)
 
-    def _transform_to_turbopuffer_format(self, table: pa.Table) -> list:
-        """
-        Transform Arrow table to Turbopuffer row-based format.
+    def _transform_to_turbopuffer_format(
+        self, table: Union[pa.Table, pa.RecordBatch]
+    ) -> dict:
+        """Transform Arrow table to Turbopuffer column-based format.
 
-        Converts ID column to native uuid.UUID,
-        per Turbopuffer performance docs.
+        Uses upsert_columns format per Turbopuffer docs:
+        "Bulk document operations should use a column-oriented layout for best performance."
         """
         if _ID_COLUMN not in table.column_names:
             raise ValueError(f"Table must have '{_ID_COLUMN}' column")
 
-        rows = table.to_pylist()
+        columns = table.to_pydict()
 
-        for row in rows:
-            id_val = row.get(_ID_COLUMN)
-            if isinstance(id_val, bytes) and len(id_val) == 16:
-                row[_ID_COLUMN] = uuid.UUID(bytes=id_val)
+        # Convert ID column bytes to native UUID per Turbopuffer performance docs
+        id_col = columns[_ID_COLUMN]
+        columns[_ID_COLUMN] = [
+            uuid.UUID(bytes=v) if isinstance(v, bytes) and len(v) == 16 else v
+            for v in id_col
+        ]
 
-        return rows
+        return columns
 
     def _write_batch_with_retry(
         self,
         namespace: "turbopuffer.Namespace",
-        batch_data: list,
+        batch_data: dict,
         namespace_name: str,
     ):
         """
         Write a single batch with exponential backoff retry using Ray's common utility.
         """
 
-        def _write_fn():
-            namespace.write(
-                upsert_rows=batch_data,
-                schema=self.schema,
-                distance_metric=self.distance_metric,
-            )
-            return  # Success
+        # Get row count from first column for logging
+        num_rows = len(next(iter(batch_data.values()))) if batch_data else 0
 
         try:
             call_with_retry(
-                _write_fn,
+                lambda: namespace.write(
+                    upsert_columns=batch_data,
+                    schema=self.schema,
+                    distance_metric=self.distance_metric,
+                ),
                 description=f"write batch to namespace '{namespace_name}'",
                 max_attempts=5,
                 max_backoff_s=32,
             )
             logger.debug(
-                f"Successfully wrote {len(batch_data)} rows to namespace '{namespace_name}'"
+                f"Successfully wrote {num_rows} rows to namespace '{namespace_name}'"
             )
         except Exception as e:
             logger.error(

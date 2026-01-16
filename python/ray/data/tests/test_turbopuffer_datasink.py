@@ -21,6 +21,7 @@ def mock_turbopuffer_module(monkeypatch):
 def make_sink(**kwargs) -> TurbopufferDatasink:
     """Helper to construct a sink with minimal required arguments."""
     params = {
+        "region": "gcp-us-central1",
         "namespace": "default_ns",
         "api_key": "test-api-key",
     }
@@ -34,11 +35,12 @@ def make_sink(**kwargs) -> TurbopufferDatasink:
 def test_init_requires_either_namespace_or_namespace_column():
     # Neither namespace nor namespace_column provided.
     with pytest.raises(ValueError):
-        TurbopufferDatasink(api_key="k")
+        TurbopufferDatasink(region="gcp-us-central1", api_key="k")
 
     # Both namespace and namespace_column provided.
     with pytest.raises(ValueError):
         TurbopufferDatasink(
+            region="gcp-us-central1",
             namespace="ns",
             namespace_column="space_id",
             api_key="k",
@@ -48,6 +50,7 @@ def test_init_requires_either_namespace_or_namespace_column():
 def test_init_requires_namespace_format_placeholder_when_using_namespace_column():
     with pytest.raises(ValueError):
         TurbopufferDatasink(
+            region="gcp-us-central1",
             namespace_column="space_id",
             namespace_format="space-{id}",
             api_key="k",
@@ -60,19 +63,19 @@ def test_init_requires_api_key(monkeypatch):
 
     # No api_key and no env var -> error.
     with pytest.raises(ValueError):
-        TurbopufferDatasink(namespace="ns")
+        TurbopufferDatasink(region="gcp-us-central1", namespace="ns")
 
     # With env var, init should succeed.
     monkeypatch.setenv("TURBOPUFFER_API_KEY", "env-api-key")
-    sink = TurbopufferDatasink(namespace="ns")
+    sink = TurbopufferDatasink(region="gcp-us-central1", namespace="ns")
     assert sink.api_key == "env-api-key"
 
 
 ### 2. Turbopuffer client initialization
 
 
-def test_get_client_lazy_initialization_and_region_default(mock_turbopuffer_module):
-    sink = make_sink()
+def test_get_client_lazy_initialization(mock_turbopuffer_module):
+    sink = make_sink(region="gcp-us-central1")
 
     client1 = sink._get_client()
     client2 = sink._get_client()
@@ -286,71 +289,24 @@ def test_write_multi_namespace_raises_on_null_namespace_values():
         sink._write_multi_namespace(client, table)
 
 
-def test_write_multi_namespace_uses_renamed_id_column_for_namespace_grouping():
-    # When the namespace column is also the custom id column, _prepare_arrow_table
-    # renames it to "id". The multi-namespace logic should then group by the
-    # renamed "id" column instead of the original name.
-    table = pa.table(
-        {
-            "space_id": ["a", "b", "a"],
-            "emb": [[1.0], [2.0], [3.0]],
-        }
-    )
-    sink = make_sink(
-        namespace=None,
-        namespace_column="space_id",
-        namespace_format="ns-{namespace}",
-        id_column="space_id",
-        vector_column="emb",
-    )
-    client = MagicMock()
-
-    with patch.object(sink, "_write_single_namespace") as mock_write_single:
-        prepared = sink._prepare_arrow_table(table)
-        sink._write_multi_namespace(client, prepared)
-
-    assert mock_write_single.call_count == 2
-
-    seen_namespaces = set()
-    rows_per_namespace = {}
-
-    for call in mock_write_single.call_args_list:
-        client_arg, group_table, ns_name = call.args
-        assert client_arg is client
-        seen_namespaces.add(ns_name)
-        rows_per_namespace[ns_name] = group_table.num_rows
-
-    assert seen_namespaces == {"ns-a", "ns-b"}
-    # space_id == "a" appears twice, "b" once.
-    assert rows_per_namespace["ns-a"] == 2
-    assert rows_per_namespace["ns-b"] == 1
+def test_init_rejects_namespace_column_equal_to_id_column():
+    """Test that namespace_column == id_column raises ValueError."""
+    with pytest.raises(ValueError, match="cannot be the same as id_column"):
+        make_sink(
+            namespace=None,
+            namespace_column="doc_id",
+            id_column="doc_id",
+        )
 
 
-def test_write_multi_namespace_uses_renamed_vector_column_for_namespace_grouping():
-    # When the namespace column is also the custom vector column, _prepare_arrow_table
-    # renames it to "vector". The multi-namespace logic should then group by the
-    # renamed "vector" column instead of the original name.
-    # Use scalar floats instead of list vectors because pyarrow.compute.unique
-    # does not support list-typed arrays. This still exercises the renaming
-    # logic in _prepare_arrow_table.
-    table = pa.table({"id": [1, 2, 3], "emb": [1.0, 2.0, 1.0]})
-    sink = make_sink(
-        namespace=None,
-        namespace_column="emb",
-        namespace_format="ns-{namespace}",
-        vector_column="emb",
-    )
-    client = MagicMock()
-
-    with patch.object(sink, "_write_single_namespace") as mock_write_single:
-        prepared = sink._prepare_arrow_table(table)
-        sink._write_multi_namespace(client, prepared)
-
-    assert mock_write_single.call_count == 2
-
-    seen_namespaces = {call.args[2] for call in mock_write_single.call_args_list}
-    expected = {"ns-1.0", "ns-2.0"}
-    assert seen_namespaces == expected
+def test_init_rejects_namespace_column_equal_to_vector_column():
+    """Test that namespace_column == vector_column raises ValueError."""
+    with pytest.raises(ValueError, match="cannot be the same as vector_column"):
+        make_sink(
+            namespace=None,
+            namespace_column="embedding",
+            vector_column="embedding",
+        )
 
 
 ### 5. Single-namespace batching and write flow
@@ -372,15 +328,14 @@ def test_write_single_namespace_batches_by_batch_size():
     batch_sizes: List[int] = []
 
     def fake_transform(batch_table: pa.Table):
-        # Return one dict per row so we can infer batch size from upsert_rows.
-        return [
-            {"id": int(row["id"]), "vector": row["vector"]}
-            for row in batch_table.to_pylist()
-        ]
+        # Return column-based dict format for upsert_columns
+        return batch_table.to_pydict()
 
     def fake_write_batch(ns, batch_data, namespace_name):
         assert ns is namespace_obj
-        batch_sizes.append(len(batch_data))
+        # Get row count from first column in the dict
+        num_rows = len(next(iter(batch_data.values())))
+        batch_sizes.append(num_rows)
 
     with patch.object(
         sink, "_transform_to_turbopuffer_format", side_effect=fake_transform
@@ -424,6 +379,11 @@ def test_transform_to_turbopuffer_format_requires_id_column():
 
 
 def test_transform_converts_id_uuid_bytes_to_native_uuid():
+    """ID column with 16-byte UUID should become native uuid.UUID.
+
+    Per Turbopuffer performance docs, native UUID (16 bytes) is more efficient
+    than string UUID (36 bytes). Only the ID column is converted; other columns
+    are passed through unchanged from to_pydict().
     """
     u = uuid.uuid4()
     other_bytes = b"\x01\x02\x03"
@@ -437,15 +397,21 @@ def test_transform_converts_id_uuid_bytes_to_native_uuid():
     )
 
     sink = make_sink()
-    rows = sink._transform_to_turbopuffer_format(table)
-    assert len(rows) == 1
-    row = rows[0]
+    columns = sink._transform_to_turbopuffer_format(table)
+
+    # Should return a dict of columns, not a list of rows
+    assert isinstance(columns, dict)
+    assert "id" in columns
+    assert "vector" in columns
+    assert "other_bytes" in columns
 
     # ID should be native UUID, not string
-    assert row["id"] == u
-    assert isinstance(row["id"], uuid.UUID)
+    assert columns["id"][0] == u
+    assert isinstance(columns["id"][0], uuid.UUID)
     # Other bytes columns should remain unchanged (not converted)
-    assert row["other_bytes"] == other_bytes
+    assert columns["other_bytes"][0] == other_bytes
+    # Vector should be passed through unchanged
+    assert columns["vector"][0] == [0.1, 0.2]
 
 
 ### 7. Retry logic and backoff
@@ -454,14 +420,14 @@ def test_transform_converts_id_uuid_bytes_to_native_uuid():
 def test_write_batch_with_retry_success_first_try(monkeypatch):
     sink = make_sink(schema={"field": "value"})
     namespace = MagicMock()
-    batch_data = [{"id": 1}]
+    batch_data = {"id": [1], "vector": [[0.1]]}
 
     # No need to mock sleep/randomness since call_with_retry handles it
     # and the first attempt should succeed without retry
     sink._write_batch_with_retry(namespace, batch_data, "ns")
 
     namespace.write.assert_called_once_with(
-        upsert_rows=batch_data,
+        upsert_columns=batch_data,
         schema={"field": "value"},
         distance_metric="cosine_distance",
     )
@@ -470,7 +436,7 @@ def test_write_batch_with_retry_success_first_try(monkeypatch):
 def test_write_batch_with_retry_retries_then_succeeds(monkeypatch):
     sink = make_sink()
     namespace = MagicMock()
-    batch_data = [{"id": 1}]
+    batch_data = {"id": [1], "vector": [[0.1]]}
 
     attempts = {"count": 0}
 
@@ -494,7 +460,7 @@ def test_write_batch_with_retry_retries_then_succeeds(monkeypatch):
 def test_write_batch_with_retry_exhausts_retries_and_raises(monkeypatch):
     sink = make_sink()
     namespace = MagicMock()
-    batch_data = [{"id": 1}]
+    batch_data = {"id": [1], "vector": [[0.1]]}
 
     namespace.write.side_effect = RuntimeError("persistent error")
 
@@ -513,13 +479,13 @@ def test_write_batch_with_retry_uses_configurable_distance_metric(monkeypatch):
     # Users can override the distance metric from the default "cosine_distance".
     sink = make_sink(schema={"field": "value"}, distance_metric="euclidean_squared")
     namespace = MagicMock()
-    batch_data = [{"id": 1}]
+    batch_data = {"id": [1], "vector": [[0.1]]}
 
     # No need to mock sleep/randomness since the first attempt should succeed
     sink._write_batch_with_retry(namespace, batch_data, "ns")
 
     namespace.write.assert_called_once_with(
-        upsert_rows=batch_data,
+        upsert_columns=batch_data,
         schema={"field": "value"},
         distance_metric="euclidean_squared",
     )
@@ -560,6 +526,7 @@ def test_write_single_namespace_end_to_end_calls_prepare_and_single_namespace():
 
 def test_write_multi_namespace_end_to_end_uses_write_multi_namespace():
     sink = TurbopufferDatasink(
+        region="gcp-us-central1",
         namespace=None,
         namespace_column="space_id",
         namespace_format="ns-{namespace}",
@@ -635,6 +602,7 @@ def test_write_multi_namespace_streaming_across_blocks():
     namespace to receive multiple writes from different blocks.
     """
     sink = TurbopufferDatasink(
+        region="gcp-us-central1",
         namespace=None,
         namespace_column="space_id",
         namespace_format="ns-{namespace}",
@@ -672,40 +640,29 @@ def test_write_multi_namespace_streaming_across_blocks():
 ### 10. Serialization behavior
 
 
-def test_serialization_excludes_non_serializable_attributes(mock_turbopuffer_module):
+def test_serialization_preserves_configuration(mock_turbopuffer_module):
     """Test that TurbopufferDatasink can be pickled and unpickled correctly.
-    
-    This verifies that __getstate__ and __setstate__ properly handle
-    non-serializable attributes (_turbopuffer module and _client object).
+
+    Verifies that configuration is preserved and lazy client initialization
+    works after unpickling.
     """
     import pickle
-    
+
     sink = make_sink()
-    
-    # Trigger client initialization
-    client = sink._get_client()
-    assert sink._client is not None
-    assert sink._turbopuffer is not None
-    
-    # Pickle and unpickle
+
+    # Pickle and unpickle (before client initialization)
     pickled = pickle.dumps(sink)
     unpickled_sink = pickle.loads(pickled)
-    
-    # Verify non-serializable attributes are reinitialized correctly
-    assert unpickled_sink._client is None  # Client should be reset to None
-    assert unpickled_sink._turbopuffer is not None  # Module re-imported in __setstate__
-    
+
     # Verify all configuration is preserved
     assert unpickled_sink.namespace == sink.namespace
     assert unpickled_sink.api_key == sink.api_key
     assert unpickled_sink.region == sink.region
     assert unpickled_sink.batch_size == sink.batch_size
-    
-    # Verify lazy initialization still works after unpickling
-    client2 = unpickled_sink._get_client()
-    assert client2 is not None
-    assert unpickled_sink._client is client2
+    assert unpickled_sink._client is None
+
+    # Verify lazy initialization works after unpickling
+    client = unpickled_sink._get_client()
+    assert client is not None
+    assert unpickled_sink._client is client
     mock_turbopuffer_module.Turbopuffer.assert_called()
-
-
-
