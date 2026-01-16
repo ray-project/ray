@@ -84,6 +84,10 @@ class CudaIpcTransport(TensorTransportManager):
                     raise ValueError(
                         "All tensors in an RDT object must have the same device type."
                     )
+                if t.device.index != device.index:
+                    raise ValueError(
+                        "All tensors in an RDT object must be on the same GPU."
+                    )
                 tensor_meta.append((t.shape, t.dtype))
                 ipc_handle = reduce_tensor(t)
                 cuda_ipc_handles.append(ipc_handle)
