@@ -84,7 +84,7 @@ If you're running Ray directly on Linux, the setup is a little more involved. Yo
 1. Create a cgroup for Ray
 2. Configure the cgroup to allow the user that starts Ray to have read and write permissions
 3. Move the process that will start Ray into the created cgroup.
-3. Start Ray with the cgroup path.
+4. Start Ray with the cgroup path.
 
 Here's an example script that shows you how to perform these steps. This is to help you run ray on a single node for tests and not the recommended way to run a Ray cluster in production:
 
