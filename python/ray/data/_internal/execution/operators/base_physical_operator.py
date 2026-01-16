@@ -231,6 +231,10 @@ class AllToAllOperator(
     def supports_fusion(self):
         return True
 
+    def throttling_disabled(self) -> bool:
+        # Disable resource allocation and throttling for the operator
+        return True
+
 
 class NAryOperator(PhysicalOperator):
     """An operator that has multiple input dependencies and one output.

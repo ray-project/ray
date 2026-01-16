@@ -149,6 +149,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def get_stats(self) -> StatsDict:
         return self._stats
 
+    def throttling_disabled(self) -> bool:
+        # TODO revert once zip becomes streaming
+        return True
+
     def _zip(
         self,
         left_input: collections.deque[RefBundle],
