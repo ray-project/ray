@@ -175,6 +175,64 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
 
 
+def test_checkpoint_validation_management_success_after_retry(tmp_path):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    counter = Counter.remote()
+
+    def one_time_failing_validate_fn(checkpoint):
+        print("one_time_failing_validate_fn called")
+        if ray.get(counter.increment.remote()) < 2:
+            raise ValueError("Fail on first attempt")
+        return {"score": 100}
+
+    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager,
+        validation_config=ValidationConfig(validate_fn=one_time_failing_validate_fn),
+    )
+    training_result = create_dummy_training_results(
+        num_results=1,
+        storage_context=StorageContext(
+            storage_path=tmp_path,
+            experiment_dir_name="checkpoint_validation_management_success_after_retry_experiment",
+        ),
+    )[0]
+
+    vm.after_report(
+        training_report=_TrainingReport(
+            metrics=training_result.metrics,
+            checkpoint=training_result.checkpoint,
+            validation=ValidationTaskConfig(
+                ray_remote_kwargs={
+                    "max_retries": 1,
+                    "retry_exceptions": [ValueError],
+                },
+            ),
+        ),
+        metrics={},
+    )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+        timeout=100,
+    )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 0
+    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
+        {training_result.checkpoint: {"score": 100}}
+    )
+
+
 def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
