@@ -14,7 +14,7 @@ CPU_TMP="$(mktemp -d)"
 
 cp -r .whl "${CPU_TMP}/.whl"
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
-cp python/requirements_compiled.txt "${CPU_TMP}/."
+cp python/"${CONSTRAINTS_FILE}" "${CPU_TMP}/requirements_compiled.txt"
 
 # Build the image.
 cd "${CPU_TMP}"
@@ -22,7 +22,6 @@ tar --mtime="UTC 2020-01-01" -c -f - . \
     | docker build --progress=plain \
         --build-arg FULL_BASE_IMAGE="$SOURCE_IMAGE" \
         --build-arg WHEEL_PATH=".whl/${WHEEL_NAME}" \
-        --build-arg CONSTRAINTS_FILE="$CONSTRAINTS_FILE" \
         --label "io.ray.ray-version=$RAY_VERSION" \
         --label "io.ray.ray-commit=$RAY_COMMIT" \
         -t "$DEST_IMAGE" -f Dockerfile -
