@@ -166,9 +166,9 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         self._last_log_time = current_time
 
         # starting delimiter
-        msg = f"======= Running Dataset: {self._dataset_id} ======="
-        lastline = "=" * len(msg)
-        logger.info(msg)
+        firstline = f"======= Running Dataset: {self._dataset_id} ======="
+        lastline = "=" * len(firstline)
+        logger.info(firstline)
         m = self._get_as_logging_metrics(self._global_progress_uuid)
         logger.info(f"{m.name}: {m.completed}/{m.total or '?'}")
         if m.desc is not None:
