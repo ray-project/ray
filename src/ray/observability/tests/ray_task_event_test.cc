@@ -23,9 +23,6 @@
 namespace ray {
 namespace observability {
 
-namespace {
-
-// Helper to create a normal task spec for testing
 TaskSpecification CreateNormalTaskSpec(const JobID &job_id) {
   TaskSpecBuilder builder;
   rpc::JobConfig job_config;
@@ -60,7 +57,6 @@ TaskSpecification CreateNormalTaskSpec(const JobID &job_id) {
   return std::move(builder).ConsumeAndBuild();
 }
 
-// Helper to create an actor task spec for testing
 TaskSpecification CreateActorTaskSpec(const JobID &job_id, const ActorID &actor_id) {
   TaskSpecBuilder builder;
   rpc::JobConfig job_config;
