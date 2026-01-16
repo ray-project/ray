@@ -209,7 +209,7 @@ py_test(
     args = [
         "--as-test",
         "--num-cpus=8",
-        "--num-env-runners=5",
+        "--num-env-runners=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
         "--stop-reward=-2",
