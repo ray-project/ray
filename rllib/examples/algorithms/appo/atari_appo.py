@@ -74,6 +74,7 @@ parser.set_defaults(
     num_env_runners=4,
     num_envs_per_env_runner=10,
     num_learners=1,
+    num_aggregator_actors_per_learner=2,
 )
 args = parser.parse_args()
 
@@ -116,7 +117,7 @@ config = (
         env_to_module_connector=_make_env_to_module_connector,
     )
     .learners(
-        num_aggregator_actors_per_learner=2,
+        num_aggregator_actors_per_learner=args.num_aggregator_actors_per_learner,
         num_learners=args.num_learners,
     )
     .training(

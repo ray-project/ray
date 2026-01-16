@@ -74,6 +74,7 @@ parser.set_defaults(
     num_env_runners=4,
     num_envs_per_env_runner=16,
     num_learners=1,
+    num_aggregator_actors_per_learner=2,
 )
 args = parser.parse_args()
 
@@ -88,7 +89,7 @@ config = (
     )
     .learners(
         num_learners=args.num_learners,
-        num_aggregator_actors_per_learner=2,
+        num_aggregator_actors_per_learner=args.num_aggregator_actors_per_learner,
     )
     .training(
         train_batch_size_per_learner=4096,  # Note: [1] uses 32768.

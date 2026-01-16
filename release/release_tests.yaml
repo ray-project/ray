@@ -2044,7 +2044,11 @@
 
   run:
     timeout: 1500  # expected 1000 seconds
-    script: python example_algorithms/appo/cartpole_appo.py --num-learners=0 --as-release-test
+    script: python example_algorithms/appo/cartpole_appo.py \
+      --num-env-runners=4 \
+      --num-learners=0 \
+      --num-aggregator-actors-per-learner=2 \
+      --as-release-test
 
 - name: rllib_cartpole_single_cpu
   python: "3.10"
@@ -2061,7 +2065,11 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/cartpole_appo.py --num-learners=1 --as-release-test
+    script: python example_algorithms/appo/cartpole_appo.py \
+      --num-env-runners=4 \
+      --num-learners=1 \
+      --num-aggregator-actors-per-learner=2 \
+      --as-release-test
 
 - name: rllib_stateless_cartpole_local
   python: "3.10"
@@ -2078,7 +2086,11 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py --num-learners=0 --as-release-test
+    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py \
+      --num-env-runners=4 \
+      --num-learners=0 \
+      --num-aggregator-actors-per-learner=2 \
+      --as-release-test
 
 
 - name: rllib_stateless_cartpole_gpu
@@ -2097,7 +2109,12 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py --num-learners=1 --num-gpus-per-learner=1 --as-release-test
+    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py \
+      --num-env-runners=4 \
+      --num-learners=1 \
+      --num-aggregator-actors-per-learner=2 \
+      --num-gpus-per-learner=1 \
+      --as-release-test
 
 - name: rllib_tictactoe_local
   python: "3.10"
@@ -2114,7 +2131,11 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/tictactoe_appo.py --num-learners=0 --as-release-test
+    script: python example_algorithms/appo/tictactoe_appo.py \
+      --num-env-runners=4 \
+      --num-learners=0 \
+      --num-aggregator-actors-per-learner=2 \
+      --as-release-test
 
 - name: rllib_tictactoe_single_cpu
   python: "3.10"
@@ -2131,7 +2152,11 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/tictactoe_appo.py --num-learners=1 --as-release-test
+    script: python example_algorithms/appo/tictactoe_appo.py \
+      --num-env-runners=4 \
+      --num-learners=1 \
+      --num-aggregator-actors-per-learner=2 \
+      --as-release-test
 
 - name: rllib_tictactoe_multi_gpu_single_node
   python: "3.10"
@@ -2149,7 +2174,12 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/tictactoe_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/tictactoe_appo.py \
+      --num-env-runners=8 \
+      --num-learners=2 \
+      --num-aggregator-actors-per-learner=2 \
+      --num-gpus-per-learner=1 \
+      --as-release-test
 
 - name: rllib_atari_multi_gpu_single_node
   python: "3.10"
@@ -2167,7 +2197,12 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/atari_appo.py \
+      --num-env-runners=8 \
+      --num-learners=2 \
+      --num-aggregator-actors-per-learner=2 \
+      --num-gpus-per-learner=1 \
+      --as-release-test
 
 - name: rllib_atari_multi_gpu_multi_node
   python: "3.10"
@@ -2185,7 +2220,12 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-gpus-per-learner=1 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/atari_appo.py \
+      --num-env-runners=8 \
+      --num-learners=2 \
+      --num-aggregator-actors-per-learner=2 \
+      --num-gpus-per-learner=1 \
+      --as-release-test
 
 ########################
 # Core Nightly Tests
