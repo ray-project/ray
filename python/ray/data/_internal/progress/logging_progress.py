@@ -172,7 +172,8 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         m = self._get_as_logging_metrics(self._global_progress_uuid)
         logger.info(f"{m.name}: {m.completed}/{m.total or '?'}")
         logger.info(m.desc)
-        logger.info("")
+        if len(self._log_order) > 0:
+            logger.info("")
 
         for uid in self._log_order:
             m = self._metric_dict[uid]
