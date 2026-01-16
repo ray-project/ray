@@ -7,7 +7,6 @@ from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     GLOOTensorTransport,
     NCCLTensorTransport,
 )
-from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
 )
@@ -78,12 +77,11 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL"]
 
 register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
 register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
 register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport)
-register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport)
 
 
 def get_tensor_transport_manager(
