@@ -24,17 +24,17 @@ namespace core {
 TaskToExecute::TaskToExecute() {}
 
 TaskToExecute::TaskToExecute(
-    std::function<void(const TaskSpecification &)> accept_callback,
-    std::function<void(const TaskSpecification &, const Status &)> reject_callback,
+    std::function<void(const TaskSpecification &)> execute_callback,
+    std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
     TaskSpecification task_spec)
-    : accept_callback_(std::move(accept_callback)),
-      reject_callback_(std::move(reject_callback)),
+    : execute_callback_(std::move(execute_callback)),
+      cancel_callback_(std::move(cancel_callback)),
       task_spec_(std::move(task_spec)),
       pending_dependencies_(task_spec_.GetDependencies()) {}
 
-void TaskToExecute::Accept() { accept_callback_(task_spec_); }
+void TaskToExecute::Execute() { execute_callback_(task_spec_); }
 
-void TaskToExecute::Cancel(const Status &status) { reject_callback_(task_spec_, status); }
+void TaskToExecute::Cancel(const Status &status) { cancel_callback_(task_spec_, status); }
 
 ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
 

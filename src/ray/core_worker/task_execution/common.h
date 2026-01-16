@@ -34,11 +34,11 @@ class TaskToExecute {
  public:
   TaskToExecute();
   TaskToExecute(
-      std::function<void(const TaskSpecification &)> accept_callback,
-      std::function<void(const TaskSpecification &, const Status &)> reject_callback,
+      std::function<void(const TaskSpecification &)> execute_callback,
+      std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
       TaskSpecification task_spec);
 
-  void Accept();
+  void Execute();
   void Cancel(const Status &status);
   ray::TaskID TaskID() const;
   uint64_t AttemptNumber() const;
@@ -50,8 +50,8 @@ class TaskToExecute {
   const TaskSpecification &TaskSpec() const;
 
  private:
-  std::function<void(const TaskSpecification &)> accept_callback_;
-  std::function<void(const TaskSpecification &, const Status &)> reject_callback_;
+  std::function<void(const TaskSpecification &)> execute_callback_;
+  std::function<void(const TaskSpecification &, const Status &)> cancel_callback_;
 
   TaskSpecification task_spec_;
   std::vector<rpc::ObjectReference> pending_dependencies_;

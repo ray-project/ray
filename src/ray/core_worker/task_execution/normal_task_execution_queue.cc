@@ -71,7 +71,7 @@ std::optional<TaskToExecute> NormalTaskExecutionQueue::TryPopQueuedTask() {
 
 void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
   while (auto task = TryPopQueuedTask()) {
-    task->Accept();
+    task->Execute();
   }
 }
 

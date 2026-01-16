@@ -287,7 +287,7 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {
-    request.Accept();
+    request.Execute();
   }
 
   absl::MutexLock lock(&mu_);

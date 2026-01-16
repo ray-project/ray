@@ -171,7 +171,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
   }
 
-  auto accept_callback =
+  auto execute_callback =
       [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](
           const TaskSpecification &task_spec) mutable {
         TaskExecutionResult result;
@@ -206,7 +206,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
   };
 
   TaskToExecute task =
-      TaskToExecute(accept_callback, cancel_callback, std::move(task_spec));
+      TaskToExecute(execute_callback, cancel_callback, std::move(task_spec));
   if (task_spec.IsActorCreationTask()) {
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
