@@ -108,8 +108,34 @@ def test_include_paths(
 
     ds = ray.data.read_parquet(path, include_paths=True)
 
+    # Verify that the path column is present in the schema
+    schema_names = ds.schema().names
+    assert "path" in schema_names, f"'path' column not found in schema: {schema_names}"
+
     paths = [row["path"] for row in ds.take_all()]
     assert paths == [path, path]
+
+
+def test_include_paths_with_column_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
+    pq.write_table(table, path)
+
+    # Test reading with column projection and include_paths=True
+    ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
+
+    # Verify that both the projected column and path column are present in the schema
+    schema_names = ds.schema().names
+    assert "id" in schema_names, f"'id' column not found in schema: {schema_names}"
+    assert "path" in schema_names, f"'path' column not found in schema: {schema_names}"
+
+    # Verify that the path column contains the expected paths
+    rows = ds.take_all()
+    for row in rows:
+        assert "path" in row
+        assert row["path"] == path
 
 
 @pytest.mark.parametrize(
