@@ -172,8 +172,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
   }
 
   auto accept_callback =
-      [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](const TaskSpecification &task_spec) mutable {
-
+      [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](
+          const TaskSpecification &task_spec) mutable {
         TaskExecutionResult result;
         auto status = task_handler_(task_spec,
                                     std::move(resource_ids),
