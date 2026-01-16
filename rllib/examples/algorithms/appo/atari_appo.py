@@ -66,6 +66,7 @@ from ray.rllib.examples.utils import (
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
+    default_iters=200,
     default_reward=18.0,
     default_timesteps=10_000_000,  # 40 million frames
 )
