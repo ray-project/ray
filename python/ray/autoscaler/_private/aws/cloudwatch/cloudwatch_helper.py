@@ -395,12 +395,12 @@ class CloudwatchHelper:
         return cwa_parameter
 
     def _sha1_hash_json(self, value: str) -> str:
-        """calculate the json string sha1 hash"""
-        sha1_hash = hashlib.new("sha1")
+        """calculate the json string sha256 hash"""
+        sha256_hash = hashlib.new("sha256")
         binary_value = value.encode("ascii")
-        sha1_hash.update(binary_value)
-        sha1_res = sha1_hash.hexdigest()
-        return sha1_res
+        sha256_hash.update(binary_value)
+        sha256_res = sha256_hash.hexdigest()
+        return sha256_res
 
     def _sha1_hash_file(self, config_type: str) -> str:
         """calculate the config file sha1 hash"""
