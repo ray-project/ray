@@ -680,9 +680,11 @@ def test_min_max_resource_requirements(restore_data_context):
     ) = op.min_max_resource_requirements()
 
     # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 gpu)
     assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
-    assert max_resource_usage_bound == ExecutionResources(gpu=2, object_store_memory=6)
+    assert max_resource_usage_bound == ExecutionResources(
+        gpu=2, object_store_memory=float("inf")
+    )
 
 
 def test_min_max_resource_requirements_unbounded(restore_data_context):

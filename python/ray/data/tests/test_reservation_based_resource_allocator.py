@@ -13,7 +13,6 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
-    get_ineligible_op_usage,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -112,22 +111,8 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
         assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
         # Test max_task_output_bytes_to_read.
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 500
-        )
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 500
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 500
+        assert allocator.max_task_output_bytes_to_read(o3) == 500
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -158,23 +143,9 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 138
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 257
-        )
+        assert allocator.max_task_output_bytes_to_read(o3) == 257
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -206,23 +177,9 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o2,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 50
-        )
+        assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert (
-            allocator.max_task_output_bytes_to_read(
-                o3,
-                task_resource_usage=op_usages,
-                output_object_store_usage=op_outputs_usages,
-            )
-            == 145
-        )
+        assert allocator.max_task_output_bytes_to_read(o3) == 145
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
@@ -790,7 +747,7 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
         # Ineligible: o1 (finished), o2 (finished), o3 (throttling disabled)
-        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
+        ineligible_usage = resource_manager.get_ineligible_op_usage()
 
         # Expected: o1 + o2 + o3 = (0+1+2, 0+10+20)
         assert ineligible_usage == ExecutionResources(cpu=3, object_store_memory=3)
@@ -851,7 +808,7 @@ class TestReservationOpResourceAllocator:
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
+        ineligible_usage = resource_manager.get_ineligible_op_usage()
 
         # Ineligible: o1, o2, o3, o4, o5, o7 -> sum = 2+3+5 = 10
         assert ineligible_usage == ExecutionResources(cpu=10, object_store_memory=10)

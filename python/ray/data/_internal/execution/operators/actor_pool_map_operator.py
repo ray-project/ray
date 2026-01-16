@@ -484,7 +484,9 @@ class ActorPoolMapOperator(MapOperator):
                 cpu=num_cpus_per_actor * max_actors,
                 gpu=num_gpus_per_actor * max_actors,
                 memory=memory_per_actor * max_actors,
-                object_store_memory=obj_store_mem_per_task * max_actors,
+                # Set the max `object_store_memory` requirement to 'inf', because we
+                # don't know how much data each task can output.
+                object_store_memory=float("inf"),
             )
 
         return min_resource_usage, max_resource_usage
