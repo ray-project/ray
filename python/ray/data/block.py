@@ -746,7 +746,7 @@ class BlockColumnAccessor:
         """Converts underlying column to Numpy"""
         raise NotImplementedError()
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
