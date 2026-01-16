@@ -328,11 +328,6 @@ py_test(
     ],
 )
 
-# TODO: Add Footsies single GPU learner
-# TODO: Add Footsies multi GPU learner
-# TODO: Add IsaacLab single CPU learner
-# TODO: Add IsaacLab single GPU learner
-
 # BC
 # CartPole
 py_test(
