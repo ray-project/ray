@@ -8,7 +8,6 @@
 //python/ray/serve/tests:test_deploy_app_2
 //python/ray/serve/tests:test_fastapi
 //python/ray/serve/tests:test_failure
-//python/ray/serve/tests:test_failure_2
 //python/ray/serve/tests:test_gcs_failure
 //python/ray/serve/tests:test_grpc
 //python/ray/serve/tests:test_grpc_e2e
