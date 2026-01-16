@@ -240,10 +240,9 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     is_local = config.get("provider", {}).get("type") == "local"
     is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
-        prepared_config, already_prepared = prepare_local(config)
-        config = prepared_config
+        config, modified = prepare_local(config)
         # If the config is already prepared via ray up, return it as is.
-        if already_prepared:
+        if not modified:
             return config
     elif is_kuberay:
         # With KubeRay, we don't need to do anything here since KubeRay

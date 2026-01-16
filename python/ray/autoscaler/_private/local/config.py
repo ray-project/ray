@@ -23,7 +23,7 @@ def prepare_local(config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
                 field == "available_node_types"
                 and LOCAL_CLUSTER_NODE_TYPE in config.get(field, {})
             ):
-                return config, True
+                return config, False
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
     # We use a config with a single node type for on-prem clusters.
@@ -37,7 +37,7 @@ def prepare_local(config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
         config = prepare_coordinator(config)
     else:
         config = prepare_manual(config)
-    return config, False
+    return config, True
 
 
 def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
