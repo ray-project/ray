@@ -25,6 +25,9 @@
 
 /* ----------------------------------------------------- */
 
+static PyObject *spt_version;
+
+
 static char spt_setproctitle__doc__[] =
 "setproctitle(title) -- Change the process title."
 ;
@@ -35,17 +38,16 @@ spt_setproctitle(PyObject *self, PyObject *args, PyObject *kwargs)
     const char *title = NULL;
     static char *kwlist[] = {"title", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &title)) {
-        spt_debug("failed to parse tuple and keywords");
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &title))
         return NULL;
-    }
-
-    if (spt_setup() < 0) {
-        spt_debug("failed to initialize setproctitle");
-    }
 
     /* Initialize the process title */
-    set_ps_display(title, true);
+    if (0 <= spt_setup()) {
+        set_ps_display(title, true);
+    }
+    else {
+        spt_debug("failed to initialize setproctitle");
+    }
 
     Py_RETURN_NONE;
 }
@@ -61,10 +63,7 @@ spt_getproctitle(PyObject *self, PyObject *args)
     size_t tlen;
     const char *title;
 
-    if (spt_setup() < 0) {
-        spt_debug("failed to initialize setproctitle");
-    }
-
+    spt_setup();
     title = get_ps_display(&tlen);
 
     return Py_BuildValue("s#", title, (int)tlen);
@@ -81,10 +80,8 @@ spt_setthreadtitle(PyObject *self, PyObject *args, PyObject *kwargs)
     const char *title = NULL;
     static char *kwlist[] = {"title", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &title)) {
-        spt_debug("failed to parse tuple and keywords");
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &title))
         return NULL;
-    }
 
     set_thread_title(title);
 
@@ -106,27 +103,6 @@ spt_getthreadtitle(PyObject *self, PyObject *args)
     return Py_BuildValue("s", title);
 }
 
-/* Module initialization function */
-
-static int
-spt_exec(PyObject *m)
-{
-    spt_debug("module init");
-    return 0;
-}
-
-/* List of slots defined in the module */
-
-static PyModuleDef_Slot spt_slots[] = {
-    {Py_mod_exec, spt_exec},
-#if PY_VERSION_HEX >= 0x030c0000
-    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
-#endif
-#if PY_VERSION_HEX >= 0x030d0000
-    {Py_mod_gil, Py_MOD_GIL_NOT_USED},
-#endif
-    {0, NULL}
-};
 
 /* List of methods defined in the module */
 
@@ -163,18 +139,33 @@ static char setproctitle_module_documentation[] =
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
-    "_setproctitle",
+    "setproctitle",
     setproctitle_module_documentation,
-    0,
+    -1,
     spt_methods,
-    spt_slots,
+    NULL,
     NULL,
     NULL,
     NULL
 };
 
 PyMODINIT_FUNC
-PyInit__setproctitle(void)
+PyInit_setproctitle(void)
 {
-    return PyModuleDef_Init(&moduledef);
+    PyObject *m, *d;
+
+    spt_debug("module init");
+
+    /* Create the module and add the functions */
+    m = PyModule_Create(&moduledef);
+    if (m == NULL) { goto exit; }
+
+    /* Add version string to the module*/
+    d = PyModule_GetDict(m);
+    spt_version = Py_BuildValue("s", xstr(SPT_VERSION));
+    PyDict_SetItemString(d, "__version__", spt_version);
+
+exit:
+    return m;
 }
+
