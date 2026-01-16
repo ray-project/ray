@@ -378,20 +378,15 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = (
-    [
-        "pid",
-        "create_time",
-        "cpu_percent",
-        "cpu_times",
-        "cmdline",
-        "memory_info",
-        "memory_full_info",
-    ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
-)
+PSUTIL_PROCESS_ATTRS = [
+    "pid",
+    "create_time",
+    "cpu_percent",
+    "cpu_times",
+    "cmdline",
+    "memory_info",
+    "memory_full_info",
+] + (["num_fds"] if sys.platform != "win32" else [])
 
 
 class ReporterAgent(
