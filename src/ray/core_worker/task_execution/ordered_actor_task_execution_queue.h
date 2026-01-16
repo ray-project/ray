@@ -51,7 +51,6 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
 
   void Stop() override;
 
-  /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            const TaskToExecute &task) override;

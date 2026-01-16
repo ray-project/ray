@@ -80,11 +80,8 @@ void UnorderedActorTaskExecutionQueue::Stop() {
 void UnorderedActorTaskExecutionQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
-    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-        reject_request,
-    rpc::SendReplyCallback send_reply_callback,
-    TaskSpecification task_spec) {
+    const TaskToExecute &task) {
+
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -93,47 +90,44 @@ void UnorderedActorTaskExecutionQueue::Add(
   // task concurrently is that it's not safe to assume user's
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
+  const auto &task_spec = task.TaskSpec();
   auto task_id = task_spec.TaskId();
-  auto request = TaskToExecute(std::move(accept_request),
-                               std::move(reject_request),
-                               std::move(send_reply_callback),
-                               std::move(task_spec));
-  bool run_request = true;
-  std::optional<TaskToExecute> request_to_cancel;
+  bool run_task = true;
+  std::optional<TaskToExecute> task_to_cancel;
   {
     absl::MutexLock lock(&mu_);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
       // There is a previous attempt of the same task running,
       // queue the current attempt.
-      run_request = false;
+      run_task = false;
 
       if (queued_actor_tasks_.contains(task_id)) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
         RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(),
-                     request.AttemptNumber());
-        if (queued_actor_tasks_[task_id].AttemptNumber() > request.AttemptNumber()) {
+                     task.AttemptNumber());
+        if (queued_actor_tasks_[task_id].AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
-          request_to_cancel = request;
+          task_to_cancel = task;
         } else {
-          request_to_cancel = queued_actor_tasks_[task_id];
-          queued_actor_tasks_[task_id] = request;
+          task_to_cancel = queued_actor_tasks_[task_id];
+          queued_actor_tasks_[task_id] = task;
         }
       } else {
-        queued_actor_tasks_[task_id] = request;
+        queued_actor_tasks_[task_id] = task;
       }
     } else {
       pending_task_id_to_is_canceled.emplace(task_id, false);
-      run_request = true;
+      run_task = true;
     }
   }
 
-  if (run_request) {
-    RunRequest(std::move(request));
+  if (run_task) {
+    RunRequest(std::move(task));
   }
 
-  if (request_to_cancel.has_value()) {
-    request_to_cancel->Cancel(Status::SchedulingCancelled(
+  if (task_to_cancel.has_value()) {
+    task_to_cancel->Cancel(Status::SchedulingCancelled(
         "In favor of the same task with larger attempt number"));
   }
 }

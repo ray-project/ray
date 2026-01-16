@@ -175,23 +175,21 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     if (canceled_task_spec.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
-      if (stopping_) {  // XXX: stopping_ can come from whether cancelation is happening
-                        // in Stop().
+      if (stopping_) {
         reply->set_worker_exiting(true);
         reply->set_was_cancelled_before_running(true);
-        canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
+        send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        // XXX: why don't we set was_cancelled_before_running here?
-        canceled_send_reply_callback(status, nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
     } else {
       reply->set_was_cancelled_before_running(true);
-      canceled_send_reply_callback(status, nullptr, nullptr);
+      send_reply_callback(status, nullptr, nullptr);
     }
   };
 
-  TaskSpecification task_spec =
-      TaskSpecification(std::move(*request.mutable_task_spec()));
+   TaskSpecification task_spec =
+          TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
     reply->set_was_cancelled_before_running(true);
     if (task_spec.IsActorTask()) {
@@ -219,6 +217,11 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
   }
 
+  TaskToExecute task = TaskToExecute(
+      make_accept_callback(),
+      cancel_callback,
+      std::move(task_spec),
+  );
   if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
@@ -246,19 +249,11 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                      .actor_scheduling_queue_max_reorder_wait_seconds())))
                .first;
     }
-
-    auto accept_callback = make_accept_callback();
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
-                    std::move(accept_callback),
-                    std::move(cancel_callback),
-                    std::move(task_spec));
+                    task);
   } else {
-    RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
-                   << " to normal scheduling task queue.";
-    auto accept_callback = make_accept_callback();
-    normal_task_execution_queue_->Add(
-        std::move(accept_callback), std::move(cancel_callback), std::move(task_spec));
+    normal_task_execution_queue_->Add(task);
   }
 }
 

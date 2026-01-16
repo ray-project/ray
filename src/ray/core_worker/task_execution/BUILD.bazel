@@ -82,6 +82,7 @@ ray_cc_library(
     hdrs = ["actor_task_execution_queue_interface.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":common",
         "//src/ray/common:task_common",
         "//src/ray/rpc:rpc_callback_types",
     ],
