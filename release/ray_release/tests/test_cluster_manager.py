@@ -150,7 +150,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager.create_cluster_compute()
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 2)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailFail(self):
@@ -178,7 +178,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailSucceed(self):
@@ -210,7 +210,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateSucceed(self):
@@ -240,7 +240,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
         # Test automatic fields
         self.assertEqual(
