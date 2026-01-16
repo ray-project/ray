@@ -47,7 +47,7 @@ def get_progress_manager(
     worker = ray._private.worker
     in_ray_worker = worker.global_worker.mode == worker.WORKER_MODE
 
-    if sys.stdout.isatty() and not (use_ray_tqdm and in_ray_worker):
+    if not sys.stdout.isatty() and not (use_ray_tqdm and in_ray_worker):
         from ray.data._internal.progress.logging_progress import (
             LoggingExecutionProgressManager,
         )

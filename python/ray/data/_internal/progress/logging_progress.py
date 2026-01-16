@@ -171,7 +171,8 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         logger.info(msg)
         m = self._get_as_logging_metrics(self._global_progress_uuid)
         logger.info(f"{m.name}: {m.completed}/{m.total or '?'}")
-        logger.info(m.desc)
+        if m.desc is not None:
+            logger.info(m.desc)
         if len(self._log_order) > 0:
             logger.info("")
 
