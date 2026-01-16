@@ -8,7 +8,7 @@ This page describes how to use Ray's native cgroup v2 based resource isolation t
 
 .. note::
 
-   This feature is available in Ray version 2.51.0 and above on Linux.
+   This feature is only available in Ray version 2.51.0 and above on Linux.
 
 Background
 ==========
@@ -20,7 +20,7 @@ A Ray cluster consists of Ray Nodes which run two types of processes:
 
 Without resource isolation, user processes can starve system processes of CPU and memory leading to node failure. Node failure can cause instability in your workload and in extreme cases lead to job failure.
 
-As of v2.51.0, Ray uses `cgroup v2 <https://docs.kernel.org/admin-guide/cgroup-v2.html>`_ to reserve CPU and memory resources for Ray's system processes to protect them from OOM errors and CPU starvation.
+As of v2.51.0, Ray uses `cgroup v2 <https://docs.kernel.org/admin-guide/cgroup-v2.html>`_ to reserve CPU and memory resources for Ray's system processes to protect them from out-of-memory (OOM) errors and CPU starvation.
 
 Requirements
 ============
@@ -29,7 +29,8 @@ Configuring and enabling Resource Isolation can be involved depending on how you
 
 - Ray version 2.51.0 and above
 - Linux operating system running kernel version 5.8 or above
-- Cgroup v2 enabled in unified mode, meaning that you can't also have cgroup v1 enabled. For more information, see :ref:`How to Enable Cgroup v2 <enable-cgroupv2>`.
+- Cgroup v1 is disabled.
+- Cgroup v2 enabled with read and write permissions. For more information, see :ref:`How to Enable Cgroup v2 <enable-cgroupv2>`.
 
 .. _resource-isolation-containers:
 
@@ -44,6 +45,7 @@ Running in Kubernetes with Privileged Security Context
 To enable privileged pods in Kubernetes, you need to `set the securityContext <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container>`_ in your podspec to privileged:
 
 .. code-block:: yaml
+   :emphasize-lines: 11-12
 
    apiVersion: v1
    kind: Pod
@@ -81,7 +83,8 @@ If you're running Ray directly on Linux, the setup is a little more involved. Yo
 
 1. Create a cgroup for Ray
 2. Configure the cgroup to allow the user that starts Ray to have read and write permissions
-3. Start Ray inside the cgroup
+3. Move the process that will start Ray into the created cgroup.
+3. Start Ray with the cgroup path.
 
 Here's an example script that shows you how to perform these steps. This is to help you run ray on a single node for tests and not the recommended way to run a Ray cluster in production:
 
@@ -89,9 +92,6 @@ Here's an example script that shows you how to perform these steps. This is to h
 
    # Create the cgroup that will be managed by Ray.
    sudo mkdir -p /sys/fs/cgroup/ray
-
-   # Enable the cpu and memory controllers for that cgroup.
-   echo "+cpu +memory" | sudo tee -a /sys/fs/cgroup/ray/cgroup.subtree_control
 
    # Make the current user the owner of the managed cgroup.
    sudo chown -R $(whoami):$(whoami) /sys/fs/cgroup/ray
@@ -240,7 +240,7 @@ The most reliable way to test this is to look at the mount output. It should loo
 
 .. important::
 
-   If you don't see cgroup v2 or see both cgroup v1 and cgroup v2, you will need to disable cgroup v1 and enable cgroup v2 in "unified" mode manually.
+   If you don't see cgroup v2 or see both cgroup v1 and cgroup v2, you will need to disable cgroup v1 and enable cgroup v2.
 
 If your distribution uses GRUB, add ``systemd.unified_cgroup_hierarchy=1`` to ``GRUB_CMDLINE_LINUX`` under ``/etc/default/grub``, followed by ``sudo update-grub``. However, the recommended approach is to use a distribution that already enables cgroup v2 by default.
 
