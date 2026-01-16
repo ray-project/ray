@@ -315,7 +315,7 @@
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
           "_RayTrainWorker__execute.get_next"
 
-- name: training_ingest_micro_benchmark
+- name: training_ingest_microbenchmark
   python: "3.10"
   working_dir: nightly_tests
 
@@ -327,21 +327,21 @@
       run:
         timeout: 900
         script: >
-          python dataset/training_ingest_micro_benchmark.py
+          python dataset/training_ingest_microbenchmark.py
           --data-format images_with_read_parquet
 
     - __suffix__: images_with_map_batches
       run:
         timeout: 900
         script: >
-          python dataset/training_ingest_micro_benchmark.py
+          python dataset/training_ingest_microbenchmark.py
           --data-format images_with_map_batches
 
     - __suffix__: images_with_read_images
       run:
         timeout: 900
         script: >
-          python dataset/training_ingest_micro_benchmark.py
+          python dataset/training_ingest_microbenchmark.py
           --data-format images_with_read_images
 
 #################
