@@ -119,6 +119,29 @@ def test_allocate_slots_to_shards():
     assert shard_slots[1][3600] == 2
 
 
+def test_get_rules_for_shard_optimal_no_empty_shards():
+    """Test that get_rules_for_shard_optimal avoids empty shards."""
+    enormous_rules = [bazel_sharding.BazelRule("enormous_0", "enormous")]
+    small_rules = [bazel_sharding.BazelRule(f"small_{i}", "small") for i in range(10)]
+    rules_grouped_by_time = [(3600, enormous_rules), (60, small_rules)]
+
+    all_shards = []
+    for shard_index in range(6):
+        shard_rules = bazel_sharding.get_rules_for_shard_optimal(
+            rules_grouped_by_time, shard_index, count=6
+        )
+        all_shards.append(shard_rules)
+
+    for i, shard in enumerate(all_shards):
+        assert len(shard) > 0, f"Shard {i} is empty"
+
+    all_tests = set()
+    for shard in all_shards:
+        all_tests.update(shard)
+    expected_tests = {"enormous_0"} | {f"small_{i}" for i in range(10)}
+    assert all_tests == expected_tests
+
+
 def test_bazel_sharding_end_to_end(mock_build_dir):
     """Test e2e working of the script without sharding.
 
