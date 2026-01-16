@@ -1247,7 +1247,6 @@ class RequestRouter(ABC):
             if not is_retry:
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_route.append(pending_request)
-                self._add_pending_request_to_indices(pending_request)
             else:
                 # Retry path: insert at correct position to maintain sorted order by
                 # created_at. Uses optimized helper that is O(1) for common case (recent
@@ -1259,8 +1258,8 @@ class RequestRouter(ABC):
                 self._insert_pending_request_sorted(
                     self._pending_requests_to_route, pending_request
                 )
-                self._add_pending_request_to_indices(pending_request)
 
+            self._add_pending_request_to_indices(pending_request)
             self._maybe_start_routing_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
