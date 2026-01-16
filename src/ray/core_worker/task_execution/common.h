@@ -15,9 +15,12 @@
 #pragma once
 
 #include <string>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -30,12 +33,10 @@ namespace core {
 class TaskToExecute {
  public:
   TaskToExecute();
-  TaskToExecute(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+  TaskToExecute(std::function<void(const TaskSpecification &)>
                     accept_callback,
                 std::function<void(const TaskSpecification &,
-                                   const Status &,
-                                   rpc::SendReplyCallback)> reject_callback,
-                rpc::SendReplyCallback send_reply_callback,
+                                   const Status &)> reject_callback,
                 TaskSpecification task_spec);
 
   void Accept();
@@ -50,13 +51,19 @@ class TaskToExecute {
   const TaskSpecification &TaskSpec() const;
 
  private:
-  std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_callback_;
-  std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-      reject_callback_;
-  rpc::SendReplyCallback send_reply_callback_;
+  std::function<void(const TaskSpecification &)> accept_callback_;
+  std::function<void(const TaskSpecification &, const Status &)> reject_callback_;
 
   TaskSpecification task_spec_;
   std::vector<rpc::ObjectReference> pending_dependencies_;
+};
+
+struct TaskExecutionResult {
+  std::string application_error;
+  bool is_retryable_error = false;
+  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
+  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
 };
 
 class ActorTaskExecutionArgWaiterInterface {
