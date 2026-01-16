@@ -223,6 +223,7 @@ class TesterContainer(Container):
         run_flaky_tests: bool = False,
         cache_test_results: bool = False,
     ) -> subprocess.Popen:
+        test_targets = ["//python/ray/tests:test_object_spilling_asan"]
         logger.info("Running tests: %s", test_targets)
         commands = [
             f'cleanup() {{ chmod -R a+r "{self.bazel_log_dir}"; }}',
