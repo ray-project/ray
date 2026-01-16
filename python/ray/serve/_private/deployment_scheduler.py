@@ -10,7 +10,7 @@ from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
-from ray._private.label_utils import match_label_selector
+from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
@@ -900,7 +900,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         return {
             node_id: resources
             for node_id, resources in available_nodes.items()
-            if match_label_selector(node_labels.get(node_id, {}), required_labels)
+            if node_labels_match_selector(node_labels.get(node_id, {}), required_labels)
         }
 
     def _find_best_fit_node_for_pack(
