@@ -52,7 +52,7 @@ class BenchmarkConfig:
     )
 
     # Batch sizes to test
-    batch_sizes: List[int] = field(default_factory=lambda: [64])
+    batch_sizes: List[int] = field(default_factory=lambda: [16])
 
     # Prefetch batch counts to test
     prefetch_batches_list: List[int] = field(default_factory=lambda: [2, 4])
@@ -286,7 +286,7 @@ class MapBatchesS3Loader(BaseDataLoader):
 
     # S3 configuration
     AWS_REGION = "us-west-2"
-    S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/jpeg_split"
+    S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
     SPLIT_DIRS = {
         "train": f"{S3_ROOT}/train",
         "val": f"{S3_ROOT}/val",
@@ -389,7 +389,7 @@ class ReadImagesS3Loader(BaseDataLoader):
 
     # S3 configuration
     AWS_REGION = "us-west-2"
-    S3_ROOT = "s3://ray-benchmark-data-internal-us-west-2/imagenet/jpeg_split"
+    S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
     SPLIT_DIRS = {
         "train": f"{S3_ROOT}/train",
         "val": f"{S3_ROOT}/val",
