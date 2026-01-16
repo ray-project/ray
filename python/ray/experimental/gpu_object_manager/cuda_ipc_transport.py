@@ -54,8 +54,8 @@ class CudaIpcTransport(TensorTransportManager):
         # this method since it gets called before submitting an actor task.
         return True
 
-    @staticmethod
     def extract_tensor_transport_metadata(
+        self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> CudaIpcTransportMetadata:
@@ -103,8 +103,8 @@ class CudaIpcTransport(TensorTransportManager):
             ray_node_id=ray_node_id,
         )
 
-    @staticmethod
     def get_communicator_metadata(
+        self,
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
@@ -113,8 +113,8 @@ class CudaIpcTransport(TensorTransportManager):
         communicator_metadata = CudaIpcCommunicatorMetadata()
         return communicator_metadata
 
-    @staticmethod
     def recv_multiple_tensors(
+        self,
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
@@ -179,8 +179,8 @@ class CudaIpcTransport(TensorTransportManager):
                 tensors.append(tensor)
         return tensors
 
-    @staticmethod
     def send_multiple_tensors(
+        self,
         tensors: List["torch.Tensor"],
         tensor_transport_metadata: CudaIpcTransportMetadata,
         communicator_metadata: CudaIpcCommunicatorMetadata,
@@ -189,12 +189,13 @@ class CudaIpcTransport(TensorTransportManager):
             "CUDA IPC transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
 
-    @staticmethod
-    def garbage_collect(obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata):
+    def garbage_collect(
+        self, obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata
+    ):
         pass
 
-    @staticmethod
     def abort_transport(
+        self,
         obj_id: str,
         communicator_metadata: CudaIpcCommunicatorMetadata,
     ):
