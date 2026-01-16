@@ -616,7 +616,11 @@ class ParquetDatasource(Datasource):
             return None
 
         if not self._partition_columns:
-            return None
+            # If we have a projection map but no partition columns stored,
+            # it means the user specified columns but didn't include any
+            # partition columns. Return [] to indicate no partition columns
+            # should be included.
+            return []
 
         # Extract partition columns that are in the projection map
         partition_cols = [
