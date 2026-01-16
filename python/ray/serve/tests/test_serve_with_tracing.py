@@ -10,6 +10,7 @@ from opentelemetry import trace
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.serve._private.constants import RAY_SERVE_USE_GRPC_BY_DEFAULT
 from ray.serve.schema import ReplicaState
 from ray.util.tracing.setup_local_tmp_tracing import spans_dir
 
@@ -59,6 +60,11 @@ def get_span_list():
     return span_list
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Tracing context propagation not yet implemented for gRPC mode. "
+    "See https://github.com/ray-project/ray/issues/60223",
+)
 def test_deployment_remote_calls_with_tracing(ray_serve_with_tracing):
     serve.start()
 

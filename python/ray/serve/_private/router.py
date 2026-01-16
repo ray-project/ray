@@ -64,7 +64,6 @@ from ray.serve._private.utils import (
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
-from ray.util.tracing.tracing_helper import _DictPropagator, _is_tracing_enabled
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -886,13 +885,6 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
-
-        # Add context to request meta to link
-        # traces collected in the replica.
-        if _is_tracing_enabled():
-            request_meta.tracing_context = _DictPropagator.inject_current_context()
-        else:
-            request_meta.tracing_context = None
 
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
