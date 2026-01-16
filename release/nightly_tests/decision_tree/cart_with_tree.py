@@ -6,8 +6,62 @@ import time
 import tempfile
 import os
 import json
+from urllib.error import HTTPError
+import random
 
 """Binary tree with decision tree semantics and ASCII visualization."""
+
+# HTTP status codes that are potentially transient and worth retrying
+RETRYABLE_HTTP_CODES = {403, 429, 500, 502, 503, 504}
+
+
+def fetch_dataset_with_retry(max_retries=5, initial_delay=1.0):
+    """
+    Fetch the covertype dataset with exponential backoff retry logic.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds before first retry
+
+    Returns:
+        The loaded dataset
+    """
+    delay = initial_delay
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            print(
+                f"Attempting to download dataset (attempt {attempt + 1}/{max_retries + 1})"
+            )
+            dataset = datasets.fetch_covtype(data_home=tempfile.mkdtemp())
+            print("Dataset downloaded successfully")
+            return dataset
+        except HTTPError as e:
+            last_error = e
+            if e.code in RETRYABLE_HTTP_CODES:
+                # Retryable HTTP error (rate limiting, server errors, etc.)
+                if attempt < max_retries:
+                    # Add jitter to avoid thundering herd
+                    jitter = random.uniform(0, 0.1 * delay)
+                    sleep_time = delay + jitter
+                    print(
+                        f"HTTP {e.code} error, retrying in {sleep_time:.2f} seconds..."
+                    )
+                    time.sleep(sleep_time)
+                    delay *= 2  # Exponential backoff
+                else:
+                    raise
+            else:
+                # For other HTTP errors, re-raise immediately
+                raise
+        except Exception as e:
+            # For non-HTTP errors, re-raise immediately
+            print(f"Unexpected error downloading dataset: {e}")
+            raise
+
+    # This should not be reached, but just in case
+    raise last_error
 
 
 class Node:
@@ -332,9 +386,7 @@ def best_split(tree, X, y):
 
 
 @ray.remote
-def run_in_cluster():
-    dataset = datasets.fetch_covtype(data_home=tempfile.mkdtemp())
-    X, y = dataset.data, dataset.target - 1
+def run_in_cluster(X, y):
     training_size = 400000
     max_depth = 10
     clf = DecisionTreeClassifier(max_depth=max_depth)
@@ -355,10 +407,20 @@ if __name__ == "__main__":
 
     ray.init(address=os.environ["RAY_ADDRESS"])
 
+    # Download dataset once with retry logic
+    print("Downloading dataset once for all concurrent runs...")
+    dataset = fetch_dataset_with_retry()
+    X, y = dataset.data, dataset.target - 1
+    print(f"Dataset loaded: X.shape={X.shape}, y.shape={y.shape}")
+
+    # Put dataset in Ray object store so all tasks can share it efficiently
+    X_ref = ray.put(X)
+    y_ref = ray.put(y)
+
     futures = []
     for i in range(args.concurrency):
         print(f"concurrent run: {i}")
-        futures.append(run_in_cluster.remote())
+        futures.append(run_in_cluster.remote(X_ref, y_ref))
         time.sleep(10)
 
     for i, f in enumerate(futures):
