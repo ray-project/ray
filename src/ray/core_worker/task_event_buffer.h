@@ -632,6 +632,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination,
               TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents);
 };
 
 }  // namespace worker

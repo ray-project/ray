@@ -527,6 +527,30 @@ void TaskEventBufferImpl::Stop() {
   }
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
 
+  // Perform a final synchronous flush to ensure all buffered events are sent
+  // before shutdown. We need to wait for the gRPC calls to complete.
+  FlushEvents(/*forced=*/true);
+
+  // Wait for in-flight gRPC calls to complete with a timeout.
+  // This ensures events are actually delivered before we stop the io_service.
+  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+  auto start_time = std::chrono::steady_clock::now();
+  while ((gcs_grpc_in_progress_ || event_aggregator_grpc_in_progress_) &&
+         std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now() - start_time)
+                 .count() < flush_timeout_ms) {
+    // Give the io_thread time to process the gRPC callbacks.
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  if (gcs_grpc_in_progress_ || event_aggregator_grpc_in_progress_) {
+    RAY_LOG(WARNING) << "TaskEventBuffer shutdown timed out waiting for gRPC flush to "
+                        "complete. Some events may be lost. "
+                     << "[gcs_grpc_in_progress=" << gcs_grpc_in_progress_ << "]"
+                     << "[event_aggregator_grpc_in_progress="
+                     << event_aggregator_grpc_in_progress_ << "]";
+  }
+
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.
   io_service_.stop();

@@ -1148,6 +1148,68 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
+// Test that Stop() flushes all buffered events before shutting down.
+// This verifies the fix for https://github.com/ray-project/ray/issues/60218
+TEST_P(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents) {
+  const auto [to_gcs, to_aggregator] = GetParam();
+
+  // Add some events
+  size_t num_events = 10;
+  for (size_t i = 0; i < num_events; ++i) {
+    auto task_id = RandomTaskId();
+    task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id, 0));
+  }
+
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
+
+  // Mock gRPC callbacks to complete successfully
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+
+  if (to_gcs) {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
+        .WillOnce([](std::unique_ptr<rpc::TaskEventData> actual_data,
+                     ray::rpc::StatusCallback callback) {
+          // Verify that events are being flushed
+          EXPECT_GT(actual_data->events_by_task_size(), 0);
+          callback(Status::OK());
+          return Status::OK();
+        });
+  } else {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _)).Times(0);
+  }
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+
+  if (to_aggregator) {
+    rpc::events::AddEventsReply reply;
+    Status status = Status::OK();
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+        .WillOnce(DoAll(
+            Invoke([](const rpc::events::AddEventsRequest &request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+              // Verify that events are being flushed
+              EXPECT_GT(request.events_data().events_size(), 0);
+            }),
+            MakeAction(
+                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+  } else {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+  }
+
+  // Stop() should flush all events before returning
+  task_event_buffer_->Stop();
+
+  // After Stop(), no more events should be in the buffer
+  // Note: We can't check GetNumTaskEventsStored() here because the buffer is disabled
+  // after Stop(). The test verification is done via the EXPECT_CALL above.
+
+  // Prevent TearDown from calling Stop() again
+  task_event_buffer_.reset();
+}
+
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},

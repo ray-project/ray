@@ -52,6 +52,12 @@ void RayEventRecorder::StartExportingEvents() {
       "RayEventRecorder.ExportEvents");
 }
 
+void RayEventRecorder::StopExportingEvents() {
+  RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
+  // Perform a final flush to ensure all buffered events are sent before shutdown.
+  ExportEvents();
+}
+
 void RayEventRecorder::ExportEvents() {
   absl::MutexLock lock(&mutex_);
   if (buffer_.empty()) {

@@ -284,5 +284,45 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
   ASSERT_EQ(recorded_events.size(), 0);
 }
 
+// Test that StopExportingEvents() flushes all buffered events.
+// This verifies the fix for https://github.com/ray-project/ray/issues/60218
+TEST_F(RayEventRecorderTest, TestStopFlushesEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Add events without running the io service (simulating buffered events)
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id_1");
+  data.set_is_dead(false);
+  data.set_driver_pid(12345);
+  data.set_start_time(absl::ToUnixSeconds(absl::Now()));
+  data.set_end_time(0);
+  data.set_entrypoint("python test_script.py");
+  data.mutable_driver_address()->set_ip_address("127.0.0.1");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+
+  // Don't run the io_service yet - events should still be in the buffer
+
+  // Now call StopExportingEvents() - this should flush the buffered events
+  recorder_->StopExportingEvents();
+
+  // Run the io_service to process the flush
+  io_service_.run_one();
+
+  // Verify that events were flushed
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 1);
+  ASSERT_EQ(recorded_events[0].driver_job_definition_event().job_id(), "test_job_id_1");
+}
+
 }  // namespace observability
 }  // namespace ray

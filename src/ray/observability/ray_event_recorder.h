@@ -47,6 +47,10 @@ class RayEventRecorder : public RayEventRecorderInterface {
   // ignored.
   void StartExportingEvents() override;
 
+  // Stop exporting events and perform a final flush to ensure all buffered events
+  // are sent before shutdown. This should be called during graceful shutdown.
+  void StopExportingEvents() override;
+
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
