@@ -2,8 +2,9 @@
 
 This script uses Ray Tune's HyperOpt search algorithm to optimize APPO
 hyperparameters for CartPole-v1, targeting convergence within 2 million
-timesteps. HyperOpt uses Tree-structured Parzen Estimators (TPE) for
-efficient Bayesian optimization of the hyperparameter search space.
+timesteps for each individual trial.
+HyperOpt uses Tree-structured Parzen Estimators (TPE)
+for efficient Bayesian optimization of the hyperparameter search space.
 
 The script runs 4 parallel trials by default, with HyperOpt suggesting new
 hyperparameter configurations based on results from completed trials.
