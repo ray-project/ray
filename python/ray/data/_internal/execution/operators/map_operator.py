@@ -596,10 +596,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            self._metrics.on_task_output_generated(task_index)
             self._output_queue.add(output, key=task_index)
-
-            # Notify output queue that the task has produced an new output.
-            self._output_queue.add(task_index, output)
             self._metrics.on_output_queued(output)
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):

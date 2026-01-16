@@ -199,7 +199,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             dispatch_all or len(self._buffer) >= self._min_buffer_size
         ):
             target_index = self._select_output_index()
-            target_bundle = self._pop_bundle_to_dispatch(target_index)
+            target_bundle = self._peek_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
@@ -212,9 +212,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     else:
                         self._locality_misses += 1
             else:
-                # Put it back and abort.
-                self._buffer.add_to_front(target_bundle)
-                self._metrics.on_input_queued(target_bundle)
+                # Abort.
                 break
         self._output_splitter_overhead_time += time.perf_counter() - start_time
 
@@ -223,18 +221,14 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         i, _ = min(enumerate(self._num_output), key=lambda t: t[1])
         return i
 
-    def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
+    def _peek_bundle_to_dispatch(self, target_index: int) -> RefBundle:
         if self._locality_hints:
             preferred_loc = self._locality_hints[target_index]
             for bundle in self._buffer:
                 if preferred_loc in self._get_locations(bundle):
-                    self._buffer.remove(bundle)
-                    self._metrics.on_input_dequeued(bundle)
                     return bundle
 
-        bundle = self._buffer.get_next()
-        self._metrics.on_input_dequeued(bundle)
-        return bundle
+        return self._buffer.peek_next()
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
         if not self._equal:
@@ -244,7 +238,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         output_distribution[target_index] += nrow
         buffer_requirement = self._calculate_buffer_requirement(output_distribution)
         buffer_size = self._buffer.num_rows()
-        return buffer_size >= buffer_requirement
+        # Check if we have enough rows LEFT after dispatching to equalize.
+        return buffer_size - nrow >= buffer_requirement
 
     def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
         # Calculate the new number of rows that we'd need to equalize the row
@@ -265,7 +260,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 left, right = _split(b, nrow - acc)
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.add_to_front(right)
+                self._buffer.add(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 

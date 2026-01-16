@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -35,7 +35,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
-        self._input_buffers: List["BaseBundleQueue"] = [
+        self._input_buffers: List["FIFOBundleQueue"] = [
             FIFOBundleQueue() for _ in range(len(input_ops))
         ]
 
@@ -79,10 +79,10 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         return sum(q.estimate_size_bytes() for q in self._input_buffers)
 
     def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(q.blocks) for q in self._output_buffer)
+        return self._output_buffer.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return sum(q.size_bytes() for q in self._output_buffer)
+        return self._output_buffer.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
