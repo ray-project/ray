@@ -187,8 +187,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
         HandleTaskExecutionResult(status, t, result, send_reply_callback, reply);
       };
 
-  auto cancel_callback = [this, reply, send_reply_callback](
-                             const TaskSpecification &t, const Status &status) {
+  auto cancel_callback = [this, reply, send_reply_callback](const TaskSpecification &t,
+                                                            const Status &status) {
     if (t.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
