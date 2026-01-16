@@ -68,7 +68,7 @@ class TestSpreadScheduling:
         replica_actor_handles = []
         replica_placement_groups = []
 
-        def on_scheduled(actor_handle, placement_group):
+        def on_scheduled(actor_handle, placement_group, bundle_indices=None):
             replica_actor_handles.append(actor_handle)
             replica_placement_groups.append(placement_group)
 
