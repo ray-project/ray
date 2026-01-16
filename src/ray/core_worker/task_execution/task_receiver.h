@@ -63,7 +63,6 @@ class TaskReceiver {
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        actor_creation_task_done_(std::move(actor_creation_task_done)),
         normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
