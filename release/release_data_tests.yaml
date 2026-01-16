@@ -286,7 +286,7 @@
       # There was a bug in Ray Data that caused GPU memory leak (see #34819).
       # We add this test case to cover this scenario.
       run:
-        script: python streaming_split_benchmark.py --num-workers 10 --equal-split false --early-stop
+        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
 ################
 # Training tests

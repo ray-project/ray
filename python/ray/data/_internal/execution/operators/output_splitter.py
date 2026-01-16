@@ -3,10 +3,10 @@ import time
 from collections import deque
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from ray._private.ray_constants import env_float
 from ray.data._internal.execution.bundle_queue import (
     HashLinkedQueue,
 )
-from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     NodeIdStr,
