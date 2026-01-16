@@ -2048,7 +2048,10 @@
       --num-env-runners=4 \
       --num-learners=0 \
       --num-aggregator-actors-per-learner=2 \
-      --as-release-test
+      --as-release-test \
+      --num-aggregator-actors-per-learner=2 \
+      --num-env-runners=4 \
+      --num-learners=0
 
 - name: rllib_cartpole_single_cpu
   python: "3.10"
@@ -2132,10 +2135,10 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/tictactoe_appo.py \
-      --num-env-runners=4 \
-      --num-learners=0 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
-      --as-release-test
+      --num-env-runners=4 \
+      --num-learners=0
 
 - name: rllib_tictactoe_single_cpu
   python: "3.10"
@@ -2153,10 +2156,11 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/tictactoe_appo.py \
-      --num-env-runners=4 \
-      --num-learners=1 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
-      --as-release-test
+      --num-cpus-per-learner=1 \
+      --num-env-runners=4 \
+      --num-learners=1
 
 - name: rllib_tictactoe_multi_gpu_single_node
   python: "3.10"
@@ -2175,11 +2179,11 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/tictactoe_appo.py \
-      --num-env-runners=8 \
-      --num-learners=2 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
+      --num-env-runners=8 \
       --num-gpus-per-learner=1 \
-      --as-release-test
+      --num-learners=2
 
 - name: rllib_atari_multi_gpu_single_node
   python: "3.10"
@@ -2198,11 +2202,11 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/atari_appo.py \
-      --num-env-runners=8 \
-      --num-learners=2 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
+      --num-env-runners=8 \
       --num-gpus-per-learner=1 \
-      --as-release-test
+      --num-learners=2
 
 - name: rllib_atari_multi_gpu_multi_node
   python: "3.10"
@@ -2221,11 +2225,11 @@
   run:
     timeout: 3000  # expected 2000 seconds
     script: python example_algorithms/appo/atari_appo.py \
-      --num-env-runners=8 \
-      --num-learners=2 \
+      --as-release-test \
       --num-aggregator-actors-per-learner=2 \
+      --num-env-runners=8 \
       --num-gpus-per-learner=1 \
-      --as-release-test
+      --num-learners=2
 
 ########################
 # Core Nightly Tests
