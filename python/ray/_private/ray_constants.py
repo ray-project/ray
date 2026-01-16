@@ -188,6 +188,7 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 # Timeout waiting for the dashboard to come alive during node startup.
 RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
 
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
@@ -502,11 +503,6 @@ RAY_INTERNAL_FLAGS = [
     "RAY_RAYLET_PID",
     "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
 ]
-
-
-def gcs_actor_scheduling_enabled():
-    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
-
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 

@@ -74,9 +74,9 @@ Proximal Policy Optimization (PPO)
 
 
 **Tuned examples:**
-`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/cartpole_ppo.py>`__.
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pendulum_ppo.py>`__.
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py>`__,
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/cartpole_ppo.py>`__.
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/pendulum_ppo.py>`__.
 
 
 **PPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
@@ -153,8 +153,8 @@ Soft Actor Critic (SAC)
 
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
-`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah_sac.py>`__,
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/pendulum-sac.yaml>`__,
+`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/halfcheetah_sac.py>`__,
 
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -194,8 +194,8 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 
 **Tuned examples:**
-`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
-`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py>`__
+`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/halfcheetah_appo.py>`__
 
 **APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -225,10 +225,10 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 
 
 Tuned examples:
-`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__,
-`vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-vectorized.yaml>`__,
-`multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-fast.yaml>`__,
-`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/atari-impala.yaml>`__.
+`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala.yaml>`__,
+`vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-vectorized.yaml>`__,
+`multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-fast.yaml>`__,
+`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/atari-impala.yaml>`__.
 
 .. figure:: images/impala.png
     :width: 650
@@ -273,9 +273,9 @@ Also see `this README here for more details on how to run experiments <https://g
 
 
 **Tuned examples:**
-`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k_dreamerv3.py>`__,
-`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M_dreamerv3.py>`__,
-`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py>`__
+`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_100k_dreamerv3.py>`__,
+`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_200M_dreamerv3.py>`__,
+`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py>`__
 
 
 **Pong-v5 results (1, 2, and 4 GPUs)**:
@@ -331,8 +331,8 @@ Behavior Cloning (BC)
     BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 
 **Tuned examples:**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/pendulum_bc.py>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/pendulum_bc.py>`__
 
 **BC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -358,7 +358,7 @@ Conservative Q-Learning (CQL)
 
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/cql/pendulum_cql.py>`__
 
 **CQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -383,7 +383,7 @@ Implicit Q-Learning (IQL)
     high-advantage actions—enabling substantial performance gains over the behavior policy using only in-dataset actions.
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/iql/pendulum_iql.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/iql/pendulum_iql.py>`__
 
 **IQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -410,7 +410,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
 
 **Tuned examples:**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole_marwil.py>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/marwil/cartpole_marwil.py>`__
 
 **MARWIL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 

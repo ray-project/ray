@@ -43,7 +43,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -64,7 +64,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: release/ray_release/byod/ray_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -86,7 +86,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: release/ray_release/byod/ray_base_extra_testdeps_gpu_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_gpu_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -105,7 +105,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
@@ -123,7 +123,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
-    output: release/ray_release/byod/ray_ml_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_extra_testdeps/ray_ml_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
@@ -131,6 +131,24 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+
+  - name: ray_base_slim_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - docker/base-slim/requirements.in
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    output: python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
 
   # First layer of the ray release images. Contains all base layer python dependencies
   # and is a subset of the base extra test deps defined above (release image depset)
