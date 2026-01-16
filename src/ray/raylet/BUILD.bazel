@@ -31,32 +31,6 @@ ray_cc_library(
     ],
 )
 
-# TODO(edoakes): looks like this belongs under scheduling/...
-ray_cc_library(
-    name = "local_lease_manager",
-    srcs = ["local_lease_manager.cc"],
-    hdrs = ["local_lease_manager.h"],
-    # TODO(irabbani): Make this :__subpackages__ after the
-    # local_lease_manager is removed from the GCS.
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lease_dependency_manager",
-        ":metrics",
-        ":worker_interface",
-        ":worker_pool",
-        "//src/ray/common:lease",
-        "//src/ray/common:ray_object",
-        "//src/ray/common/scheduling:cluster_resource_data",
-        "//src/ray/common/scheduling:placement_group_util",
-        "//src/ray/object_manager:object_manager_common",
-        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
-        "//src/ray/raylet/scheduling:local_lease_manager_interface",
-        "//src/ray/raylet/scheduling:scheduler_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
 ray_cc_library(
     name = "placement_group_resource_manager",
     srcs = ["placement_group_resource_manager.cc"],
@@ -251,7 +225,6 @@ ray_cc_library(
     deps = [
         ":agent_manager",
         ":lease_dependency_manager",
-        ":local_lease_manager",
         ":local_object_manager_interface",
         ":placement_group_resource_manager",
         ":runtime_env_agent_client",
