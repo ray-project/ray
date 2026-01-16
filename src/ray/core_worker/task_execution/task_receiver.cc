@@ -145,42 +145,38 @@ void TaskReceiver::HandleTaskExecutionResult(
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                          rpc::PushTaskReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-
-  auto accept_callback = [this, reply, send_reply_callback](
-               const TaskSpecification &task_spec) mutable {
-
-      // Only assign resources for non-actor tasks. Actor tasks inherit the resources
-      // assigned at initial actor creation time.
-      std::optional<ResourceMappingType> resource_ids;
-      if (!task_spec.IsActorTask()) {
-        resource_ids.emplace();
-        for (auto &mapping : *request.mutable_resource_mapping()) {
-          std::vector<std::pair<int64_t, double>> rids;
-          rids.reserve(mapping.resource_ids().size());
-          for (const auto &ids : mapping.resource_ids()) {
-            rids.emplace_back(ids.index(), ids.quantity());
+  auto accept_callback =
+      [this, reply, send_reply_callback](const TaskSpecification &task_spec) mutable {
+        // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+        // assigned at initial actor creation time.
+        std::optional<ResourceMappingType> resource_ids;
+        if (!task_spec.IsActorTask()) {
+          resource_ids.emplace();
+          for (auto &mapping : *request.mutable_resource_mapping()) {
+            std::vector<std::pair<int64_t, double>> rids;
+            rids.reserve(mapping.resource_ids().size());
+            for (const auto &ids : mapping.resource_ids()) {
+              rids.emplace_back(ids.index(), ids.quantity());
+            }
+            resource_ids->emplace(std::move(*mapping.mutable_name()), std::move(rids));
           }
-          resource_ids->emplace(std::move(*mapping.mutable_name()), std::move(rids));
         }
-      }
 
-      TaskExecutionResult result;
-      auto status = task_handler_(task_spec,
-                                  std::move(resource_ids),
-                                  &result.return_objects,
-                                  &result.dynamic_return_objects,
-                                  &result.streaming_generator_returns,
-                                  reply->mutable_borrowed_refs(),
-                                  &result.is_retryable_error,
-                                  &result.application_error);
+        TaskExecutionResult result;
+        auto status = task_handler_(task_spec,
+                                    std::move(resource_ids),
+                                    &result.return_objects,
+                                    &result.dynamic_return_objects,
+                                    &result.streaming_generator_returns,
+                                    reply->mutable_borrowed_refs(),
+                                    &result.is_retryable_error,
+                                    &result.application_error);
 
-      HandleTaskExecutionResult(
-          status, task_spec, result, send_reply_callback, reply);
-  };
+        HandleTaskExecutionResult(status, task_spec, result, send_reply_callback, reply);
+      };
 
   auto cancel_callback = [this, reply, send_reply_callback](
-                             const TaskSpecification &task_spec,
-                             const Status &status) {
+                             const TaskSpecification &task_spec, const Status &status) {
     if (task_spec.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
