@@ -33,7 +33,7 @@ steps:
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
-    wanda: docker/base-extra-testdeps/llm.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
