@@ -1158,128 +1158,6 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    @abstractmethod
-    def _on_request_cancelled(
-        self, request_metadata: RequestMetadata, e: asyncio.CancelledError
-    ):
-        pass
-
-    @abstractmethod
-    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
-        pass
-
-    @abstractmethod
-    @contextmanager
-    def _wrap_request(
-        self, request_metadata: RequestMetadata
-    ) -> Generator[StatusCodeCallback, None, None]:
-        pass
-
-    @asynccontextmanager
-    async def _start_request(self, request_metadata: RequestMetadata):
-        async with self._semaphore:
-            try:
-                self._metrics_manager.inc_num_ongoing_requests(request_metadata)
-                yield
-            finally:
-                self._metrics_manager.dec_num_ongoing_requests(request_metadata)
-
-    async def _drain_ongoing_requests(self):
-        """Wait for any ongoing requests to finish.
-
-        Sleep for a grace period before the first time we check the number of ongoing
-        requests to allow the notification to remove this replica to propagate to
-        callers first.
-        """
-        wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
-        while True:
-            await asyncio.sleep(wait_loop_period_s)
-
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
-            if num_ongoing_requests > 0:
-                logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing requests."
-                )
-            else:
-                logger.info(
-                    "Graceful shutdown complete; replica exiting.",
-                    extra={"log_to_stderr": False},
-                )
-                break
-
-    async def shutdown(self):
-        try:
-            await self._user_callable_wrapper.call_destructor()
-        except:  # noqa: E722
-            # We catch a blanket exception since the constructor may still be
-            # running, so instance variables used by the destructor may not exist.
-            if self._user_callable_initialized:
-                logger.exception(
-                    "__del__ ran before replica finished initializing, and "
-                    "raised an exception."
-                )
-            else:
-                logger.exception("__del__ raised an exception.")
-
-        await self._metrics_manager.shutdown()
-
-    async def perform_graceful_shutdown(self):
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
-        await self.shutdown()
-
-    async def check_health(self):
-        try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
-            f = self._user_callable_wrapper.call_user_health_check()
-            if f is not None:
-                await f
-            self._healthy = True
-        except Exception as e:
-            logger.warning("Replica health check failed.")
-            self._healthy = False
-            raise e from None
-
-    async def record_routing_stats(self) -> Dict[str, Any]:
-        try:
-            f = self._user_callable_wrapper.call_user_record_routing_stats()
-            if f is not None:
-                return await f
-            return {}
-        except Exception as e:
-            logger.warning("Replica record routing stats failed.")
-            raise e from None
-
-
-class Replica(ReplicaBase):
-    async def _on_initialized(self):
-        # Get current rank from replica context during initialization
-        current_rank = ray.serve.context._get_internal_replica_context().rank
-        self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable,
-            rank=current_rank,
-        )
-
-        # Start the gRPC server for inter-deployment communication
-        add_ASGIServiceServicer_to_server(self, self._server)
-        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
-        await self._server.start()
-        logger.debug(
-            f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
-        )
-
-        # Save the initialization latency if the replica is initializing
-        # for the first time.
-        if self._initialization_latency is None:
-            self._initialization_latency = time.time() - self._initialization_start_time
-
     def _on_request_cancelled(
         self, metadata: RequestMetadata, e: asyncio.CancelledError
     ):
@@ -1301,6 +1179,15 @@ class Replica(ReplicaBase):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
+    def _get_request_context_kwargs(
+        self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
+    ) -> dict:
+        """Override this to add additional kwargs to _RequestContext.
+
+        This is a hook for subclasses to extend the request context.
+        """
+        return {}
+
     @contextmanager
     def _wrap_request(
         self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
@@ -1311,6 +1198,7 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        extra_kwargs = self._get_request_context_kwargs(request_metadata, ray_trace_ctx)
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
@@ -1320,6 +1208,7 @@ class Replica(ReplicaBase):
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
                 _ray_trace_ctx=ray_trace_ctx,
+                **extra_kwargs,
             )
         )
 
@@ -1440,6 +1329,111 @@ class Replica(ReplicaBase):
                 result = (request_metadata.grpc_context, result.SerializeToString())
 
             yield result
+
+    @asynccontextmanager
+    async def _start_request(self, request_metadata: RequestMetadata):
+        async with self._semaphore:
+            try:
+                self._metrics_manager.inc_num_ongoing_requests(request_metadata)
+                yield
+            finally:
+                self._metrics_manager.dec_num_ongoing_requests(request_metadata)
+
+    async def _drain_ongoing_requests(self):
+        """Wait for any ongoing requests to finish.
+
+        Sleep for a grace period before the first time we check the number of ongoing
+        requests to allow the notification to remove this replica to propagate to
+        callers first.
+        """
+        wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        while True:
+            await asyncio.sleep(wait_loop_period_s)
+
+            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            if num_ongoing_requests > 0:
+                logger.info(
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
+                    f"because there are {num_ongoing_requests} ongoing requests."
+                )
+            else:
+                logger.info(
+                    "Graceful shutdown complete; replica exiting.",
+                    extra={"log_to_stderr": False},
+                )
+                break
+
+    async def shutdown(self):
+        try:
+            await self._user_callable_wrapper.call_destructor()
+        except:  # noqa: E722
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
+            if self._user_callable_initialized:
+                logger.exception(
+                    "__del__ ran before replica finished initializing, and "
+                    "raised an exception."
+                )
+            else:
+                logger.exception("__del__ raised an exception.")
+
+        await self._metrics_manager.shutdown()
+
+    async def perform_graceful_shutdown(self):
+        self._shutting_down = True
+
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
+        await self.shutdown()
+
+    async def check_health(self):
+        try:
+            # If there's no user-defined health check, nothing runs on the user code event
+            # loop and no future is returned.
+            f = self._user_callable_wrapper.call_user_health_check()
+            if f is not None:
+                await f
+            self._healthy = True
+        except Exception as e:
+            logger.warning("Replica health check failed.")
+            self._healthy = False
+            raise e from None
+
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        try:
+            f = self._user_callable_wrapper.call_user_record_routing_stats()
+            if f is not None:
+                return await f
+            return {}
+        except Exception as e:
+            logger.warning("Replica record routing stats failed.")
+            raise e from None
+
+
+class Replica(ReplicaBase):
+    async def _on_initialized(self):
+        # Get current rank from replica context during initialization
+        current_rank = ray.serve.context._get_internal_replica_context().rank
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper.user_callable,
+            rank=current_rank,
+        )
+
+        # Start the gRPC server for inter-deployment communication
+        add_ASGIServiceServicer_to_server(self, self._server)
+        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
+        await self._server.start()
+        logger.debug(
+            f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
+        )
+
+        # Save the initialization latency if the replica is initializing
+        # for the first time.
+        if self._initialization_latency is None:
+            self._initialization_latency = time.time() - self._initialization_start_time
 
 
 class ReplicaActor:
