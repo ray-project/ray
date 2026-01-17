@@ -16,6 +16,6 @@ worker_node_types:
       # Default worker node type on Anyscale workspaces.
       # r8i.4xlarge, 16 vCPU, 128 GiB memory
       instance_type: r8i.4xlarge
-      min_workers: 4
-      max_workers: 4
+      min_workers: 8
+      max_workers: 8
       use_spot: false
