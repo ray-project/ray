@@ -54,13 +54,44 @@ void RayEventRecorder::StartExportingEvents() {
 
 void RayEventRecorder::StopExportingEvents() {
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
-  // Perform a final flush to ensure all buffered events are sent before shutdown.
-  ExportEvents();
+
+  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+
+  // Helper to wait for in-flight gRPC call to complete with timeout.
+  // Returns true if completed, false if timed out.
+  auto wait_for_grpc_completion = [&]() {
+    absl::MutexLock lock(&grpc_completion_mutex_);
+    auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
+    while (grpc_in_progress_) {
+      if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
+        return false;  // Timeout
+      }
+    }
+    return true;  // Completed
+  };
+
+  // First wait for any in-flight gRPC to complete, then flush, then wait again.
+  // This ensures no events are lost during shutdown.
+  if (wait_for_grpc_completion()) {
+    ExportEvents();
+    wait_for_grpc_completion();
+  } else {
+    RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out waiting for gRPC. "
+                     << "Some events may be lost.";
+  }
 }
 
 void RayEventRecorder::ExportEvents() {
   absl::MutexLock lock(&mutex_);
   if (buffer_.empty()) {
+    return;
+  }
+  // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
+  // This prevents the race where StopExportingEvents() could return while a
+  // periodic export is still in flight.
+  if (grpc_in_progress_) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+        << "Skipping RayEventRecorder export: gRPC call already in progress.";
     return;
   }
   rpc::events::AddEventsRequest request;
@@ -90,12 +121,19 @@ void RayEventRecorder::ExportEvents() {
   *request.mutable_events_data() = std::move(ray_event_data);
   buffer_.clear();
 
+  grpc_in_progress_ = true;
   event_aggregator_client_.AddEvents(
-      request, [](Status status, rpc::events::AddEventsReply reply) {
+      request, [this](Status status, rpc::events::AddEventsReply reply) {
         if (!status.ok()) {
           // TODO(#56391): Add a metric to track the number of failed events. Also
           // add logic for error recovery.
           RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
+        }
+        // Signal under mutex to avoid lost wakeup race condition
+        {
+          absl::MutexLock grpc_lock(&grpc_completion_mutex_);
+          grpc_in_progress_ = false;
+          grpc_completion_cv_.Signal();
         }
       });
 }

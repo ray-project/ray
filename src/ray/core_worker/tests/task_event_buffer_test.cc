@@ -17,10 +17,12 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -85,7 +87,8 @@ class TaskEventBufferTest : public ::testing::Test {
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 100,
-  "task_events_send_batch_size": 100
+  "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100
 }
   )");
 
@@ -301,6 +304,7 @@ class TaskEventBufferTestBatchSendDifferentDestination
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_max_num_profile_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 10,
+  "task_events_shutdown_flush_timeout_ms": 100,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -325,6 +329,7 @@ class TaskEventBufferTestLimitBufferDifferentDestination
   "task_events_max_num_status_events_buffer_on_worker": 10,
   "task_events_max_num_profile_events_buffer_on_worker": 5,
   "task_events_send_batch_size": 10,
+  "task_events_shutdown_flush_timeout_ms": 100,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -342,7 +347,8 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_profile_events_per_task": 10,
-  "task_events_max_num_profile_events_buffer_on_worker": 20
+  "task_events_max_num_profile_events_buffer_on_worker": 20,
+  "task_events_shutdown_flush_timeout_ms": 100
 }
   )");
   }
@@ -362,6 +368,32 @@ class TaskEventBufferTestDifferentDestination
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": )" +
+        to_gcs_str + R"(,
+  "enable_core_worker_ray_event_to_aggregator": )" +
+        to_aggregator_str + R"(
+}
+  )");
+  }
+};
+
+class TaskEventBufferTestDroppedAttemptsOnly
+    : public TaskEventBufferTest,
+      public ::testing::WithParamInterface<DifferentDestination> {
+ public:
+  TaskEventBufferTestDroppedAttemptsOnly() : TaskEventBufferTest() {
+    const auto [to_gcs, to_aggregator] = GetParam();
+    std::string to_gcs_str = to_gcs ? "true" : "false";
+    std::string to_aggregator_str = to_aggregator ? "true" : "false";
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 1,
+  "task_events_send_batch_size": 1,
+  "task_events_dropped_task_attempt_batch_size": 1,
+  "task_events_shutdown_flush_timeout_ms": 100,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -1153,16 +1185,16 @@ TEST_P(TaskEventBufferTestDifferentDestination,
 TEST_P(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents) {
   const auto [to_gcs, to_aggregator] = GetParam();
 
-  // Add some events
+  // Add some events using GenFullStatusTaskEvent like other tests
   size_t num_events = 10;
-  for (size_t i = 0; i < num_events; ++i) {
-    auto task_id = RandomTaskId();
-    task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id, 0));
+  auto task_ids = GenTaskIDs(num_events);
+  for (const auto &task_id : task_ids) {
+    task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(task_id, 0));
   }
 
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
 
-  // Mock gRPC callbacks to complete successfully
+  // Mock gRPC calls - follow existing test patterns (don't invoke callback)
   auto task_gcs_accessor =
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
@@ -1171,9 +1203,8 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([](std::unique_ptr<rpc::TaskEventData> actual_data,
                      ray::rpc::StatusCallback callback) {
-          // Verify that events are being flushed
+          // Verify that events are being flushed during Stop()
           EXPECT_GT(actual_data->events_by_task_size(), 0);
-          callback(Status::OK());
           return Status::OK();
         });
   } else {
@@ -1184,30 +1215,195 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents) {
       task_event_buffer_->event_aggregator_client_.get());
 
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply;
-    Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
-        .WillOnce(DoAll(
-            Invoke([](const rpc::events::AddEventsRequest &request,
-                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              // Verify that events are being flushed
-              EXPECT_GT(request.events_data().events_size(), 0);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+        .WillOnce([](const rpc::events::AddEventsRequest &request,
+                     const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          // Verify that events are being flushed during Stop()
+          EXPECT_GT(request.events_data().events_size(), 0);
+        });
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
 
-  // Stop() should flush all events before returning
+  // Calling Stop() should flush all events - this is the key verification.
+  // The EXPECT_CALL assertions above verify that FlushEvents is called during Stop().
+  // Note: The test will wait up to task_events_shutdown_flush_timeout_ms (100ms in tests)
+  // for gRPC to complete. Since we don't invoke the callback, it will timeout but
+  // the test verifies that flush was attempted.
   task_event_buffer_->Stop();
+}
 
-  // After Stop(), no more events should be in the buffer
-  // Note: We can't check GetNumTaskEventsStored() here because the buffer is disabled
-  // after Stop(). The test verification is done via the EXPECT_CALL above.
+// Test that Stop() waits for in-flight gRPC to complete, then performs final flush.
+// This ensures no events are lost during shutdown.
+TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlushes) {
+  const auto [to_gcs, to_aggregator] = GetParam();
+  if (!to_gcs && !to_aggregator) {
+    GTEST_SKIP();
+  }
 
-  // Prevent TearDown from calling Stop() again
-  task_event_buffer_.reset();
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  ray::rpc::StatusCallback gcs_callback;
+  bool gcs_callback_set = false;
+  ray::rpc::StatusCallback gcs_callback_2;
+  bool gcs_callback_2_set = false;
+
+  if (to_gcs) {
+    // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
+        .Times(2)
+        .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                      ray::rpc::StatusCallback callback) {
+          EXPECT_GT(actual_data->events_by_task_size(), 0);
+          gcs_callback = std::move(callback);
+          gcs_callback_set = true;
+          return Status::OK();
+        })
+        .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                      ray::rpc::StatusCallback callback) {
+          // This is the final flush from Stop() - should contain the events added
+          // while the first flush was in progress
+          EXPECT_GT(actual_data->events_by_task_size(), 0);
+          gcs_callback_2 = std::move(callback);
+          gcs_callback_2_set = true;
+          return Status::OK();
+        });
+  } else {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _)).Times(0);
+  }
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback;
+  bool aggregator_callback_set = false;
+  rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback_2;
+  bool aggregator_callback_2_set = false;
+
+  if (to_aggregator) {
+    // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+        .Times(2)
+        .WillOnce([&](const rpc::events::AddEventsRequest &request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          EXPECT_GT(request.events_data().events_size(), 0);
+          aggregator_callback = callback;
+          aggregator_callback_set = true;
+        })
+        .WillOnce([&](const rpc::events::AddEventsRequest &request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          // This is the final flush from Stop() - should contain the events added
+          // while the first flush was in progress
+          EXPECT_GT(request.events_data().events_size(), 0);
+          aggregator_callback_2 = callback;
+          aggregator_callback_2_set = true;
+        });
+  } else {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+  }
+
+  // Trigger first flush - this starts the gRPC call
+  task_event_buffer_->FlushEvents(false);
+
+  // Add more events while flush is in progress
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+
+  // Stop() should wait for in-flight gRPC, then perform final flush
+  std::thread stop_thread([&]() { task_event_buffer_->Stop(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+  // Complete the first in-flight gRPC calls - this unblocks Stop() to do the final flush
+  if (to_gcs) {
+    ASSERT_TRUE(gcs_callback_set);
+    gcs_callback(Status::OK());
+  }
+  if (to_aggregator) {
+    ASSERT_TRUE(aggregator_callback_set);
+    aggregator_callback(Status::OK(), rpc::events::AddEventsReply{});
+  }
+
+  // Wait for the second flush to be triggered
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+  // Complete the second gRPC calls from the final flush
+  if (to_gcs) {
+    ASSERT_TRUE(gcs_callback_2_set);
+    gcs_callback_2(Status::OK());
+  }
+  if (to_aggregator) {
+    ASSERT_TRUE(aggregator_callback_2_set);
+    aggregator_callback_2(Status::OK(), rpc::events::AddEventsReply{});
+  }
+
+  stop_thread.join();
+}
+
+// Test that metadata-only payloads (dropped task attempts) are still sent.
+TEST_P(TaskEventBufferTestDroppedAttemptsOnly,
+       TestFlushSendsDroppedAttemptsWithoutEvents) {
+  const auto [to_gcs, to_aggregator] = GetParam();
+  if (!to_gcs && !to_aggregator) {
+    GTEST_SKIP();
+  }
+
+  for (size_t i = 0; i < 3; ++i) {
+    task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(RandomTaskId(), 0));
+  }
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  if (to_gcs) {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
+        .Times(2)
+        .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                      ray::rpc::StatusCallback callback) {
+          EXPECT_GT(actual_data->events_by_task_size(), 0);
+          EXPECT_EQ(actual_data->dropped_task_attempts_size(), 1);
+          callback(Status::OK());
+          return Status::OK();
+        })
+        .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                      ray::rpc::StatusCallback callback) {
+          EXPECT_EQ(actual_data->events_by_task_size(), 0);
+          EXPECT_EQ(actual_data->dropped_task_attempts_size(), 1);
+          callback(Status::OK());
+          return Status::OK();
+        });
+  } else {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _)).Times(0);
+  }
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  if (to_aggregator) {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+        .Times(2)
+        .WillOnce([&](const rpc::events::AddEventsRequest &request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          EXPECT_GT(request.events_data().events_size(), 0);
+          EXPECT_EQ(
+              request.events_data().task_events_metadata().dropped_task_attempts_size(),
+              1);
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        })
+        .WillOnce([&](const rpc::events::AddEventsRequest &request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          EXPECT_EQ(request.events_data().events_size(), 0);
+          EXPECT_EQ(
+              request.events_data().task_events_metadata().dropped_task_attempts_size(),
+              1);
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        });
+  } else {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+  }
+
+  task_event_buffer_->FlushEvents(false);
+  task_event_buffer_->FlushEvents(false);
 }
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
@@ -1219,6 +1415,13 @@ INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestBatchSendDifferentDestination,
+                         ::testing::Values(DifferentDestination{true, true},
+                                           DifferentDestination{true, false},
+                                           DifferentDestination{false, true},
+                                           DifferentDestination{false, false}));
+
+INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
+                         TaskEventBufferTestDroppedAttemptsOnly,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
                                            DifferentDestination{false, true},

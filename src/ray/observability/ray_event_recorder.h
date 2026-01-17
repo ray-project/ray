@@ -75,6 +75,13 @@ class RayEventRecorder : public RayEventRecorderInterface {
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
   // Node ID to be set on all events
   const NodeID node_id_;
+
+  // Flag to track if there's an in-flight gRPC call
+  std::atomic<bool> grpc_in_progress_ = false;
+  // Mutex and condition variable for waiting on gRPC completion during shutdown
+  absl::Mutex grpc_completion_mutex_;
+  absl::CondVar grpc_completion_cv_;
+
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   void ExportEvents();
