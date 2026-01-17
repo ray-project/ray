@@ -263,6 +263,7 @@ def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enable
             ).remote(),
         ]
     )
+    # res = ray.get([task.remote() for _ in range(2)])
 
     # Make sure the spill directory is not empty
     assert not is_dir_empty(Path(node_0._session_dir), node_0.node_id)

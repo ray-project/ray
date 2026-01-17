@@ -264,11 +264,14 @@ def main(
 
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
+        print(f"[Kunchd] Got bisect run test target: {bisect_run_test_target}")
     else:
         get_high_impact_tests = (
             run_high_impact_tests or os.environ.get("RAYCI_MICROCHECK_RUN") == "1"
         )
+        print(f"[Kunchd] Got high impact tests: {get_high_impact_tests}")
         lookup_test_database = os.environ.get("RAYCI_DISABLE_TEST_DB") != "1"
+        print(f"[Kunchd] Got lookup test database: {lookup_test_database}")
         test_targets = _get_test_targets(
             container,
             targets,
@@ -284,7 +287,8 @@ def main(
         print("--- No tests to run", file=sys.stderr)
         # sys.exit(0)
         print(
-            "Did not find any test targets to run defaulting to: //python/ray/tests:test_object_spilling"
+            "[Kunchd] Did not find any test targets to run defaulting to: //python/ray/tests:test_object_spilling",
+            file=sys.stderr,
         )
         test_targets = ["//python/ray/tests:test_object_spilling"]
 
@@ -423,6 +427,7 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
+    print(f"[Kunchd] Got test query: {query}")
     if not workspace_dir:
         workspace_dir = bazel_workspace_dir
     test_targets = {
@@ -436,6 +441,7 @@ def _get_test_targets(
         .split(os.linesep)
         if target
     }
+    print(f"[Kunchd] Got test targets: {test_targets}")
     flaky_tests = set(
         _get_flaky_test_targets(
             team,
@@ -444,7 +450,7 @@ def _get_test_targets(
             lookup_test_database=lookup_test_database,
         )
     )
-
+    print(f"[Kunchd] Got flaky tests: {flaky_tests}")
     if get_flaky_tests:
         # run flaky test cases, so we include flaky tests in the list of targets
         # provided by users
@@ -467,7 +473,7 @@ def _get_test_targets(
             team=team,
         ).union(_get_new_tests(prefix, workspace_dir))
         final_targets = high_impact_tests.intersection(final_targets)
-
+    print(f"[Kunchd] Got final targets: {final_targets}")
     return sorted(final_targets)
 
 
