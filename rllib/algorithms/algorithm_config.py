@@ -494,6 +494,7 @@ class AlgorithmConfig(_Config):
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
+        self.prelearner_use_recorded_module_states = False
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
@@ -3124,6 +3125,7 @@ class AlgorithmConfig(_Config):
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
+        prelearner_use_recorded_module_states: Optional[bool] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
         actions_in_input_normalized: Optional[bool] = NotProvided,
@@ -3296,6 +3298,12 @@ class AlgorithmConfig(_Config):
                 Values too small force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
+            prelearner_use_recorded_module_states: Whether the `PreLearner` should
+                keep recorded module states from the offline data and use these states
+                as initial module states when training on sequences. This could be
+                useful when the offline data was recorded with a policy that uses
+                stateful modules (e.g., RNNs or Transformers) and the recorded module
+                states are accurate. The default is `False`.
             dataset_num_iters_per_learner: Number of updates to run in each learner
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
@@ -3408,6 +3416,10 @@ class AlgorithmConfig(_Config):
             self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
+        if prelearner_use_recorded_module_states is not NotProvided:
+            self.prelearner_use_recorded_module_states = (
+                prelearner_use_recorded_module_states
+            )
         if dataset_num_iters_per_learner is not NotProvided:
             self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
@@ -4239,6 +4251,7 @@ class AlgorithmConfig(_Config):
         If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
         the workers) adds up to exactly the `total_train_batch_size`.
+        Fractions < 1 calculated this way are rounded up to a rollout_fragment_length of 1.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
@@ -4263,10 +4276,10 @@ class AlgorithmConfig(_Config):
                     rollout_fragment_length
                 ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
-                    return int(rollout_fragment_length)
+                    return int(rollout_fragment_length) or 1
                 else:
                     return int(rollout_fragment_length) + 1
-            return int(rollout_fragment_length)
+            return int(rollout_fragment_length) or 1
         else:
             return self.rollout_fragment_length
 

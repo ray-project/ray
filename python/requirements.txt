@@ -1,4 +1,4 @@
-# These are mirrored in setup.py as install_requires,
+# These are mirrored in setup.py as install_requires,a
 # which is what the users of the ray package will install. The rest of this file
 # sets up all the packages necessary for a /developer/ of Ray.
 #
@@ -19,8 +19,7 @@ requests
 watchfiles
 
 # Python version-specific requirements
-grpcio >= 1.32.0; python_version < '3.10'
-grpcio >= 1.42.0; python_version >= '3.10'
+grpcio>=1.42.0
 
 numpy>=1.20
 
@@ -39,13 +38,13 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
-gymnasium==1.1.1
+ormsgpack>=1.7.0
+gymnasium==1.2.2
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image>=0.21.0
 prometheus_client>=0.7.1
 pandas
 tensorboardX

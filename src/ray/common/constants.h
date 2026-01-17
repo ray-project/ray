@@ -66,6 +66,13 @@ constexpr int kMessagePackOffset = 9;
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray_constants.py
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
+// Should be kept in sync with port names in ray_constants.py
+constexpr char kRuntimeEnvAgentPortName[] = "runtime_env_agent_port";
+constexpr char kMetricsAgentPortName[] = "metrics_agent_port";
+constexpr char kMetricsExportPortName[] = "metrics_export_port";
+constexpr char kDashboardAgentListenPortName[] = "dashboard_agent_listen_port";
+constexpr char kGcsServerPortName[] = "gcs_server_port";
+
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 

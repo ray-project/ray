@@ -179,8 +179,8 @@ embedding_config = vLLMEngineProcessorConfig(
     ),
     batch_size=32,
     concurrency=1,
-    apply_chat_template=False,
-    detokenize=False,
+    chat_template_stage=False,  # Skip chat templating for embeddings
+    detokenize_stage=False,     # Skip detokenization for embeddings
 )
 
 # Example usage for embeddings
@@ -196,6 +196,41 @@ def create_embedding_processor():
 
 
 # __embedding_config_example_end__
+
+# __classification_config_example_start__
+# Sequence classification model configuration
+# Use task_type="classify" for classification models (e.g., sentiment, quality scoring)
+# Use task_type="score" for cross-encoder scoring models
+classification_config = vLLMEngineProcessorConfig(
+    model_source="nvidia/nemocurator-fineweb-nemotron-4-edu-classifier",
+    task_type="classify",
+    engine_kwargs=dict(
+        max_model_len=512,
+        enforce_eager=True,
+    ),
+    batch_size=8,
+    concurrency=1,
+    apply_chat_template=False,
+    detokenize=False,
+)
+
+
+# Example usage for classification
+def create_classification_processor():
+    return build_processor(
+        classification_config,
+        preprocess=lambda row: dict(prompt=row["text"]),
+        postprocess=lambda row: {
+            "text": row["prompt"],
+            # Classification models return logits in the 'embeddings' field
+            "score": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+
+# __classification_config_example_end__
 
 # __shared_vllm_engine_config_example_start__
 import ray
