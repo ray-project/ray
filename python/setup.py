@@ -365,7 +365,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.13.0",
+                "vllm[audio] @ git+https://github.com/vllm-project/vllm.git@v0.14.0rc1",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
