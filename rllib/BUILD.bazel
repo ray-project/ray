@@ -676,6 +676,7 @@ py_test(
     ],
     main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
+        "exclusive",
         "learning_tests",
         "team:rllib",
     ],
