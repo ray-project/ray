@@ -3693,7 +3693,8 @@ void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
                                          rpc::ChannelType channel_type,
                                          const std::string &key_id,
                                          const NodeID &subscriber_id) {
-  object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+  RAY_CHECK_OK(
+      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id));
 
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());

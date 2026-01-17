@@ -438,11 +438,14 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             }
           }
           if (!status.ok()) {
+            RAY_CHECK(!status.IsInvalidArgument())
+                << "Request to subscribe to the GCS failed due to bad arguments: "
+                << status.message();
             // This means the publisher has failed.
             // The publisher dead detection & command clean up will be done
             // from the long polling request.
             RAY_LOG(WARNING) << "The command batch request to " << publisher_id
-                             << " has failed";
+                             << " has failed: " << status.message();
           }
           {
             absl::MutexLock lock(&mutex_);

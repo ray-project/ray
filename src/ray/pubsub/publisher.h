@@ -281,9 +281,9 @@ class Publisher : public PublisherInterface {
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  void RegisterSubscription(const rpc::ChannelType channel_type,
-                            const UniqueID &subscriber_id,
-                            const std::optional<std::string> &key_id) override;
+  Status RegisterSubscription(const rpc::ChannelType channel_type,
+                              const UniqueID &subscriber_id,
+                              const std::optional<std::string> &key_id) override;
 
   void Publish(rpc::PubMessage pub_message) override;
 

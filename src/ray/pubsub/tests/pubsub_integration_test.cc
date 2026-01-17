@@ -72,11 +72,11 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
       } else if (command.has_subscribe_message()) {
-        publisher_->RegisterSubscription(command.channel_type(),
-                                         subscriber_id,
-                                         command.key_id().empty()
-                                             ? std::nullopt
-                                             : std::make_optional(command.key_id()));
+        RAY_CHECK_OK(publisher_->RegisterSubscription(
+            command.channel_type(),
+            subscriber_id,
+            command.key_id().empty() ? std::nullopt
+                                     : std::make_optional(command.key_id())));
       } else {
         RAY_LOG(FATAL)
             << "Invalid command has received, "

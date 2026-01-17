@@ -23,9 +23,11 @@ namespace pubsub {
 
 class FakePublisher : public PublisherInterface {
  public:
-  void RegisterSubscription(const rpc::ChannelType channel_type,
-                            const UniqueID &subscriber_id,
-                            const std::optional<std::string> &key_id) override {}
+  Status RegisterSubscription(const rpc::ChannelType channel_type,
+                              const UniqueID &subscriber_id,
+                              const std::optional<std::string> &key_id) override {
+    return Status::OK();
+  }
 
   void Publish(rpc::PubMessage pub_message) override {}
 

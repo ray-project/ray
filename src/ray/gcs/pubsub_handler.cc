@@ -79,10 +79,14 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
-      gcs_publisher_.GetPublisher().RegisterSubscription(
+      Status status = gcs_publisher_.GetPublisher().RegisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+      if (!status.ok()) {
+        send_reply_callback(status, nullptr, nullptr);
+        return;
+      }
       iter->second.insert(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "

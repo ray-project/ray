@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -44,9 +45,11 @@ class PublisherInterface {
   /// \param subscriber_id The ID of the subscriber.
   /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
   /// subscribing to all.
-  virtual void RegisterSubscription(const rpc::ChannelType channel_type,
-                                    const UniqueID &subscriber_id,
-                                    const std::optional<std::string> &key_id) = 0;
+  /// \return Status::OK() if successful, or an error status if a bad argument is
+  /// provided.
+  virtual Status RegisterSubscription(const rpc::ChannelType channel_type,
+                                      const UniqueID &subscriber_id,
+                                      const std::optional<std::string> &key_id) = 0;
 
   /// Publish the given object id to subscribers.
   ///
