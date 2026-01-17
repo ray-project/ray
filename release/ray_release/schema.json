@@ -112,9 +112,6 @@
 				"python_depset": {
 					"type": "string"
 				},
-				"pip": {
-					"type": "array"
-				},
 				"runtime_env": {
 					"type": "array"
 				}
