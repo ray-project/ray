@@ -2638,6 +2638,115 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert actual_data == expected_data, (actual_data, expected_data)
 
 
+@pytest.mark.parametrize(
+    "max_rows_per_file,expected_num_files",
+    [(None, 10), (50, 20)],
+)
+def test_write_parquet_include_row_number(
+    max_rows_per_file, expected_num_files, ray_start_regular_shared, tmp_path
+):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds.write_parquet(
+        tmp_path, include_row_number=True, max_rows_per_file=max_rows_per_file
+    )
+    result = ray.data.read_parquet(tmp_path)
+    assert result.count() == 1000
+    assert set(result.schema().names) == {"id", "_row_num"}
+
+    assert len(result.input_files()) == expected_num_files
+
+
+@pytest.mark.parametrize(
+    "max_rows_per_file",
+    [None, 50],
+)
+def test_write_parquet_include_row_number_with_partitioning(
+    max_rows_per_file, ray_start_regular_shared, tmp_path
+):
+    # Use a partition column that groups many rows (id % 10) so we get multiple
+    # rows per file and can meaningfully verify _row_num is unique per file.
+    # Partitioning by "id" alone would give 1 row per partition (trivial).
+    from ray.data.expressions import col
+
+    ds = ray.data.range(1000).with_column("part", col("id") % 10)
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["part"],
+        include_row_number=True,
+        max_rows_per_file=max_rows_per_file,
+    )
+    result = ray.data.read_parquet(tmp_path)
+    assert result.count() == 1000
+    assert set(result.schema().names) == {"id", "part", "_row_num"}
+
+    import polars as pl
+
+    df = pl.read_parquet(tmp_path, include_file_paths="path")
+
+    # Verify that the row numbers are unique within each file
+    assert (
+        df.group_by("path")
+        .agg(
+            pl.col("_row_num").n_unique().alias("num_unique_row_nums"),
+            pl.len().alias("num_rows"),
+        )
+        .select(pl.col("num_unique_row_nums") == pl.col("num_rows"))
+        .to_series()
+        .all()
+    )
+
+
+@pytest.mark.parametrize("partition_cols", [None, ["part"]])
+def test_add_row_numbers_preserves_arrow_types(tmp_path, partition_cols):
+    """Polars's to_arrow() promotes string->large_string, binary->large_binary,
+    list->large_list. _add_row_numbers must not let those promotions leak into
+    the returned table because the downstream cast (large_list->list) is not
+    reliably supported by PyArrow and the large_string->string cast copies all
+    string data unnecessarily."""
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    pytest.importorskip("polars")
+
+    # Build tables that contain every type Polars would silently promote.
+    t1 = pa.table(
+        {
+            "str_col": pa.array(["a", "b"], pa.utf8()),
+            "bin_col": pa.array([b"x", b"y"], pa.binary()),
+            "list_col": pa.array([[1, 2], [3]], pa.list_(pa.int32())),
+            "part": pa.array([0, 1], pa.int32()),
+        }
+    )
+    t2 = pa.table(
+        {
+            "str_col": pa.array(["c", "d"], pa.utf8()),
+            "bin_col": pa.array([b"z", b"w"], pa.binary()),
+            "list_col": pa.array([[4], [5, 6]], pa.list_(pa.int32())),
+            "part": pa.array([0, 1], pa.int32()),
+        }
+    )
+
+    sink = ParquetDatasink(
+        str(tmp_path),
+        row_number_column_name="_row_num",
+        partition_cols=partition_cols,
+    )
+    result = sink._add_row_numbers([t1, t2])
+
+    # The row-number column is appended; all pre-existing columns must keep
+    # their original Arrow types (no large_string / large_binary / large_list).
+    assert (
+        result.schema.field("str_col").type == pa.utf8()
+    ), f"Expected utf8, got {result.schema.field('str_col').type}"
+    assert (
+        result.schema.field("bin_col").type == pa.binary()
+    ), f"Expected binary, got {result.schema.field('bin_col').type}"
+    assert result.schema.field("list_col").type == pa.list_(
+        pa.int32()
+    ), f"Expected list<int32>, got {result.schema.field('list_col').type}"
+    assert result.schema.field("_row_num").type == pa.int64()
+    assert len(result) == len(t1) + len(t2)
+
+
 if __name__ == "__main__":
     import sys
 

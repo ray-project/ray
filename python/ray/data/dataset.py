@@ -4022,6 +4022,7 @@ class Dataset:
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
+        include_row_number: bool = False,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -4104,6 +4105,17 @@ class Dataset:
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+            include_row_number: [Experimental] The `polars` package is required to use this option.
+                If True, adds a ``_row_num`` column containing
+                row numbers (0-indexed). If ``partition_cols`` is specified, the row
+                numbering is reset for each partition. The row number is not
+                guaranteed to be unique across all files belonging to the same partition.
+                NOTE: When using this option with ``min_rows_per_file`` and
+                ``max_rows_per_file``, a partition may be split into multiple files.
+                In this case, the row number sequence will be contiguous across those
+                files that are generated from the same block and partition (e.g., file 1 has rows 0-99,
+                file 2 has rows 100-199).
+                Use ``Dataset.repartition()`` to control the number of output files instead.
             **arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -4135,6 +4147,36 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
         )
 
+        # Validate include_row_number parameter
+        if include_row_number:
+            try:
+                import polars  # noqa: F401
+            except ImportError:
+                raise ImportError(
+                    "polars is required for adding per-file row numbers. Install with `pip install polars`"
+                )
+
+            row_number_column_name = "_row_num"
+
+            columns = self.columns()
+            if columns and row_number_column_name in columns:
+                raise ValueError(
+                    f"The column name '{row_number_column_name}' conflicts with an existing "
+                    f"column in the dataset. To use `include_row_number=True`, please remove "
+                    f"or rename the existing column."
+                )
+
+            if effective_min_rows is not None or effective_max_rows is not None:
+                warnings.warn(
+                    "When min_rows_per_file or max_rows_per_file are set, row numbers are "
+                    "consecutive within each file but may not start from 0 in each file. This is "
+                    "expected because row numbers are assigned sequentially (0..N-1) before the "
+                    "table is split into multiple files. Use Dataset.repartition() to control "
+                    "the number of output files instead."
+                )
+        else:
+            row_number_column_name = None
+
         datasink = ParquetDatasink(
             path,
             partition_cols=partition_cols,
@@ -4148,6 +4190,7 @@ class Dataset:
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
             mode=mode,
+            row_number_column_name=row_number_column_name,
         )
         self.write_datasink(
             datasink,
