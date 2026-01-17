@@ -27,7 +27,6 @@ from ray.tests.conftest import (
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import psutil
 
@@ -249,21 +248,21 @@ def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enable
         ray.get(ray.put(arr))
 
     # Use NodeAffinitySchedulingStrategy to ensure each task runs on a specific node
-    res = ray.get(
-        [
-            task.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=node_0.node_id, soft=False
-                )
-            ).remote(),
-            task.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=node_1.node_id, soft=False
-                )
-            ).remote(),
-        ]
-    )
-    # res = ray.get([task.remote() for _ in range(2)])
+    # res = ray.get(
+    #     [
+    #         task.options(
+    #             scheduling_strategy=NodeAffinitySchedulingStrategy(
+    #                 node_id=node_0.node_id, soft=False
+    #             )
+    #         ).remote(),
+    #         task.options(
+    #             scheduling_strategy=NodeAffinitySchedulingStrategy(
+    #                 node_id=node_1.node_id, soft=False
+    #             )
+    #         ).remote(),
+    #     ]
+    # )
+    res = ray.get([task.remote() for _ in range(2)])
 
     # Make sure the spill directory is not empty
     assert not is_dir_empty(Path(node_0._session_dir), node_0.node_id)
