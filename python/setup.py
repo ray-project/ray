@@ -757,6 +757,13 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
+    try:
+        from setuptools.command.bdist_wheel import bdist_wheel
+    except ImportError:
+        from wheel.bdist_wheel import bdist_wheel
+
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -764,6 +771,22 @@ if __name__ == "__main__":
     class BinaryDistribution(setuptools.Distribution):
         def has_ext_modules(self):
             return True
+
+    class RayCppBdistWheel(bdist_wheel):
+        """Build a Python-agnostic wheel for ray-cpp.
+
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
+        """
+
+        def finalize_options(self):
+            super().finalize_options()
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
+            self.root_is_pure = False
+
+        def get_tag(self):
+            _, _, platform_tag = super().get_tag()
+            return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
@@ -780,6 +803,12 @@ if __name__ == "__main__":
     if "\n" in license_text:
         # If the license text has multiple lines, add an ending endline.
         license_text += "\n"
+
+    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
+    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
+    cmdclass = {"build_ext": build_ext}
+    if setup_spec.type == SetupType.RAY_CPP:
+        cmdclass["bdist_wheel"] = RayCppBdistWheel
 
     setuptools.setup(
         name=setup_spec.name,
@@ -801,7 +830,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
-        cmdclass={"build_ext": build_ext},
+        cmdclass=cmdclass,
         distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),

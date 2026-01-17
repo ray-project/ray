@@ -37,4 +37,4 @@ urllib3 < 1.27
 # See doc/source/conf.py for examples of how to mock out external dependencies.
 click==8.1.7
 boto3==1.34.69
-requests==2.32.3
+requests==2.32.5
