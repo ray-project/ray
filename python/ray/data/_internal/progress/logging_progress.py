@@ -2,7 +2,6 @@ import dataclasses
 import logging
 import time
 import typing
-import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional
 
@@ -105,14 +104,13 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         self._global_progress_metric = _LoggingMetrics(
             name="Total Progress", desc=None, completed=0, total=None
         )
-        self._op_progress_metrics: Dict[uuid.UUID, _LoggingMetrics] = {}
+        self._op_progress_metrics: Dict["OpState", _LoggingMetrics] = {}
         self._sub_progress_metrics: Dict[
-            uuid.UUID, List[LoggingSubProgressBar]
+            "OpState", List[LoggingSubProgressBar]
         ] = defaultdict(list)
 
         for state in self._topology.values():
             op = state.op
-            op_uuid = uuid.uuid4()
             if isinstance(op, InputDataBuffer):
                 continue
             total = op.num_output_rows_total() or 1
@@ -123,13 +121,12 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             )
 
             if sub_progress_bar_enabled:
-                self._op_progress_metrics[op_uuid] = _LoggingMetrics(
+                self._op_progress_metrics[state] = _LoggingMetrics(
                     name=truncate_operator_name(op.name, self.MAX_NAME_LENGTH),
                     desc=None,
                     completed=0,
                     total=total,
                 )
-                state.progress_manager_uuid = op_uuid
 
             if not contains_sub_progress_bars:
                 continue
@@ -142,7 +139,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                     pg = LoggingSubProgressBar(
                         name=name, total=total, max_name_length=self.MAX_NAME_LENGTH
                     )
-                    self._sub_progress_metrics[op_uuid].append(pg)
+                    self._sub_progress_metrics[state].append(pg)
                 else:
                     pg = NoopSubProgressBar(
                         name=name, max_name_length=self.MAX_NAME_LENGTH
@@ -173,11 +170,11 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             logger.info("")
 
         for opstate in self._topology.values():
-            m = self._op_progress_metrics.get(opstate.progress_manager_uuid)
+            m = self._op_progress_metrics.get(opstate)
             if m is None:
                 continue
             _log_op_or_sub_progress(m)
-            for pg in self._sub_progress_metrics[opstate.progress_manager_uuid]:
+            for pg in self._sub_progress_metrics[opstate]:
                 _log_op_or_sub_progress(pg.get_logging_metrics())
 
         # finish logging
@@ -185,7 +182,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
 
     def close_with_finishing_description(self, desc: str, success: bool):
         # We log in StreamingExecutor. No need for duplicate logging.
-        pass
+        del desc, success  # unused
 
     # Total Progress
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]):
@@ -200,7 +197,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        op_metrics = self._op_progress_metrics.get(opstate.progress_manager_uuid)
+        op_metrics = self._op_progress_metrics.get(opstate)
         if op_metrics is not None:
             op_metrics.completed = opstate.output_row_count
             total = opstate.op.num_output_rows_total()
