@@ -687,10 +687,11 @@ py_test(
     srcs = ["examples/algorithms/impala/tictactoe_impala.py"],
     args = [
         "--as-test",
+        "--num-aggregator-actors-per-learner=2",
         "--num-cpus=16",
-        "--num-env-runners=10",
-        "--num-learners=2",
+        "--num-env-runners=8",
         "--num-gpus-per-learner=1",
+        "--num-learners=2",
         "--stop-reward=-2.0",
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
