@@ -34,19 +34,6 @@ class _LoggingMetrics:
     completed: int
     total: Optional[int]
 
-    def format_progress(self) -> str:
-        return f"{self.name}: {self.completed}/{self.total or '?'}"
-
-    def log_global_progress(self):
-        logger.info(self.format_progress())
-        if self.desc is not None:
-            logger.info(self.desc)
-
-    def log_op_or_sub_progress(self):
-        logger.info(self.format_progress())
-        if self.desc is not None:
-            logger.info(f"  {self.desc}")
-
 
 class LoggingSubProgressBar(BaseProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
@@ -179,7 +166,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         logger.info(firstline)
 
         # log global progress
-        self._global_progress_metric.log_global_progress()
+        _log_global_progress(self._global_progress_metric)
 
         # log operator-level progress
         if len(self._op_progress_metrics.keys()) > 0:
@@ -189,9 +176,9 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             m = self._op_progress_metrics.get(opstate.progress_manager_uuid)
             if m is None:
                 continue
-            m.log_op_or_sub_progress()
+            _log_op_or_sub_progress(m)
             for pg in self._sub_progress_metrics[opstate.progress_manager_uuid]:
-                pg.get_logging_metrics().log_op_or_sub_progress()
+                _log_op_or_sub_progress(pg.get_logging_metrics())
 
         # finish logging
         logger.info(lastline)
@@ -220,3 +207,19 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             if total is not None:
                 op_metrics.total = total
             op_metrics.desc = opstate.summary_str_raw(resource_manager)
+
+
+def _format_progress(m: _LoggingMetrics) -> str:
+    return f"{m.name}: {m.completed}/{m.total or '?'}"
+
+
+def _log_global_progress(m: _LoggingMetrics):
+    logger.info(_format_progress(m))
+    if m.desc is not None:
+        logger.info(m.desc)
+
+
+def _log_op_or_sub_progress(m: _LoggingMetrics):
+    logger.info(_format_progress(m))
+    if m.desc is not None:
+        logger.info(f"  {m.desc}")
