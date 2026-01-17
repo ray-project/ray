@@ -1377,6 +1377,103 @@ def stop(force: bool, grace_period: int):
     ray._common.utils.reset_ray_address()
 
 
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill. Mutually exclusive with --actor-id.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    help="If set, kill the actor forcefully. Otherwise attempt graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=True,
+    help="If set, the actor will not be restarted after being killed.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill. Mutually exclusive with --actor-id.
+        namespace: Namespace for named actor (when using --name).
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Returns:
+        None: This function does not return any explicit value, it either executes successfully
+        or raises a click.ClickException on failure.
+
+    Examples:
+      ray kill-actor --name my_actor --namespace default
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, log_to_driver=True)
+
+    try:
+        try:
+            actor_handle = ray.get_actor(name, namespace=namespace)
+        except Exception as e:
+            raise click.ClickException(
+                f"No named actor found: {name} (namespace={namespace}): {e}"
+            )
+
+        if force:
+            try:
+                ray.kill(actor_handle, no_restart=no_restart)
+                click.echo(f"Actor killed (force): {name}")
+                return
+            except Exception as e:
+                raise click.ClickException(f"Failed to force kill actor: {e}")
+
+        term = getattr(actor_handle, "__ray_terminate__", None)
+        if term is None:
+            raise click.ClickException(
+                "Actor does not support graceful termination. Use --force to force kill."
+            )
+
+        try:
+            term.remote()
+            click.echo(f"Requested graceful termination for actor: {name}")
+        except Exception as e:
+            raise click.ClickException(f"Failed to request graceful termination: {e}")
+    finally:
+        try:
+            ray.shutdown()
+        except Exception as e:
+            raise e
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -2712,6 +2809,7 @@ cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (

@@ -1320,5 +1320,95 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
 
+def test_kill_actor_by_name_via_cli(ray_start_cluster):
+    """Test force-killing a named actor via CLI. Covers both regular and detached actors."""
+
+    cluster = ray_start_cluster
+    address = cluster.address
+    ray.init(address=address)
+    runner = CliRunner()
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "pong"
+
+    def check_killed(actorhandle):
+        try:
+            ray.get(actorhandle.ping.remote(), timeout=1)
+            return False
+        except Exception:
+            return True
+
+    # Regular named actor
+    actor = Actor.options(name="test_actor", namespace="ns").remote()
+    assert ray.get(actor.ping.remote()) == "pong"
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(lambda: check_killed(actor), timeout=10)
+
+    # Detached named actor
+    detached_actor = Actor.options(
+        name="detached_test_actor", namespace="ns", lifetime="detached"
+    ).remote()
+    assert ray.get(detached_actor.ping.remote()) == "pong"
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "detached_test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(lambda: check_killed(detached_actor), timeout=10)
+
+    # Graceful shutdown named actor
+    @ray.remote
+    class GracefulActor:
+        def ping(self):
+            return "pong"
+
+        def __ray_terminate__(self):
+            import ray.actor
+
+            ray.actor.exit_actor()
+
+    graceful_actor = GracefulActor.options(
+        name="graceful_actor", namespace="ns"
+    ).remote()
+    assert ray.get(graceful_actor.ping.remote()) == "pong"
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "graceful_actor",
+            "--namespace",
+            "ns",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(lambda: check_killed(graceful_actor), timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
