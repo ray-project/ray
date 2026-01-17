@@ -668,8 +668,9 @@ py_test(
     srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
+        "--num-aggregator-actors-per-learner=2",
         "--num-cpus=7",
-        "--num-env-runners=7",
+        "--num-env-runners=4",
         "--num-learners=0",
         "--stop-reward=200",
     ],
