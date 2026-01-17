@@ -9,6 +9,7 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
@@ -258,14 +259,8 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def _get_ray_logs(self) -> str:
-        """
-        Obtain the last few logs
-        """
-        if self.cluster_manager.log_streaming_limit == -1:
-            return anyscale.job.get_logs(id=self.job_id)
-        return anyscale.job.get_logs(
-            id=self.job_id, max_lines=self.cluster_manager.log_streaming_limit
-        )
+        """Obtain the last few log"""
+        return anyscale.job.get_logs(id=self.job_id, max_lines=LAST_LOGS_LENGTH)
 
     def get_last_logs(self):
         if not self.job_id:
