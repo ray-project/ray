@@ -118,8 +118,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         if not self._preserve_order:
             return
-        while any(buffer.has_next() for buffer in self._input_buffers):
-            self._try_round_robin()
+        self._try_round_robin()
         assert all(not buffer.has_next() for buffer in self._input_buffers)
 
     def has_next(self) -> bool:
@@ -138,12 +137,12 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         """Try to move blocks from input buffers to output in round-robin order.
 
         Pulls one block from the current input, then advances to the next.
-        If the current input's buffer is empty but not exhausted we return
+        If the current input's buffer is empty but not done, we return
         without advancing to the next input so the scheduling won't be blocked.
         """
         num_inputs = len(self._input_buffers)
 
-        for _ in range(num_inputs):
+        while True:
             buffer = self._input_buffers[self._current_input_index]
 
             if buffer.has_next():
@@ -151,7 +150,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
                 self._metrics.on_input_dequeued(refs)
                 self._output_buffer.append(refs)
                 self._metrics.on_output_queued(refs)
-            elif not self._input_done_flags[self._current_input_index]:
-                break
+            elif not self._input_done_flags[self._current_input_index] or all(
+                not buffer.has_next() for buffer in self._input_buffers
+            ):
+                return
 
             self._current_input_index = (self._current_input_index + 1) % num_inputs
