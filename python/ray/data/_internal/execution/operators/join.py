@@ -18,7 +18,6 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.transform_pyarrow import (
-    _is_native_tensor_type,
     _is_pa_extension_type,
 )
 from ray.data.block import Block
@@ -274,10 +273,8 @@ class JoiningAggregation(ShuffleAggregation):
             col: "pa.ChunkedArray" = table.column(idx)
             col_type: "pa.DataType" = col.type
 
-            if (
-                _is_pa_extension_type(col_type)
-                or _is_native_tensor_type(col_type)
-                or self._is_pa_join_not_supported(col_type)
+            if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
+                col_type
             ):
                 unsupported.append(idx)
             else:

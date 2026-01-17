@@ -10,7 +10,8 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     """Whether the provided Arrow Table column is an extension array, using an Arrow
     extension type.
     """
-    return isinstance(pa_type, pyarrow.ExtensionType)
+    # NOTE: Native Tensors are also BaseExtensionType
+    return isinstance(pa_type, pyarrow.BaseExtensionType)
 
 
 def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:

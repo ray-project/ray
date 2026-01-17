@@ -145,14 +145,10 @@ def take_table(
     """
     from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
-        _is_native_tensor_type,
         _is_pa_extension_type,
     )
 
-    if any(
-        _is_pa_extension_type(col.type) or _is_native_tensor_type(col.type)
-        for col in table.columns
-    ):
+    if any(_is_pa_extension_type(col.type) for col in table.columns):
         new_cols = []
         for col in table.columns:
             if _is_pa_extension_type(col.type) and col.num_chunks > 1:
@@ -921,7 +917,6 @@ def combine_chunked_array(
 
     from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
-        _is_native_tensor_type,
         _is_pa_extension_type,
     )
 
@@ -929,7 +924,7 @@ def combine_chunked_array(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    if _is_pa_extension_type(array.type) or _is_native_tensor_type(array.type):
+    if _is_pa_extension_type(array.type):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array, ensure_copy)
