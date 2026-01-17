@@ -428,7 +428,32 @@ def deployment(
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
-    # Validate _placement_info constraints
+    if num_replicas == "auto":
+        num_replicas = None
+        max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
+            max_ongoing_requests, autoscaling_config
+        )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+
+    # NOTE: The user_configured_option_names should be the first thing that's
+    # defined in this function. It depends on the locals() dictionary storing
+    # only the function args/kwargs.
+    # Create list of all user-configured options from keyword args
+    user_configured_option_names = [
+        option
+        for option, value in locals().items()
+        if option != "_func_or_class" and value is not DEFAULT.VALUE
+    ]
+
+    # Num of replicas should not be 0.
+    # TODO(Sihan) separate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
+
+    # Validate _placement_info constraints.
+    # NOTE: Has to be after user_configured_option_names in order to not include
+    # internal variables in locals().
     static_placement_config = (
         _placement_info if _placement_info is not DEFAULT.VALUE else None
     )
@@ -465,29 +490,6 @@ def deployment(
                 )
         # Set num_replicas to match the mapping
         num_replicas = static_placement_config.num_replicas
-
-    if num_replicas == "auto":
-        num_replicas = None
-        max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
-            max_ongoing_requests, autoscaling_config
-        )
-
-        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
-
-    # NOTE: The user_configured_option_names should be the first thing that's
-    # defined in this function. It depends on the locals() dictionary storing
-    # only the function args/kwargs.
-    # Create list of all user-configured options from keyword args
-    user_configured_option_names = [
-        option
-        for option, value in locals().items()
-        if option != "_func_or_class" and value is not DEFAULT.VALUE
-    ]
-
-    # Num of replicas should not be 0.
-    # TODO(Sihan) separate num_replicas attribute from internal and api
-    if num_replicas == 0:
-        raise ValueError("num_replicas is expected to larger than 0")
 
     if num_replicas not in [DEFAULT.VALUE, None, "auto"] and autoscaling_config not in [
         DEFAULT.VALUE,
