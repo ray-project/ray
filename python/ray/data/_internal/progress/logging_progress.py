@@ -23,8 +23,6 @@ if typing.TYPE_CHECKING:
 # https://github.com/ray-project/ray/issues/60083
 # https://github.com/ray-project/ray/issues/57734
 
-LOG_REPORT_INTERVAL_SEC = 10
-
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +70,7 @@ class LoggingSubProgressBar(BaseProgressBar):
             self._total = total
         self._completed += increment
 
-    def get_data(self) -> _LoggingMetrics:
+    def get_logging_metrics(self) -> _LoggingMetrics:
         return _LoggingMetrics(
             name=f"    - {self._name}",
             desc=None,
@@ -84,14 +82,13 @@ class LoggingSubProgressBar(BaseProgressBar):
 class LoggingExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display for non-tty situations."""
 
-    # If the name/description of the progress bar exceeds this length,
-    # it will be truncated.
-    MAX_NAME_LENGTH = 100
-
     # This progress manager needs to refresh (log) based on elapsed time
     # not scheduling steps. This elapsed time handling is done within
     # this class.
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 1
+
+    # Time interval (seconds) in which progress is logged to console again.
+    LOG_REPORT_INTERVAL_SEC = 10
 
     def __init__(
         self,
@@ -101,7 +98,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         verbose_progress: bool,
     ):
         self._dataset_id = dataset_id
-        self._last_log_time = time.time() - LOG_REPORT_INTERVAL_SEC
+        self._last_log_time = time.time() - self.LOG_REPORT_INTERVAL_SEC
         self._log_order: List[uuid.UUID] = []
         self._metric_dict: Dict[
             uuid.UUID, Union[LoggingSubProgressBar, _LoggingMetrics]
@@ -161,7 +158,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
 
     def refresh(self):
         current_time = time.time()
-        if current_time - self._last_log_time < LOG_REPORT_INTERVAL_SEC:
+        if current_time - self._last_log_time < self.LOG_REPORT_INTERVAL_SEC:
             return
         self._last_log_time = current_time
 
@@ -179,7 +176,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         for uid in self._log_order:
             m = self._metric_dict[uid]
             if isinstance(m, LoggingSubProgressBar):
-                m = m.get_data()
+                m = m.get_logging_metrics()
             logger.info(f"{m.name}: {m.completed}/{m.total or '?'}")
             if m.desc is not None:
                 logger.info(f"  {m.desc}")
