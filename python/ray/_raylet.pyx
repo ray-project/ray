@@ -1897,11 +1897,30 @@ cdef void execute_task(
 
             if (returns[0].size() > 0
                     and not inspect.isgenerator(outputs)
-                    and not inspect.isasyncgen(outputs)
-                    and len(outputs) != int(returns[0].size())):
-                raise ValueError(
-                    "Task returned {} objects, but num_returns={}.".format(
-                        len(outputs), returns[0].size()))
+                    and not inspect.isasyncgen(outputs)):
+                # Check if outputs is iterable (but not a string or bytes)
+                # by trying to get its length
+                try:
+                    num_outputs = len(outputs)
+                    # Exclude strings and bytes which have len() but shouldn't
+                    # be treated as sequences of return values
+                    if isinstance(outputs, (str, bytes)):
+                        # If it's a string/bytes and num_returns > 1, raise error
+                        if returns[0].size() > 1:
+                            raise ValueError(
+                                "Task returned 1 objects, but num_returns={}.".format(
+                                    returns[0].size()))
+                    elif num_outputs != int(returns[0].size()):
+                        raise ValueError(
+                            "Task returned {} objects, but num_returns={}.".format(
+                                num_outputs, returns[0].size()))
+                except TypeError:
+                    # outputs is not iterable (e.g., it's a single int)
+                    # If num_returns > 1, raise error
+                    if returns[0].size() > 1:
+                        raise ValueError(
+                            "Task returned 1 objects, but num_returns={}.".format(
+                                returns[0].size()))
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
