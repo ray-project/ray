@@ -1325,7 +1325,6 @@ def test_kill_actor_by_name_via_cli(ray_start_cluster):
 
     cluster = ray_start_cluster
     address = cluster.address
-    ray.init(address=address)
     runner = CliRunner()
 
     @ray.remote
