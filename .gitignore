@@ -246,4 +246,4 @@ tag-mapping.json
 .buildkite/release/custom_byod_build.rayci.yml
 
 # Claude files
-.claude/
+/.claude/
