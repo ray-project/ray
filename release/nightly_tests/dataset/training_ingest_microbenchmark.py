@@ -35,7 +35,6 @@ from PIL import Image
 from pyarrow import fs
 from ray.data.datasource.partitioning import Partitioning
 from tabulate import tabulate
-from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
 
 from benchmark import Benchmark
 from dataset_benchmark_util import IMAGENET_WNID_TO_ID
@@ -63,16 +62,16 @@ class BenchmarkConfig:
     )
 
     # Batch sizes to test
-    batch_sizes: List[int] = field(default_factory=lambda: [64])
+    batch_sizes: List[int] = field(default_factory=lambda: [32, 256])
 
     # Prefetch batch counts to test
-    prefetch_batches_list: List[int] = field(default_factory=lambda: [1])
+    prefetch_batches_list: List[int] = field(default_factory=lambda: [1, 4])
 
     # Number of image columns per row to test
     num_image_columns_list: List[int] = field(default_factory=lambda: [64])
 
     # Number of batches to process per benchmark run
-    num_batches: int = 16
+    num_batches: int = 32
 
     # Optional simulated training time (seconds) per batch
     simulated_training_time: Optional[float] = None
@@ -220,6 +219,11 @@ class BaseDataLoader(ABC):
             "test": f"{s3_root}/test",
         }
 
+    @staticmethod
+    def compute_limit(batch_size: int, num_batches: int) -> int:
+        """Compute the row limit for a benchmark run."""
+        return batch_size * num_batches
+
     @abstractmethod
     def create_dataset(
         self,
@@ -256,7 +260,6 @@ class ParquetS3Loader(BaseDataLoader):
         """Initialize the data loader with base dataset cache."""
         super().__init__(data_dir, label_to_id_map)
         self._base_dataset_cache: Optional[ray.data.Dataset] = None
-        self._cached_limit: int = 0
 
     @classmethod
     def get_data_dir(cls, split: str = "train") -> str:
@@ -265,20 +268,17 @@ class ParquetS3Loader(BaseDataLoader):
             raise ValueError(f"Unknown split: {split}")
         return cls.SPLIT_DIRS[split]
 
-    def get_base_dataset(self, limit: int) -> ray.data.Dataset:
-        """Get the base dataset (read_parquet + limit), creating and caching if needed."""
-        if self._base_dataset_cache is not None and limit <= self._cached_limit:
-            logger.info(f"Using cached base dataset (limit={self._cached_limit})")
+    def get_base_dataset(self) -> ray.data.Dataset:
+        """Get the base dataset, creating and caching if needed."""
+        if self._base_dataset_cache is not None:
+            logger.info("Using cached base dataset")
             return self._base_dataset_cache
 
         logger.info(f"Reading parquet from {self.data_dir}...")
         ds = ray.data.read_parquet(self.data_dir, columns=["image", "label"])
-        ds = ds.limit(limit)
 
-        # Cache the base dataset
         self._base_dataset_cache = ds
-        self._cached_limit = limit
-        logger.info(f"Created and cached base dataset (limit={limit})")
+        logger.info("Created and cached base dataset")
 
         return ds
 
@@ -290,7 +290,7 @@ class ParquetS3Loader(BaseDataLoader):
         num_image_columns: int,
     ) -> ray.data.Dataset:
         """Create dataset by applying map to the cached base dataset."""
-        limit = batch_size * num_batches + batch_size
+        limit = self.compute_limit(batch_size, num_batches)
         transform = self.get_transform(transform_type)
 
         # Capture instance variables for closure
@@ -303,9 +303,7 @@ class ParquetS3Loader(BaseDataLoader):
             row["label"] = label_to_id_map.get(row["label"], -1)
             return row
 
-        # Get base dataset (cached after first call)
-        base_ds = self.get_base_dataset(limit)
-        return base_ds.map(process_row)
+        return self.get_base_dataset().limit(limit).map(process_row)
 
 
 class MapBatchesS3Loader(BaseDataLoader):
@@ -325,7 +323,6 @@ class MapBatchesS3Loader(BaseDataLoader):
         super().__init__(data_dir, label_to_id_map)
         self._file_records_cache: Optional[List[Dict[str, str]]] = None
         self._base_dataset_cache: Optional[ray.data.Dataset] = None
-        self._cached_limit: int = 0
 
     @classmethod
     def get_data_dir(cls, split: str = "train") -> str:
@@ -334,22 +331,18 @@ class MapBatchesS3Loader(BaseDataLoader):
             raise ValueError(f"Unknown split: {split}")
         return cls.SPLIT_DIRS[split]
 
-    def _list_files(self, limit: int = None) -> List[Dict[str, str]]:
+    def _list_files(self) -> List[Dict[str, str]]:
         """List JPEG files from S3 with class labels extracted from path.
 
         Uses torchdata's S3 listing. Results are cached.
         """
-        # Return cached results if available and sufficient
+        from torchdata.datapipes.iter import IterableWrapper
+
         if self._file_records_cache is not None:
-            if limit is None or len(self._file_records_cache) >= limit:
-                logger.info(
-                    f"Using cached file list ({len(self._file_records_cache)} files)"
-                )
-                return (
-                    self._file_records_cache[:limit]
-                    if limit
-                    else self._file_records_cache
-                )
+            logger.info(
+                f"Using cached file list ({len(self._file_records_cache)} files)"
+            )
+            return self._file_records_cache
 
         # Required for torchdata S3 access
         os.environ.setdefault("S3_VERIFY_SSL", "0")
@@ -359,9 +352,6 @@ class MapBatchesS3Loader(BaseDataLoader):
 
         # List all files using torchdata
         file_url_dp = IterableWrapper([self.data_dir]).list_files_by_s3()
-
-        # Cache more than needed to avoid re-listing for larger limits
-        cache_limit = max(10000, (limit or 1000) * 10)
 
         # Extract class labels from path structure: .../class_name/image.jpg
         file_records = []
@@ -375,27 +365,22 @@ class MapBatchesS3Loader(BaseDataLoader):
                 class_name = parts[-2]  # Parent directory is the class
                 file_records.append({"path": file_path, "class": class_name})
 
-            if len(file_records) >= cache_limit:
-                break
-
         logger.info(f"Listed and cached {len(file_records)} JPEG files")
         self._file_records_cache = file_records
 
-        return file_records[:limit] if limit else file_records
+        return file_records
 
-    def get_base_dataset(self, limit: int) -> ray.data.Dataset:
+    def get_base_dataset(self) -> ray.data.Dataset:
         """Get the base dataset (from_items with file records), creating and caching if needed."""
-        if self._base_dataset_cache is not None and limit <= self._cached_limit:
-            logger.info(f"Using cached base dataset (limit={self._cached_limit})")
+        if self._base_dataset_cache is not None:
+            logger.info("Using cached base dataset")
             return self._base_dataset_cache
 
-        file_records = self._list_files(limit=limit)
+        file_records = self._list_files()
         ds = ray.data.from_items(file_records)
 
-        # Cache the base dataset
         self._base_dataset_cache = ds
-        self._cached_limit = limit
-        logger.info(f"Created and cached base dataset (limit={limit})")
+        logger.info("Created and cached base dataset")
 
         return ds
 
@@ -407,17 +392,15 @@ class MapBatchesS3Loader(BaseDataLoader):
         num_image_columns: int,
     ) -> ray.data.Dataset:
         """Create dataset by applying map_batches to the cached base dataset."""
-        limit = batch_size * num_batches + batch_size
-
-        # Get base dataset (cached after first call)
-        base_ds = self.get_base_dataset(limit)
-
+        limit = self.compute_limit(batch_size, num_batches)
         transform = self.get_transform(transform_type)
         label_to_id_map = self.label_to_id_map
 
         def download_and_process_batch(
             batch: Dict[str, np.ndarray]
         ) -> Dict[str, np.ndarray]:
+            from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+
             processed_images = []
             labels = []
 
@@ -440,7 +423,11 @@ class MapBatchesS3Loader(BaseDataLoader):
             )
             return result
 
-        return base_ds.map_batches(download_and_process_batch, batch_size=batch_size)
+        return (
+            self.get_base_dataset()
+            .limit(limit)
+            .map_batches(download_and_process_batch, batch_size=batch_size)
+        )
 
 
 class ReadImagesS3Loader(BaseDataLoader):
@@ -459,7 +446,6 @@ class ReadImagesS3Loader(BaseDataLoader):
         """Initialize the data loader with base dataset cache."""
         super().__init__(data_dir, label_to_id_map)
         self._base_dataset_cache: Optional[ray.data.Dataset] = None
-        self._cached_limit: int = 0
 
     @classmethod
     def get_data_dir(cls, split: str = "train") -> str:
@@ -483,14 +469,10 @@ class ReadImagesS3Loader(BaseDataLoader):
         )
         return s3fs
 
-    def get_base_dataset(self, limit: int) -> ray.data.Dataset:
-        """Get the base dataset (read_images + limit), creating and caching if needed.
-
-        The base dataset is cached to avoid repeated slow file listings.
-        If a larger limit is requested, the cache is invalidated and rebuilt.
-        """
-        if self._base_dataset_cache is not None and limit <= self._cached_limit:
-            logger.info(f"Using cached base dataset (limit={self._cached_limit})")
+    def get_base_dataset(self) -> ray.data.Dataset:
+        """Get the base dataset, creating and caching if needed."""
+        if self._base_dataset_cache is not None:
+            logger.info("Using cached base dataset")
             return self._base_dataset_cache
 
         # Use partitioning to extract class from directory structure
@@ -501,21 +483,18 @@ class ReadImagesS3Loader(BaseDataLoader):
         )
 
         # Use S3 filesystem with boto credentials
-        fs = self._get_s3fs_with_boto_creds()
+        filesystem = self._get_s3fs_with_boto_creds()
 
         logger.info(f"Reading images from {self.data_dir} using read_images()...")
         ds = ray.data.read_images(
             self.data_dir,
-            filesystem=fs,
+            filesystem=filesystem,
             mode="RGB",
             partitioning=partitioning,
         )
-        ds = ds.limit(limit)
 
-        # Cache the base dataset
         self._base_dataset_cache = ds
-        self._cached_limit = limit
-        logger.info(f"Created and cached base dataset (limit={limit})")
+        logger.info("Created and cached base dataset")
 
         return ds
 
@@ -527,11 +506,7 @@ class ReadImagesS3Loader(BaseDataLoader):
         num_image_columns: int,
     ) -> ray.data.Dataset:
         """Create dataset by applying map to the cached base dataset."""
-        limit = batch_size * num_batches + batch_size
-
-        # Get base dataset (cached after first call)
-        base_ds = self.get_base_dataset(limit)
-
+        limit = self.compute_limit(batch_size, num_batches)
         transform = self.get_transform(transform_type)
         label_to_id_map = self.label_to_id_map
 
@@ -544,7 +519,7 @@ class ReadImagesS3Loader(BaseDataLoader):
             del row["class"]
             return row
 
-        return base_ds.map(process_row)
+        return self.get_base_dataset().limit(limit).map(process_row)
 
 
 def get_data_loader(data_format: str, split: str = "train") -> BaseDataLoader:
