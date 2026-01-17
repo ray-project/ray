@@ -2426,7 +2426,12 @@ py_test(
 py_test(
     name = "test_torch_rl_module_gpu",
     main = "core/rl_module/torch/tests/test_torch_rl_module.py",
-    tags = ["team:rllib", "core", "gpu", "exclusive"],
+    tags = [
+        "core",
+        "exclusive",
+        "gpu",
+        "team:rllib",
+    ],
     size = "medium",
     srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
     args = ["TestRLModuleGPU"],
