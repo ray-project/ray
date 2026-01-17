@@ -656,7 +656,7 @@ py_test(
     ],
 )
 
-# | APPO (14 total tests)          |         |                Number of Learners (Device)                 |
+# | IMPALA (2 total tests)         |         |                Number of Learners (Device)                 |
 # | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
 # |--------------------------------|---------|-------------|-----------------|--------------|-------------|
 # | (SA/D) Cartpole                | 200     | ✅          | ❌              | ❌           | ❌         |
