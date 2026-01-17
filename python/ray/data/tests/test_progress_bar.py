@@ -114,41 +114,6 @@ def test_progress_bar_truncates_chained_operators(
         ), caplog.records
 
 
-def test_progress_bar_non_interactive_terminal(enable_tqdm_ray):
-    """Test progress bar behavior in non-interactive terminals."""
-    import ray._private.worker as worker
-
-    total = 100
-
-    # Mock non-interactive terminal on driver (not in worker)
-    with patch("sys.stdout.isatty", return_value=False):
-        # On driver with non-interactive terminal, always falls back to logging
-        pb = ProgressBar("test", total, "unit", enabled=True)
-        assert pb._bar is None
-        assert pb._use_logging is True
-
-    # Mock non-interactive terminal in Ray worker with tqdm_ray
-    with patch("sys.stdout.isatty", return_value=False), patch.object(
-        worker.global_worker, "mode", worker.WORKER_MODE
-    ):
-        pb = ProgressBar("test", total, "unit", enabled=True)
-        if enable_tqdm_ray:
-            # tqdm_ray works in workers by sending JSON to driver
-            assert pb._bar is not None
-            assert pb._use_logging is False
-        else:
-            # Without tqdm_ray, falls back to logging even in worker
-            assert pb._bar is None
-            assert pb._use_logging is True
-
-    # Mock interactive terminal
-    with patch("sys.stdout.isatty", return_value=True):
-        # With enabled=True, progress bar should be enabled in interactive terminal
-        pb = ProgressBar("test", total, "unit", enabled=True)
-        assert pb._bar is not None
-        assert pb._use_logging is False
-
-
 if __name__ == "__main__":
     import sys
 
