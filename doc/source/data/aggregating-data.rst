@@ -104,7 +104,7 @@ The ``batch_format`` parameter controls the data format passed to ``aggregate()`
 - ``"pandas"``: Receives a ``pandas.DataFrame``
 - ``"numpy"``: Receives a ``Dict[str, np.ndarray]``
 
-If the ``on`` parameter is specified, the batch will contain only that column (but still as the same container type).
+If the ``on`` parameter is specified, the batch contains only that column (but still as the same container type).
 
 Example: Creating a Custom Mean Aggregator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
