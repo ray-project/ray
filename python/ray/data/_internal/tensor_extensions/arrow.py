@@ -45,10 +45,8 @@ PYARROW_VERSION = get_pyarrow_version()
 
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
-# Minimum version supporting Arrow's native FixedShapeTensorArray
+# Minimum version supporting Arrow's native FixedShapeTensorArray and FixedShapeTensorType
 MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY = parse_version("12.0.0")
-# Minimum version supporting FixedShapeTensorScalar and FixedShapeTensorType
-MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS = parse_version("18.0.0")
 # Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
 MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
@@ -79,15 +77,6 @@ if (
 else:
     FixedShapeTensorArray = None
     FixedShapeTensorType = None
-
-# FixedShapeTensorScalar and FixedShapeTensorType were introduced in PyArrow 18.0.0
-if (
-    PYARROW_VERSION is None
-    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS
-):
-    from pyarrow import FixedShapeTensorScalar
-else:
-    FixedShapeTensorScalar = None
 
 
 # List of scalar types supported by Arrow's FixedShapeTensorArray
@@ -551,17 +540,6 @@ def get_arrow_extension_tensor_types():
         *get_arrow_extension_fixed_shape_tensor_types(),
         *get_arrow_extension_variable_shape_tensor_types(),
     )
-
-
-@DeveloperAPI
-def get_arrow_native_fixed_shape_tensor_types():
-    """Returns list of Arrow extension types holding multidimensional
-    tensors of *fixed* shape
-    """
-    types = (ArrowTensorType, ArrowTensorTypeV2)
-    if FixedShapeTensorType is not None:
-        types = types + (FixedShapeTensorType,)
-    return types
 
 
 @DeveloperAPI
@@ -1501,6 +1479,10 @@ def unify_tensor_arrays(
         Union[ArrowTensorArray, ArrowVariableShapedTensorArray, FixedShapeTensorArray]
     ]
 ) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
+    from ray.data._internal.utils.transform_pyarrow import (
+        _is_native_tensor_type,
+    )
+
     supported_tensor_types = get_arrow_extension_tensor_types()
 
     # Derive number of distinct tensor types
@@ -1527,7 +1509,7 @@ def unify_tensor_arrays(
 
     unified_arrs = []
     for arr in arrs:
-        if FixedShapeTensorArray is not None and isinstance(arr, FixedShapeTensorArray):
+        if _is_native_tensor_type(arr.type):
             arr = ArrowVariableShapedTensorArray.from_numpy(arr.to_numpy_ndarray())
         else:
             arr = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)

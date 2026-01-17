@@ -34,7 +34,10 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorArray
+from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+    FixedShapeTensorArray,
+)
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
@@ -762,16 +765,22 @@ class ParquetDatasource(Datasource):
                 target_schema.metadata,
             )
 
-        ctx = DataContext.get_current()
         if tensor_column_schema is not None:
+            ctx = DataContext.get_current()
+            use_native_tensors = False
+            if ctx.use_arrow_native_fixed_shape_tensor_type:
+                if FixedShapeTensorArray is None:
+                    logger.warning(
+                        f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} to enable native tensor arrays"
+                    )
+                else:
+                    use_native_tensors = True
+
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
                 pa_dtype: pa.DataType = pa.from_numpy_dtype(np_dtype)
                 # 1) Determine the tensor type
-                if (
-                    ctx.use_arrow_native_fixed_shape_tensor_type
-                    and FixedShapeTensorArray is not None
-                ):
+                if use_native_tensors:
                     field = pa.field(name, pa.fixed_shape_tensor(pa_dtype, shape))
                 elif ctx.use_arrow_tensor_v2:
                     field = pa.field(name, ArrowTensorTypeV2(shape, pa_dtype))

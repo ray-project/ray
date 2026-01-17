@@ -463,45 +463,41 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
+            from ray.data._internal.utils.transform_pyarrow import (
+                _is_native_tensor_type,
+            )
+
             if self._max_chunk_size is None:
                 # Calling _get_max_chunk_size in constructor makes it slow, so we
                 # are calling it here only when needed.
                 self._max_chunk_size = _get_max_chunk_size(
                     table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
-            from ray.data._internal.arrow_ops import transform_pyarrow
-            from ray.data._internal.utils.transform_pyarrow import (
-                _is_native_tensor_type,
-            )
-
-            # HACK: This is so dumb. Currently, pyarrow native FixedShapeTensorArrays
-            # are viewed contiguously in every setting, regardless of shape/ndim,
-            # EXCEPT when you call .to_numpy_ndarray(). This is not the best place
-            # to add it, flagging for someone to see
             contains_native_tensor_columns = any(
                 _is_native_tensor_type(column.type) for column in table.itercolumns()
             )
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
 
-            if contains_native_tensor_columns:
-                col_values = []
-                for column in table.itercolumns():
-                    if _is_native_tensor_type(column.type):
-                        combined_array = transform_pyarrow.combine_chunked_array(column)
-                        column = transform_pyarrow.to_numpy(
-                            combined_array, zero_copy_only=False
-                        )
-                        col_values.append(column)
-                    else:
-                        col_values.append(column.to_pylist())
-                for i in range(len(table)):
-                    res = {
-                        name: col[i]
-                        for name, col in zip(table.column_names, col_values)
-                    }
-                    yield res
+                if contains_native_tensor_columns:
+                    # HACK: For v1 and v2 tensors, we can control what is returned by overiding the
+                    # `as_py()` method. However for pyarrow native FixedShapeTensorArrays,
+                    # we cannot, and therefore must manually convert them to ndarrays, which
+                    # preserve its shape/ndim. Without the logic below, the FixedShapeTensorArrays
+                    # would be translated to contiguous 1d arrays.
+                    col_values = []
+                    for column in batch.itercolumns():
+                        if _is_native_tensor_type(column.type):
+                            col_values.append(column.to_numpy_ndarray())
+                        else:
+                            col_values.append(column.to_pylist())
 
-            else:
-                for batch in table.to_batches(max_chunksize=self._max_chunk_size):
+                    # Convert to row-wise
+                    for idx in range(batch.num_rows):
+                        yield {
+                            name: col[idx]
+                            for name, col in zip(table.column_names, col_values)
+                        }
+                else:
                     yield from batch.to_pylist()
         else:
             num_rows = self.num_rows()

@@ -6,7 +6,6 @@ from ray.data._internal.tensor_extensions.arrow import (  # noqa: F401
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     FixedShapeTensorArray,
-    FixedShapeTensorScalar,
     FixedShapeTensorType,
 )
 from ray.data._internal.tensor_extensions.pandas import (  # noqa: F401
