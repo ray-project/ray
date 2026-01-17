@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import anyscale
 from anyscale.sdk.anyscale_client.models import (
@@ -48,7 +48,6 @@ class AnyscaleJobManager:
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> None:
         env_vars_for_job = env_vars.copy()
         env_vars_for_job[
@@ -63,7 +62,6 @@ class AnyscaleJobManager:
 
         runtime_env = {
             "env_vars": env_vars_for_job,
-            "pip": pip or [],
         }
         if working_dir:
             runtime_env["working_dir"] = working_dir
@@ -250,14 +248,12 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
         timeout: int = 120,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> Tuple[int, float]:
         self._run_job(
             cmd_to_run,
             env_vars,
             working_dir=working_dir,
             upload_path=upload_path,
-            pip=pip,
         )
         return self._wait_job(timeout)
 

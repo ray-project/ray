@@ -13,19 +13,34 @@
 // limitations under the License.
 #pragma once
 
-#include <memory>
-#include <string>
+#include <stdint.h>
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/label_selector.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/common/status.h"
+#include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/export_actor_data.pb.h"
-#include "src/ray/protobuf/gcs_service.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/public/events_actor_lifecycle_event.pb.h"
+#include "src/ray/protobuf/public/runtime_environment.pb.h"
 
 namespace ray {
 namespace gcs {
