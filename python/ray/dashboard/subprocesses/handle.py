@@ -175,7 +175,7 @@ class SubprocessModuleHandle:
             # check task itself (see _do_periodic_health_check()).
             # Cancelling the *current* task would raise CancelledError at the next
             # await and prevent cleanup + restart from completing.
-            current_task = asyncio.current_task(loop=self.loop)
+            current_task = asyncio.current_task()
             if current_task is None or self.health_check_task is not current_task:
                 self.health_check_task.cancel()
             self.health_check_task = None
