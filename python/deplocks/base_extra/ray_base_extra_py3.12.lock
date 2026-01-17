@@ -2473,12 +2473,8 @@ typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
-<<<<<<< HEAD
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
-=======
-    #   -c python/deplocks/base_extra_testdeps/ray_base_extra_testdeps_py3.12.lock
     #   aiosignal
->>>>>>> master
     #   anyio
     #   anyscale
     #   azure-core
