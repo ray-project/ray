@@ -50,7 +50,6 @@ steps:
     tags:
       - release_wheels
       - linux_wheels
-      - oss
     depends_on:
       - ray-core-build
       - ray-java-build
