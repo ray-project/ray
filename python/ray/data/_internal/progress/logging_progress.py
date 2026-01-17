@@ -37,6 +37,11 @@ class _LoggingMetrics:
     def format_progress(self) -> str:
         return f"{self.name}: {self.completed}/{self.total or '?'}"
 
+    def log_global_progress(self):
+        logger.info(self.format_progress())
+        if self.desc is not None:
+            logger.info(self.desc)
+
     def log_op_or_sub_progress(self):
         logger.info(self.format_progress())
         if self.desc is not None:
@@ -174,9 +179,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         logger.info(firstline)
 
         # log global progress
-        logger.info(self._global_progress_metric.format_progress())
-        if self._global_progress_metric.desc is not None:
-            logger.info(self._global_progress_metric.desc)
+        self._global_progress_metric.log_global_progress()
 
         # log operator-level progress
         if len(self._op_progress_metrics.keys()) > 0:
