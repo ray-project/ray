@@ -696,6 +696,7 @@ py_test(
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
+        "exclusive",
         "learning_tests",
         "multi_gpu",
         "team:rllib",
