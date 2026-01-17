@@ -492,6 +492,10 @@ ray_cc_library(
     hdrs = [
         "gcs_server.h",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":gcs_actor",
         ":gcs_actor_manager",
@@ -554,6 +558,10 @@ ray_cc_binary(
     srcs = [
         "gcs_server_main.cc",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
