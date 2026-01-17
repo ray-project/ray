@@ -358,9 +358,6 @@ class ResourceManager:
         assert self._op_resource_allocator is not None
         return self._op_resource_allocator
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
-
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the budget for the given operator, or None if the operator
         has unlimited budget."""
@@ -379,45 +376,6 @@ class ResourceManager:
 
     def get_eligible_ops(self) -> List[PhysicalOperator]:
         return [op for op in self._topology if self.is_op_eligible(op)]
-
-    def get_ineligible_op_usage(self) -> ExecutionResources:
-        """
-        Resource reservation is based on the number of eligible operators.
-        However, there might be completed operators that still have blocks in their
-        output queue, which we need to exclude them from the reservation.
-        And we also need to exclude the downstream ineligible operators.
-
-        E.g., for the following pipeline:
-        ```
-        map1 (completed, but still has blocks in its output queue) -> limit1
-        (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
-        ```
-
-        The reservation is based on the number of eligible operators (map2 and map3),
-        but we need to exclude map1 and limit1 from the reservation.
-        """
-        last_completed_ops = []
-        ops_to_exclude_from_reservation = []
-        # Traverse operator tree collecting all operators that have already finished
-        for op in self._topology:
-            if not op.has_execution_finished():
-                for dep in op.input_dependencies:
-                    if dep.has_execution_finished():
-                        last_completed_ops.append(dep)
-
-        # In addition to completed operators,
-        # filter out downstream ineligible operators since they are omitted from reservation calculations.
-        for op in last_completed_ops:
-            ops_to_exclude_from_reservation.extend(
-                self._get_downstream_ineligible_ops(op)
-            )
-            ops_to_exclude_from_reservation.append(op)
-
-        ineligible_op_usage = ExecutionResources.zero()
-        for op in set(ops_to_exclude_from_reservation):
-            ineligible_op_usage = ineligible_op_usage.add(self.get_op_usage(op))
-
-        return ineligible_op_usage
 
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
@@ -469,8 +427,46 @@ class ResourceManager:
             total_usage += int(self.get_op_usage(next_op).object_store_memory)
         return total_usage
 
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
+        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
 
-def _get_first_pending_shuffle_op(topology: "Topology") -> int:
+    def _get_completed_ops_usage(self) -> ExecutionResources:
+        """
+        Resource reservation is based on the number of eligible operators.
+        However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
+        And we also need to exclude the downstream ineligible operators.
+
+        E.g., for the following pipeline:
+        ```
+        map1 (completed, but still has blocks in its output queue) -> limit1 (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
+        ```
+
+        The reservation is based on the number of eligible operators (map2 and map3), but we need to exclude map1 and limit1 from the reservation.
+        """
+
+        last_completed_ops = []
+        ops_to_exclude = []
+        # Traverse operator tree collecting all operators that have already finished
+        for op in self._topology:
+            if not op.has_execution_finished():
+                for dep in op.input_dependencies:
+                    if dep.has_execution_finished():
+                        last_completed_ops.append(dep)
+
+        # In addition to completed operators,
+        # filter out downstream ineligible operators since they are omitted from reservation calculations.
+        for op in last_completed_ops:
+            ops_to_exclude.extend(list(self._get_downstream_ineligible_ops(op)))
+            ops_to_exclude.append(op)
+
+        completed_ops = list(set(ops_to_exclude))
+        completed_ops_usage = ExecutionResources.zero()
+
+        for op in completed_ops:
+            completed_ops_usage = completed_ops_usage.add(self.get_op_usage(op))
+
+        return completed_ops_usage
+
     def _is_blocking_materializing_op(self, op: PhysicalOperator) -> bool:
         """This method checks whether either
 
@@ -628,14 +624,23 @@ class OpResourceAllocator(ABC):
         ...
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
-        first_pending_shuffle_op_idx = _get_first_pending_shuffle_op(self._topology)
+        """Returns a list of operators eligible for allocation.
+
+        Only operators upstream of the first non-completed *materializing* Operator,
+        (like shuffle, etc) are able to receive inputs and start execution.
+
+        Therefore only these operators are eligible for resource allocation.
+        """
+        first_pending_materializing_op_idx = _get_first_pending_materializing_op(
+            self._topology
+        )
         return [
             op
             for idx, op in enumerate(self._topology)
             if self._is_op_eligible(op)
             and (
-                first_pending_shuffle_op_idx == -1
-                or idx <= first_pending_shuffle_op_idx
+                first_pending_materializing_op_idx == -1
+                or idx <= first_pending_materializing_op_idx
             )
         ]
 
@@ -720,8 +725,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
-        super().__init__(resource_manager._topology)
-        self._resource_manager = resource_manager
+        super().__init__(resource_manager)
+
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
@@ -851,6 +856,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
+
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = (
@@ -874,9 +880,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        ineligible_op_usage = self._resource_manager.get_ineligible_op_usage()
-        limits = limits.subtract(ineligible_op_usage).max(ExecutionResources.zero())
-
         # Remaining resources to be distributed across operators
         remaining_shared = self._update_reservation(limits)
 
@@ -975,10 +978,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # operator to exceed its object store memory budget. To prevent deadlock, we
         # disable object store memory backpressure for the input operator.
         for op in eligible_ops:
-            if any(
-                isinstance(next_op, MATERIALIZING_OPERATORS)
-                for next_op in op.output_dependencies
-            ):
+            if self._resource_manager._is_blocking_materializing_op(op):
                 self._op_budgets[op] = self._op_budgets[op].copy(
                     object_store_memory=float("inf")
                 )
