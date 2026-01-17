@@ -40,9 +40,15 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 )
 
 
-# These are physical operators that must receive all inputs before they start
-# processing data.
-MATERIALIZING_OPERATORS = (AllToAllOperator, ZipOperator)
+# Following list is a list of *blocking* materializing operators, that prevent
+# operators downstream from them from starting execution until these operators
+# finish executing.
+_BLOCKING_MATERIALIZING_OPERATORS = (
+    HashShufflingOperatorBase,
+    AllToAllOperator,
+    # TODO remove after zip made fully streaming
+    ZipOperator,
+)
 
 
 class ResourceManager:
@@ -456,17 +462,6 @@ class ResourceManager:
             op_outputs_usage += int(self.get_op_usage(next_op).object_store_memory)
         return op_outputs_usage
 
-    def is_materializing_op(self, op: PhysicalOperator) -> bool:
-        """Check if the operator is a materializing operator."""
-        return isinstance(op, MATERIALIZING_OPERATORS)
-
-    def has_materializing_downstream_op(self, op: PhysicalOperator) -> bool:
-        """Check if the operator has a downstream materializing operator."""
-        return any(
-            isinstance(next_op, MATERIALIZING_OPERATORS)
-            for next_op in op.output_dependencies
-        )
-
     def get_op_usage_object_store_with_downstream(self, op: PhysicalOperator) -> int:
         """Get total object store usage of the given operator and its downstream ineligible ops."""
         total_usage = int(self.get_op_usage(op).object_store_memory)
@@ -476,15 +471,39 @@ class ResourceManager:
 
 
 def _get_first_pending_shuffle_op(topology: "Topology") -> int:
+    def _is_blocking_materializing_op(self, op: PhysicalOperator) -> bool:
+        """This method checks whether either
+
+        1. Operator itself or
+        2. One of operator's immediate *ineligible* downstream dependencies
+
+        Are blocking, materializing operators.
+
+        NOTE: That downstream ineligible operators are considered an "extension" of their
+              first preceding eligible operator from resource allocation standpoint.
+        """
+
+        # Check if Op itself is a blocking, materializing operator
+        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS):
+            return True
+
+        # Check if any of its direct *ineligible* downstream dependencies are
+        # blocking, materializing operators.
+        #
+        # NOTE: We only check ineligible downstream deps, since eligible downstream
+        #       deps will have their own allocation that is adjusted appropriately
+        return any(
+            isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS)
+            for op in self._get_downstream_ineligible_ops(op)
+        )
+
+
+def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if _is_shuffle_op(op) and not op.has_completed():
+        if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
             return idx
 
     return -1
-
-
-def _is_shuffle_op(op: PhysicalOperator) -> bool:
-    return isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
 
 
 class OpResourceAllocator(ABC):
@@ -560,8 +579,10 @@ class OpResourceAllocator(ABC):
 
             logger.warning(msg)
 
-    def __init__(self, topology: "Topology"):
-        self._topology = topology
+    def __init__(self, resource_manager: "ResourceManager"):
+        self._resource_manager = resource_manager
+        self._topology = resource_manager._topology
+
         self._idle_detector = self.IdleDetector()
 
     @abstractmethod
