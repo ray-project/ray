@@ -14,7 +14,9 @@
 
 #pragma once
 #include <gtest/gtest_prod.h>
+#include <stdint.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,12 +26,17 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
-#include "ray/gcs/gcs_actor.h"
+#include "ray/gcs/actor/gcs_actor.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
-#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace gcs {
