@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_actor.h"
+#include "ray/gcs/actor/gcs_actor.h"
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
+#include "ray/observability/ray_event_interface.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/public/events_actor_lifecycle_event.pb.h"
-#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace gcs {
