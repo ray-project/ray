@@ -60,7 +60,7 @@
 				},
 				"using_sdk_2026": {
 					"type": "boolean"
-				},
+				}
 			},
 			"required": [
 				"cluster",

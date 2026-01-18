@@ -8,7 +8,7 @@ compile_pip_requirements(
     requirements_in = "requirements_py310.in",
     requirements_txt = "requirements_py310.txt",
     tags = [
-        "team:ci",
+        "team:deps",
     ],
     visibility = ["//visibility:private"],
 )
@@ -788,6 +788,7 @@ py_test(
     tags = [
         "release_unit",
         "team:ci",
+        "manual",
     ],
     deps = [
         ":ray_release",
