@@ -207,7 +207,7 @@ def is_dir_empty(temp_folder, node_id, append_path=True):
 def test_custom_spill_dir_control_1(shutdown_only):
     # Make sure the object spilling directory can be set by the user
     ray_context = ray.init(
-        object_spilling_directory="/tmp/kunchd_spill_dir",
+        object_spilling_directory="/tmp/kunchd_spill_dir1",
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
     )
@@ -215,21 +215,21 @@ def test_custom_spill_dir_control_1(shutdown_only):
         ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == "filesystem"
-    assert config["params"]["directory_path"] == "/tmp/kunchd_spill_dir"
+    assert config["params"]["directory_path"] == "/tmp/kunchd_spill_dir1"
 
     # Make sure the spill directory is empty before running the workload.
-    assert is_dir_empty(Path("/tmp/kunchd_spill_dir"), ray_context["node_id"])
+    assert is_dir_empty(Path("/tmp/kunchd_spill_dir1"), ray_context["node_id"])
 
     # Make sure the basic workload can succeed and the spill directory is not empty.
     run_basic_workload()
-    assert not is_dir_empty(Path("/tmp/kunchd_spill_dir"), ray_context["node_id"])
+    assert not is_dir_empty(Path("/tmp/kunchd_spill_dir1"), ray_context["node_id"])
 
 
 def test_custom_spill_dir_control_2(shutdown_only):
     ray_context = ray.init(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
-        _temp_dir="/tmp/kunchd_spill_dir",
+        _temp_dir="/tmp/kunchd_spill_dir2",
     )
     config = json.loads(
         ray._private.worker._global_node._config["object_spilling_config"]
@@ -250,6 +250,61 @@ def test_custom_spill_dir_control_2(shutdown_only):
     assert not is_dir_empty(
         Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
     )
+
+
+def test_custom_spill_dir_control_3(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    node_0 = cluster.add_node(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        temp_dir="/tmp/kunchd_spill_dir3",
+    )
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+
+    assert is_dir_empty(Path(node_0._session_dir), node_0.node_id)
+
+    # Run spilling workload on both nodes
+    @ray.remote
+    def task():
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+        refs = []
+        refs.append([ray.put(arr) for _ in range(2)])
+        ray.get(ray.put(arr))
+
+    # Use NodeAffinitySchedulingStrategy to ensure each task runs on a specific node
+    res = ray.get(task.remote())
+
+    assert not is_dir_empty(Path(node_0._session_dir), node_0.node_id)
+
+    del res
+
+
+def test_custom_spill_dir_control_4(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    node_0 = cluster.add_node(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        temp_dir="/tmp/kunchd_spill_dir3",
+    )
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+    assert is_dir_empty(Path(node_0._session_dir), node_0.node_id)
+
+    # This task will run on node 2 because node 1 has no CPU resource
+    @ray.remote(num_cpus=1)
+    def task():
+        ids = []
+        for _ in range(2):
+            arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            ids.append(ray.put(arr))
+        return ids
+
+    res = ray.get(task.remote())
+
+    assert not is_dir_empty(Path(node_0._session_dir), node_0.node_id)
+
+    del res
 
 
 def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enabled):
