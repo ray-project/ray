@@ -1,6 +1,5 @@
 import logging
 import typing
-import uuid
 from typing import Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -63,7 +62,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
         self._dataset_id = dataset_id
 
         self._sub_progress_bars: List[BaseProgressBar] = []
-        self._op_display: Dict[uuid.UUID, TqdmSubProgressBar] = {}
+        self._op_display: Dict["OpState", TqdmSubProgressBar] = {}
 
         num_progress_bars = 0
 
@@ -89,7 +88,6 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             )
 
             # create operator progress bar
-            uid = uuid.uuid4()
             if sub_progress_bar_enabled:
                 pg = TqdmSubProgressBar(
                     name=f"- {op.name}",
@@ -99,8 +97,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
                     max_name_length=self.MAX_NAME_LENGTH,
                 )
                 num_progress_bars += 1
-                state.progress_manager_uuid = uid
-                self._op_display[uid] = pg
+                self._op_display[state] = pg
                 self._sub_progress_bars.append(pg)
 
             if not contains_sub_progress_bars:
@@ -157,7 +154,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        pg = self._op_display.get(opstate.progress_manager_uuid)
+        pg = self._op_display.get(opstate)
         if pg is not None:
             pg.update_absolute(
                 opstate.output_row_count, opstate.op.num_output_rows_total()

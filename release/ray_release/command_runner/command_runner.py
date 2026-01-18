@@ -77,19 +77,6 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
-    def save_metrics(self, start_time: float, timeout: float = 900.0):
-        """Obtains Prometheus metrics from head node and saves them
-        to ``self.metrics_output_json``.
-
-        Args:
-            start_time: From which UNIX timestamp to start the query.
-            timeout: Timeout in seconds.
-
-        Returns:
-            None
-        """
-        raise NotImplementedError
-
     def run_command(
         self,
         command: str,
