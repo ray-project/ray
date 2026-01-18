@@ -9,7 +9,6 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-from uuid import UUID
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -204,7 +203,6 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Progress Manager
-        self.progress_manager_uuid: Optional[UUID] = None
         self.output_row_count: int = 0
 
     def __repr__(self):
