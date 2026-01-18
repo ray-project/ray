@@ -2,10 +2,11 @@ import sys
 
 import pytest
 
-from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
-from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.test import Test
 from ray_release.anyscale_util import Anyscale
+from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
+from ray_release.test import Test
+
 
 class FakeJobResult:
     def __init__(self, _id: str):
@@ -25,7 +26,9 @@ def test_get_last_logs_long_running_job():
     """
     fake_test = Test(name="fake_test")
     fake_sdk = FakeSDK()
-    cluster_manager = ClusterManager(test=fake_test, project_id="fake_project_id", sdk=fake_sdk)
+    cluster_manager = ClusterManager(
+        test=fake_test, project_id="fake_project_id", sdk=fake_sdk
+    )
     anyscale_job_manager = AnyscaleJobManager(cluster_manager=cluster_manager)
     anyscale_job_manager._duration = 4 * 3_600 + 1
     anyscale_job_manager.last_job_result = FakeJobResult(_id="foo")
