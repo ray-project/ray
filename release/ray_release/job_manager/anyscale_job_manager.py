@@ -38,6 +38,7 @@ class AnyscaleJobManager:
         self.counter = 0
         self.cluster_manager = cluster_manager
         self._last_job_result = None
+        self._job_id: Optional[str] = None
         self._last_logs = None
         self.cluster_startup_timeout = 600
         self._duration = None
@@ -92,7 +93,7 @@ class AnyscaleJobManager:
         self.last_job_result = job_response.result
         self.start_time = time.time()
 
-        logger.info(f"Link to job: " f"{format_link(self.job_url)}")
+        logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
     @property
@@ -106,18 +107,15 @@ class AnyscaleJobManager:
     @last_job_result.setter
     def last_job_result(self, value):
         self._last_job_result = value
+        self._job_id = value.id if value else None
 
-    @property
     def job_id(self) -> Optional[str]:
-        if not self.last_job_result:
-            return None
-        return self.last_job_result.id
+        return self._job_id
 
-    @property
     def job_url(self) -> Optional[str]:
-        if not self.job_id:
+        if not self._job_id:
             return None
-        return anyscale_job_url(self.job_id)
+        return anyscale_job_url(self._job_id)
 
     @property
     def last_job_status(self) -> Optional[HaJobStates]:
@@ -132,7 +130,7 @@ class AnyscaleJobManager:
     def _get_job_status_with_retry(self):
         anyscale_client = self.cluster_manager.sdk
         return exponential_backoff_retry(
-            lambda: anyscale_client.get_production_job(self.job_id),
+            lambda: anyscale_client.get_production_job(self._job_id),
             retry_exceptions=Exception,
             initial_retry_delay_s=1,
             max_retries=3,
@@ -141,12 +139,12 @@ class AnyscaleJobManager:
     def _terminate_job(self, raise_exceptions: bool = False):
         if not self.in_progress:
             return
-        logger.info(f"Terminating job {self.job_id}...")
+        logger.info(f"Terminating job {self._job_id}...")
         try:
-            self.sdk.terminate_job(self.job_id)
-            logger.info(f"Job {self.job_id} terminated!")
+            self.sdk.terminate_job(self._job_id)
+            logger.info(f"Job {self._job_id} terminated!")
         except Exception:
-            msg = f"Couldn't terminate job {self.job_id}!"
+            msg = f"Couldn't terminate job {self._job_id}!"
             if raise_exceptions:
                 logger.error(msg)
                 raise
@@ -258,17 +256,15 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def _get_ray_logs(self) -> str:
-        """
-        Obtain the last few logs
-        """
+        """Obtain the last few logs."""
         if self.cluster_manager.log_streaming_limit == -1:
-            return anyscale.job.get_logs(id=self.job_id)
+            return anyscale.job.get_logs(id=self._job_id)
         return anyscale.job.get_logs(
-            id=self.job_id, max_lines=self.cluster_manager.log_streaming_limit
+            id=self._job_id, max_lines=self.cluster_manager.log_streaming_limit
         )
 
     def get_last_logs(self):
-        if not self.job_id:
+        if not self._job_id:
             raise RuntimeError(
                 "Job has not been started, therefore there are no logs to obtain."
             )
