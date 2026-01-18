@@ -2599,7 +2599,7 @@ mistune==0.8.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   nbconvert
-ml-dtypes==0.3.2 \
+ml-dtypes==0.5.1 \
     --hash=sha256:2c34f2ba9660b21fe1034b608308a01be82bbef2a92fb8199f24dc6bad0d5226 \
     --hash=sha256:3a17ef2322e60858d93584e9c52a5be7dd6236b056b7fa1ec57f1bb6ba043e33 \
     --hash=sha256:533059bc5f1764fac071ef54598db358c167c51a718f68f5bb55e3dee79d2967 \
