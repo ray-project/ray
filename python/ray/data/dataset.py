@@ -2410,7 +2410,13 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        ds = self
+        dataset_length = ds._meta_count()
+        if dataset_length is None:
+            ds = ds.materialize()
+            dataset_length = ds._meta_count()
+        if dataset_length is None:
+            dataset_length = ds.count()
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2428,7 +2434,7 @@ class Dataset:
                 "Couldn't create non-empty splits with the given proportions."
             )
 
-        return self.split_at_indices(split_indices)
+        return ds.split_at_indices(split_indices)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2497,8 +2503,11 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            self._validate_test_size_int(test_size, ds)
-            ds_length = ds.count()
+            ds_length = ds._meta_count()
+            if ds_length is None:
+                ds = ds.materialize()
+                ds_length = ds._meta_count()
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
 
     def _stratified_train_test_split(
@@ -2555,12 +2564,18 @@ class Dataset:
                 f"than 1. Got {test_size}."
             )
 
-    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+    def _validate_test_size_int(
+        self,
+        test_size: int,
+        ds: "Dataset",
+        ds_length: Optional[int] = None,
+    ) -> int:
         """Validate test_size when it's an int and return dataset length.
 
         Args:
             test_size: Test size as int.
             ds: Dataset to validate against.
+            ds_length: Dataset length if already known.
 
         Returns:
             Dataset length for reuse.
@@ -2568,7 +2583,8 @@ class Dataset:
         Raises:
             ValueError: If test_size is not in valid range.
         """
-        ds_length = ds.count()
+        if ds_length is None:
+            ds_length = ds.count()
         if test_size <= 0 or test_size >= ds_length:
             raise ValueError(
                 "If `test_size` is an int, it must be bigger than 0 and smaller "
