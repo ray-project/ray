@@ -72,9 +72,10 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
         for node in ray.nodes()
         if node["Alive"] and "node:__internal_head__" not in node["Resources"]
     ]
+
     for r in node_resources:
         node_resource_spec = _NodeResourceSpec.of(
-            cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
+            cpu=r.get("CPU", 0), gpu=r.get("GPU", 0), mem=r.get("memory", 0)
         )
         nodes_resource_spec_count[node_resource_spec] += 1
 
