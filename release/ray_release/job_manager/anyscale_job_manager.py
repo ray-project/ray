@@ -170,7 +170,7 @@ class AnyscaleJobManager:
         # The context ensures the job always either finishes normally
         # or is terminated.
         with self._terminate_job_context():
-            assert self.job_id, "Job must have been started"
+            assert self._job_id, "Job must have been started"
 
             start_time = time.monotonic()
             # Waiting for cluster needs to be a part of the whole
