@@ -434,7 +434,6 @@ def run_release_test_kuberay(
             autoscaler_config=kuberay_autoscaler_config,
             timeout=command_timeout,
         )
-        kuberay_job_manager.fetch_results()
         result.return_code = retcode
         result.runtime = duration
     except Exception as e:
