@@ -130,7 +130,10 @@ def test_thread_limit_set_to_max_ongoing_requests(serve_instance):
     not RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     reason="Run sync method in threadpool FF disabled.",
 )
-@pytest.mark.parametrize(("num_cpus", "expected_workers"), [(0.1, 1), (2.2, 3)])
+@pytest.mark.parametrize(
+    ("num_cpus", "expected_workers"),
+    [(0, 1), (0.1, 1), (2, 2), (2.2, 3)],
+)
 def test_asyncio_default_executor_limited_by_num_cpus(
     serve_instance, num_cpus, expected_workers
 ):

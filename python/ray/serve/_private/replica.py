@@ -1768,7 +1768,7 @@ class UserCallableWrapper:
 
     def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
         num_cpus = self._ray_actor_options.get("num_cpus")
-        if num_cpus is None or num_cpus <= 0:
+        if num_cpus is None:
             return None
         return max(1, int(math.ceil(num_cpus)))
 
