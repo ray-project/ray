@@ -223,12 +223,17 @@ class AnyscaleJobRunner(CommandRunner):
                 f"with error:\n{error}\n"
             )
 
-    @property
-    def command_env(self):
-        env = super().command_env
-        # Make sure we don't buffer stdout so we don't lose any logs.
-        env["PYTHONUNBUFFERED"] = "1"
-        return env
+    def get_full_command_env(self, env: Optional[Dict] = None):
+        full_env = {
+            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
+            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
+            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
+            "PYTHONUNBUFFERED": "1",
+        }
+        if env:
+            full_env.update(env)
+        return full_env
 
     def run_command(
         self,

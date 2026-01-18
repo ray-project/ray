@@ -40,23 +40,6 @@ class CommandRunner(abc.ABC):
         self.cluster_manager = cluster_manager
         self.working_dir = working_dir
 
-    @property
-    def command_env(self):
-        return {
-            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
-            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
-            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
-            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
-        }
-
-    def get_full_command_env(self, env: Optional[Dict] = None):
-        full_env = self.command_env.copy()
-
-        if env:
-            full_env.update(env)
-
-        return full_env
-
     def prepare_remote_env(self):
         """Prepare remote environment, e.g. upload files."""
         raise NotImplementedError
