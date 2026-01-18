@@ -29,6 +29,7 @@ from ray_release.exception import (
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 from ray_release.logger import logger
+from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import (
     AZURE_CLOUD_STORAGE,
     AZURE_STORAGE_CONTAINER,
@@ -63,6 +64,24 @@ def _get_env_str(env: Dict[str, str]) -> str:
 
 
 class AnyscaleJobRunner(CommandRunner):
+    # the directory for runners to dump files to (on buildkite runner instances).
+    # Write to this directory. run_release_tests.sh will ensure that the content
+    # shows up under buildkite job's "Artifacts" UI tab.
+    _DEFAULT_ARTIFACTS_DIR = DEFAULT_ARTIFACTS_DIR
+
+    # the artifact file name put under s3 bucket root.
+    # AnyscalejobWrapper will upload user generated artifact to this path
+    # and AnyscaleJobRunner will then download from there.
+    _USER_GENERATED_ARTIFACT = "user_generated_artifact"
+
+    # the path where result json will be written to on both head node
+    # as well as the relative path where result json will be uploaded to on s3.
+    _RESULT_OUTPUT_JSON = "/tmp/release_test_out.json"
+
+    # the path where output json will be written to on both head node
+    # as well as the relative path where metrics json will be uploaded to on s3.
+    _METRICS_OUTPUT_JSON = "/tmp/metrics_test_out.json"
+
     def __init__(
         self,
         cluster_manager: ClusterManager,
