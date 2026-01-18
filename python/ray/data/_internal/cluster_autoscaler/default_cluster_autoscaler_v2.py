@@ -4,7 +4,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 import ray
 from .base_autoscaling_coordinator import AutoscalingCoordinator
@@ -138,6 +138,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
 
+        self._resource_manager = resource_manager
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -161,6 +162,75 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
+
+    def _get_resource_limits(self) -> ExecutionResources:
+        """Get user-configured resource limits from execution options."""
+        return self._resource_manager._options.resource_limits
+
+    def _cap_resource_request_to_limits(
+        self, resource_request: List[Dict]
+    ) -> List[Dict]:
+        """Cap the resource request to not exceed user-configured resource limits.
+
+        If the user has set explicit (non-infinite) resource limits, this method
+        filters the resource request to ensure the total requested resources do not
+        exceed those limits.
+
+        Args:
+            resource_request: List of resource bundles (node specs) to request.
+
+        Returns:
+            A filtered list of resource bundles that respects user limits.
+        """
+        limits = self._get_resource_limits()
+
+        # If no explicit limits are set (all infinite), return the original request
+        if limits.cpu == float("inf") and limits.gpu == float("inf"):
+            return resource_request
+
+        # Calculate totals from the request
+        total_cpu = sum(bundle.get("CPU", 0) for bundle in resource_request)
+        total_gpu = sum(bundle.get("GPU", 0) for bundle in resource_request)
+
+        # Check if the request already respects limits
+        cpu_within_limit = limits.cpu == float("inf") or total_cpu <= limits.cpu
+        gpu_within_limit = limits.gpu == float("inf") or total_gpu <= limits.gpu
+
+        if cpu_within_limit and gpu_within_limit:
+            return resource_request
+
+        # Cap the request by filtering bundles until we're within limits
+        capped_request = []
+        current_cpu = 0.0
+        current_gpu = 0.0
+
+        for bundle in resource_request:
+            bundle_cpu = bundle.get("CPU", 0)
+            bundle_gpu = bundle.get("GPU", 0)
+
+            # Check if adding this bundle would exceed limits
+            new_cpu = current_cpu + bundle_cpu
+            new_gpu = current_gpu + bundle_gpu
+
+            cpu_ok = limits.cpu == float("inf") or new_cpu <= limits.cpu
+            gpu_ok = limits.gpu == float("inf") or new_gpu <= limits.gpu
+
+            if cpu_ok and gpu_ok:
+                capped_request.append(bundle)
+                current_cpu = new_cpu
+                current_gpu = new_gpu
+            else:
+                # Stop adding bundles once we hit the limit
+                break
+
+        if len(capped_request) < len(resource_request):
+            logger.debug(
+                f"Capped autoscaling resource request from {len(resource_request)} "
+                f"bundles to {len(capped_request)} bundles to respect user-configured "
+                f"resource limits (CPU={limits.cpu}, GPU={limits.gpu})."
+            )
+
+        return capped_request
 
     def try_trigger_scaling(self):
         # Note, should call this method before checking `_last_request_time`,
@@ -213,6 +283,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             if logger.isEnabledFor(logging.DEBUG):
                 debug_msg += f" [{bundle}: {count} -> {num_to_request}]"
         logger.debug(debug_msg)
+
+        # Cap the resource request to respect user-configured limits
+        resource_request = self._cap_resource_request_to_limits(resource_request)
+
         self._send_resource_request(resource_request)
 
     def _send_resource_request(self, resource_request):
@@ -238,10 +312,13 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             logger.warning(msg, exc_info=True)
 
     def get_total_resources(self) -> ExecutionResources:
+        """Get total resources available, respecting user-configured limits."""
         resources = self._autoscaling_coordinator.get_allocated_resources(
             requester_id=self._requester_id
         )
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))
-        return total
+        # Respect user-configured resource limits
+        user_limits = self._get_resource_limits()
+        return total.min(user_limits)

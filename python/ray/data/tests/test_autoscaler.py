@@ -2,7 +2,7 @@ import time
 from contextlib import contextmanager
 from types import MethodType
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,6 +13,7 @@ from ray.data._internal.actor_autoscaler import (
     DefaultActorAutoscaler,
 )
 from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -338,8 +339,14 @@ def test_cluster_scaling():
         op2: op_state2,
     }
 
+    # Create execution options with no limits (default infinite)
+    options = ExecutionOptions()
+    resource_manager = MagicMock()
+    resource_manager._options = options
+
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
+        resource_manager=resource_manager,
         execution_id="execution_id",
     )
 
@@ -349,6 +356,147 @@ def test_cluster_scaling():
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]
     )
+
+
+def test_cluster_scaling_respects_cpu_limits():
+    """Test that cluster autoscaling respects user-configured CPU limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    # Create execution options with CPU limit of 4
+    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=4))
+    resource_manager = MagicMock()
+    resource_manager._options = options
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_manager=resource_manager,
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request: [{"CPU": 2}, {"CPU": 2}, {"CPU": 2}] (6 CPUs)
+    # With limit of 4 CPUs, should only request 2 bundles (4 CPUs)
+    autoscaler._send_resource_request.assert_called_once_with([{"CPU": 2}, {"CPU": 2}])
+
+
+def test_cluster_scaling_respects_gpu_limits():
+    """Test that cluster autoscaling respects user-configured GPU limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=1, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    # Create execution options with GPU limit of 2
+    options = ExecutionOptions(resource_limits=ExecutionResources(gpu=2))
+    resource_manager = MagicMock()
+    resource_manager._options = options
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_manager=resource_manager,
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request 3 bundles (3 GPUs)
+    # With limit of 2 GPUs, should only request 2 bundles
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}]
+    )
+
+
+def test_cluster_scaling_no_limits():
+    """Test that cluster autoscaling works normally when no limits are set."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    # Create execution options with no limits (default infinite)
+    options = ExecutionOptions()
+    resource_manager = MagicMock()
+    resource_manager._options = options
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_manager=resource_manager,
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # With no limits, all 3 bundles should be requested
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 2}, {"CPU": 2}, {"CPU": 2}]
+    )
+
+
+def test_cluster_autoscaler_get_total_resources_respects_limits():
+    """Test that get_total_resources respects user-configured limits."""
+    topology = {}
+
+    # Create execution options with CPU limit of 4
+    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=4, gpu=1))
+    resource_manager = MagicMock()
+    resource_manager._options = options
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_manager=resource_manager,
+        execution_id="execution_id",
+    )
+
+    # Mock cluster resources with more than the limit
+    with patch("ray.cluster_resources", return_value={"CPU": 16, "GPU": 4}):
+        total = autoscaler.get_total_resources()
+
+    # Should be capped to user limits
+    assert total.cpu == 4
+    assert total.gpu == 1
 
 
 class BarrierWaiter:
