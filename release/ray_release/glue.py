@@ -560,11 +560,9 @@ def run_release_test_anyscale(
 
     # Obtain the cluster info again as it is set after the
     # command was run in case of anyscale jobs
-    if isinstance(command_runner, AnyscaleJobRunner):
-        result.job_url = command_runner.job_manager.job_url
-        result.job_id = command_runner.job_manager.job_id
-
-    result.last_logs = command_runner.get_last_logs() if command_runner else None
+    result.job_url = command_runner.job_url()
+    result.job_id = command_runner.job_id()
+    result.last_logs = command_runner.get_last_logs()
 
     reset_signal_handling()
 
