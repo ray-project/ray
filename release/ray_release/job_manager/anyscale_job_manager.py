@@ -125,9 +125,8 @@ class AnyscaleJobManager:
         return self.last_job_result and self.last_job_status not in terminal_state
 
     def _get_job_status_with_retry(self):
-        anyscale_client = self.cluster_manager.sdk
         return exponential_backoff_retry(
-            lambda: anyscale_client.get_production_job(self.job_id),
+            lambda: self._sdk.get_production_job(self.job_id),
             retry_exceptions=Exception,
             initial_retry_delay_s=1,
             max_retries=3,
