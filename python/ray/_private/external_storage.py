@@ -147,6 +147,10 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             The order of returned keys are equivalent to the one
             with given object_refs.
         """
+        logger.info(
+            f"[Kunchd] ExternalStorage._write_multiple_objects: Writing "
+            f"num_objects={len(object_refs)} to url={url}"
+        )
         keys = []
         offset = 0
         ray_object_pairs = self._get_objects_from_store(object_refs)
@@ -181,6 +185,10 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             offset += written_bytes
         # Necessary because pyarrow.io.NativeFile does not flush() on close().
         f.flush()
+        logger.info(
+            f"[Kunchd] ExternalStorage._write_multiple_objects: Finished writing "
+            f"num_keys={len(keys)}, total_bytes_written={offset}"
+        )
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):
@@ -307,21 +315,40 @@ class FileSystemStorage(ExternalStorage):
         # Create directories.
         for path in directory_path:
             full_dir_path = os.path.join(path, f"{DEFAULT_OBJECT_PREFIX}_{node_id}")
+            logger.info(
+                f"[Kunchd] FileSystemStorage.__init__: Creating spill directory "
+                f"full_dir_path={full_dir_path}, base_path={path}, node_id={node_id}"
+            )
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
                 raise ValueError(
                     "The given directory path to store objects, "
                     f"{full_dir_path}, could not be created."
                 )
+            logger.info(
+                f"[Kunchd] FileSystemStorage.__init__: Successfully created/verified "
+                f"spill directory full_dir_path={full_dir_path}, exists={os.path.exists(full_dir_path)}"
+            )
             self._directory_paths.append(full_dir_path)
         assert len(self._directory_paths) == len(directory_path)
+        logger.info(
+            f"[Kunchd] FileSystemStorage.__init__: Initialized with "
+            f"directory_paths={self._directory_paths}"
+        )
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
         self._current_directory_index = random.randrange(0, len(self._directory_paths))
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        logger.info(
+            f"[Kunchd] FileSystemStorage.spill_objects: Called with "
+            f"num_object_refs={len(object_refs)}, directory_paths={self._directory_paths}"
+        )
         if len(object_refs) == 0:
+            logger.info(
+                "[Kunchd] FileSystemStorage.spill_objects: No objects to spill, returning empty"
+            )
             return []
         # Choose the current directory path by round robin order.
         self._current_directory_index = (self._current_directory_index + 1) % len(
@@ -331,8 +358,17 @@ class FileSystemStorage(ExternalStorage):
 
         filename = _get_unique_spill_filename(object_refs)
         url = f"{os.path.join(directory_path, filename)}"
+        logger.info(
+            f"[Kunchd] FileSystemStorage.spill_objects: Writing to url={url}, "
+            f"directory_path={directory_path}, filename={filename}"
+        )
         with open(url, "wb", buffering=self._buffer_size) as f:
-            return self._write_multiple_objects(f, object_refs, owner_addresses, url)
+            result = self._write_multiple_objects(f, object_refs, owner_addresses, url)
+            logger.info(
+                f"[Kunchd] FileSystemStorage.spill_objects: Wrote {len(result)} objects to {url}, "
+                f"file_exists={os.path.exists(url)}"
+            )
+            return result
 
     def restore_spilled_objects(
         self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
@@ -576,10 +612,17 @@ class SlowFileStorage(FileSystemStorage):
 
 def setup_external_storage(config, node_id, session_name):
     """Setup the external storage according to the config."""
+    logger.info(
+        f"[Kunchd] setup_external_storage: Called with config={config}, "
+        f"node_id={node_id}, session_name={session_name}"
+    )
     assert node_id is not None, "node_id should be provided."
     global _external_storage
     if config:
         storage_type = config["type"]
+        logger.info(
+            f"[Kunchd] setup_external_storage: Setting up storage_type={storage_type}"
+        )
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(node_id, **config["params"])
         elif storage_type == "smart_open":
@@ -599,7 +642,14 @@ def setup_external_storage(config, node_id, session_name):
             _external_storage = SlowFileStorage(node_id, **config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
+        logger.info(
+            f"[Kunchd] setup_external_storage: Created storage "
+            f"type={type(_external_storage).__name__}"
+        )
     else:
+        logger.info(
+            "[Kunchd] setup_external_storage: No config provided, using NullStorage"
+        )
         _external_storage = NullStorage()
     return _external_storage
 
@@ -619,7 +669,16 @@ def spill_objects(object_refs, owner_addresses):
     Returns:
         A list of keys corresponding to the input object refs.
     """
-    return _external_storage.spill_objects(object_refs, owner_addresses)
+    logger.info(
+        f"[Kunchd] spill_objects (module function): Called with "
+        f"num_object_refs={len(object_refs)}, storage_type={type(_external_storage).__name__}"
+    )
+    result = _external_storage.spill_objects(object_refs, owner_addresses)
+    logger.info(
+        f"[Kunchd] spill_objects (module function): Completed, "
+        f"num_urls_returned={len(result)}"
+    )
+    return result
 
 
 def restore_spilled_objects(

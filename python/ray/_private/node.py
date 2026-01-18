@@ -1813,6 +1813,10 @@ class Node:
         variable, and system config. The object spilling directory specified through
         ray params will override the one specified through environment variable and
         system config."""
+        logger.info(
+            f"[Kunchd] _get_object_spilling_config: Called, "
+            f"session_dir={self._session_dir}"
+        )
 
         object_spilling_directory = self._ray_params.object_spilling_directory
         if not object_spilling_directory:
@@ -1856,6 +1860,10 @@ class Node:
                     "Ray team."
                 )
 
+        logger.info(
+            f"[Kunchd] _get_object_spilling_config: Returning "
+            f"object_spilling_config={object_spilling_config}"
+        )
         return object_spilling_config
 
     def _record_stats(self):

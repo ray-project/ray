@@ -2353,6 +2353,10 @@ cdef c_vector[c_string] spill_objects_handler(
         c_vector[c_string] owner_addresses
 
     with gil:
+        logger.info(
+            f"[Kunchd] spill_objects_handler: Received spill request for "
+            f"{object_refs_to_spill.size()} objects"
+        )
         object_refs = VectorToObjectRefs(
                 object_refs_to_spill,
                 skip_adding_local_ref=False)
@@ -2364,8 +2368,16 @@ cdef c_vector[c_string] spill_objects_handler(
             with ray._private.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
+                logger.info(
+                    f"[Kunchd] spill_objects_handler: Calling external_storage.spill_objects "
+                    f"with {len(object_refs)} object_refs"
+                )
                 urls = external_storage.spill_objects(
                     object_refs, owner_addresses)
+                logger.info(
+                    f"[Kunchd] spill_objects_handler: external_storage.spill_objects returned "
+                    f"{len(urls)} urls"
+                )
             for url in urls:
                 return_urls.push_back(url)
         except Exception as err:
@@ -2373,11 +2385,15 @@ cdef c_vector[c_string] spill_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was spilling objects: {}".format(err))
             logger.exception(exception_str)
+            logger.error(f"[Kunchd] spill_objects_handler: Exception occurred: {err}")
             ray._private.utils.push_error_to_driver(
                 ray._private.worker.global_worker,
                 "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+        logger.info(
+            f"[Kunchd] spill_objects_handler: Returning {return_urls.size()} urls"
+        )
         return return_urls
 
 
