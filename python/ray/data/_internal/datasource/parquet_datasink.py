@@ -119,6 +119,7 @@ class ParquetDatasink(_FileDatasink):
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
         mode: SaveMode = SaveMode.APPEND,
+        row_number_column_name: Optional[str] = None,
     ):
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -131,6 +132,17 @@ class ParquetDatasink(_FileDatasink):
         self.min_rows_per_file = min_rows_per_file
         self.max_rows_per_file = max_rows_per_file
         self.partition_cols = partition_cols
+        self.row_number_column_name = row_number_column_name
+
+        if self.row_number_column_name is not None:
+            if (
+                not isinstance(self.row_number_column_name, str)
+                or not self.row_number_column_name
+            ):
+                raise ValueError(
+                    "row_number_column_name must be a non-empty string, got: "
+                    f"{self.row_number_column_name!r}"
+                )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
@@ -268,7 +280,18 @@ class ParquetDatasink(_FileDatasink):
         write_kwargs: Dict[str, Any],
         partitioning_flavor: Optional[str],
     ) -> None:
+        import pyarrow as pa
         import pyarrow.dataset as ds
+
+        # Add row numbers if requested
+        if self.row_number_column_name is not None:
+            table = self._add_row_numbers(tables)
+            tables = [table]
+
+            # Update schema to include the row number column
+            if output_schema is not None:
+                row_number_field = pa.field(self.row_number_column_name, pa.int64())
+                output_schema = output_schema.append(row_number_field)
 
         # Make every incoming batch conform to the final schema *before* writing
         for idx, table in enumerate(tables):
@@ -314,3 +337,39 @@ class ParquetDatasink(_FileDatasink):
     @property
     def min_rows_per_write(self) -> Optional[int]:
         return self.min_rows_per_file
+
+    def _add_row_numbers(self, tables: List["pyarrow.Table"]) -> "pyarrow.Table":
+        """
+        This function logically concatenates the tables and appends a column of row numbers
+        to the logically concatenated table. When using partitioned writes, the row numbers
+        are reset for each partition. Since multiple write tasks can write to the same
+        partition, the row numbers are not guaranteed to be unique across all files
+        belonging to the same partition.
+        """
+
+        try:
+            import polars as pl
+        except ImportError:
+            raise ImportError(
+                "polars is required for adding per-file row numbers. Install with `pip install polars`"
+            )
+
+        assert (
+            self.row_number_column_name is not None
+        ), "row_number_column_name must be set"
+
+        # Zero-copy for arrow-polars conversion. Setting rechunk=False for logical concatenation.
+        dfs = [pl.DataFrame(t) for t in tables]
+        combined = pl.concat(dfs, rechunk=False)
+
+        row_num_expr = pl.int_range(pl.len())
+
+        # If partitioning is used, use window functions to reset the row number for each partition
+        if self.partition_cols:
+            row_num_expr = row_num_expr.over(self.partition_cols)
+
+        combined = combined.with_columns(
+            row_num_expr.alias(self.row_number_column_name)
+        )
+
+        return combined.to_arrow()

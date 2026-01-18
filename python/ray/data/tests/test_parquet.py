@@ -2570,6 +2570,54 @@ def test_write_parquet_partitioning(choice, tmp_path):
     assert set(df.columns.tolist()) == {"id", "grp"}
 
 
+@pytest.mark.parametrize(
+    "max_rows_per_file,expected_num_files",
+    [(None, 10), (50, 20)],
+)
+def test_write_parquet_include_row_number(
+    max_rows_per_file, expected_num_files, ray_start_regular_shared, tmp_path
+):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds.write_parquet(
+        tmp_path, include_row_number=True, max_rows_per_file=max_rows_per_file
+    )
+    result = ray.data.read_parquet(tmp_path)
+    assert result.count() == 1000
+    assert set(result.schema().names) == {"id", "_row_num"}
+
+    assert len(result.input_files()) == expected_num_files
+
+
+@pytest.mark.parametrize(
+    "max_rows_per_file",
+    [None, 50],
+)
+def test_write_parquet_include_row_number_with_partitioning(
+    max_rows_per_file, ray_start_regular_shared, tmp_path
+):
+    ds = ray.data.range(1000)
+    ds.write_parquet(tmp_path, partition_cols=["id"], include_row_number=True)
+    result = ray.data.read_parquet(tmp_path)
+    assert result.count() == 1000
+    assert set(result.schema().names) == {"id", "_row_num"}
+
+    import polars as pl
+
+    df = pl.read_parquet(tmp_path, include_file_paths="path")
+
+    # Verify that the row numbers are unique within each file
+    assert (
+        df.group_by("path")
+        .agg(
+            pl.col("_row_num").n_unique().alias("num_unique_row_nums"),
+            pl.len().alias("num_rows"),
+        )
+        .select(pl.col("num_unique_row_nums") == pl.col("num_rows"))
+        .to_series()
+        .all()
+    )
+
+
 if __name__ == "__main__":
     import sys
 
