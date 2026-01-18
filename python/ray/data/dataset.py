@@ -2435,8 +2435,8 @@ class Dataset:
         if dataset_length is None:
             ds = ds.materialize()
             dataset_length = ds._meta_count()
-        if dataset_length is None:
-            dataset_length = ds.count()
+            if dataset_length is None:
+                dataset_length = ds.count()
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
