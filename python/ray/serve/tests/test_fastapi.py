@@ -1302,10 +1302,16 @@ def test_root_path(
                 working_url_params.append(params)
             tested.add(test_url)
     if expected_params_1:
+        assert (
+            len(working_url_params) > 0
+        ), "working urls array is expected to have at least 1 item!"
         assert working_url_params[0]["url"].endswith(expected_params_1[0])
         assert working_url_params[0]["root_path"] == expected_params_1[1]
         assert working_url_params[0]["path"] == expected_params_1[2]
         if expected_params_2:
+            assert (
+                len(working_url_params) > 1
+            ), "working urls array is expected to have at least 2 items!"
             assert working_url_params[1]["url"].endswith(expected_params_2[0])
             assert working_url_params[1]["root_path"] == expected_params_2[1]
             assert working_url_params[1]["path"] == expected_params_2[2]
