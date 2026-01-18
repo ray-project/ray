@@ -242,7 +242,7 @@ class AnyscaleJobRunner(CommandRunner):
                 f"with error:\n{error}\n"
             )
 
-    def get_full_command_env(self, env: Optional[Dict] = None):
+    def _get_full_command_env(self, env: Optional[Dict[str, str]] = None):
         full_env = {
             "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
             "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
@@ -257,7 +257,7 @@ class AnyscaleJobRunner(CommandRunner):
     def run_command(
         self,
         command: str,
-        env: Optional[Dict] = None,
+        env: Optional[Dict[str, str]] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
     ) -> float:
@@ -266,7 +266,7 @@ class AnyscaleJobRunner(CommandRunner):
         # Convert the prepare commands, envs and timeouts into shell-compliant
         # strings that can be passed to the wrapper script
         for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
-            prepare_env = self.get_full_command_env(prepare_env)
+            prepare_env = self._get_full_command_env(prepare_env)
             env_str = _get_env_str(prepare_env)
             prepare_command_strs.append(f"{env_str} {prepare_command}")
             prepare_command_timeouts.append(prepare_timeout)
@@ -278,7 +278,7 @@ class AnyscaleJobRunner(CommandRunner):
             shlex.quote(str(x)) for x in prepare_command_timeouts
         )
 
-        full_env = self.get_full_command_env(env)
+        full_env = self._get_full_command_env(env)
 
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
