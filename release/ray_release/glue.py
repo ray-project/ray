@@ -359,12 +359,6 @@ def _fetching_results(
         )
 
     try:
-        # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.py
-        # Timeout is the time the test took divided by 200
-        # (~7 minutes for a 24h test) but no less than 30s
-        # and no more than 900s
-        metrics_timeout = max(30, min((time.time() - start_time_unix) / 200, 900))
-        command_runner.save_metrics(start_time_unix, timeout=metrics_timeout)
         metrics = command_runner.fetch_metrics()
     except Exception as e:
         logger.exception(f"Could not fetch metrics for test command: {e}")

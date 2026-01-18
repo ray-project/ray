@@ -139,10 +139,6 @@ class AnyscaleJobRunner(CommandRunner):
             f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
         )
 
-    def save_metrics(self, start_time: float, timeout: float = 900):
-        # Handled in run_command
-        return
-
     def _handle_command_output(
         self, job_status_code: int, error: str, raise_on_timeout: bool = True
     ):
