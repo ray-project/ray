@@ -3,6 +3,7 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from functools import reduce
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._private.ray_constants import env_bool, env_float
@@ -300,12 +301,25 @@ class ResourceManager:
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
-    def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
+    def get_op_usage(
+        self, op: PhysicalOperator, include_ineligible_downstream: bool = False
+    ) -> ExecutionResources:
         """Return the resource usage of the given operator at the current time."""
-        return self._op_usages[op]
+        own_usage = self._op_usages[op]
+
+        if not include_ineligible_downstream:
+            return own_usage
+
+        ineligible_downstream_usage = reduce(
+            lambda x, y: x.add(y),
+            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
+            ExecutionResources.zero(),
+        )
+
+        return own_usage.add(ineligible_downstream_usage)
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
-        """Return the memory usage of the internal buffers of the given operator."""
+        """Return the memory usage of pending task outputs for the given operator."""
         return self._mem_op_internal[op]
 
     def get_mem_op_outputs(self, op: PhysicalOperator) -> int:
