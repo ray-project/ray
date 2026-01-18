@@ -7,11 +7,13 @@ from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     GLOOTensorTransport,
     NCCLTensorTransport,
 )
+from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
 )
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
+    TensorTransportMetadata,
 )
 from ray.util.annotations import PublicAPI
 
@@ -76,11 +78,12 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
 
 register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
 register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
 register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport)
+register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport)
 
 
 def get_tensor_transport_manager(
@@ -171,3 +174,17 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
             f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
             "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
         )
+
+
+def create_empty_tensors_from_metadata(
+    tensor_transport_meta: TensorTransportMetadata,
+) -> List["torch.Tensor"]:
+    import torch
+
+    tensors = []
+    device = tensor_transport_meta.tensor_device
+    for meta in tensor_transport_meta.tensor_meta:
+        shape, dtype = meta
+        tensor = torch.empty(shape, dtype=dtype, device=device)
+        tensors.append(tensor)
+    return tensors
