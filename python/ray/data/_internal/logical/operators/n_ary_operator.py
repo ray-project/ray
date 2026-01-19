@@ -6,6 +6,12 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 
+__all__ = [
+    "NAry",
+    "Union",
+    "Zip",
+]
+
 
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""

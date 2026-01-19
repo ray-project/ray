@@ -10,7 +10,7 @@ import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.util import (
     _op_name_white_list,
     _recorded_operators,

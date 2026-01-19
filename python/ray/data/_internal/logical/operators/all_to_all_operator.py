@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
     from ray.data.block import Schema
 
+__all__ = [
+    "AbstractAllToAll",
+    "Aggregate",
+    "RandomShuffle",
+    "RandomizeBlocks",
+    "Repartition",
+    "Sort",
+]
+
 
 class AbstractAllToAll(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
