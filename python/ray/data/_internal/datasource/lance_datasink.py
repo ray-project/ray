@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     import pandas as pd
     from lance.fragment import FragmentMetadata
 
+__all__ = [
+    "LanceDatasink",
+]
+
 
 def _write_fragment(
     stream: Iterable[Union["pa.Table", "pd.DataFrame"]],

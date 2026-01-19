@@ -7,6 +7,10 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "TextDatasource",
+]
+
 
 class TextDatasource(FileBasedDatasource):
     """Text datasource, for reading and writing text files."""

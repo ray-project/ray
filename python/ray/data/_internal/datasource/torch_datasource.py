@@ -9,6 +9,10 @@ if TYPE_CHECKING:
 
     from ray.data.context import DataContext
 
+__all__ = [
+    "TorchDatasource",
+]
+
 
 TORCH_DATASOURCE_READER_BATCH_SIZE = 32
 

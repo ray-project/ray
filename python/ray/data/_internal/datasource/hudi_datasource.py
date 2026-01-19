@@ -10,6 +10,12 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     from ray.data.context import DataContext
 
+__all__ = [
+    "HudiDatasource",
+    "HudiQueryType",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

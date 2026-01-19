@@ -10,8 +10,7 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
-from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.datasource import BigQueryDatasink, BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
 from ray.data.block import Block

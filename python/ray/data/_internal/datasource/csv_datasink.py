@@ -6,6 +6,10 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
+__all__ = [
+    "CSVDatasink",
+]
+
 
 class CSVDatasink(BlockBasedFileDatasink):
     def __init__(
