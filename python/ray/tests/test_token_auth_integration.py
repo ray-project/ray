@@ -709,5 +709,111 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
     wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
 
 
+def _get_dashboard_agent_address(cluster_info):
+    """Get the dashboard agent HTTP address from a running cluster."""
+    from ray import NodeID
+    from ray._raylet import GcsClient
+    from ray.core.generated import gcs_pb2
+    from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
+    # Get agent address from GcsNodeInfo
+    node_id_hex = ray.nodes()[0]["NodeID"]
+    node_id = NodeID.from_hex(node_id_hex)
+    cluster = cluster_info["cluster"]
+    gcs_client = GcsClient(address=cluster.address)
+
+    # Create node selector for filtering by node_id
+    node_selector = GetAllNodeInfoRequest.NodeSelector()
+    node_selector.node_id = node_id.binary()
+
+    node_info_dict = gcs_client.get_all_node_info(
+        node_selectors=[node_selector],
+        state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
+    )
+    if node_info_dict and node_id in node_info_dict:
+        node_info = node_info_dict[node_id]
+        ip = node_info.node_manager_address
+        http_port = node_info.dashboard_agent_listen_port
+        if http_port > 0:
+            return f"http://{ip}:{http_port}"
+    return None
+
+
+def _wait_and_get_dashboard_agent_address(cluster_info, timeout=30):
+    """Waits for the dashboard agent address to become available and returns it."""
+
+    def agent_address_is_available():
+        return _get_dashboard_agent_address(cluster_info) is not None
+
+    wait_for_condition(agent_address_is_available, timeout=timeout)
+    return _get_dashboard_agent_address(cluster_info)
+
+
+@pytest.mark.parametrize(
+    "token_type,expected_status",
+    [
+        ("none", 401),  # No token -> Unauthorized
+        ("valid", "not_auth_error"),  # Valid token -> passes auth (may get 404)
+        ("invalid", 403),  # Invalid token -> Forbidden
+    ],
+    ids=["no_token", "valid_token", "invalid_token"],
+)
+def test_dashboard_agent_auth(
+    token_type, expected_status, setup_cluster_with_token_auth
+):
+    """Test dashboard agent authentication with various token scenarios."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
+
+    # Build headers based on token type
+    headers = {}
+    if token_type == "valid":
+        headers["Authorization"] = f"Bearer {cluster_info['token']}"
+    elif token_type == "invalid":
+        headers["Authorization"] = "Bearer invalid_token_12345678901234567890"
+    # token_type == "none" -> no Authorization header
+
+    response = requests.get(
+        f"{agent_address}/api/job_agent/jobs/nonexistent/logs",
+        headers=headers,
+        timeout=5,
+    )
+
+    if expected_status == "not_auth_error":
+        # Valid token should pass auth (may get 404 for nonexistent job)
+        assert response.status_code not in (401, 403), (
+            f"Valid token should be accepted, got {response.status_code}: "
+            f"{response.text}"
+        )
+    else:
+        assert (
+            response.status_code == expected_status
+        ), f"Expected {expected_status}, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["/api/healthz", "/api/local_raylet_healthz"],
+    ids=["healthz", "local_raylet_healthz"],
+)
+def test_dashboard_agent_health_check_public(endpoint, setup_cluster_with_token_auth):
+    """Test that agent health check endpoints remain public without auth."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+
+    agent_address = _wait_and_get_dashboard_agent_address(cluster_info)
+
+    # Health check endpoints should be accessible without auth
+    response = requests.get(f"{agent_address}{endpoint}", timeout=5)
+    assert response.status_code == 200, (
+        f"Health check {endpoint} should return 200 without auth, "
+        f"got {response.status_code}: {response.text}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

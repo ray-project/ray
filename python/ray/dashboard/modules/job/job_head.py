@@ -18,6 +18,9 @@ from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._common.utils import get_or_create_event_loop, load_class
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -116,6 +119,10 @@ class JobAgentSubmissionClient:
         self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
 
+    def _get_headers(self):
+        """Get auth headers if token authentication is enabled."""
+        return get_auth_headers_if_auth_enabled({})
+
     async def _raise_error(self, resp: ClientResponse):
         status = resp.status
         error_text = await resp.text()
@@ -125,7 +132,9 @@ class JobAgentSubmissionClient:
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         async with self._session.post(
-            f"{self._agent_address}/api/job_agent/jobs/", json=dataclasses.asdict(req)
+            f"{self._agent_address}/api/job_agent/jobs/",
+            json=dataclasses.asdict(req),
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -137,7 +146,8 @@ class JobAgentSubmissionClient:
         logger.debug(f"Stopping job with job_id={job_id}.")
 
         async with self._session.post(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -149,7 +159,8 @@ class JobAgentSubmissionClient:
         logger.debug(f"Deleting job with job_id={job_id}.")
 
         async with self._session.delete(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -159,7 +170,8 @@ class JobAgentSubmissionClient:
 
     async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -170,7 +182,8 @@ class JobAgentSubmissionClient:
     async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Get an iterator that follows the logs of a job."""
         ws = await self._session.ws_connect(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail",
+            headers=self._get_headers(),
         )
 
         while True:

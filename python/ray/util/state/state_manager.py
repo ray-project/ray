@@ -13,6 +13,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -190,16 +193,21 @@ class StateDataSourceClient:
         """
         if not ip:
             return None
-        # Query GcsNodeInfo to find the node with matching IP address
+        # TODO: If IP lookups become a performance issue in large
+        # clusters, consider adding an IP -> NodeID index in GcsNodeManager.
+        # Currently not needed as these are low-frequency operations (profiling,
+        # log viewing).
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_ip_address = ip
         request = GetAllNodeInfoRequest(
-            state_filter=GcsNodeInfo.GcsNodeState.Value("ALIVE")
+            node_selectors=[node_selector],
+            state_filter=GcsNodeInfo.GcsNodeState.Value("ALIVE"),
         )
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(
             request, timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
         )
-        for node_info in reply.node_info_list:
-            if node_info.node_manager_address == ip:
-                return NodeID(node_info.node_id).hex()
+        if reply.node_info_list:
+            return NodeID(reply.node_info_list[0].node_id).hex()
         return None
 
     @handle_grpc_network_errors
@@ -444,7 +452,10 @@ class StateDataSourceClient:
         url = f"http://{build_address(node_ip, runtime_env_agent_port)}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
-        async with self._client_session.post(url, data=data, timeout=timeout) as resp:
+        headers = get_auth_headers_if_auth_enabled({})
+        async with self._client_session.post(
+            url, data=data, timeout=timeout, headers=headers
+        ) as resp:
             if resp.status >= 200 and resp.status < 300:
                 response_data = await resp.read()
                 reply = GetRuntimeEnvsInfoReply()

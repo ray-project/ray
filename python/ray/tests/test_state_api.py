@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import time
+import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
@@ -28,7 +29,10 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_schema,
 )
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_aggregator_agent_if_enabled,
+)
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -353,6 +357,10 @@ def test_list_api_options_has_conflicting_filters():
     assert options.has_conflicting_filters()
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_ray_address_to_api_server_url(shutdown_only):
     ctx = ray.init()
     api_server_url = f'http://{ctx.address_info["webui_url"]}'
@@ -504,6 +512,10 @@ def clear_loggers():
             logger.removeHandler(handler)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
     ray.init()
     timeout = 10
@@ -528,6 +540,10 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_api_manager_e2e_list_actors(state_api_manager_e2e):
     @ray.remote
     class Actor:
@@ -1639,6 +1655,10 @@ def is_dashboard_agent_ready(node_id_hex: str) -> bool:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
     # head
@@ -1765,6 +1785,10 @@ async def test_state_data_source_client(ray_start_cluster):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     cluster = ray_start_cluster
     # head
@@ -1818,6 +1842,10 @@ def test_humanify():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client_limit_distributed_sources(ray_start_cluster):
     cluster = ray_start_cluster
     # head
@@ -1899,6 +1927,10 @@ def is_hex(val):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_cli_apis_sanity_check(ray_start_cluster):
     """Test all of CLI APIs work as expected."""
     NUM_NODES = 4
@@ -2046,6 +2078,10 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 class TestListActors:
     def test_list_get_actors(self, class_ray_instance):
         @ray.remote
@@ -2095,18 +2131,23 @@ class TestListActors:
         class A:
             pass
 
-        A.options(namespace="x").remote()
-        A.options(namespace="y").remote()
+        # generating unique names for actor namespaces as we are using a shared ray cluster for these tests
+        # and the tests run twice in the same cluster
+        namespace1 = "namespace_" + str(uuid.uuid4())
+        namespace2 = "namespace_" + str(uuid.uuid4())
+
+        A.options(namespace=namespace1, name="x").remote()
+        A.options(namespace=namespace2, name="y").remote()
 
         actors = list_actors()
         namespaces = Counter([actor["ray_namespace"] for actor in actors])
-        assert namespaces["x"] == 1
-        assert namespaces["y"] == 1
+        assert namespaces[namespace1] == 1
+        assert namespaces[namespace2] == 1
 
         # Check that we can filter by namespace
-        x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
-        assert len(x_actors) == 1
-        assert x_actors[0]["ray_namespace"] == "x"
+        namespace1_actors = list_actors(filters=[("ray_namespace", "=", namespace1)])
+        assert len(namespace1_actors) == 1
+        assert namespace1_actors[0]["ray_namespace"] == namespace1
 
 
 @pytest.mark.skipif(
@@ -2121,6 +2162,10 @@ class TestListActors:
         "new_external_dashboard_url",
     ],
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_with_external_dashboard_override(
     shutdown_only, override_url, monkeypatch
 ):
@@ -2164,6 +2209,10 @@ def test_state_api_with_external_dashboard_override(
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_pgs(shutdown_only):
     ray.init()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
@@ -2190,6 +2239,10 @@ def test_list_get_pgs(shutdown_only):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_cloud_envs(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
@@ -2228,6 +2281,10 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
@@ -2279,6 +2336,10 @@ def test_list_get_nodes(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_jobs(shutdown_only):
     ray.init()
     # Test submission job
@@ -2346,6 +2407,10 @@ ray.get(f.remote())
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_workers(shutdown_only):
     ray.init()
 
@@ -2385,6 +2450,10 @@ def test_list_get_workers(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_cluster_events(shutdown_only):
     ray.init()
 
@@ -2522,6 +2591,10 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_tasks_call_site(shutdown_only):
     """
     Call chain: Driver -> caller -> callee.
@@ -2556,6 +2629,10 @@ def test_list_get_tasks_call_site(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks_call_site(shutdown_only):
     """
     Call chain: Driver -> create_actor -> (Actor, Actor.method).
@@ -2599,6 +2676,10 @@ def test_list_actor_tasks_call_site(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_tasks_label_selector(ray_start_cluster):
     """
     Call chain: Driver -> caller -> callee.
@@ -2631,6 +2712,10 @@ def test_list_get_tasks_label_selector(ray_start_cluster):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks_label_selector(ray_start_cluster):
     """
     Call chain: Driver -> create_actor -> (Actor, Actor.method).
@@ -2664,6 +2749,10 @@ def test_list_actor_tasks_label_selector(ray_start_cluster):
     print(list_actors(detail=True))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_pg_worker_id_tasks(shutdown_only):
     ray.init(num_cpus=1)
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
@@ -2717,6 +2806,10 @@ def test_pg_worker_id_tasks(shutdown_only):
     print(list_actors(detail=True))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_parent_task_id(shutdown_only):
     """Test parent task id set up properly"""
     ray.init(num_cpus=2)
@@ -2750,6 +2843,10 @@ def test_parent_task_id(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
@@ -2787,6 +2884,10 @@ def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     wait_for_condition(lambda: verify(get_task(task_id)))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -2829,8 +2930,16 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     wait_for_condition(lambda: verify(list_tasks(filters=[("name", "=", "f")])))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks(shutdown_only):
-    ray.init(num_cpus=2)
+    ray_context = ray.init(num_cpus=2)
+    wait_for_aggregator_agent_if_enabled(
+        ray_context.address_info["address"],
+        ray_context.address_info["node_id"],
+    )
     job_id = ray.get_runtime_context().get_job_id()
 
     @ray.remote(max_concurrency=2)
@@ -2909,6 +3018,10 @@ def test_list_actor_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_objects(shutdown_only):
     ray.init()
     import numpy as np
@@ -2941,6 +3054,10 @@ def test_list_get_objects(shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Runtime env not working in Windows."
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_runtime_envs(shutdown_only):
     ray.init(runtime_env={"pip": ["requests"]})
 
@@ -2975,6 +3092,10 @@ def test_list_runtime_envs(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_limit(shutdown_only):
     ray.init()
 
@@ -2997,6 +3118,10 @@ def test_limit(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
@@ -3018,6 +3143,10 @@ def test_network_failure(shutdown_only):
         list_tasks(_explain=True)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
     """When the request fails due to network failure,
     verifies it prints proper warning."""
@@ -3058,6 +3187,10 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         assert len(record) == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
     """When the request fails due to network timeout,
     verifies it prints proper warning."""
@@ -3131,6 +3264,10 @@ async def test_cli_format_print(state_api_manager):
         assert header == col
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_filter(shutdown_only):
     ray.init()
 
@@ -3272,6 +3409,10 @@ def test_filter(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_data_truncate(shutdown_only, monkeypatch):
     """
     Verify the data is properly truncated when there are too many entries to return.
@@ -3323,6 +3464,10 @@ def test_data_truncate(shutdown_only, monkeypatch):
         assert len(record) == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_detail(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -3383,6 +3528,10 @@ def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):
     sys.platform == "win32",
     reason="Lambda test functions could not be pickled on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     import queue
     import threading
@@ -3589,6 +3738,10 @@ def test_state_api_server_enforce_concurrent_http_requests(
 
 
 @pytest.mark.parametrize("callsite_enabled", [True, False])
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
@@ -3611,6 +3764,10 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
             assert "RAY_record_ref_creation_sites=1" in str(record[0].message)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster):
     """
     Verify when there are network partial failures,
@@ -3680,6 +3837,10 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # defer for 10s for the second node.
@@ -3745,6 +3906,10 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_get_id_not_found(shutdown_only):
     """Test get API CLI fails correctly when there's no corresponding id
 
@@ -3758,6 +3923,10 @@ def test_get_id_not_found(shutdown_only):
     assert f"Resource with id={id} not found in the cluster." in result.output
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_core_state_api_usage_tags(shutdown_only):
     from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
@@ -3823,6 +3992,10 @@ def test_job_info_is_running_task(shutdown_only):
     assert all_job_info[job_id].is_running_tasks is True
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     """
     When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
@@ -3847,6 +4020,10 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_get_actor_timeout_multiplier(shutdown_only):
     """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
 

@@ -24,7 +24,13 @@ from ray._private.ray_constants import (
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
-from ray.core.generated import gcs_pb2, reporter_pb2, reporter_pb2_grpc
+from ray.core.generated import (
+    gcs_pb2,
+    gcs_service_pb2_grpc,
+    reporter_pb2,
+    reporter_pb2_grpc,
+)
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray.dashboard.state_aggregator import StateAPIManager
@@ -854,19 +860,26 @@ class ReportHead(SubprocessModule):
 
         If not found, return None.
         """
-        node_info_dict = await self.gcs_client.async_get_all_node_info(
-            timeout=GCS_RPC_TIMEOUT_SECONDS
+        # TODO: If IP lookups become a performance issue in large
+        # clusters, consider adding an IP -> NodeID index in GcsNodeManager.
+        # Currently not needed as these are low-frequency operations (profiling,
+        # log viewing).
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_ip_address = ip
+        request = GetAllNodeInfoRequest(
+            node_selectors=[node_selector],
+            state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
         )
-        for node_id, node_info in node_info_dict.items():
-            if node_info.state != gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=GCS_RPC_TIMEOUT_SECONDS
+        )
+        for node_info in reply.node_info_list:
+            http_port = node_info.dashboard_agent_listen_port
+            grpc_port = node_info.metrics_agent_port
+            if grpc_port <= 0:
+                # Agent not started or not available, check other nodes
                 continue
-            if node_info.node_manager_address == ip:
-                http_port = node_info.dashboard_agent_listen_port
-                grpc_port = node_info.metrics_agent_port
-                if grpc_port <= 0:
-                    # Agent not started or not available, check other nodes
-                    continue
-                return node_id, ip, http_port, grpc_port
+            return NodeID(node_info.node_id), ip, http_port, grpc_port
         return None
 
     def _make_stub(
@@ -878,6 +891,9 @@ class ReportHead(SubprocessModule):
 
     async def run(self):
         await super().run()
+        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            self.aiogrpc_gcs_channel
+        )
         self._state_api_data_source_client = StateDataSourceClient(
             self.aiogrpc_gcs_channel, self.gcs_client
         )
