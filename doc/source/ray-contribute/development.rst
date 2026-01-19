@@ -118,7 +118,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     rm -rf <package path>/site-packages/ray # Path will be in the output of `setup-dev.py`.
     pip uninstall ray # or `pip install -U <wheel>`
 
-.. tip:: When running ``python python/ray/setup-dev.py`` again (or possibly multiple times due to script error), it is helpful to run ``rm -rf /tmp/ray`` to remove any temporary files that might cause conflicts.
+.. tip:: When re-running ``python python/ray/setup-dev.py``, especially after a failure, run ``rm -rf /tmp/ray`` to clear temporary files from previous runs and prevent potential conflicts.
 
 Preparing to build Ray on Linux
 -------------------------------
