@@ -11,7 +11,10 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray._common.usage.usage_lib import get_extra_usage_tags_to_report
-from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    SERVE_MULTIPLEXED_MODEL_ID,
+)
 from ray.serve._private.test_utils import (
     check_apps_running,
     check_telemetry,
@@ -105,13 +108,14 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     check_telemetry(ServeUsageTag.REST_API_VERSION, expected=None)
 
     config = {
+        "http_options": {"host": "127.0.0.1"},
         "applications": [
             {
                 "name": "stub_app",
                 "import_path": "ray.serve.tests.test_telemetry_1.stub_app",
                 "route_prefix": "/stub",
             },
-        ]
+        ],
     }
     config_file_path = f"{tmp_dir}/config.yaml"
     with open(config_file_path, "w+") as f:
@@ -149,7 +153,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     assert ServeUsageTag.AUTO_NUM_REPLICAS_USED.get_value_from_report(report) is None
 
     # Check that app deletions are tracked.
-    new_config = {"applications": []}
+    new_config = {"http_options": {"host": "127.0.0.1"}, "applications": []}
 
     with open(config_file_path, "w+") as f:
         yaml.safe_dump(new_config, f)
@@ -291,6 +295,10 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     )
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="cannot convert to object ref when using gRPC",
+)
 @pytest.mark.parametrize("mode", ["http", "outside_deployment", "inside_deployment"])
 def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     """Check that the handle to_object_ref API is detected correctly by telemetry."""
