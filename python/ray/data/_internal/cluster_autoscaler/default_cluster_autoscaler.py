@@ -65,7 +65,10 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
 
         # Get resource usage for all ops + additional resources needed to launch one
         # more task for each ready op.
-        resource_request = []
+        # We separate active bundles (running tasks) from pending bundles (future work)
+        # to ensure running tasks' resources are never crowded out by pending work.
+        active_bundles = []
+        pending_bundles = []
 
         def to_bundle(resource: ExecutionResources) -> Dict:
             req = {}
@@ -80,17 +83,20 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         for op, state in self._topology.items():
             per_task_resource = op.incremental_resource_usage()
             task_bundle = to_bundle(per_task_resource)
-            resource_request.extend([task_bundle] * op.num_active_tasks())
+            # Bundles for running tasks -> active (must include)
+            active_bundles.extend([task_bundle] * op.num_active_tasks())
             # Only include incremental resource usage for ops that are ready for
             # dispatch.
             if state.has_pending_bundles():
                 # TODO(Clark): Scale up more aggressively by adding incremental resource
                 # usage for more than one bundle in the queue for this op?
-                resource_request.append(task_bundle)
+                # Bundle for pending work -> pending (best-effort)
+                pending_bundles.append(task_bundle)
 
-        # Cap the resource request to respect user-configured limits
+        # Cap the resource request to respect user-configured limits.
+        # Active bundles are always included; pending bundles are best-effort.
         resource_request = cap_resource_request_to_limits(
-            resource_request, self._resource_limits
+            active_bundles, pending_bundles, self._resource_limits
         )
 
         self._send_resource_request(resource_request)

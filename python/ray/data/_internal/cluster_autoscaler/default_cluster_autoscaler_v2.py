@@ -196,7 +196,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._send_resource_request([])
             return
 
-        resource_request = []
+        # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
+        # to ensure existing nodes' resources are never crowded out by scale-up requests.
+        active_bundles = []
+        pending_bundles = []
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
@@ -210,15 +213,21 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
-            num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))
-            resource_request.extend([bundle] * num_to_request)
+            # Bundles for existing nodes -> active (must include)
+            active_bundles.extend([bundle] * count)
+            # Bundles for scale-up delta -> pending (best-effort)
+            delta_count = int(math.ceil(self._cluster_scaling_up_delta))
+            pending_bundles.extend([bundle] * delta_count)
             if logger.isEnabledFor(logging.DEBUG):
+                num_to_request = count + delta_count
                 debug_msg += f" [{bundle}: {count} -> {num_to_request}]"
         logger.debug(debug_msg)
 
-        # Cap the resource request to respect user-configured limits
+        # Cap the resource request to respect user-configured limits.
+        # Active bundles (existing nodes) are always included; pending bundles
+        # (scale-up requests) are best-effort.
         resource_request = cap_resource_request_to_limits(
-            resource_request, self._resource_limits
+            active_bundles, pending_bundles, self._resource_limits
         )
 
         self._send_resource_request(resource_request)

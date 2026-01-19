@@ -405,29 +405,28 @@ class TestClusterAutoscaling:
     def test_try_scale_up_respects_resource_limits_heterogeneous_nodes(self):
         """Test that smaller bundles are included even when larger bundles exceed limits.
 
-        This tests the fix for an issue where heterogeneous node types could result
-        in empty or suboptimal resource requests if a large bundle appeared first
-        in iteration order and exceeded limits, causing smaller valid bundles to
-        be skipped.
+        This tests a scenario where:
+        1. Initial cluster (1 small node, 4 CPUs) is within the budget (10 CPUs)
+        2. Scaling up is triggered due to high utilization
+        3. The autoscaler wants to add both large and small nodes
+        4. Only small nodes are requested because large nodes would exceed the limit
         """
-        # Set a CPU limit that:
-        # - Is smaller than a single large node (12 CPUs)
-        # - But can fit multiple small nodes (4 CPUs each)
+        # CPU limit of 10 allows the initial state (4 CPUs) plus room for growth
         resource_limits = ExecutionResources.for_limits(cpu=10)
 
-        large_node_spec = _NodeResourceSpec.of(cpu=12, gpu=1, mem=8000)
+        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4000)
         small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
 
         scale_up_threshold = 0.75
         utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
         fake_coordinator = FakeAutoscalingCoordinator()
 
-        # Return heterogeneous node types - the order here shouldn't matter
-        # because the implementation should sort bundles by size
+        # Initial cluster: 1 small node (4 CPUs) - within the 10 CPU budget
+        # Node types available: large (8 CPUs) and small (4 CPUs)
         def get_heterogeneous_nodes():
             return {
-                large_node_spec: 1,  # 1 existing large node, wants 2 bundles
-                small_node_spec: 1,  # 1 existing small node, wants 2 bundles
+                large_node_spec: 0,  # 0 existing large nodes
+                small_node_spec: 1,  # 1 existing small node (4 CPUs)
             }
 
         autoscaler = DefaultClusterAutoscalerV2(
@@ -445,13 +444,87 @@ class TestClusterAutoscaling:
         autoscaler.try_trigger_scaling()
 
         resources_allocated = autoscaler.get_total_resources()
-        # Should get 2 small nodes (8 CPUs) since large nodes (12 CPUs) exceed limit
+        # With delta=1:
+        #   - Active bundles: 1 small (4 CPUs) - existing nodes, always included
+        #   - Pending bundles: 1 small (4 CPUs) + 1 large (8 CPUs) - scale-up delta
+        # After capping to 10 CPUs:
+        #   - Active: 4 CPUs (always included)
+        #   - Sorted pending: [small (4), large (8)]
+        #   - Add small: 4 + 4 = 8 CPUs ✓
+        #   - Add large: 8 + 8 = 16 CPUs ✗ (exceeds limit)
+        # Result: 2 small bundles (8 CPUs)
+        # Ray autoscaler would see: need 2 small nodes, have 1 → spin up 1 more
         assert resources_allocated.cpu == 8, (
-            f"Expected 8 CPUs (2 small nodes), got {resources_allocated.cpu}. "
+            f"Expected 8 CPUs (2 small node bundles), got {resources_allocated.cpu}. "
             "Smaller bundles should be included even when larger ones exceed limits."
         )
         assert resources_allocated.gpu == 0
         assert resources_allocated.memory == 4000
+
+    def test_try_scale_up_existing_nodes_prioritized_over_delta(self):
+        """Test that existing node bundles are prioritized over scale-up delta bundles.
+
+        This tests a scenario where:
+        - Large existing node: 1 node at 6 CPUs (currently allocated)
+        - Small node type available: can add nodes at 2 CPUs each
+        - User limit: 8 CPUs
+        - Scale-up delta: 2 (want to add 2 small nodes)
+
+        The existing large node (6 CPUs) should always be included, and only
+        scale-up bundles that fit within the remaining budget should be added.
+        Without this prioritization, smaller scale-up bundles could crowd out
+        the representation of existing nodes.
+        """
+        resource_limits = ExecutionResources.for_limits(cpu=8)
+
+        large_node_spec = _NodeResourceSpec.of(cpu=6, gpu=0, mem=3000)
+        small_node_spec = _NodeResourceSpec.of(cpu=2, gpu=0, mem=1000)
+
+        scale_up_threshold = 0.75
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        # Existing cluster: 1 large node (6 CPUs)
+        # Scale-up delta: 2 (want to add 2 of each node type)
+        def get_node_counts():
+            return {
+                large_node_spec: 1,  # 1 existing large node (6 CPUs)
+                small_node_spec: 0,  # 0 existing small nodes
+            }
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=resource_limits,
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=2,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=get_node_counts,
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_allocated = autoscaler.get_total_resources()
+        # Active bundles: 1 large (6 CPUs) - must be included
+        # Pending bundles: 2 large (12 CPUs) + 2 small (4 CPUs) = delta requests
+        # After capping to 8 CPUs:
+        #   - Active: 6 CPUs (always included)
+        #   - Remaining budget: 2 CPUs
+        #   - Sorted pending: [small (2), small (2), large (6), large (6)]
+        #   - Add small: 6 + 2 = 8 CPUs ✓
+        #   - Add another small: 8 + 2 = 10 CPUs ✗
+        # Result: 1 large (active) + 1 small (delta) = 8 CPUs
+        assert resources_allocated.cpu == 8, (
+            f"Expected 8 CPUs (1 existing large + 1 delta small), got {resources_allocated.cpu}. "
+            "Existing node bundles should always be included before scale-up delta."
+        )
+        # Verify we have the large node's resources (it must be included)
+        assert resources_allocated.memory >= large_node_spec.mem, (
+            f"Existing large node (mem={large_node_spec.mem}) should be included. "
+            f"Got total memory={resources_allocated.memory}"
+        )
 
 
 if __name__ == "__main__":
