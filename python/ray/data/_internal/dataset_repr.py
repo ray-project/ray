@@ -231,7 +231,7 @@ def _format_rows_for_repr(
 def _format_value(value: Any) -> str:
     if isinstance(value, np.generic):
         value = value.item()
-    return str(value)
+    return str(value).replace("\n", " ").replace("\r", " ")
 
 
 def _truncate_to_cell_width(value: str, max_width: int) -> str:
