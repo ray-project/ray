@@ -103,7 +103,7 @@ def train_func():
 
         if manager.current_step() >= 200:
             # complete training
-            exit()
+            break
 
     # [3] Print metrics.
     metrics = {"loss": loss.item()}
