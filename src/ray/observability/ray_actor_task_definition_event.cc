@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 #include "ray/observability/ray_actor_task_definition_event.h"
 
-#include "ray/common/scheduling/label_selector.h"
+#include "ray/observability/task_event_util.h"
 
 namespace ray {
 namespace observability {
@@ -31,33 +31,7 @@ RayActorTaskDefinitionEvent::RayActorTaskDefinitionEvent(
           rpc::events::RayEvent::INFO,
           "",
           session_name) {
-  // Task identifier
-  data_.set_task_id(task_id.Binary());
-  data_.set_task_attempt(attempt_number);
-
-  // Common fields
-  data_.set_language(task_spec.GetLanguage());
-  const auto &required_resources = task_spec.GetRequiredResources().GetResourceMap();
-  data_.mutable_required_resources()->insert(required_resources.begin(),
-                                             required_resources.end());
-  data_.set_serialized_runtime_env(task_spec.RuntimeEnvInfo().serialized_runtime_env());
-  data_.set_job_id(job_id.Binary());
-  // NOTE: we set the parent task id of a task to the submitter task id, where the
-  // submitter task id is:
-  // - For concurrent actors: the actor creation task's task id.
-  // - Otherwise: the CoreWorker main thread's task id.
-  data_.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
-  data_.set_placement_group_id(task_spec.PlacementGroupBundleId().first.Binary());
-  const auto &labels = task_spec.GetMessage().labels();
-  data_.mutable_ref_ids()->insert(labels.begin(), labels.end());
-  const auto &call_site = task_spec.GetMessage().call_site();
-  if (!call_site.empty()) {
-    data_.set_call_site(call_site);
-  }
-  const auto &label_selector = task_spec.GetMessage().label_selector();
-  if (label_selector.label_constraints_size() > 0) {
-    *data_.mutable_label_selector() = ray::LabelSelector(label_selector).ToStringMap();
-  }
+  SetCommonDefinitionFields(&data_, task_spec, task_id, attempt_number, job_id);
 
   // Actor task specific fields
   data_.mutable_actor_func()->CopyFrom(task_spec.FunctionDescriptor()->GetMessage());

@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,15 +56,7 @@ std::string RayTaskProfileEvent::GetEntityId() const {
 }
 
 void RayTaskProfileEvent::MergeData(RayEvent<rpc::events::TaskProfileEvents> &&other) {
-  auto &&other_event = static_cast<RayTaskProfileEvent &&>(other);
-
-  // Merge profile events from the other event into this one
-  auto *this_profile_events = data_.mutable_profile_events();
-  auto *other_profile_events = other_event.data_.mutable_profile_events();
-
-  for (auto &event : *other_profile_events->mutable_events()) {
-    this_profile_events->mutable_events()->Add(std::move(event));
-  }
+  // Profile events are not merged - keep only the first one
 }
 
 ray::rpc::events::RayEvent RayTaskProfileEvent::SerializeData() && {
