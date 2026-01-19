@@ -1,5 +1,5 @@
 import abc
-from typing import Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
@@ -10,8 +10,10 @@ from ray.air.util.data_batch_conversion import (
     _convert_batch_type_to_numpy,
     _convert_batch_type_to_pandas,
 )
-from ray.data import Preprocessor
 from ray.train import Checkpoint
+
+if TYPE_CHECKING:
+    from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -74,9 +76,9 @@ class Predictor(abc.ABC):
        tensor data to avoid extra copies from Pandas conversions.
     """
 
-    def __init__(self, preprocessor: Optional[Preprocessor] = None):
+    def __init__(self, preprocessor: Optional["Preprocessor"] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
-        self._preprocessor: Optional[Preprocessor] = preprocessor
+        self._preprocessor: Optional["Preprocessor"] = preprocessor
         # Whether tensor columns should be automatically cast from/to the tensor
         # extension type at UDF boundaries. This can be overridden by subclasses.
         self._cast_tensor_columns = False
@@ -116,11 +118,11 @@ class Predictor(abc.ABC):
 
         return PandasUDFPredictor()
 
-    def get_preprocessor(self) -> Optional[Preprocessor]:
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Get the preprocessor to use prior to executing predictions."""
         return self._preprocessor
 
-    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
+    def set_preprocessor(self, preprocessor: Optional["Preprocessor"]) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._preprocessor = preprocessor
 

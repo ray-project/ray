@@ -1,12 +1,28 @@
 import copy
 from collections import defaultdict
-from typing import Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
-import ray
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
-from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+
+
+def _get_execution_options_class():
+    """Lazy import of ExecutionOptions."""
+    from ray.data import ExecutionOptions
+
+    return ExecutionOptions
+
+
+def _get_execution_resources_class():
+    """Lazy import of ExecutionResources."""
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionResources,
+    )
+
+    return ExecutionResources
 
 
 @PublicAPI(stability="stable")
@@ -21,7 +37,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[
-            Union[ExecutionOptions, Dict[str, ExecutionOptions]]
+            Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
     ):
@@ -50,10 +66,11 @@ class DataConfig:
             )
 
         default_execution_options = DataConfig.default_ingest_options()
+        ExecutionOptions = _get_execution_options_class()
         if isinstance(execution_options, ExecutionOptions):
             default_execution_options = execution_options
         # If None, all datasets will use the default ingest options.
-        self._execution_options: Dict[str, ExecutionOptions] = defaultdict(
+        self._execution_options: Dict[str, "ExecutionOptions"] = defaultdict(
             lambda: copy.deepcopy(default_execution_options)
         )
         if isinstance(execution_options, dict):
@@ -74,19 +91,19 @@ class DataConfig:
         self._num_train_cpus = num_train_cpus
         self._num_train_gpus = num_train_gpus
 
-    def _get_execution_options(self, dataset_name: str) -> ExecutionOptions:
+    def _get_execution_options(self, dataset_name: str) -> "ExecutionOptions":
         """Return a copy of the configured execution options for a given dataset name."""
         return copy.deepcopy(self._execution_options[dataset_name])
 
     @DeveloperAPI
     def configure(
         self,
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
-        worker_node_ids: Optional[List[NodeIdStr]],
+        worker_node_ids: Optional[List["NodeIdStr"]],
         **kwargs,
-    ) -> List[Dict[str, DataIterator]]:
+    ) -> List[Dict[str, "DataIterator"]]:
         """Configure how Train datasets should be assigned to workers.
 
         Args:
@@ -119,6 +136,7 @@ class DataConfig:
             if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overridden by the user,
                 # add training-reserved resources to Data's exclude_resources.
+                ExecutionResources = _get_execution_resources_class()
                 execution_options.exclude_resources = (
                     execution_options.exclude_resources.add(
                         ExecutionResources(
@@ -144,13 +162,16 @@ class DataConfig:
         return output
 
     @staticmethod
-    def default_ingest_options() -> ExecutionOptions:
+    def default_ingest_options() -> "ExecutionOptions":
         """The default Ray Data options used for data ingest.
 
         By default, configurations are carried over from what is already set
         in DataContext.
         """
-        ctx = ray.data.DataContext.get_current()
+        from ray.data import ExecutionOptions
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
         return ExecutionOptions(
             # TODO(hchen): Re-enable `locality_with_output` by default after fixing
             # https://github.com/ray-project/ray/issues/40607
