@@ -713,6 +713,7 @@ def _get_dashboard_agent_address(cluster_info):
     """Get the dashboard agent HTTP address from a running cluster."""
     from ray import NodeID
     from ray._raylet import GcsClient
+    from ray.core.generated import gcs_pb2
 
     # Get agent address from GcsNodeInfo
     node_id_hex = ray.nodes()[0]["NodeID"]
@@ -721,6 +722,9 @@ def _get_dashboard_agent_address(cluster_info):
     node_info_dict = gcs_client.get_all_node_info(node_id=node_id)
     if node_info_dict and node_id in node_info_dict:
         node_info = node_info_dict[node_id]
+        # Check if node is alive (dead nodes retain stale address info)
+        if node_info.state != gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            return None
         ip = node_info.node_manager_address
         http_port = node_info.dashboard_agent_listen_port
         if http_port > 0:
