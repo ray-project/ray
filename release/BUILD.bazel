@@ -786,9 +786,9 @@ py_test(
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
+        "manual",
         "release_unit",
         "team:ci",
-        "manual",
     ],
     deps = [
         ":ray_release",
