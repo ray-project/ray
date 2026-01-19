@@ -367,6 +367,23 @@ Datasource API
    ReadTask
    datasource.FilenameProvider
 
+Datasink API
+------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_datasink
+   Datasink
+   datasource.RowBasedFileDatasink
+   datasource.BlockBasedFileDatasink
+   datasource.TurbopufferDatasink
+   datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
+
+
 Partitioning API
 ----------------
 
