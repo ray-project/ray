@@ -18,6 +18,9 @@ from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._common.utils import get_or_create_event_loop, load_class
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
