@@ -284,7 +284,7 @@ class FuseOperators(Rule):
 
             # Non-strict mode: can always fuse, no matter what batch_size is.
             # This allows fusion without cross-task buffering by using default bundler.
-            if not down_logical_op.strict:
+            if not down_logical_op._strict:
                 return True
 
             # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
@@ -317,7 +317,7 @@ class FuseOperators(Rule):
         batch_size = up_logical_op._batch_size
 
         # Choose ref_bundler and fusion behavior based on strict mode
-        if down_logical_op.strict:
+        if down_logical_op._strict:
             # Strict mode: use StreamingRepartitionRefBundler for stitching.
             # Only works when batch_size % target == 0 (verified in _can_fuse).
             assert (
@@ -361,6 +361,7 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
+            min_rows_per_bundle=batch_size,
             ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
