@@ -1,40 +1,35 @@
 # cython: profile=False
-# cython: embedsignature = True
-# cython: language_level = 3
 # cython: boundscheck=False
 # cython: wraparound=False
 # cython: cdivision=True
 # cython: initializedcheck=False
-# distutils: language = c++
 
 """
-Cython-optimized implementations of performance-critical metrics functions.
+Cython-optimized implementations of performance-critical metrics functions
+for Ray Serve autoscaling.
 
-This module provides native-code implementations of hot path functions used
-in Ray Serve autoscaling, particularly the k-way merge algorithm for timeseries.
+This module provides native-code implementations of hot path functions,
+particularly the k-way merge algorithm for timeseries.
 """
-
-# Python imports
-from ray.serve._private.common import TimeStampedValue
 
 # C library imports
 from libc.stdlib cimport malloc, free
 from libc.math cimport round as c_round
 
 # Heap node for k-way merge
-cdef struct HeapNode:
+cdef struct ServeMetricsHeapNode:
     double timestamp
     int replica_idx
     double value
     int series_idx  # Current position in the series
 
 
-cdef inline void heap_sift_down(HeapNode* heap, int size, int pos) nogil:
+cdef inline void serve_metrics_heap_sift_down(ServeMetricsHeapNode* heap, int size, int pos) noexcept nogil:
     """Sift down operation for min-heap (inline for performance)."""
     cdef int smallest = pos
     cdef int left = 2 * pos + 1
     cdef int right = 2 * pos + 2
-    cdef HeapNode temp
+    cdef ServeMetricsHeapNode temp
 
     while True:
         smallest = pos
@@ -57,10 +52,10 @@ cdef inline void heap_sift_down(HeapNode* heap, int size, int pos) nogil:
         pos = smallest
 
 
-cdef inline void heap_sift_up(HeapNode* heap, int pos) nogil:
+cdef inline void serve_metrics_heap_sift_up(ServeMetricsHeapNode* heap, int pos) noexcept nogil:
     """Sift up operation for min-heap (inline for performance)."""
     cdef int parent
-    cdef HeapNode temp
+    cdef ServeMetricsHeapNode temp
 
     while pos > 0:
         parent = (pos - 1) // 2
@@ -74,7 +69,7 @@ cdef inline void heap_sift_up(HeapNode* heap, int pos) nogil:
         pos = parent
 
 
-cdef inline void heap_pop(HeapNode* heap, int* size) nogil:
+cdef inline void serve_metrics_heap_pop(ServeMetricsHeapNode* heap, int* size) noexcept nogil:
     """Remove minimum element from heap."""
     if size[0] <= 0:
         return
@@ -82,20 +77,20 @@ cdef inline void heap_pop(HeapNode* heap, int* size) nogil:
     heap[0] = heap[size[0] - 1]
     size[0] -= 1
     if size[0] > 0:
-        heap_sift_down(heap, size[0], 0)
+        serve_metrics_heap_sift_down(heap, size[0], 0)
 
 
-cdef inline void heap_push(HeapNode* heap, int* size, HeapNode node) nogil:
+cdef inline void serve_metrics_heap_push(ServeMetricsHeapNode* heap, int* size, ServeMetricsHeapNode node) noexcept nogil:
     """Add element to heap."""
     heap[size[0]] = node
-    heap_sift_up(heap, size[0])
+    serve_metrics_heap_sift_up(heap, size[0])
     size[0] += 1
 
 
-cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
+cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** values_arrays,
                               int* series_lengths, int num_series,
                               int result_capacity,
-                              double** out_timestamps, double** out_values) nogil:
+                              double** out_timestamps, double** out_values) noexcept nogil:
     """
     Fully nogil k-way merge operating on C arrays.
 
@@ -116,12 +111,12 @@ cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
         double timestamp, value, old_value
         double running_total = 0.0
         double rounded_timestamp, last_rounded_timestamp = -1.0
-        HeapNode new_node
+        ServeMetricsHeapNode new_node
         int result_count = 0
         # C arrays for performance
         double* current_values = <double*>malloc(num_series * sizeof(double))
         int* series_positions = <int*>malloc(num_series * sizeof(int))
-        HeapNode* merge_heap = <HeapNode*>malloc(num_series * sizeof(HeapNode))
+        ServeMetricsHeapNode* merge_heap = <ServeMetricsHeapNode*>malloc(num_series * sizeof(ServeMetricsHeapNode))
         double* result_timestamps = <double*>malloc(result_capacity * sizeof(double))
         double* result_values = <double*>malloc(result_capacity * sizeof(double))
 
@@ -154,7 +149,7 @@ cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
 
     # Build initial heap
     for i in range(heap_size // 2 - 1, -1, -1):
-        heap_sift_down(merge_heap, heap_size, i)
+        serve_metrics_heap_sift_down(merge_heap, heap_size, i)
 
     # K-way merge
     while heap_size > 0:
@@ -170,7 +165,7 @@ cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
         running_total += value - old_value
 
         # Remove from heap
-        heap_pop(merge_heap, &heap_size)
+        serve_metrics_heap_pop(merge_heap, &heap_size)
 
         # Push next element from same series if available
         series_positions[replica_idx] = series_idx + 1
@@ -180,7 +175,7 @@ cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
             new_node.value = values_arrays[replica_idx][series_positions[replica_idx]]
             new_node.series_idx = series_positions[replica_idx]
 
-            heap_push(merge_heap, &heap_size, new_node)
+            serve_metrics_heap_push(merge_heap, &heap_size, new_node)
 
         # Only add point if value changed
         if value != old_value:
@@ -216,10 +211,11 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
     This is a drop-in replacement for the Python version with 5-10x speedup.
 
     Args:
-        replicas_timeseries: List of TimeSeries (List[List[TimeStampedValue]])
+        replicas_timeseries: List of timeseries. Each timeseries is a list of
+            objects with .timestamp and .value attributes.
 
     Returns:
-        Merged TimeSeries
+        List of (timestamp, value) tuples representing the merged timeseries.
     """
     # Filter empty series
     cdef list active_series = [series for series in replicas_timeseries if series]
@@ -286,7 +282,7 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
         # Perform merge with full nogil
         # Pass total_points as capacity (worst case: all points output)
         with nogil:
-            result_count = merge_series_nogil(timestamps_arrays, values_arrays,
+            result_count = serve_metrics_merge_series_nogil(timestamps_arrays, values_arrays,
                                                series_lengths, num_series,
                                                total_points,
                                                &result_timestamps, &result_values)
@@ -294,10 +290,10 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
         if result_count < 0:
             raise MemoryError("Failed during merge operation")
 
-        # Convert C arrays back to Python objects
+        # Convert C arrays back to Python tuples
         merged = [None] * result_count
         for i in range(result_count):
-            merged[i] = TimeStampedValue(result_timestamps[i], result_values[i])
+            merged[i] = (result_timestamps[i], result_values[i])
 
         # Free result arrays
         free(result_timestamps)
@@ -321,8 +317,8 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
             free(series_lengths)
 
 
-cdef double compute_time_weighted_average_nogil(double* timestamps, double* values, int n,
-                                                 double window_start, double window_end) nogil:
+cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps, double* values, int n,
+                                                 double window_start, double window_end) noexcept nogil:
     """
     Fully nogil time-weighted average computation on C arrays.
 
@@ -432,7 +428,7 @@ def time_weighted_average_cython(list timeseries, double window_start=-1.0,
 
         # Compute with full nogil
         with nogil:
-            result = compute_time_weighted_average_nogil(timestamps, values, n,
+            result = serve_metrics_compute_time_weighted_average_nogil(timestamps, values, n,
                                                           window_start, window_end)
 
         return None if result < 0 else result

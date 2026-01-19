@@ -18,14 +18,14 @@ from typing import (
     Union,
 )
 
+from ray._raylet import (
+    merge_instantaneous_total_cython,
+    time_weighted_average_cython,
+)
 from ray.serve._private.common import TimeSeries, TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
-)
-from ray.serve._private.metrics_fast import (
-    merge_instantaneous_total_cython,
-    time_weighted_average_cython,
 )
 from ray.serve.config import AggregationFunction
 
@@ -374,7 +374,16 @@ def merge_instantaneous_total(
         Between events, the total remains constant (step function). Timestamps are
         rounded to 10ms precision and duplicate timestamps are combined.
     """
-    return merge_instantaneous_total_cython(replicas_timeseries)
+    # Handle trivial cases in Python to avoid type conversion overhead
+    active_series = [series for series in replicas_timeseries if series]
+    if not active_series:
+        return []
+    if len(active_series) == 1:
+        return active_series[0]
+
+    # Cython returns list of (timestamp, value) tuples; convert to TimeStampedValue
+    merged_tuples = merge_instantaneous_total_cython(replicas_timeseries)
+    return [TimeStampedValue(ts, val) for ts, val in merged_tuples]
 
 
 def merge_timeseries_dicts(

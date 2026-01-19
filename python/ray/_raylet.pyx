@@ -193,6 +193,7 @@ include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
+include "includes/serve_metrics_fast.pxi"
 
 import ray
 from ray.exceptions import (
