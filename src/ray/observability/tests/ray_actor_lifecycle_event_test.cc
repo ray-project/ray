@@ -30,6 +30,8 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_ray_namespace("test_ns");
   data.set_node_id("node-1");
   data.mutable_address()->set_worker_id("worker-123");
+  data.mutable_address()->set_port(12345);
+  data.set_pid(54321);
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
@@ -59,6 +61,65 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   ASSERT_EQ(actor_life.state_transitions(1).worker_id(), "worker-123");
   ASSERT_EQ(actor_life.state_transitions(0).repr_name(), "");
   ASSERT_EQ(actor_life.state_transitions(1).repr_name(), "MyActor(id=123)");
+  ASSERT_EQ(actor_life.state_transitions(1).pid(), 54321);
+  ASSERT_EQ(actor_life.state_transitions(1).port(), 12345);
+}
+
+TEST_F(RayActorLifecycleEventTest, TestRestartingWithPreemption) {
+  rpc::ActorTableData data;
+  data.set_actor_id("test_actor_id");
+  data.set_preempted(true);
+
+  auto event = std::make_unique<RayActorLifecycleEvent>(
+      data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
+
+  auto serialized_event = std::move(*event).Serialize();
+  const auto &actor_life = serialized_event.actor_lifecycle_event();
+
+  ASSERT_EQ(actor_life.state_transitions_size(), 1);
+  ASSERT_EQ(actor_life.state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::RESTARTING);
+  ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
+            rpc::events::ActorLifecycleEvent::NODE_PREEMPTION);
+}
+
+TEST_F(RayActorLifecycleEventTest, TestRestartingWithLineageReconstruction) {
+  rpc::ActorTableData data;
+  data.set_actor_id("test_actor_id");
+  data.set_preempted(false);
+
+  auto event = std::make_unique<RayActorLifecycleEvent>(
+      data,
+      rpc::events::ActorLifecycleEvent::RESTARTING,
+      "sess1",
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
+
+  auto serialized_event = std::move(*event).Serialize();
+  const auto &actor_life = serialized_event.actor_lifecycle_event();
+
+  ASSERT_EQ(actor_life.state_transitions_size(), 1);
+  ASSERT_EQ(actor_life.state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::RESTARTING);
+  ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
+            rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
+}
+
+TEST_F(RayActorLifecycleEventTest, TestRestartingWithActorFailure) {
+  rpc::ActorTableData data;
+  data.set_actor_id("test_actor_id");
+  data.set_preempted(false);
+
+  auto event = std::make_unique<RayActorLifecycleEvent>(
+      data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
+
+  auto serialized_event = std::move(*event).Serialize();
+  const auto &actor_life = serialized_event.actor_lifecycle_event();
+
+  ASSERT_EQ(actor_life.state_transitions_size(), 1);
+  ASSERT_EQ(actor_life.state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::RESTARTING);
+  ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
+            rpc::events::ActorLifecycleEvent::ACTOR_FAILURE);
 }
 
 }  // namespace observability
