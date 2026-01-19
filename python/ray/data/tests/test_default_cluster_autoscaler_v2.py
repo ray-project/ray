@@ -402,6 +402,57 @@ class TestClusterAutoscaling:
         assert resources_allocated.gpu == node_spec.gpu * expected_nodes
         assert resources_allocated.memory == node_spec.mem * expected_nodes
 
+    def test_try_scale_up_respects_resource_limits_heterogeneous_nodes(self):
+        """Test that smaller bundles are included even when larger bundles exceed limits.
+
+        This tests the fix for an issue where heterogeneous node types could result
+        in empty or suboptimal resource requests if a large bundle appeared first
+        in iteration order and exceeded limits, causing smaller valid bundles to
+        be skipped.
+        """
+        # Set a CPU limit that:
+        # - Is smaller than a single large node (12 CPUs)
+        # - But can fit multiple small nodes (4 CPUs each)
+        resource_limits = ExecutionResources(cpu=10)
+
+        large_node_spec = _NodeResourceSpec.of(cpu=12, gpu=1, mem=8000)
+        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+
+        scale_up_threshold = 0.75
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        # Return heterogeneous node types - the order here shouldn't matter
+        # because the implementation should sort bundles by size
+        def get_heterogeneous_nodes():
+            return {
+                large_node_spec: 1,  # 1 existing large node, wants 2 bundles
+                small_node_spec: 1,  # 1 existing small node, wants 2 bundles
+            }
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=resource_limits,
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=1,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=get_heterogeneous_nodes,
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_allocated = autoscaler.get_total_resources()
+        # Should get 2 small nodes (8 CPUs) since large nodes (12 CPUs) exceed limit
+        assert resources_allocated.cpu == 8, (
+            f"Expected 8 CPUs (2 small nodes), got {resources_allocated.cpu}. "
+            "Smaller bundles should be included even when larger ones exceed limits."
+        )
+        assert resources_allocated.gpu == 0
+        assert resources_allocated.memory == 4000
+
 
 if __name__ == "__main__":
     import sys

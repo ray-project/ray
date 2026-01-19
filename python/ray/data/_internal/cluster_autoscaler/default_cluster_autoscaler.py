@@ -1,10 +1,10 @@
-import logging
 import math
 import time
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict
 
 import ray
 from .base_cluster_autoscaler import ClusterAutoscaler
+from .util import cap_resource_request_to_limits
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -12,9 +12,6 @@ from ray.data._internal.execution.interfaces import ExecutionResources
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
-
-
-logger = logging.getLogger(__name__)
 
 
 class DefaultClusterAutoscaler(ClusterAutoscaler):
@@ -34,46 +31,6 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
 
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
-
-    def _cap_resource_request_to_limits(
-        self, resource_request: List[Dict]
-    ) -> List[Dict]:
-        """Cap the resource request to not exceed user-configured resource limits.
-
-        If the user has set explicit (non-infinite) resource limits, this method
-        filters the resource request to ensure the total requested resources do not
-        exceed those limits.
-
-        Args:
-            resource_request: List of resource bundles to request.
-
-        Returns:
-            A filtered list of resource bundles that respects user limits.
-        """
-        limits = self._resource_limits
-
-        # If no explicit limits are set (all infinite), return the original request
-        if limits == ExecutionResources.inf():
-            return resource_request
-
-        capped_request = []
-        total = ExecutionResources.zero()
-
-        for bundle in resource_request:
-            new_total = total.add(ExecutionResources.from_resource_dict(bundle))
-
-            if not new_total.satisfies_limit(limits):
-                logger.debug(
-                    f"Capped autoscaling resource request from {len(resource_request)} "
-                    f"bundles to {len(capped_request)} bundles to respect "
-                    f"user-configured resource limits: {limits}."
-                )
-                break
-
-            capped_request.append(bundle)
-            total = new_total
-
-        return capped_request
 
     def try_trigger_scaling(self):
         """Try to scale up the cluster to accommodate the provided in-progress workload.
@@ -132,7 +89,9 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
                 resource_request.append(task_bundle)
 
         # Cap the resource request to respect user-configured limits
-        resource_request = self._cap_resource_request_to_limits(resource_request)
+        resource_request = cap_resource_request_to_limits(
+            resource_request, self._resource_limits
+        )
 
         self._send_resource_request(resource_request)
 
