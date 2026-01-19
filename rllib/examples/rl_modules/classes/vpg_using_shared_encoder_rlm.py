@@ -134,7 +134,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Assert, we have the shared encoder submodule.
         assert SHARED_ENCODER_ID in self._rl_modules and len(self._rl_modules) > 1
         # Assign the encoder to a convenience attribute.
-        self._encoder = self._rl_modules[SHARED_ENCODER_ID]
+        self.encoder = self._rl_modules[SHARED_ENCODER_ID]
 
     def _forward(self, batch, forward_type, **kwargs):
         # Collect our policies' outputs in this dict.
@@ -142,7 +142,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
             # Feed this policy's observation into the shared encoder
-            encoder_output = self._encoder._forward(batch[policy_id])
+            encoder_output = self.encoder._forward(batch[policy_id])
             policy_batch[ENCODER_OUT] = encoder_output[ENCODER_OUT]
             # Get the desired module
             m = getattr(self._rl_modules[policy_id], forward_type)
