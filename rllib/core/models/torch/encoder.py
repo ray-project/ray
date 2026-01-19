@@ -299,10 +299,12 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         Encoder.__init__(self, config)
 
         # Create the neural network for observation stream.
-        self.nets = {
-            k: cfg.build(framework="torch")
-            for k, cfg in config.base_encoder_configs.items()
-        }
+        self.nets = self.nets = nn.ModuleDict(
+            {
+                k: cfg.build(framework="torch")
+                for k, cfg in config.base_encoder_configs.items()
+            }
+        )
 
         # Create the final network.
         self.hidden_activation = get_activation_fn(
