@@ -52,7 +52,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_timesteps=20000,
+    default_timesteps=20_000,
     default_reward=-250.0,
 )
 parser.set_defaults(
@@ -73,8 +73,8 @@ config = (
     )
     .learners(
         num_learners=args.num_learners,
-        num_gpus_per_learner=1,
-        num_aggregator_actors_per_learner=2,
+        # RLlib's off-policy algorithms don't support distributed aggregator actors
+        num_aggregator_actors_per_learner=0,
     )
     .training(
         initial_alpha=1.001,
