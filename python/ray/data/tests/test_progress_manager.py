@@ -1,5 +1,5 @@
 import builtins
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,19 +18,10 @@ from ray.data._internal.progress.tqdm_progress import (
     TqdmExecutionProgressManager,
 )
 from ray.data.context import DataContext
+from ray.data.tests.conftest import *  # noqa
 
 
 class TestGetProgressManager:
-    @pytest.fixture
-    def mock_ctx(self):
-        """Create a mock DataContext with default settings."""
-        ctx = Mock(spec=DataContext)
-        ctx.enable_progress_bars = True
-        ctx.enable_operator_progress_bars = True
-        ctx.enable_rich_progress_bars = True
-        ctx.use_ray_tqdm = False
-        return ctx
-
     @pytest.fixture
     def mock_topology(self):
         """Create a mock Topology object that supports iteration."""
@@ -46,23 +37,26 @@ class TestGetProgressManager:
             mock_worker.mode = ray._private.worker.WORKER_MODE
             yield mock_worker
 
-    def test_progress_bars_disabled_uses_noop(self, mock_ctx, mock_topology):
+    def test_progress_bars_disabled_uses_noop(
+        self, mock_topology, restore_data_context
+    ):
         """Test that NoopExecutionProgressManager is returned when progress bars are disabled."""
-        mock_ctx.enable_progress_bars = False
-
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+        ctx = DataContext.get_current()
+        ctx.enable_progress_bars = False
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, NoopExecutionProgressManager)
 
     @patch("ray.data._internal.progress.logger")
     def test_operator_progress_disabled_logs_warning(
-        self, mock_logger, mock_ctx, mock_topology
+        self, mock_logger, mock_topology, restore_data_context
     ):
         """Test warning when operator progress bars are disabled."""
-        mock_ctx.enable_operator_progress_bars = False
+        ctx = DataContext.get_current()
+        ctx.enable_operator_progress_bars = False
 
         with patch("sys.stdout.isatty", return_value=True):
-            manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+            manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
             # should still create some non-noop progress manager.
             assert not isinstance(manager, NoopExecutionProgressManager)
@@ -73,61 +67,73 @@ class TestGetProgressManager:
             )
 
     @patch("sys.stdout.isatty", return_value=False)
-    def test_non_atty_uses_logging_progress(self, mock_isatty, mock_ctx, mock_topology):
+    def test_non_atty_uses_logging_progress(
+        self, mock_isatty, mock_topology, restore_data_context
+    ):
         """Test that LoggingExecutionProgressManager is used for non-interactive terminals."""
-        mock_ctx.use_ray_tqdm = False
+        ctx = DataContext.get_current()
+        ctx.use_ray_tqdm = False
 
         with patch("ray._private.worker.global_worker") as mock_worker:
             mock_worker.mode = ray._private.worker.SCRIPT_MODE
 
-            manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+            manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
             assert isinstance(manager, LoggingExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=False)
-    def test_ray_tqdm_in_worker_force_uses_tqdm_progress(
-        self, mock_isatty, mock_ctx, mock_topology, setup_ray_worker
+    def test_ray_tqdm_in_worker_uses_tqdm(
+        self, mock_isatty, mock_topology, setup_ray_worker, restore_data_context
     ):
         """Test that TqdmExecutionProgressManager is used when use_ray_tqdm is True in Ray worker."""
-        mock_ctx.use_ray_tqdm = True
-        mock_ctx.enable_rich_progress_bars = False
+        ctx = DataContext.get_current()
+        ctx.use_ray_tqdm = True
 
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
-    def test_tqdm_when_rich_disabled(self, mock_isatty, mock_ctx, mock_topology):
+    def test_tqdm_when_rich_disabled(
+        self, mock_isatty, mock_topology, restore_data_context
+    ):
         """Test that TqdmExecutionProgressManager is used when rich is disabled."""
-        mock_ctx.enable_rich_progress_bars = False
-        mock_ctx.use_ray_tqdm = False
+        ctx = DataContext.get_current()
+        ctx.enable_rich_progress_bars = False
+        ctx.use_ray_tqdm = False  # this combo was tested above.
 
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
-    def test_tqdm_when_use_ray_tqdm_enabled(self, mock_isatty, mock_ctx, mock_topology):
+    def test_tqdm_when_use_ray_tqdm_enabled(
+        self, mock_isatty, mock_topology, restore_data_context
+    ):
         """Test that TqdmExecutionProgressManager is used when use_ray_tqdm is True,
         even if RichExecutionProgressManager is enabled."""
-        mock_ctx.enable_rich_progress_bars = True
-        mock_ctx.use_ray_tqdm = True
+        ctx = DataContext.get_current()
+        ctx.enable_rich_progress_bars = True
+        ctx.use_ray_tqdm = True
 
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
-    def test_rich_progress_default(self, mock_isatty, mock_ctx, mock_topology):
-        """Test that RichExecutionProgressManager is used by default in interactive terminal."""
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+    def test_tqdm_progress_default(self, mock_isatty, mock_topology):
+        """Test that TqdmExecutionProgressManager is used by default in interactive terminal.
+        Currently, RichExecutionProgressManager is considered experimental. Change this test
+        to have default as rich progress reporting once it becomes an official api."""
+        ctx = DataContext()
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
-        assert isinstance(manager, RichExecutionProgressManager)
+        assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
     @patch("ray.data._internal.progress.logger")
     def test_rich_import_error_fallback(
-        self, mock_logger, mock_isatty, mock_ctx, mock_topology
+        self, mock_logger, mock_isatty, mock_topology, restore_data_context
     ):
         """Test fallback to NoopExecutionProgressManager when rich import fails."""
         real_import = builtins.__import__
@@ -138,7 +144,11 @@ class TestGetProgressManager:
             return real_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+            ctx = DataContext.get_current()
+            ctx.enable_progress_bars = True
+            ctx.enable_rich_progress_bars = True
+            ctx.use_ray_tqdm = False
+            manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
             assert isinstance(manager, NoopExecutionProgressManager)
             mock_logger.warning.assert_any_call(
@@ -158,32 +168,25 @@ class TestGetProgressManager:
     def test_progress_toggle_flag_combinations(
         self,
         mock_isatty,
-        mock_ctx,
         mock_topology,
         enable_progress,
         enable_op_progress,
         expected_type,
+        restore_data_context,
     ):
         """Test various combinations of progress bar settings."""
-        mock_ctx.enable_progress_bars = enable_progress
-        mock_ctx.enable_operator_progress_bars = enable_op_progress
+        ctx = DataContext.get_current()
+        ctx.enable_rich_progress_bars = True
+        ctx.use_ray_tqdm = False
+        ctx.enable_progress_bars = enable_progress
+        ctx.enable_operator_progress_bars = enable_op_progress
 
-        manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
+        manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, expected_type)
 
 
 class TestLoggingProgressManager:
-    @pytest.fixture
-    def mock_ctx(self):
-        """Create a mock DataContext with default settings."""
-        ctx = Mock(spec=DataContext)
-        ctx.enable_progress_bars = True
-        ctx.enable_operator_progress_bars = True
-        ctx.enable_rich_progress_bars = True
-        ctx.use_ray_tqdm = False
-        return ctx
-
     @pytest.fixture
     def mock_topology(self):
         """Create a mock Topology object that supports iteration."""
@@ -195,9 +198,13 @@ class TestLoggingProgressManager:
     @patch("sys.stdout.isatty", return_value=False)
     @patch("ray.data._internal.progress.logging_progress.logger")
     def test_logging_progress_manager_properly_logs_per_interval(
-        self, mock_logger, mock_isatty, mock_topology
+        self, mock_logger, mock_isatty, mock_topology, restore_data_context
     ):
         """Test logging progress manager logs correct output based on time intervals."""
+        ctx = DataContext.get_current()
+        ctx.enable_progress_bars = True
+        ctx.enable_operator_progress_bars = True
+
         current_time = 0
         pg = LoggingExecutionProgressManager(
             "dataset_123", mock_topology, False, False, _get_time=lambda: current_time
