@@ -452,6 +452,95 @@ def test_streaming_repartition_with_partial_last_block(
     ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
 
 
+def test_streaming_repartition_non_strict_mode(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test non-strict mode streaming repartition behavior.
+
+    This test verifies:
+    1. Non-strict mode produces at most 1 block < target per input block
+    2. No stitching across input blocks
+    """
+    num_rows = 100
+    target = 20
+
+    # Create dataset with varying block sizes
+    ds = ray.data.range(num_rows, override_num_blocks=10)  # 10 blocks of 10 rows each
+
+    # Non-strict mode: should split each input block independently
+    ds_non_strict = ds.repartition(target_num_rows_per_block=target, strict=False)
+    ds_non_strict = ds_non_strict.materialize()
+
+    # Collect block row counts
+    block_row_counts = [
+        metadata.num_rows
+        for bundle in ds_non_strict.iter_internal_ref_bundles()
+        for metadata in bundle.metadata
+    ]
+
+    # Verify non-strict mode behavior: no stitching across input blocks
+    # For non-strict mode with input blocks of 10 rows and target of 20:
+    # Each input block (10 rows) should produce exactly 1 block of 10 rows
+    # (since 10 < 20, no splitting needed, and no stitching with other blocks)
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+    assert len(block_row_counts) == 10, f"Expected 10 blocks, got {len(block_row_counts)}"
+    assert all(count == 10 for count in block_row_counts), (
+        f"Expected all blocks to have 10 rows (no stitching), got {block_row_counts}"
+    )
+
+
+@pytest.mark.parametrize("batch_size", [30, 35, 45])
+def test_streaming_repartition_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    batch_size,
+):
+    """Test that non-strict mode can fuse with any batch_size.
+
+    This test verifies:
+    1. MapBatches -> StreamingRepartition(strict=False) can fuse regardless of batch_size
+    """
+    num_rows = 100
+    target = 20
+
+    def fn(batch):
+        # Just pass through, but verify we got data
+        assert len(batch["id"]) > 0, "Batch should not be empty"
+        return batch
+
+    # Create dataset with 10 blocks (10 rows each) to ensure varied input block sizes
+    ds = ray.data.range(num_rows, override_num_blocks=10)
+
+    # Non-strict mode should fuse even when batch_size % target != 0
+    ds = ds.map_batches(fn, batch_size=batch_size)
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    # Verify fusion happened
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    assert (
+        f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target},strict=False]"
+        in physical_op.name
+    ), (
+        f"Expected fusion for batch_size={batch_size}, target={target}, "
+        f"but got operator name: {physical_op.name}"
+    )
+
+    # Verify correctness: count total rows and verify output block sizes
+    assert ds.count() == num_rows, f"Expected {num_rows} rows"
+
+    # In non-strict mode, blocks are NOT guaranteed to be exactly target size
+    # because no stitching happens across input blocks from map_batches.
+    # Just verify that data is preserved correctly.
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = list(range(num_rows))
+    assert result == expected, "Data should be preserved correctly after fusion"
+
+
 @pytest.mark.timeout(60)
 def test_streaming_repartition_empty_dataset(
     ray_start_regular_shared_2_cpus,
