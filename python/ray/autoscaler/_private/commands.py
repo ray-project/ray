@@ -1217,6 +1217,18 @@ def exec_cluster(
 
     if node_ip:
         # IP specified by user, find the node with the IP
+        if start:
+            cli_logger.warning(
+                "The {} flag is ignored when {} is specified, "
+                "as the node IP can be either head or worker node. "
+                "If you need to start the cluster, run {} first, "
+                "or use {} without {}.",
+                cf.bold("--start"),
+                cf.bold("--node-ip"),
+                cf.bold(f"ray up {config_file}"),
+                cf.bold("ray attach"),
+                cf.bold("--node-ip"),
+            )
         use_internal_ip = config.get("provider", {}).get("use_internal_ips", False)
         try:
             target_node = provider.get_node_id(node_ip, use_internal_ip=use_internal_ip)
