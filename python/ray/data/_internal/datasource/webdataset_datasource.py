@@ -16,6 +16,10 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "WebDatasetDatasource",
+]
+
 
 def _base_plus_ext(path: str):
     """Split off all file extensions.

@@ -5,6 +5,10 @@ import pyarrow
 
 from ray.data.datasource.file_datasink import RowBasedFileDatasink
 
+__all__ = [
+    "ImageDatasink",
+]
+
 
 class ImageDatasink(RowBasedFileDatasink):
     def __init__(

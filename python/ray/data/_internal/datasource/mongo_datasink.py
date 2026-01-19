@@ -10,6 +10,11 @@ from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 
+__all__ = [
+    "MongoDatasink",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

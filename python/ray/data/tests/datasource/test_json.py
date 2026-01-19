@@ -11,7 +11,7 @@ import pytest
 
 import ray
 from ray.data import Schema
-from ray.data._internal.datasource.json_datasource import PandasJSONDatasource
+from ray.data._internal.datasource import PandasJSONDatasource
 from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor

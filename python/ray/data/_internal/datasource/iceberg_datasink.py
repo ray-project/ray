@@ -22,6 +22,12 @@ if TYPE_CHECKING:
     from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.update.schema import UpdateSchema
 
+__all__ = [
+    "IcebergDatasink",
+    "IcebergWriteResult",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

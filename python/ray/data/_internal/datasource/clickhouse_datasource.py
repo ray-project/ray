@@ -10,6 +10,11 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from ray.data.context import DataContext
 
+__all__ = [
+    "ClickHouseDatasource",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

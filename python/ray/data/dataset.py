@@ -30,23 +30,23 @@ from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
-from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.clickhouse_datasink import (
+from ray.data._internal.datasource import (
+    BigQueryDatasink,
     ClickHouseDatasink,
     ClickHouseTableSettings,
+    CSVDatasink,
+    IcebergDatasink,
+    ImageDatasink,
+    JSONDatasink,
+    LanceDatasink,
+    MongoDatasink,
+    NumpyDatasink,
+    ParquetDatasink,
     SinkMode,
+    SQLDatasink,
+    TFRecordDatasink,
+    WebDatasetDatasink,
 )
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
-from ray.data._internal.datasource.image_datasink import ImageDatasink
-from ray.data._internal.datasource.json_datasink import JSONDatasink
-from ray.data._internal.datasource.lance_datasink import LanceDatasink
-from ray.data._internal.datasource.mongo_datasink import MongoDatasink
-from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.datasource.sql_datasink import SQLDatasink
-from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (

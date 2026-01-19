@@ -9,6 +9,11 @@ if TYPE_CHECKING:
 
     from ray.data.context import DataContext
 
+__all__ = [
+    "MongoDatasource",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

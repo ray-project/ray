@@ -21,45 +21,40 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.datasource.audio_datasource import AudioDatasource
-from ray.data._internal.datasource.avro_datasource import AvroDatasource
-from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
-from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource import (
+    JSON_FILE_EXTENSIONS,
+    ArrowJSONDatasource,
+    AudioDatasource,
+    AvroDatasource,
+    BigQueryDatasource,
+    BinaryDatasource,
+    ClickHouseDatasource,
+    CSVDatasource,
+    DeltaSharingDatasource,
+    HudiDatasource,
+    ImageDatasource,
+    ImageFileMetadataProvider,
+    KafkaAuthConfig,
+    KafkaDatasource,
+    LanceDatasource,
+    MCAPDatasource,
+    MongoDatasource,
+    NumpyDatasource,
+    PandasJSONDatasource,
+    ParquetDatasource,
+    RangeDatasource,
+    SQLDatasource,
+    TextDatasource,
+    TFRecordDatasource,
+    TimeRange,
+    TorchDatasource,
+    UnityCatalogConnector,
+    VideoDatasource,
+    WebDatasetDatasource,
+)
 from ray.data._internal.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
 )
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
-)
-from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.image_datasource import (
-    ImageDatasource,
-    ImageFileMetadataProvider,
-)
-from ray.data._internal.datasource.json_datasource import (
-    JSON_FILE_EXTENSIONS,
-    ArrowJSONDatasource,
-    PandasJSONDatasource,
-)
-from ray.data._internal.datasource.kafka_datasource import (
-    KafkaAuthConfig,
-    KafkaDatasource,
-)
-from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
-from ray.data._internal.datasource.mongo_datasource import MongoDatasource
-from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.datasource.range_datasource import RangeDatasource
-from ray.data._internal.datasource.sql_datasource import SQLDatasource
-from ray.data._internal.datasource.text_datasource import TextDatasource
-from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
-from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
-from ray.data._internal.datasource.video_datasource import VideoDatasource
-from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -122,7 +117,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+    from ray.data._internal.datasource import TFXReadOptions
 
 T = TypeVar("T")
 
@@ -2061,7 +2056,7 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
+        from ray.data._internal.datasource import (
             _infer_schema_and_transform,
         )
 
@@ -2774,11 +2769,11 @@ def read_databricks_tables(
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
+    from ray.data._internal.datasource import (
+        DatabricksUCDatasource,
+    )
     from ray.data._internal.datasource.databricks_credentials import (
         resolve_credential_provider,
-    )
-    from ray.data._internal.datasource.databricks_uc_datasource import (
-        DatabricksUCDatasource,
     )
 
     resolved_provider = resolve_credential_provider(
@@ -3629,7 +3624,7 @@ def from_huggingface(
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
 
-    from ray.data._internal.datasource.huggingface_datasource import (
+    from ray.data._internal.datasource import (
         HuggingFaceDatasource,
     )
 
@@ -3915,7 +3910,7 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
-    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+    from ray.data._internal.datasource import IcebergDatasource
 
     # Deprecation warning for row_filter parameter
     if row_filter is not None:

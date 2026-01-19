@@ -12,6 +12,14 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "ArrowJSONDatasource",
+    "JSON_FILE_EXTENSIONS",
+    "PandasJSONDatasource",
+    "StrictBufferedReader",
+]
+
+
 logger = logging.getLogger(__name__)
 
 JSON_FILE_EXTENSIONS = [

@@ -20,6 +20,12 @@ if TYPE_CHECKING:
     import pyarrow
     from mcap.reader import Channel, Message, Schema
 
+__all__ = [
+    "MCAPDatasource",
+    "TimeRange",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

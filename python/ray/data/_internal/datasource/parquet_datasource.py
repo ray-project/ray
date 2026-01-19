@@ -65,6 +65,13 @@ if TYPE_CHECKING:
     import pyarrow
     from pyarrow.dataset import ParquetFileFragment
 
+__all__ = [
+    "ParquetDatasource",
+    "check_for_legacy_tensor_type",
+    "get_parquet_dataset",
+    "read_fragments",
+]
+
 
 logger = logging.getLogger(__name__)
 

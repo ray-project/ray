@@ -9,6 +9,10 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
+__all__ = [
+    "RangeDatasource",
+]
+
 
 class RangeDatasource(Datasource):
     """An example datasource that generates ranges of numbers from [0..n)."""

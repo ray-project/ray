@@ -29,6 +29,11 @@ from ray.data.expressions import (
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
+__all__ = [
+    "IcebergDatasource",
+]
+
+
 try:
     from pyiceberg.expressions import (
         And,

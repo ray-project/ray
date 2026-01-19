@@ -11,7 +11,7 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource

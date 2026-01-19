@@ -14,6 +14,11 @@ from ray.data._internal.datasource.databricks_credentials import (
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "UnityCatalogConnector",
+]
+
+
 _FILE_FORMAT_TO_RAY_READER = {
     "delta": "read_delta",
     "parquet": "read_parquet",

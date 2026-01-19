@@ -21,7 +21,7 @@ from pyiceberg.transforms import IdentityTransform
 
 import ray
 from ray.data import read_iceberg
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.datasource import IcebergDatasource
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
