@@ -12,7 +12,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data import Preprocessor
 from ray.train import Checkpoint
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
@@ -37,6 +37,7 @@ class PredictorNotSerializableException(RuntimeError):
 
 
 @PublicAPI(stability="beta")
+@Deprecated
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
