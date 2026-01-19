@@ -373,7 +373,7 @@ def test_cluster_scaling_respects_cpu_limits():
 
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_limits=ExecutionResources(cpu=4),
+        resource_limits=ExecutionResources.for_limits(cpu=4),
         execution_id="execution_id",
     )
 
@@ -406,7 +406,7 @@ def test_cluster_scaling_respects_gpu_limits():
 
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_limits=ExecutionResources(gpu=2),
+        resource_limits=ExecutionResources.for_limits(gpu=2),
         execution_id="execution_id",
     )
 
@@ -441,7 +441,7 @@ def test_cluster_scaling_respects_memory_limits():
 
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_limits=ExecutionResources(memory=2000),
+        resource_limits=ExecutionResources.for_limits(memory=2000),
         execution_id="execution_id",
     )
 

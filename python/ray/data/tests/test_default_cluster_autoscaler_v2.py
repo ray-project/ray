@@ -337,7 +337,7 @@ class TestClusterAutoscaling:
         [
             # CPU limit: 8 CPUs allows 2 nodes (8 CPUs), not 3 (12 CPUs)
             (
-                ExecutionResources(cpu=8),
+                ExecutionResources.for_limits(cpu=8),
                 _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000),
                 2,
                 1,
@@ -345,7 +345,7 @@ class TestClusterAutoscaling:
             ),
             # GPU limit: 2 GPUs allows 2 nodes (2 GPUs), not 3 (3 GPUs)
             (
-                ExecutionResources(gpu=2),
+                ExecutionResources.for_limits(gpu=2),
                 _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000),
                 2,
                 1,
@@ -353,7 +353,7 @@ class TestClusterAutoscaling:
             ),
             # Memory limit: 4000 allows 2 nodes (4000 mem), not 3 (6000 mem)
             (
-                ExecutionResources(memory=4000),
+                ExecutionResources.for_limits(memory=4000),
                 _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000),
                 2,
                 1,
@@ -413,7 +413,7 @@ class TestClusterAutoscaling:
         # Set a CPU limit that:
         # - Is smaller than a single large node (12 CPUs)
         # - But can fit multiple small nodes (4 CPUs each)
-        resource_limits = ExecutionResources(cpu=10)
+        resource_limits = ExecutionResources.for_limits(cpu=10)
 
         large_node_spec = _NodeResourceSpec.of(cpu=12, gpu=1, mem=8000)
         small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
