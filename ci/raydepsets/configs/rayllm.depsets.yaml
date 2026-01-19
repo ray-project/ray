@@ -11,8 +11,6 @@ build_arg_sets:
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
-    - --unsafe-package torch
-    - --unsafe-package vllm
     - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
     - --override python/requirements/llm/torch-override.txt

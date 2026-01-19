@@ -5144,6 +5144,16 @@ tokenizers==0.22.1 \
     # via
     #   transformers
     #   vllm
+torch==2.9.1+cpu \
+    --hash=sha256:3de2adb9b4443dc9210ef1f1b16da3647ace53553166d6360bbbd7edd6f16e4d
+    # via
+    #   --override python/requirements/llm/torch-override.txt
+    #   compressed-tensors
+    #   nixl
+    #   torchaudio
+    #   torchvision
+    #   vllm
+    #   xgrammar
 torchaudio==2.9.1+cpu ; platform_machine != 's390x' \
     --hash=sha256:0306bc184da793ffbfd6ae4ef32ab39215f64f4155c762f4c54970a991638bb5 \
     --hash=sha256:386141130d1f054225e483cfaa942fe0219f1340d737de9018417452b42cf994 \
@@ -5396,6 +5406,8 @@ virtualenv==20.29.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements.txt
+vllm @ git+https://github.com/vllm-project/vllm.git@11b6af5280d6d6dfb8953af16e67b25f819b3be9
+    # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
     --hash=sha256:09ea3397aecbc81c19ed7f025e051a7387feefdb789cf768ff994c1228182fda \
@@ -5867,5 +5879,3 @@ zipp==3.19.2 \
 
 # The following packages were excluded from the output:
 # setuptools
-# torch
-# vllm
