@@ -116,6 +116,8 @@ message PrepareBundleResourcesRequest {
 message PrepareBundleResourcesReply {
   // The status if prepare request was successful.
   bool success = 1;
+  // Processing time in microseconds (from handler start to finish)
+  int64 processing_time_us = 2;
 }
 
 message CommitBundleResourcesRequest {
@@ -123,7 +125,10 @@ message CommitBundleResourcesRequest {
   repeated Bundle bundle_specs = 1;
 }
 
-message CommitBundleResourcesReply {}
+message CommitBundleResourcesReply {
+  // Processing time in microseconds (from handler start to finish)
+  int64 processing_time_us = 1;
+}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.

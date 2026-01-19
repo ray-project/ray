@@ -1916,6 +1916,7 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesRequest request,
     rpc::PrepareBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto start_time = absl::Now();
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   bundle_specs.reserve(request.bundle_specs_size());
   for (auto &bundle_spec : *request.mutable_bundle_specs()) {
@@ -1924,12 +1925,14 @@ void NodeManager::HandlePrepareBundleResources(
   }
   PlacementGroupID pg_id = bundle_specs.empty() ? PlacementGroupID::Nil()
                                                 : bundle_specs[0]->PlacementGroupId();
-  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] Raylet: Received Prepare request for PG "
-                << pg_id << ", bundles: " << GetDebugStringForBundles(bundle_specs);
+  RAY_LOG(DEBUG) << "[CONCURRENT_PG_DEBUG] Raylet: Received Prepare request for PG "
+                 << pg_id << ", bundles: " << GetDebugStringForBundles(bundle_specs);
   auto prepared = placement_group_resource_manager_.PrepareBundles(bundle_specs);
-  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] Raylet: Prepare result for PG " << pg_id << ": "
-                << (prepared ? "SUCCESS" : "FAILED");
+  RAY_LOG(DEBUG) << "[CONCURRENT_PG_DEBUG] Raylet: Prepare result for PG " << pg_id
+                 << ": " << (prepared ? "SUCCESS" : "FAILED");
   reply->set_success(prepared);
+  auto processing_time_us = absl::ToInt64Microseconds(absl::Now() - start_time);
+  reply->set_processing_time_us(processing_time_us);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1937,6 +1940,7 @@ void NodeManager::HandleCommitBundleResources(
     rpc::CommitBundleResourcesRequest request,
     rpc::CommitBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto start_time = absl::Now();
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   for (auto &bundle_spec : *request.mutable_bundle_specs()) {
     bundle_specs.push_back(
@@ -1945,6 +1949,8 @@ void NodeManager::HandleCommitBundleResources(
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_.CommitBundles(bundle_specs);
+  auto processing_time_us = absl::ToInt64Microseconds(absl::Now() - start_time);
+  reply->set_processing_time_us(processing_time_us);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_lease_manager_.ScheduleAndGrantLeases();

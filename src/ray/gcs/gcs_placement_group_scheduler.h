@@ -370,10 +370,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to prepare resources for given bundles.
+  /// \param lease_status_tracker The tracker to record Raylet processing time.
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const rpc::StatusCallback &callback);
 
   /// Send bundles COMMIT request to a node. This means the placement group creation
@@ -381,10 +383,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to commit resources for given bundles.
+  /// \param lease_status_tracker The tracker to record Raylet processing time.
   /// \param callback
   void CommitResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const rpc::StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.

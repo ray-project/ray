@@ -641,6 +641,10 @@ message PlacementGroupStats {
   int64 prepare_rpc_time_us = 11;
   // Time spent waiting for all Commit RPCs to return
   int64 commit_rpc_time_us = 12;
+  // Max Raylet processing time for Prepare RPC (from all nodes)
+  int64 max_raylet_prepare_time_us = 13;
+  // Max Raylet processing time for Commit RPC (from all nodes)
+  int64 max_raylet_commit_time_us = 14;
 }
 
 message PlacementGroupTableData {

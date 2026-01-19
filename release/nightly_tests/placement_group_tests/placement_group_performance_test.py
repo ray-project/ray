@@ -49,6 +49,9 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     acquire_resources_times = []
     prepare_rpc_times = []
     commit_rpc_times = []
+    # Raylet processing times (actual work, excluding queue wait)
+    raylet_prepare_times = []
+    raylet_commit_times = []
 
     for entry in ray.util.placement_group_table().values():
         latency = entry["stats"]["scheduling_latency_ms"]
@@ -62,6 +65,9 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         acquire_resources_times.append(entry["stats"]["acquire_resources_time_ms"])
         prepare_rpc_times.append(entry["stats"]["prepare_rpc_time_ms"])
         commit_rpc_times.append(entry["stats"]["commit_rpc_time_ms"])
+        # Raylet processing times
+        raylet_prepare_times.append(entry["stats"]["max_raylet_prepare_time_ms"])
+        raylet_commit_times.append(entry["stats"]["max_raylet_commit_time_ms"])
 
     latencies = sorted(latencies)
     e2e_latencies = sorted(e2e_latencies)
@@ -70,6 +76,8 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     acquire_resources_times = sorted(acquire_resources_times)
     prepare_rpc_times = sorted(prepare_rpc_times)
     commit_rpc_times = sorted(commit_rpc_times)
+    raylet_prepare_times = sorted(raylet_prepare_times)
+    raylet_commit_times = sorted(raylet_commit_times)
 
     # Pure scheduling latency without queuing time.
     print("P50 scheduling latency ms: " f"{latencies[int(len(latencies) * 0.5)]}")
@@ -129,6 +137,42 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         f"P50={commit_rpc_times[int(len(commit_rpc_times) * 0.5)]:.3f}, "
         f"P95={commit_rpc_times[int(len(commit_rpc_times) * 0.95)]:.3f}, "
         f"P99={commit_rpc_times[int(len(commit_rpc_times) * 0.99)]:.3f}"
+    )
+    # Raylet actual processing time (work time, excluding queue wait)
+    print("--- Raylet Processing Time (max across nodes, in ms) ---")
+    print(
+        f"Raylet Prepare: "
+        f"P50={raylet_prepare_times[int(len(raylet_prepare_times) * 0.5)]:.3f}, "
+        f"P95={raylet_prepare_times[int(len(raylet_prepare_times) * 0.95)]:.3f}, "
+        f"P99={raylet_prepare_times[int(len(raylet_prepare_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"Raylet Commit: "
+        f"P50={raylet_commit_times[int(len(raylet_commit_times) * 0.5)]:.3f}, "
+        f"P95={raylet_commit_times[int(len(raylet_commit_times) * 0.95)]:.3f}, "
+        f"P99={raylet_commit_times[int(len(raylet_commit_times) * 0.99)]:.3f}"
+    )
+    # Calculate queue wait time = RPC time - Raylet processing time
+    prepare_queue_times = [
+        rpc - raylet for rpc, raylet in zip(prepare_rpc_times, raylet_prepare_times)
+    ]
+    commit_queue_times = [
+        rpc - raylet for rpc, raylet in zip(commit_rpc_times, raylet_commit_times)
+    ]
+    prepare_queue_times = sorted(prepare_queue_times)
+    commit_queue_times = sorted(commit_queue_times)
+    print("--- Queue/Network Wait Time (RPC - Raylet processing, in ms) ---")
+    print(
+        f"Prepare Queue: "
+        f"P50={prepare_queue_times[int(len(prepare_queue_times) * 0.5)]:.3f}, "
+        f"P95={prepare_queue_times[int(len(prepare_queue_times) * 0.95)]:.3f}, "
+        f"P99={prepare_queue_times[int(len(prepare_queue_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"Commit Queue: "
+        f"P50={commit_queue_times[int(len(commit_queue_times) * 0.5)]:.3f}, "
+        f"P95={commit_queue_times[int(len(commit_queue_times) * 0.95)]:.3f}, "
+        f"P99={commit_queue_times[int(len(commit_queue_times) * 0.99)]:.3f}"
     )
 
     return {

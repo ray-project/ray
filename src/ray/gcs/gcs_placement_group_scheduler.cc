@@ -166,6 +166,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     PrepareResources(
         bundles_per_node,
         gcs_node_manager_.GetAliveNode(node_id),
+        lease_status_tracker,
         [this,
          bundles_per_node,
          node_id,
@@ -218,6 +219,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const rpc::StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
@@ -228,22 +230,27 @@ void GcsPlacementGroupScheduler::PrepareResources(
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   PlacementGroupID pg_id =
       bundles.empty() ? PlacementGroupID::Nil() : bundles[0]->PlacementGroupId();
-  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] GCS Scheduler: Sending Prepare RPC to node "
-                << node_id << " for PG " << pg_id
-                << ", bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(DEBUG) << "[CONCURRENT_PG_DEBUG] GCS Scheduler: Sending Prepare RPC to node "
+                 << node_id << " for PG " << pg_id
+                 << ", bundles: " << GetDebugStringForBundles(bundles);
 
   raylet_client->PrepareBundleResources(
       bundles,
-      [node_id, bundles, callback](const Status &status,
-                                   const rpc::PrepareBundleResourcesReply &reply) {
+      [node_id, bundles, lease_status_tracker, callback](
+          const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
-          RAY_LOG(INFO) << "Finished leasing resource from " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
+        }
+        // Track max Raylet processing time
+        auto *stats = lease_status_tracker->GetPlacementGroup()->GetMutableStats();
+        if (reply.processing_time_us() > stats->max_raylet_prepare_time_us()) {
+          stats->set_max_raylet_prepare_time_us(reply.processing_time_us());
         }
         callback(result);
       });
@@ -252,23 +259,29 @@ void GcsPlacementGroupScheduler::PrepareResources(
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const rpc::StatusCallback callback) {
   RAY_CHECK(node.has_value());
   const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  RAY_LOG(INFO) << "Committing resource to a node " << node_id
-                << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
+                 << " for bundles: " << GetDebugStringForBundles(bundles);
   raylet_client->CommitBundleResources(
       bundles,
-      [bundles, node_id, callback](const Status &status,
-                                   const rpc::CommitBundleResourcesReply &reply) {
+      [bundles, node_id, lease_status_tracker, callback](
+          const Status &status, const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(INFO) << "Finished committing resource to " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
+        }
+        // Track max Raylet processing time for Commit
+        auto *stats = lease_status_tracker->GetPlacementGroup()->GetMutableStats();
+        if (reply.processing_time_us() > stats->max_raylet_commit_time_us()) {
+          stats->set_max_raylet_commit_time_us(reply.processing_time_us());
         }
         RAY_CHECK(callback);
         callback(status);
@@ -408,7 +421,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     };
 
     if (node.has_value()) {
-      CommitResources(bundles_per_node, node, commit_resources_callback);
+      CommitResources(
+          bundles_per_node, node, lease_status_tracker, commit_resources_callback);
     } else {
       RAY_LOG(INFO) << "Failed to commit resources because the node is dead, node id = "
                     << node_id;

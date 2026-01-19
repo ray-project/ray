@@ -377,6 +377,11 @@ class GlobalState:
                 "acquire_resources_time_ms": (stats.acquire_resources_time_us / 1000.0),
                 "prepare_rpc_time_ms": (stats.prepare_rpc_time_us / 1000.0),
                 "commit_rpc_time_ms": (stats.commit_rpc_time_us / 1000.0),
+                # Max Raylet processing time (in milliseconds)
+                "max_raylet_prepare_time_ms": (
+                    stats.max_raylet_prepare_time_us / 1000.0
+                ),
+                "max_raylet_commit_time_ms": (stats.max_raylet_commit_time_us / 1000.0),
             },
         }
 
