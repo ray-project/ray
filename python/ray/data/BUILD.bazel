@@ -833,20 +833,6 @@ py_test(
 )
 
 py_test(
-    name = "test_pandas_add_column",
-    size = "small",
-    srcs = ["tests/test_pandas_add_column.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_pandas_block",
     size = "small",
     srcs = ["tests/test_pandas_block.py"],
