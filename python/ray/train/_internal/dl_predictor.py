@@ -10,13 +10,23 @@ from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
 )
 from ray.train.predictor import Predictor
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
 
 
+@Deprecated(
+    message=(
+        "DLPredictor is deprecated and will be removed in a future version "
+        "of Ray. The Predictor API was part of the Ray AI Runtime, which has been "
+        "sunsetted. Users should migrate away from Predictor APIs."
+    ),
+    warning=True,
+)
 class DLPredictor(Predictor):
+    """Base class for deep learning framework predictors."""
+
     @abc.abstractmethod
     def _arrays_to_tensors(
         self,

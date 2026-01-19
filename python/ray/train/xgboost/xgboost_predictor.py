@@ -8,12 +8,20 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.train.xgboost import XGBoostCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@Deprecated(
+    message=(
+        "XGBoostPredictor is deprecated and will be removed in a future version "
+        "of Ray. The Predictor API was part of the Ray AI Runtime, which has been "
+        "sunsetted. Users should migrate away from Predictor APIs."
+    ),
+    warning=True,
+)
 @PublicAPI(stability="beta")
 class XGBoostPredictor(Predictor):
     """A predictor for XGBoost models.

@@ -6,9 +6,17 @@ import torch
 
 from ray.train._internal.dl_predictor import TensorDtype
 from ray.train.torch.torch_predictor import TorchPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 
+@Deprecated(
+    message=(
+        "TorchDetectionPredictor is deprecated and will be removed in a future version "
+        "of Ray. The Predictor API was part of the Ray AI Runtime, which has been "
+        "sunsetted. Users should migrate away from Predictor APIs."
+    ),
+    warning=True,
+)
 @PublicAPI(stability="alpha")
 class TorchDetectionPredictor(TorchPredictor):
     """A predictor for TorchVision detection models.

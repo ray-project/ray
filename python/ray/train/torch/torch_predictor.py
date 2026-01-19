@@ -9,7 +9,7 @@ from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
 from ray.train.torch import TorchCheckpoint
 from ray.util import log_once
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -17,6 +17,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    message=(
+        "TorchPredictor is deprecated and will be removed in a future version "
+        "of Ray. The Predictor API was part of the Ray AI Runtime, which has been "
+        "sunsetted. Users should migrate away from Predictor APIs."
+    ),
+    warning=True,
+)
 @PublicAPI(stability="beta")
 class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.

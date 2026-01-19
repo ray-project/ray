@@ -12,7 +12,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data import Preprocessor
 from ray.train import Checkpoint
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
@@ -36,6 +36,14 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
+@Deprecated(
+    message=(
+        "The Predictor API is deprecated and will be removed in a future version "
+        "of Ray. The Predictor API was part of the Ray AI Runtime, which has been "
+        "sunsetted. Users should migrate away from Predictor APIs."
+    ),
+    warning=True,
+)
 @PublicAPI(stability="beta")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
