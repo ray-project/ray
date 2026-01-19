@@ -334,7 +334,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         tid, progress, stats = self._op_display[op_state]
 
         # progress
-        current_rows = op_state.output_row_count
+        current_rows = op_state.op.metrics.row_outputs_taken
         total_rows = op_state.op.num_output_rows_total()
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
