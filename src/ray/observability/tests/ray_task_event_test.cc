@@ -99,8 +99,6 @@ TaskSpecification CreateActorTaskSpec(const JobID &job_id, const ActorID &actor_
   return std::move(builder).ConsumeAndBuild();
 }
 
-}  // namespace
-
 TEST(RayTaskEventTest, TestTaskDefinitionEventCreation) {
   JobID job_id = JobID::FromInt(1);
   TaskSpecification task_spec = CreateNormalTaskSpec(job_id);
