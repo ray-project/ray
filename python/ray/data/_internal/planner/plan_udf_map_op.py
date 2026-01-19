@@ -197,12 +197,9 @@ def plan_streaming_repartition_op(
 
     if op._strict:
         ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
-        supports_fusion = False
     else:
         ref_bundler = None
-        supports_fusion = True
 
-    # Disable fusion for streaming repartition with the downstream op.
     operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -210,7 +207,6 @@ def plan_streaming_repartition_op(
         name=op.name,
         compute_strategy=compute,
         ref_bundler=ref_bundler,
-        supports_fusion=supports_fusion,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )

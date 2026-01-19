@@ -355,13 +355,18 @@ class FuseOperators(Rule):
         input_op = input_deps[0]
 
         assert up_op.data_context is down_op.data_context
+
+        # In non-strict mode, use min_rows_per_bundle to ensure creating batches with batch_size.
+        # In strict mode, ref_bundler handles bundling, so do not set min_rows_per_bundle.
+        min_rows = None if down_logical_op._strict else batch_size
+
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=batch_size,
+            min_rows_per_bundle=min_rows,
             ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
