@@ -429,7 +429,7 @@ class StreamingRepartition(AbstractMap):
         strict: bool = False,
     ):
         super().__init__(
-            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
+            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block},strict={strict}]",
             input_op,
             can_modify_num_rows=False,
         )
