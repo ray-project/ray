@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -193,7 +194,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int64_t GeneratorBackpressureNumObjects() const;
 
-  std::vector<ObjectID> DynamicReturnIds() const;
+  absl::InlinedVector<ObjectID, 8> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
 
@@ -260,7 +261,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// mutated.
   ///
   /// \return The recomputed IDs of the dependencies for the task.
-  std::vector<ObjectID> GetDependencyIds() const;
+  absl::InlinedVector<ObjectID, 8> GetDependencyIds() const;
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.

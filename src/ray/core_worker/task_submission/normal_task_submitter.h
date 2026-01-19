@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -49,7 +50,8 @@ namespace core {
 // task if the worker's RuntimeEnvHash matches the RuntimeEnvHash required by the task
 // spec.
 using RuntimeEnvHash = int;
-using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, RuntimeEnvHash>;
+using SchedulingKey =
+    std::tuple<SchedulingClass, absl::InlinedVector<ObjectID, 8>, RuntimeEnvHash>;
 
 // Interface that controls the max concurrent pending lease requests
 // per scheduling category.

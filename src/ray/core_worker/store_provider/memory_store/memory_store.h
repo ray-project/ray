@@ -21,6 +21,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
@@ -133,7 +134,12 @@ class CoreWorkerMemoryStore {
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
-  void Delete(const std::vector<ObjectID> &object_ids);
+  template <typename Container>
+  void Delete(const Container &object_ids) {
+    absl::flat_hash_set<ObjectID> plasma_ids_to_delete;
+    Delete(absl::flat_hash_set<ObjectID>(object_ids.begin(), object_ids.end()),
+           &plasma_ids_to_delete);
+  }
 
   /// Check whether this store contains the object.
   ///
