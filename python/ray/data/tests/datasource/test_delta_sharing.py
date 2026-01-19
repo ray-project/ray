@@ -8,8 +8,8 @@ import pytest
 from delta_sharing.protocol import Table
 from delta_sharing.rest_client import DataSharingRestClient
 
+from ray.data._internal.datasource import DeltaSharingDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
     _parse_delta_sharing_url,
 )
 from ray.data.block import BlockMetadata

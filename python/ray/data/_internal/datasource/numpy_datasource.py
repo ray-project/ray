@@ -9,6 +9,10 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "NumpyDatasource",
+]
+
 
 class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files."""

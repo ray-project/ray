@@ -19,7 +19,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import FileShuffleConfig, Schema
-from ray.data._internal.datasource.parquet_datasource import (
+from ray.data._internal.datasource import (
     ParquetDatasource,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -1922,7 +1922,7 @@ ROW_GROUP_LIMIT_CASES = [
 )
 def test_choose_row_group_limits_parameterized(case):
     """Validate the helper across representative inputs."""
-    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
+    from ray.data._internal.datasource import choose_row_group_limits
 
     result = choose_row_group_limits(
         case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
@@ -1942,7 +1942,7 @@ def test_choose_row_group_limits_parameterized(case):
 def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     tmp_path, ray_start_regular_shared
 ):
-    from ray.data._internal.datasource.parquet_datasink import (
+    from ray.data._internal.datasource import (
         ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
     )
 
@@ -2191,7 +2191,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     # 4) Helper should succeed (fallback re-resolves to LocalFileSystem inside worker)
     @ray.remote
     def call_helper(paths, fs, kwargs):
-        from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
+        from ray.data._internal.datasource import get_parquet_dataset
 
         return get_parquet_dataset(paths, fs, kwargs)
 

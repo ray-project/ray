@@ -36,6 +36,12 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
+__all__ = [
+    "KafkaAuthConfig",
+    "KafkaDatasource",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

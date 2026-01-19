@@ -9,6 +9,10 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "AudioDatasource",
+]
+
 
 class AudioDatasource(FileBasedDatasource):
     _FILE_EXTENSIONS = [

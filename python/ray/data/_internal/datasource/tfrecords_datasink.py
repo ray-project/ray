@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+__all__ = [
+    "TFRecordDatasink",
+]
+
 
 class TFRecordDatasink(BlockBasedFileDatasink):
     def __init__(

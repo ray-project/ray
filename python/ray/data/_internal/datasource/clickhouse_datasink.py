@@ -19,6 +19,13 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteReturnType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
+__all__ = [
+    "ClickHouseDatasink",
+    "ClickHouseTableSettings",
+    "SinkMode",
+]
+
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DECIMAL_PRECISION = 38

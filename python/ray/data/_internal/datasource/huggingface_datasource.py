@@ -12,6 +12,10 @@ if TYPE_CHECKING:
 
     from ray.data.context import DataContext
 
+__all__ = [
+    "HuggingFaceDatasource",
+]
+
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 

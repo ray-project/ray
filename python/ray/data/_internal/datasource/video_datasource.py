@@ -8,6 +8,11 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "VideoDatasource",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

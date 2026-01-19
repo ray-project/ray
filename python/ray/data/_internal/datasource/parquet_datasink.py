@@ -14,6 +14,12 @@ from ray.data.datasource.filename_provider import FilenameProvider
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "ParquetDatasink",
+    "choose_row_group_limits",
+]
+
+
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 

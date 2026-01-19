@@ -4,8 +4,8 @@ import time
 import pytest
 
 import ray
+from ray.data._internal.datasource import KafkaAuthConfig
 from ray.data._internal.datasource.kafka_datasource import (
-    KafkaAuthConfig,
     _add_authentication_to_config,
     _build_consumer_config_for_discovery,
     _build_consumer_config_for_read,

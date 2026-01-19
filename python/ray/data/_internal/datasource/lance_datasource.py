@@ -12,6 +12,10 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "LanceDatasource",
+]
+
 
 logger = logging.getLogger(__name__)
 

@@ -16,6 +16,11 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data.context import DataContext
 
+__all__ = [
+    "DatabricksUCDatasource",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

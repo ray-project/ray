@@ -1,11 +1,9 @@
-from ray.data._internal.datasource.delta_sharing_datasource import (
+from ray.data._internal.datasource import (
+    Connection,
     DeltaSharingDatasource,
-)
-from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
     TimeRange,
 )
-from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
     Datasink,

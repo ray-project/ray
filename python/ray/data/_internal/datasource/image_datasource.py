@@ -14,6 +14,11 @@ from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 if TYPE_CHECKING:
     import pyarrow
 
+__all__ = [
+    "ImageDatasource",
+    "ImageFileMetadataProvider",
+]
+
 
 logger = logging.getLogger(__name__)
 

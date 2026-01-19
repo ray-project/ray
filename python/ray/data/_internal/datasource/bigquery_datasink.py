@@ -18,6 +18,11 @@ from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 
+__all__ = [
+    "BigQueryDatasink",
+]
+
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_RETRY_CNT = 10

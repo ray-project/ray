@@ -144,7 +144,7 @@ def mock_redirected_http_responses(mock_parquet_urls, mock_resolved_urls):
 @pytest.fixture
 def mock_huggingface_datasource():
     """Fixture providing the HuggingFaceDatasource class for mocking."""
-    from ray.data._internal.datasource.huggingface_datasource import (
+    from ray.data._internal.datasource import (
         HuggingFaceDatasource,
     )
 
