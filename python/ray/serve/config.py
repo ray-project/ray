@@ -6,7 +6,6 @@ from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
-from ray._common.network_utils import get_localhost_ip
 from ray._common.pydantic_compat import (
     BaseModel,
     Field,
@@ -24,6 +23,7 @@ from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_REQUEST_ROUTER_PATH,
     DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
@@ -637,8 +637,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      localhost. To expose Serve publicly, you probably want to set
-      this to "0.0.0.0" for IPv4 or "::" for IPv6.
+      "127.0.0.1". To expose Serve publicly, you probably want to set
+      this to "0.0.0.0".
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed
@@ -659,18 +659,18 @@ class HTTPOptions(BaseModel):
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on. This is the default.
-        - "EveryNode": start one HTTP server per node.
+          on.
+        - "EveryNode": start one HTTP server per node. This is the default.
         - "NoServer": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = get_localhost_ip()
+    host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    location: Optional[DeploymentMode] = DeploymentMode.EveryNode
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""

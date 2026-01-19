@@ -33,11 +33,11 @@ def test_run() -> None:
         ]
 
         # test debug build
-        BuilderContainer("3.9", "debug", "x86_64").run()
+        BuilderContainer("3.10", "debug", "x86_64").run()
         assert cmds[-1] == [
             "export RAY_DEBUG_BUILD=debug",
             "./ci/build/build-manylinux-ray.sh",
-            "./ci/build/build-manylinux-wheel.sh cp39-cp39",
+            "./ci/build/build-manylinux-wheel.sh cp310-cp310",
             "chown -R 2000:100 /artifact-mount",
         ]
 

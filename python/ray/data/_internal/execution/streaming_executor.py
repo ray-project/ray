@@ -45,22 +45,15 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress.rich_progress import RichExecutionProgressManager
-from ray.data._internal.progress.tqdm_progress import TqdmExecutionProgressManager
+from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
-from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 
 logger = logging.getLogger(__name__)
-
-# Force a progress update after this many events processed. Avoids the
-# progress seeming to stall for very large scale workloads.
-PROGRESS_BAR_UPDATE_INTERVAL = 50
-PROGRESS_MANAGER_UPDATE_INTERVAL = 20
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
@@ -196,17 +189,14 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
-        # Setup progress bars
-        if self._use_rich_progress():
-            self._progress_manager = RichExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
-        else:
-            self._progress_manager = TqdmExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
+        # Setup progress manager
+        self._progress_manager = get_progress_manager(
+            self._data_context,
+            self._dataset_id,
+            self._topology,
+            self._options.verbose_progress,
+        )
+        self._progress_manager.start()
 
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
@@ -496,7 +486,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
@@ -651,21 +641,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-    def _use_rich_progress(self):
-        rich_enabled = self._data_context.enable_rich_progress_bars
-        use_ray_tqdm = self._data_context.use_ray_tqdm
-
-        if not rich_enabled or use_ray_tqdm:
-            if log_once("ray_data_rich_progress_disabled"):
-                logger.info(
-                    "[dataset]: A new progress UI is available. To enable, "
-                    "set `ray.data.DataContext.get_current()."
-                    "enable_rich_progress_bars = True` and `ray.data."
-                    "DataContext.get_current().use_ray_tqdm = False`."
-                )
-            return False
-        return True
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
@@ -865,7 +840,7 @@ def _format_metrics_table(metrics_dict: dict) -> str:
     return tabulate(
         table_data,
         headers=["category", "metric", "value"],
-        tablefmt="simple_outline",
+        tablefmt="plain",
     )
 
 

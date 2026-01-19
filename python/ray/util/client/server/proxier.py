@@ -21,7 +21,6 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import (
     build_address,
-    get_localhost_ip,
     is_ipv6,
     is_localhost,
 )
@@ -230,7 +229,7 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
 
-            host = get_localhost_ip()
+            host = "127.0.0.1"
             port = self._get_unused_port(
                 socket.AF_INET6 if is_ipv6(host) else socket.AF_INET
             )
@@ -369,7 +368,7 @@ class ProxyManager:
 
         proc = start_ray_client_server(
             self.address,
-            get_localhost_ip(),
+            "127.0.0.1",
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
