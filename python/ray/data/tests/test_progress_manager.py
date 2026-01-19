@@ -1,3 +1,4 @@
+import builtins
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -45,7 +46,7 @@ class TestGetProgressManager:
             mock_worker.mode = ray._private.worker.WORKER_MODE
             yield mock_worker
 
-    def test_progress_bars_disabled(self, mock_ctx, mock_topology):
+    def test_progress_bars_disabled_uses_noop(self, mock_ctx, mock_topology):
         """Test that NoopExecutionProgressManager is returned when progress bars are disabled."""
         mock_ctx.enable_progress_bars = False
 
@@ -53,18 +54,26 @@ class TestGetProgressManager:
 
         assert isinstance(manager, NoopExecutionProgressManager)
 
-    def test_operator_progress_disabled(self, mock_ctx, mock_topology):
+    @patch("ray.data._internal.progress.logger")
+    def test_operator_progress_disabled_logs_warning(
+        self, mock_logger, mock_ctx, mock_topology
+    ):
         """Test warning when operator progress bars are disabled."""
         mock_ctx.enable_operator_progress_bars = False
 
         with patch("sys.stdout.isatty", return_value=True):
             manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
 
-            # Should still create a progress manager, just with operator progress disabled
-            assert manager is not None
+            # should still create some non-noop progress manager.
+            assert not isinstance(manager, NoopExecutionProgressManager)
+            mock_logger.warning.assert_any_call(
+                "Progress bars for operators disabled. To enable, "
+                "set `ray.data.DataContext.get_current()."
+                "enable_operator_progress_bars = True`."
+            )
 
     @patch("sys.stdout.isatty", return_value=False)
-    def test_non_interactive_terminal(self, mock_isatty, mock_ctx, mock_topology):
+    def test_non_atty_uses_logging_progress(self, mock_isatty, mock_ctx, mock_topology):
         """Test that LoggingExecutionProgressManager is used for non-interactive terminals."""
         mock_ctx.use_ray_tqdm = False
 
@@ -76,7 +85,7 @@ class TestGetProgressManager:
             assert isinstance(manager, LoggingExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=False)
-    def test_ray_tqdm_in_worker(
+    def test_ray_tqdm_in_worker_force_uses_tqdm_progress(
         self, mock_isatty, mock_ctx, mock_topology, setup_ray_worker
     ):
         """Test that TqdmExecutionProgressManager is used when use_ray_tqdm is True in Ray worker."""
@@ -99,7 +108,8 @@ class TestGetProgressManager:
 
     @patch("sys.stdout.isatty", return_value=True)
     def test_tqdm_when_use_ray_tqdm_enabled(self, mock_isatty, mock_ctx, mock_topology):
-        """Test that TqdmExecutionProgressManager is used when use_ray_tqdm is True."""
+        """Test that TqdmExecutionProgressManager is used when use_ray_tqdm is True,
+        even if RichExecutionProgressManager is enabled."""
         mock_ctx.enable_rich_progress_bars = True
         mock_ctx.use_ray_tqdm = True
 
@@ -115,45 +125,25 @@ class TestGetProgressManager:
         assert isinstance(manager, RichExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
-    def test_rich_import_error_fallback(self, mock_isatty, mock_ctx, mock_topology):
+    @patch("ray.data._internal.progress.logger")
+    def test_rich_import_error_fallback(
+        self, mock_logger, mock_isatty, mock_ctx, mock_topology
+    ):
         """Test fallback to NoopExecutionProgressManager when rich import fails."""
-        with patch.dict(
-            "sys.modules", {"ray.data._internal.progress.rich_progress": None}
-        ):
-            # When the module is set to None, importing it will fail
-            # But we need to ensure the ImportError is caught properly
-            import builtins
+        real_import = builtins.__import__
 
-            real_import = builtins.__import__
+        def mock_import(name, *args, **kwargs):
+            if "rich_progress" in name:
+                raise ImportError("No module named 'rich'")
+            return real_import(name, *args, **kwargs)
 
-            def mock_import(name, *args, **kwargs):
-                if "rich_progress" in name:
-                    raise ImportError("No module named 'rich'")
-                return real_import(name, *args, **kwargs)
+        with patch("builtins.__import__", side_effect=mock_import):
+            manager = get_progress_manager(mock_ctx, "test_id", mock_topology, False)
 
-            with patch("builtins.__import__", side_effect=mock_import):
-                manager = get_progress_manager(
-                    mock_ctx, "test_id", mock_topology, False
-                )
-
-                assert isinstance(manager, NoopExecutionProgressManager)
-
-    def test_verbose_progress_parameter(self, mock_ctx, mock_topology):
-        """Test that verbose_progress parameter is passed to the manager."""
-        with patch("sys.stdout.isatty", return_value=True):
-            manager = get_progress_manager(mock_ctx, "test_id", mock_topology, True)
-
-            # Verify verbose_progress is passed (check constructor args)
-            assert manager._verbose_progress
-
-    def test_dataset_id_passed(self, mock_ctx, mock_topology):
-        """Test that dataset_id are correctly passed to the manager."""
-        dataset_id = "unique_dataset_123"
-
-        with patch("sys.stdout.isatty", return_value=True):
-            manager = get_progress_manager(mock_ctx, dataset_id, mock_topology, False)
-
-            assert manager._dataset_id == dataset_id
+            assert isinstance(manager, NoopExecutionProgressManager)
+            mock_logger.warning.assert_any_call(
+                "[dataset]: Run `pip install rich` to enable progress reporting."
+            )
 
     @pytest.mark.parametrize(
         "enable_progress,enable_op_progress,expected_type",
@@ -165,7 +155,7 @@ class TestGetProgressManager:
         ],
     )
     @patch("sys.stdout.isatty", return_value=True)
-    def test_progress_combinations(
+    def test_progress_toggle_flag_combinations(
         self,
         mock_isatty,
         mock_ctx,
@@ -204,40 +194,34 @@ class TestLoggingProgressManager:
 
     @patch("sys.stdout.isatty", return_value=False)
     @patch("ray.data._internal.progress.logging_progress.logger")
-    def test_logging_progress_manager(
-        self, mock_logger, mock_isatty, mock_ctx, mock_topology
+    def test_logging_progress_manager_properly_logs_per_interval(
+        self, mock_logger, mock_isatty, mock_topology
     ):
         """Test logging progress manager logs correct output based on time intervals."""
+        current_time = 0
+        pg = LoggingExecutionProgressManager(
+            "dataset_123", mock_topology, False, False, _get_time=lambda: current_time
+        )
 
-        with patch(
-            "ray.data._internal.progress.logging_progress.time.time",
-            side_effect=[0, 0, 5, 10],
-        ):
-            pg = LoggingExecutionProgressManager(
-                "dataset_123", mock_topology, False, False
-            )
+        # Initial logging of progress
+        mock_logger.info.reset_mock()
+        pg.refresh()
+        mock_logger.info.assert_any_call("======= Running Dataset: dataset_123 =======")
+        mock_logger.info.assert_any_call("Total Progress: 0/?")
 
-            # Initial logging of progress
-            mock_logger.info.reset_mock()
-            pg.refresh()
-            mock_logger.info.assert_any_call(
-                "======= Running Dataset: dataset_123 ======="
-            )
-            mock_logger.info.assert_any_call("Total Progress: 0/?")
+        # Only 5 seconds passed from previous log, so logging doesn't occur
+        current_time += 5
+        mock_logger.info.reset_mock()
+        pg.update_total_progress(1, 10)
+        pg.refresh()
+        assert mock_logger.info.call_count == 0
 
-            # Only 5 seconds passed from previous log, so logging doesn't occur
-            mock_logger.info.reset_mock()
-            pg.update_total_progress(1, 10)
-            pg.refresh()
-            assert mock_logger.info.call_count == 0
-
-            # 10 seconds has passed, so must log previous progress.
-            mock_logger.info.reset_mock()
-            pg.refresh()
-            mock_logger.info.assert_any_call(
-                "======= Running Dataset: dataset_123 ======="
-            )
-            mock_logger.info.assert_any_call("Total Progress: 1/10")
+        # 10 seconds has passed, so must log previous progress.
+        current_time += 10
+        mock_logger.info.reset_mock()
+        pg.refresh()
+        mock_logger.info.assert_any_call("======= Running Dataset: dataset_123 =======")
+        mock_logger.info.assert_any_call("Total Progress: 1/10")
 
 
 if __name__ == "__main__":

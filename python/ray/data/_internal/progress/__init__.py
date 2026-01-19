@@ -89,7 +89,9 @@ def get_progress_manager(
                 NoopExecutionProgressManager,
             )
 
-            print("[dataset]: Run `pip install rich` to enable progress reporting.")
+            logger.warning(
+                "[dataset]: Run `pip install rich` to enable progress reporting."
+            )
             return NoopExecutionProgressManager(
                 dataset_id, topology, show_op_progress, verbose_progress
             )

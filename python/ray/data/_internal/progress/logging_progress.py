@@ -3,7 +3,7 @@ import logging
 import time
 import typing
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
@@ -18,10 +18,6 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
-# Progress manager to be used for non-tty terminals, preventing spamming
-# of progress reporting. Refer to following issues:
-# https://github.com/ray-project/ray/issues/60083
-# https://github.com/ray-project/ray/issues/57734
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +33,11 @@ class _LoggingMetrics:
 class LoggingSubProgressBar(BaseProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
 
-    Logs progress to terminal internally.
+    Internally passes relevant logging metrics to `LoggingExecutionProgressManager`.
+    Sub-progress is actually handled by Ray through operators, while operator-level
+    and total progress is handled by the `StreamingExecutor`. To ensure log-order,
+    this class helps to pass metric data to the progress manager so progress metrics
+    are logged centrally.
     """
 
     def __init__(
@@ -46,8 +46,7 @@ class LoggingSubProgressBar(BaseProgressBar):
         total: Optional[int] = None,
         max_name_length: int = 100,
     ):
-        """
-        Initialize sub-progress bar
+        """Initialize sub-progress bar
 
         Args:
             name: name of sub-progress bar
@@ -80,7 +79,12 @@ class LoggingSubProgressBar(BaseProgressBar):
 
 
 class LoggingExecutionProgressManager(BaseExecutionProgressManager):
-    """Execution progress display for non-tty situations."""
+    """Execution progress display for non-tty situations, preventing
+    spamming of progress reporting."""
+
+    # Refer to following issues for more context about this feature:
+    # https://github.com/ray-project/ray/issues/60083
+    # https://github.com/ray-project/ray/issues/57734
 
     # This progress manager needs to refresh (log) based on elapsed time
     # not scheduling steps. This elapsed time handling is done within
@@ -96,10 +100,13 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         topology: "Topology",
         show_op_progress: bool,
         verbose_progress: bool,
+        *,
+        _get_time: Callable[[], float] = time.time,
     ):
         self._dataset_id = dataset_id
         self._topology = topology
-        self._last_log_time = time.time() - self.LOG_REPORT_INTERVAL_SEC
+        self._get_time = _get_time
+        self._last_log_time = self._get_time() - self.LOG_REPORT_INTERVAL_SEC
 
         self._global_progress_metric = _LoggingMetrics(
             name="Total Progress", desc=None, completed=0, total=None
@@ -152,7 +159,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         pass
 
     def refresh(self):
-        current_time = time.time()
+        current_time = self._get_time()
         if current_time - self._last_log_time < self.LOG_REPORT_INTERVAL_SEC:
             return
         self._last_log_time = current_time
@@ -170,10 +177,10 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             logger.info("")
 
         for opstate in self._topology.values():
-            m = self._op_progress_metrics.get(opstate)
-            if m is None:
+            metrics = self._op_progress_metrics.get(opstate)
+            if metrics is None:
                 continue
-            _log_op_or_sub_progress(m)
+            _log_op_or_sub_progress(metrics)
             for pg in self._sub_progress_metrics[opstate]:
                 _log_op_or_sub_progress(pg.get_logging_metrics())
 
@@ -182,7 +189,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
 
     def close_with_finishing_description(self, desc: str, success: bool):
         # We log in StreamingExecutor. No need for duplicate logging.
-        del desc, success  # unused
+        pass
 
     # Total Progress
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]):
