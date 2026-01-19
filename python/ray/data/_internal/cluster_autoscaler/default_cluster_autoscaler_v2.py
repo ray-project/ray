@@ -284,13 +284,11 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             logger.warning(msg, exc_info=True)
 
     def get_total_resources(self) -> ExecutionResources:
-        """Get total resources available, respecting user-configured limits."""
+        """Get total resources available from the autoscaling coordinator."""
         resources = self._autoscaling_coordinator.get_allocated_resources(
             requester_id=self._requester_id
         )
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))
-        # Respect user-configured resource limits
-        user_limits = self._resource_limits
-        return total.min(user_limits)
+        return total

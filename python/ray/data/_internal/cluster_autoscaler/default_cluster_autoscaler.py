@@ -148,10 +148,5 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         actor.request_resources.remote({}, self._execution_id)
 
     def get_total_resources(self) -> ExecutionResources:
-        """Get total resources available, respecting user-configured limits."""
-        cluster_resources = ExecutionResources.from_resource_dict(
-            ray.cluster_resources()
-        )
-        # Respect user-configured resource limits
-        user_limits = self._resource_limits
-        return cluster_resources.min(user_limits)
+        """Get total resources available in the cluster."""
+        return ExecutionResources.from_resource_dict(ray.cluster_resources())

@@ -489,25 +489,6 @@ def test_cluster_scaling_no_limits():
     )
 
 
-def test_cluster_autoscaler_get_total_resources_respects_limits():
-    """Test that get_total_resources respects user-configured limits."""
-    topology = {}
-
-    autoscaler = DefaultClusterAutoscaler(
-        topology=topology,
-        resource_limits=ExecutionResources(cpu=4, gpu=1),
-        execution_id="execution_id",
-    )
-
-    # Mock cluster resources with more than the limit
-    with patch("ray.cluster_resources", return_value={"CPU": 16, "GPU": 4}):
-        total = autoscaler.get_total_resources()
-
-    # Should be capped to user limits
-    assert total.cpu == 4
-    assert total.gpu == 1
-
-
 class BarrierWaiter:
     def __init__(self, barrier):
         self._barrier = barrier

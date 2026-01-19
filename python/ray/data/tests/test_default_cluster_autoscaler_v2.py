@@ -488,31 +488,6 @@ class TestClusterAutoscaling:
         ]
         _send_resource_request.assert_called_with(expected_resource_request)
 
-    def test_get_total_resources_respects_limits(self):
-        """Test that get_total_resources respects user-configured limits."""
-        fake_coordinator = FakeAutoscalingCoordinator()
-
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            resource_limits=ExecutionResources(cpu=4, gpu=1),
-            execution_id="test_execution_id",
-            resource_utilization_calculator=StubUtilizationGauge(
-                ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.5)
-            ),
-            autoscaling_coordinator=fake_coordinator,
-        )
-
-        # Mock the coordinator to return more resources than the limit
-        autoscaler._autoscaling_coordinator.get_allocated_resources = MagicMock(
-            return_value=[{"CPU": 16, "GPU": 4}]
-        )
-
-        total = autoscaler.get_total_resources()
-
-        # Should be capped to user limits
-        assert total.cpu == 4
-        assert total.gpu == 1
-
 
 if __name__ == "__main__":
     import sys
