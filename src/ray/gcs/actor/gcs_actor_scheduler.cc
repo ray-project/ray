@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/gcs/actor/gcs_actor_scheduler.h"
 
 #include <memory>
 #include <string>

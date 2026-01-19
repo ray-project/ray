@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import boto3
 import botocore.exceptions
@@ -39,7 +39,6 @@ class KubeRayJobManager:
         timeout: int,
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
-        pip: Optional[List[str]] = None,
         compute_config: Optional[Dict[str, Any]] = None,
         autoscaler_config: Optional[Dict[str, Any]] = None,
     ) -> Tuple[int, float]:
@@ -50,7 +49,6 @@ class KubeRayJobManager:
             cmd_to_run,
             env_vars,
             working_dir,
-            pip,
             compute_config,
             autoscaler_config,
         )
@@ -63,7 +61,6 @@ class KubeRayJobManager:
         cmd_to_run: str,
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
-        pip: Optional[List[str]] = None,
         compute_config: Optional[Dict[str, Any]] = None,
         autoscaler_config: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -76,7 +73,6 @@ class KubeRayJobManager:
             "compute_config": compute_config,
             "runtime_env": {
                 "env_vars": env_vars,
-                "pip": pip or [],
                 "working_dir": working_dir,
             },
             "autoscaler_config": autoscaler_config,
