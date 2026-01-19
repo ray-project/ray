@@ -15,10 +15,10 @@ from ray.rllib.core.distribution.torch.torch_distribution import (
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
-    DualStreamEncoderConfig,
     FreeLogStdMLPHeadConfig,
     MLPEncoderConfig,
     MLPHeadConfig,
+    MultiStreamEncoderConfig,
 )
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 
@@ -127,7 +127,7 @@ class SACCatalog(Catalog):
         Note, the Pi network uses the base encoder from the `Catalog`.
 
         Args:
-            framework: The framework to use. Either `torch` or `tf2`.
+            framework: The framework to use.
 
         Returns:
             The encoder for the Q-network.
@@ -168,72 +168,16 @@ class SACCatalog(Catalog):
                 output_layer_activation=self.qf_action_encoder_activation,
             )
 
-            self.qf_encoder_config = DualStreamEncoderConfig(
+            self.qf_encoder_config = MultiStreamEncoderConfig(
                 base_encoder_configs={
                     Columns.OBS: self._encoder_config,
                     Columns.ACTIONS: self.qf_action_encoder_config,
                 },
                 hidden_dim=self.latent_dims[0],
+                output_layer_activation=self.qf_action_encoder_activation,
             )
 
             return self.qf_encoder_config.build(framework=framework)
-
-    # @OverrideToImplementCustomLogic
-    # def build_qf_encoder(self, framework: str) -> Encoder:
-    #     """Builds the Q-function encoder.
-
-    #     In contrast to PPO, SAC needs a different encoder for Pi and
-    #     Q-function as the Q-function in the continuous case has to
-    #     encode actions, too. Therefore the Q-function uses its own
-    #     encoder config.
-    #     Note, the Pi network uses the base encoder from the `Catalog`.
-
-    #     Args:
-    #         framework: The framework to use. Either `torch` or `tf2`.
-
-    #     Returns:
-    #         The encoder for the Q-network.
-    #     """
-
-    #     # Compute the required dimension for the action space.
-    #     if isinstance(self.action_space, gym.spaces.Box):
-    #         required_action_dim = self.action_space.shape[0]
-    #     elif isinstance(self.action_space, gym.spaces.Discrete):
-    #         # for discrete action spaces, we don't need to encode the action
-    #         # because the Q-function will output a value for each action
-    #         required_action_dim = 0
-    #     else:
-    #         self._raise_unsupported_action_space_error()
-
-    #     # Encoder input for the Q-network contains state and action. We
-    #     # need to infer the shape for the input from the state and action
-    #     # spaces
-    #     if not (
-    #         isinstance(self.observation_space, gym.spaces.Box)
-    #         and len(self.observation_space.shape) == 1
-    #     ):
-    #         raise ValueError("The observation space is not supported by RLlib's SAC.")
-
-    #     # TODO (simon): Maybe keep default encoder and use latent dimensions.
-    #     input_space = gym.spaces.Box(
-    #         -np.inf,
-    #         np.inf,
-    #         (self.observation_space.shape[0] + required_action_dim,),
-    #         dtype=np.float32,
-    #     )
-
-    #     self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
-    #     self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
-
-    #     self.qf_encoder_config = MLPEncoderConfig(
-    #         input_dims=input_space.shape,
-    #         hidden_layer_dims=self.qf_encoder_hiddens,
-    #         hidden_layer_activation=self.qf_encoder_activation,
-    #         output_layer_dim=self.latent_dims[0],
-    #         output_layer_activation=self.qf_encoder_activation,
-    #     )
-
-    #     return self.qf_encoder_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
