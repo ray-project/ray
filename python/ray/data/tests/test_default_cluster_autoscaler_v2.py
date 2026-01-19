@@ -109,9 +109,12 @@ class TestClusterAutoscaling:
         }
 
         # Patch cluster config to return None
-        with patch("ray.nodes", return_value=node_table), patch(
-            "ray._private.state.state.get_cluster_config",
-            return_value=None,
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
         ):
             assert _get_node_resource_spec_and_count() == expected
 
@@ -311,6 +314,38 @@ class TestClusterAutoscaling:
             ):
                 result = _get_node_resource_spec_and_count()
                 assert result == expected
+
+    def test_get_node_resource_spec_and_count_missing_all_resources(self):
+        """Regression test for nodes with empty resources (ie missing CPU, GPU, and memory keys entirely)."""
+
+        # Simulate a node with no standard resources defined
+        node_empty_resources = {
+            "Alive": True,
+            "Resources": {
+                "dummy_resource": 1,
+            },
+        }
+
+        node_table = [
+            {
+                "Resources": self._head_node,
+                "Alive": True,
+            },
+            node_empty_resources,
+        ]
+
+        # Expect everything to default to 0
+        expected = {_NodeResourceSpec.of(cpu=0, gpu=0, mem=0): 1}
+
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
+        ):
+            result = _get_node_resource_spec_and_count()
+            assert result == expected
 
 
 if __name__ == "__main__":
