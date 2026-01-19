@@ -21,6 +21,9 @@ from rich.text import Text
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.streaming_executor_state import (
+    format_op_state_summary,
+)
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
@@ -339,7 +342,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
         # stats
-        stats_str = op_state.summary_str_raw(resource_manager)
+        stats_str = format_op_state_summary(op_state, resource_manager)
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
 
 
