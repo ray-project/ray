@@ -372,6 +372,11 @@ class GlobalState:
                 "scheduling_state": gcs_pb2.PlacementGroupStats.SchedulingState.DESCRIPTOR.values_by_number[  # noqa: E501
                     stats.scheduling_state
                 ].name,
+                # Detailed timing breakdown (in milliseconds)
+                "schedule_compute_time_ms": (stats.schedule_compute_time_us / 1000.0),
+                "acquire_resources_time_ms": (stats.acquire_resources_time_us / 1000.0),
+                "prepare_rpc_time_ms": (stats.prepare_rpc_time_us / 1000.0),
+                "commit_rpc_time_ms": (stats.commit_rpc_time_us / 1000.0),
             },
         }
 

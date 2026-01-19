@@ -44,6 +44,12 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     latencies = []
     e2e_latencies = []
     scheduling_attempts = []
+    # Detailed timing breakdown
+    schedule_compute_times = []
+    acquire_resources_times = []
+    prepare_rpc_times = []
+    commit_rpc_times = []
+
     for entry in ray.util.placement_group_table().values():
         latency = entry["stats"]["scheduling_latency_ms"]
         e2e_latency = entry["stats"]["end_to_end_creation_latency_ms"]
@@ -51,9 +57,19 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         latencies.append(latency)
         e2e_latencies.append(e2e_latency)
         scheduling_attempts.append(scheduling_attempt)
+        # Collect detailed timing
+        schedule_compute_times.append(entry["stats"]["schedule_compute_time_ms"])
+        acquire_resources_times.append(entry["stats"]["acquire_resources_time_ms"])
+        prepare_rpc_times.append(entry["stats"]["prepare_rpc_time_ms"])
+        commit_rpc_times.append(entry["stats"]["commit_rpc_time_ms"])
+
     latencies = sorted(latencies)
     e2e_latencies = sorted(e2e_latencies)
     scheduling_attempts = sorted(scheduling_attempts)
+    schedule_compute_times = sorted(schedule_compute_times)
+    acquire_resources_times = sorted(acquire_resources_times)
+    prepare_rpc_times = sorted(prepare_rpc_times)
+    commit_rpc_times = sorted(commit_rpc_times)
 
     # Pure scheduling latency without queuing time.
     print("P50 scheduling latency ms: " f"{latencies[int(len(latencies) * 0.5)]}")
@@ -88,10 +104,56 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         f"{scheduling_attempts[int(len(scheduling_attempts) * 0.99)]}"
     )
 
+    # Detailed timing breakdown
+    print("--- Detailed Timing Breakdown (P50/P95/P99 in ms) ---")
+    print(
+        f"Schedule compute: "
+        f"P50={schedule_compute_times[int(len(schedule_compute_times) * 0.5)]:.3f}, "
+        f"P95={schedule_compute_times[int(len(schedule_compute_times) * 0.95)]:.3f}, "
+        f"P99={schedule_compute_times[int(len(schedule_compute_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"Acquire resources: "
+        f"P50={acquire_resources_times[int(len(acquire_resources_times) * 0.5)]:.3f}, "
+        f"P95={acquire_resources_times[int(len(acquire_resources_times) * 0.95)]:.3f}, "
+        f"P99={acquire_resources_times[int(len(acquire_resources_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"Prepare RPC: "
+        f"P50={prepare_rpc_times[int(len(prepare_rpc_times) * 0.5)]:.3f}, "
+        f"P95={prepare_rpc_times[int(len(prepare_rpc_times) * 0.95)]:.3f}, "
+        f"P99={prepare_rpc_times[int(len(prepare_rpc_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"Commit RPC: "
+        f"P50={commit_rpc_times[int(len(commit_rpc_times) * 0.5)]:.3f}, "
+        f"P95={commit_rpc_times[int(len(commit_rpc_times) * 0.95)]:.3f}, "
+        f"P99={commit_rpc_times[int(len(commit_rpc_times) * 0.99)]:.3f}"
+    )
+
     return {
         "pg_creation_per_second": throughput[0][1],
         "p50_scheduling_latency_ms": latencies[int(len(latencies) * 0.5)],
         "p50_e2e_pg_creation_latency_ms": e2e_latencies[int(len(e2e_latencies) * 0.5)],
+        # Add detailed timing to results
+        "p50_schedule_compute_time_ms": schedule_compute_times[
+            int(len(schedule_compute_times) * 0.5)
+        ],
+        "p50_acquire_resources_time_ms": acquire_resources_times[
+            int(len(acquire_resources_times) * 0.5)
+        ],
+        "p50_prepare_rpc_time_ms": prepare_rpc_times[int(len(prepare_rpc_times) * 0.5)],
+        "p50_commit_rpc_time_ms": commit_rpc_times[int(len(commit_rpc_times) * 0.5)],
+        "p99_schedule_compute_time_ms": schedule_compute_times[
+            int(len(schedule_compute_times) * 0.99)
+        ],
+        "p99_acquire_resources_time_ms": acquire_resources_times[
+            int(len(acquire_resources_times) * 0.99)
+        ],
+        "p99_prepare_rpc_time_ms": prepare_rpc_times[
+            int(len(prepare_rpc_times) * 0.99)
+        ],
+        "p99_commit_rpc_time_ms": commit_rpc_times[int(len(commit_rpc_times) * 0.99)],
     }
 
 

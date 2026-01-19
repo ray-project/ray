@@ -631,6 +631,16 @@ message PlacementGroupStats {
   double highest_retry_delay_ms = 7;
   // The cause of placement group creation failure.
   SchedulingState scheduling_state = 8;
+
+  // Detailed timing breakdown for performance analysis (all in microseconds)
+  // Time spent in Schedule() computing bundle-to-node assignment
+  int64 schedule_compute_time_us = 9;
+  // Time spent in AcquireBundleResources() for resource pre-deduction
+  int64 acquire_resources_time_us = 10;
+  // Time spent waiting for all Prepare RPCs to return
+  int64 prepare_rpc_time_us = 11;
+  // Time spent waiting for all Commit RPCs to return
+  int64 commit_rpc_time_us = 12;
 }
 
 message PlacementGroupTableData {

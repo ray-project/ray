@@ -73,8 +73,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
                               placement_group->GetSoftTargetNodeID());
+
+  // [TIMING] Measure Schedule() computation time
+  auto compute_start_time = absl::Now();
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+  auto compute_duration_us = absl::ToInt64Microseconds(absl::Now() - compute_start_time);
+  // Store timing in stats for Python-side visibility
+  placement_group->GetMutableStats()->set_schedule_compute_time_us(compute_duration_us);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -129,7 +135,16 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   // Acquire resources from gcs resources manager to reserve bundle resources.
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
+
+  // [TIMING] Measure AcquireBundleResources() time
+  auto acquire_start_time = absl::Now();
   AcquireBundleResources(bundle_locations);
+  auto acquire_duration_us = absl::ToInt64Microseconds(absl::Now() - acquire_start_time);
+  // Store timing in stats for Python-side visibility
+  placement_group->GetMutableStats()->set_acquire_resources_time_us(acquire_duration_us);
+
+  // [TIMING] Record start time for Prepare RPC phase
+  auto prepare_rpc_start_time = absl::Now();
 
   // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -148,24 +163,32 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundles_per_node,
-                     gcs_node_manager_.GetAliveNode(node_id),
-                     [this,
-                      bundles_per_node,
-                      node_id,
-                      lease_status_tracker,
-                      failure_callback,
-                      success_callback](const Status &status) {
-                       for (const auto &bundle : bundles_per_node) {
-                         lease_status_tracker->MarkPrepareRequestReturned(
-                             node_id, bundle, status);
-                       }
+    PrepareResources(
+        bundles_per_node,
+        gcs_node_manager_.GetAliveNode(node_id),
+        [this,
+         bundles_per_node,
+         node_id,
+         lease_status_tracker,
+         failure_callback,
+         success_callback,
+         prepare_rpc_start_time](const Status &status) {
+          for (const auto &bundle : bundles_per_node) {
+            lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle, status);
+          }
 
-                       if (lease_status_tracker->AllPrepareRequestsReturned()) {
-                         OnAllBundlePrepareRequestReturned(
-                             lease_status_tracker, failure_callback, success_callback);
-                       }
-                     });
+          if (lease_status_tracker->AllPrepareRequestsReturned()) {
+            // [TIMING] Record Prepare RPC duration
+            auto prepare_rpc_duration_us =
+                absl::ToInt64Microseconds(absl::Now() - prepare_rpc_start_time);
+            lease_status_tracker->GetPlacementGroup()
+                ->GetMutableStats()
+                ->set_prepare_rpc_time_us(prepare_rpc_duration_us);
+
+            OnAllBundlePrepareRequestReturned(
+                lease_status_tracker, failure_callback, success_callback);
+          }
+        });
   }
 }
 
@@ -343,6 +366,9 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   }
   lease_status_tracker->MarkCommitPhaseStarted();
 
+  // [TIMING] Record start time for Commit RPC phase
+  auto commit_rpc_start_time = absl::Now();
+
   for (const auto &node_to_bundles : bundle_locations_per_node) {
     const auto &node_id = node_to_bundles.first;
     const auto &node = gcs_node_manager_.GetAliveNode(node_id);
@@ -353,7 +379,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       bundles_per_node,
                                       node_id,
                                       schedule_failure_handler,
-                                      schedule_success_handler](const Status &status) {
+                                      schedule_success_handler,
+                                      commit_rpc_start_time](const Status &status) {
       auto commited_bundle_locations = std::make_shared<BundleLocations>();
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
@@ -368,6 +395,13 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
       }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
+        // [TIMING] Record Commit RPC duration
+        auto commit_rpc_duration_us =
+            absl::ToInt64Microseconds(absl::Now() - commit_rpc_start_time);
+        lease_status_tracker->GetPlacementGroup()
+            ->GetMutableStats()
+            ->set_commit_rpc_time_us(commit_rpc_duration_us);
+
         OnAllBundleCommitRequestReturned(
             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
       }
