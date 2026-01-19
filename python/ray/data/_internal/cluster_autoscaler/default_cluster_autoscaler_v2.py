@@ -182,40 +182,53 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         limits = self._resource_limits
 
         # If no explicit limits are set (all infinite), return the original request
-        if limits.cpu == float("inf") and limits.gpu == float("inf"):
+        if (
+            limits.cpu == float("inf")
+            and limits.gpu == float("inf")
+            and limits.memory == float("inf")
+        ):
             return resource_request
 
         # Calculate totals from the request
         total_cpu = sum(bundle.get("CPU", 0) for bundle in resource_request)
         total_gpu = sum(bundle.get("GPU", 0) for bundle in resource_request)
+        total_memory = sum(bundle.get("memory", 0) for bundle in resource_request)
 
         # Check if the request already respects limits
         cpu_within_limit = limits.cpu == float("inf") or total_cpu <= limits.cpu
         gpu_within_limit = limits.gpu == float("inf") or total_gpu <= limits.gpu
+        memory_within_limit = (
+            limits.memory == float("inf") or total_memory <= limits.memory
+        )
 
-        if cpu_within_limit and gpu_within_limit:
+        if cpu_within_limit and gpu_within_limit and memory_within_limit:
             return resource_request
 
         # Cap the request by filtering bundles until we're within limits
         capped_request = []
         current_cpu = 0.0
         current_gpu = 0.0
+        current_memory = 0.0
 
         for bundle in resource_request:
             bundle_cpu = bundle.get("CPU", 0)
             bundle_gpu = bundle.get("GPU", 0)
+            bundle_memory = bundle.get("memory", 0)
 
             # Check if adding this bundle would exceed limits
             new_cpu = current_cpu + bundle_cpu
             new_gpu = current_gpu + bundle_gpu
+            new_memory = current_memory + bundle_memory
 
             cpu_ok = limits.cpu == float("inf") or new_cpu <= limits.cpu
             gpu_ok = limits.gpu == float("inf") or new_gpu <= limits.gpu
+            memory_ok = limits.memory == float("inf") or new_memory <= limits.memory
 
-            if cpu_ok and gpu_ok:
+            if cpu_ok and gpu_ok and memory_ok:
                 capped_request.append(bundle)
                 current_cpu = new_cpu
                 current_gpu = new_gpu
+                current_memory = new_memory
             else:
                 # Stop adding bundles once we hit the limit
                 break
@@ -224,7 +237,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             logger.debug(
                 f"Capped autoscaling resource request from {len(resource_request)} "
                 f"bundles to {len(capped_request)} bundles to respect user-configured "
-                f"resource limits (CPU={limits.cpu}, GPU={limits.gpu})."
+                f"resource limits (CPU={limits.cpu}, GPU={limits.gpu}, "
+                f"memory={limits.memory})."
             )
 
         return capped_request

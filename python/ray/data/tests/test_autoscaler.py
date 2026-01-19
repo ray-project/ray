@@ -420,6 +420,41 @@ def test_cluster_scaling_respects_gpu_limits():
     )
 
 
+def test_cluster_scaling_respects_memory_limits():
+    """Test that cluster autoscaling respects user-configured memory limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=0, memory=1000)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources(memory=2000),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request 3 bundles (3000 memory)
+    # With limit of 2000 memory, should only request 2 bundles
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 1, "memory": 1000}, {"CPU": 1, "memory": 1000}]
+    )
+
+
 def test_cluster_scaling_no_limits():
     """Test that cluster autoscaling works normally when no limits are set."""
     op1 = MagicMock(

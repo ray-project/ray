@@ -422,6 +422,41 @@ class TestClusterAutoscaling:
     @patch(
         "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
     )
+    def test_try_scale_up_respects_memory_limits(self, _send_resource_request):
+        """Test that cluster autoscaling respects user-configured memory limits."""
+        scale_up_threshold = 0.75
+        scale_up_delta = 1
+        # High utilization to trigger scaling
+        utilization = ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.9)
+
+        # Each node has 2000 memory, 2 nodes = 4000 memory total
+        # Requesting 3 nodes (2+1 delta) would be 6000 memory, exceeding limit
+        resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources(memory=4000),
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=scale_up_delta,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            get_node_counts=lambda: {resource_spec: 2},
+        )
+        _send_resource_request.assert_called_with([])
+
+        autoscaler.try_trigger_scaling()
+
+        # With limit of 4000 memory, should only request 2 bundles, not 3
+        expected_resource_request = [
+            {"CPU": 4, "GPU": 0, "memory": 2000},
+            {"CPU": 4, "GPU": 0, "memory": 2000},
+        ]
+        _send_resource_request.assert_called_with(expected_resource_request)
+
+    @patch(
+        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
+    )
     def test_try_scale_up_no_limits(self, _send_resource_request):
         """Test that cluster autoscaling works normally when no limits are set."""
         scale_up_threshold = 0.75
