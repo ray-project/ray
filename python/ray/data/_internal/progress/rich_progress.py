@@ -4,7 +4,6 @@ import math
 import sys
 import time
 import typing
-import uuid
 from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
@@ -146,7 +145,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         )
 
         self._op_display: Dict[
-            uuid.UUID, Tuple[Optional[TaskID], Optional[Progress], Optional[Text]]
+            "OpState", Tuple[Optional[TaskID], Optional[Progress], Optional[Text]]
         ] = {}
 
         self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
@@ -187,7 +186,6 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             )
 
             if sub_progress_bar_enabled:
-                uid = uuid.uuid4()
                 progress = self._make_progress_bar(_TREE_BRANCH, " ", 10)
                 stats = Text(f"{_TREE_VERTICAL_INDENT}Initializing...", no_wrap=True)
                 total = state.op.num_output_rows_total()
@@ -201,8 +199,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                 )
                 rows.append(progress)
                 rows.append(stats)
-                state.progress_manager_uuid = uid
-                self._op_display[uid] = (tid, progress, stats)
+                self._op_display[state] = (tid, progress, stats)
 
             if not contains_sub_progress_bars:
                 continue
@@ -324,10 +321,9 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
 
     def _can_update_operator(self, op_state: "OpState") -> bool:
-        uid = op_state.progress_manager_uuid
-        if uid is None or uid not in self._op_display:
+        if op_state not in self._op_display:
             return False
-        tid, progress, stats = self._op_display[uid]
+        tid, progress, stats = self._op_display[op_state]
         if tid is None or not progress or not stats or tid not in progress.task_ids:
             return False
         return True
@@ -339,8 +335,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             return
         if self._start_time is None:
             self._start_time = time.time()
-        uid = op_state.progress_manager_uuid
-        tid, progress, stats = self._op_display[uid]
+        tid, progress, stats = self._op_display[op_state]
 
         # progress
         current_rows = op_state.output_row_count
