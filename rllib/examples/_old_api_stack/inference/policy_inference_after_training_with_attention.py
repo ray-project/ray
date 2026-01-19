@@ -181,15 +181,17 @@ if __name__ == "__main__":
         init_prev_r = prev_r = np.array([0.0] * args.prev_n_rewards)
 
     num_episodes = 0
+    ort_session = None
 
     while num_episodes < args.num_episodes_during_inference:
 
         # Compute an action (`a`).
         if args.use_onnx_for_inference:
             # Prepare the ONNX runtime session.
-            ort_session = onnxruntime.InferenceSession(
-                "frozenlake_attention_model_onnx/model.onnx"
-            )
+            if ort_session is None:
+                ort_session = onnxruntime.InferenceSession(
+                    "frozenlake_attention_model_onnx/model.onnx"
+                )
             # Prepare the inputs dict.
             seq_len = np.array(
                 [config["model"]["max_seq_len"]], dtype=np.int32
