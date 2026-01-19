@@ -208,7 +208,7 @@ if __name__ == "__main__":
 
             ort_inputs = {
                 "obs": obs,
-                f"state_ins": state_ins,
+                "state_ins": state_ins,
                 "seq_lens": seq_len,
             }
 
