@@ -5,6 +5,7 @@ import typing
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
+from ray._private.ray_constants import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.progress.base_progress import (
@@ -92,7 +93,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 1
 
     # Time interval (seconds) in which progress is logged to console again.
-    LOG_REPORT_INTERVAL_SEC = 10
+    LOG_REPORT_INTERVAL_SEC = env_integer("RAY_DATA_NON_TTY_PROGRESS_LOG_INTERVAL", 10)
 
     def __init__(
         self,
