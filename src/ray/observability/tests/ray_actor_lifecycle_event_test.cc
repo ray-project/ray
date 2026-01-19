@@ -65,13 +65,36 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   ASSERT_EQ(actor_life.state_transitions(1).port(), 12345);
 }
 
-TEST_F(RayActorLifecycleEventTest, TestRestartingWithPreemption) {
+struct RestartReasonTestCase {
+  std::string name;
+  bool preempted;
+  rpc::events::ActorLifecycleEvent::RestartReason input_reason;
+  rpc::events::ActorLifecycleEvent::RestartReason expected_reason;
+};
+
+class RayActorLifecycleEventRestartTest
+    : public ::testing::TestWithParam<RestartReasonTestCase> {};
+
+TEST_P(RayActorLifecycleEventRestartTest, TestRestartingReason) {
+  const auto &test_case = GetParam();
+
   rpc::ActorTableData data;
   data.set_actor_id("test_actor_id");
-  data.set_preempted(true);
+  data.set_preempted(test_case.preempted);
 
-  auto event = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
+  if (test_case.input_reason ==
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION) {
+    // restart reason is explicitly passed in constructor only incase of lineage
+    // reconstruction
+    auto event = std::make_unique<RayActorLifecycleEvent>(
+        data,
+        rpc::events::ActorLifecycleEvent::RESTARTING,
+        "sess1",
+        test_case.input_reason);
+  } else {
+    auto event = std::make_unique<RayActorLifecycleEvent>(
+        data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
+  }
 
   auto serialized_event = std::move(*event).Serialize();
   const auto &actor_life = serialized_event.actor_lifecycle_event();
@@ -80,47 +103,28 @@ TEST_F(RayActorLifecycleEventTest, TestRestartingWithPreemption) {
   ASSERT_EQ(actor_life.state_transitions(0).state(),
             rpc::events::ActorLifecycleEvent::RESTARTING);
   ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
-            rpc::events::ActorLifecycleEvent::NODE_PREEMPTION);
+            test_case.expected_reason);
 }
 
-TEST_F(RayActorLifecycleEventTest, TestRestartingWithLineageReconstruction) {
-  rpc::ActorTableData data;
-  data.set_actor_id("test_actor_id");
-  data.set_preempted(false);
-
-  auto event = std::make_unique<RayActorLifecycleEvent>(
-      data,
-      rpc::events::ActorLifecycleEvent::RESTARTING,
-      "sess1",
-      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
-
-  auto serialized_event = std::move(*event).Serialize();
-  const auto &actor_life = serialized_event.actor_lifecycle_event();
-
-  ASSERT_EQ(actor_life.state_transitions_size(), 1);
-  ASSERT_EQ(actor_life.state_transitions(0).state(),
-            rpc::events::ActorLifecycleEvent::RESTARTING);
-  ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
-            rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
-}
-
-TEST_F(RayActorLifecycleEventTest, TestRestartingWithActorFailure) {
-  rpc::ActorTableData data;
-  data.set_actor_id("test_actor_id");
-  data.set_preempted(false);
-
-  auto event = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
-
-  auto serialized_event = std::move(*event).Serialize();
-  const auto &actor_life = serialized_event.actor_lifecycle_event();
-
-  ASSERT_EQ(actor_life.state_transitions_size(), 1);
-  ASSERT_EQ(actor_life.state_transitions(0).state(),
-            rpc::events::ActorLifecycleEvent::RESTARTING);
-  ASSERT_EQ(actor_life.state_transitions(0).restarting_reason(),
-            rpc::events::ActorLifecycleEvent::ACTOR_FAILURE);
-}
+INSTANTIATE_TEST_SUITE_P(
+    RestartReasons,
+    RayActorLifecycleEventRestartTest,
+    ::testing::Values(
+        RestartReasonTestCase{"Preemption",
+                              true,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE,
+                              rpc::events::ActorLifecycleEvent::NODE_PREEMPTION},
+        RestartReasonTestCase{"LineageReconstruction",
+                              false,
+                              rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION,
+                              rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION},
+        RestartReasonTestCase{"ActorFailure",
+                              false,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE}),
+    [](const ::testing::TestParamInfo<RestartReasonTestCase> &info) {
+      return info.param.name;
+    });
 
 }  // namespace observability
 }  // namespace ray

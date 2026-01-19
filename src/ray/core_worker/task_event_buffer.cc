@@ -293,26 +293,8 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
   }
 
   if (state_update_->task_log_info_.has_value()) {
-    auto *task_log_info = lifecycle_event_data.mutable_task_log_info();
-    const auto &src = state_update_->task_log_info_.value();
-    if (src.has_stdout_file()) {
-      task_log_info->set_stdout_file(src.stdout_file());
-    }
-    if (src.has_stderr_file()) {
-      task_log_info->set_stderr_file(src.stderr_file());
-    }
-    if (src.has_stdout_start()) {
-      task_log_info->set_stdout_start(src.stdout_start());
-    }
-    if (src.has_stdout_end()) {
-      task_log_info->set_stdout_end(src.stdout_end());
-    }
-    if (src.has_stderr_start()) {
-      task_log_info->set_stderr_start(src.stderr_start());
-    }
-    if (src.has_stderr_end()) {
-      task_log_info->set_stderr_end(src.stderr_end());
-    }
+    lifecycle_event_data.mutable_task_log_info()->CopyFrom(
+        state_update_->task_log_info_.value());
   }
 }
 
