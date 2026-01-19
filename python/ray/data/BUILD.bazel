@@ -1340,6 +1340,20 @@ py_test(
 )
 
 py_test(
+    name = "test_progress_manager",
+    size = "small",
+    srcs = ["tests/test_progress_manager.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_random_access",
     size = "small",
     srcs = ["tests/test_random_access.py"],

@@ -114,6 +114,20 @@ def test_progress_bar_truncates_chained_operators(
         ), caplog.records
 
 
+def test_progress_bar_tqdm_not_installed(enable_tqdm_ray):
+    """Test behavior when tqdm package is not installed."""
+    with patch("sys.stdout.isatty", return_value=True):
+        # Mock tqdm not being installed
+        with patch("ray.data._internal.progress.progress_bar.tqdm", None):
+            pb = ProgressBar("test", 100, "unit", enabled=True)
+            if enable_tqdm_ray:
+                # tqdm_ray still works (part of Ray, no tqdm dependency)
+                assert pb._bar is not None
+            else:
+                # No progress bar available (interactive, so no logging fallback)
+                assert pb._bar is None
+
+
 if __name__ == "__main__":
     import sys
 
