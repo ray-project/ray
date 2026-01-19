@@ -79,7 +79,7 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         warnings.warn(
-            "'Predictor' is deprecated."
+            f"{self.__class__.__name__} is deprecated. "
             "It has been unmaintained and hidden from the documentation for years.",
             DeprecationWarning,
         )
