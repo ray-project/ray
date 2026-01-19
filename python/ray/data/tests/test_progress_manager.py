@@ -183,6 +183,63 @@ class TestGetProgressManager:
         assert isinstance(manager, expected_type)
 
 
+class TestLoggingProgressManager:
+    @pytest.fixture
+    def mock_ctx(self):
+        """Create a mock DataContext with default settings."""
+        ctx = Mock(spec=DataContext)
+        ctx.enable_progress_bars = True
+        ctx.enable_operator_progress_bars = True
+        ctx.enable_rich_progress_bars = True
+        ctx.use_ray_tqdm = False
+        return ctx
+
+    @pytest.fixture
+    def mock_topology(self):
+        """Create a mock Topology object that supports iteration."""
+        topology = MagicMock()
+        # Make it iterable by having .values() return an empty list
+        topology.values.return_value = []
+        return topology
+
+    @patch("sys.stdout.isatty", return_value=False)
+    @patch("ray.data._internal.progress.logging_progress.logger")
+    def test_logging_progress_manager(
+        self, mock_logger, mock_isatty, mock_ctx, mock_topology
+    ):
+        """Test logging progress manager logs correct output based on time intervals."""
+
+        with patch(
+            "ray.data._internal.progress.logging_progress.time.time",
+            side_effect=[0, 0, 5, 10],
+        ):
+            pg = LoggingExecutionProgressManager(
+                "dataset_123", mock_topology, False, False
+            )
+
+            # Initial logging of progress
+            mock_logger.info.reset_mock()
+            pg.refresh()
+            mock_logger.info.assert_any_call(
+                "======= Running Dataset: dataset_123 ======="
+            )
+            mock_logger.info.assert_any_call("Total Progress: 0/?")
+
+            # Only 5 seconds passed from previous log, so logging doesn't occur
+            mock_logger.info.reset_mock()
+            pg.update_total_progress(1, 10)
+            pg.refresh()
+            assert mock_logger.info.call_count == 0
+
+            # 10 seconds has passed, so must log previous progress.
+            mock_logger.info.reset_mock()
+            pg.refresh()
+            mock_logger.info.assert_any_call(
+                "======= Running Dataset: dataset_123 ======="
+            )
+            mock_logger.info.assert_any_call("Total Progress: 1/10")
+
+
 if __name__ == "__main__":
     import sys
 
