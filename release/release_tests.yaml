@@ -2093,29 +2093,6 @@
       cluster:
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
-- name: decision_tree_autoscaling_20_runs
-  python: "3.10"
-  group: core-multi-test
-  working_dir: nightly_tests
-
-  frequency: nightly
-
-  team: core
-  cluster:
-    cluster_compute: decision_tree/autoscaling_compute.yaml
-
-  run:
-    timeout: 9600
-    script: python decision_tree/cart_with_tree.py --concurrency=20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: decision_tree/autoscaling_compute_gce.yaml
-
 - name: autoscaling_shuffle_1tb_1000_partitions
   python: "3.10"
   group: core-multi-test
@@ -3892,9 +3869,6 @@
   team: core
 
   cluster:
-    byod:
-      pip:
-        - ray[default]
     cluster_compute: aws.yaml
 
   run:
