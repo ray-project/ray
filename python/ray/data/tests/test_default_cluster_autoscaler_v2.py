@@ -218,10 +218,7 @@ class TestClusterAutoscaling:
                 result = _get_node_resource_spec_and_count()
                 assert result == expected
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_cluster_from_zero(self, _send_resource_request):
+    def test_try_scale_up_cluster_from_zero(self):
         """Test that the autoscaler can scale up from zero worker nodes."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -231,6 +228,7 @@ class TestClusterAutoscaling:
         # Mock the node resource spec with zero counts
         resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
         resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -240,41 +238,27 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {
                 resource_spec1: 0,
                 resource_spec2: 0,
             },
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # Should request scale_up_delta nodes of each type
-        expected_resource_request = []
-
-        expected_resource_request.extend(
-            [
-                {
-                    "CPU": resource_spec1.cpu,
-                    "GPU": resource_spec1.gpu,
-                    "memory": resource_spec1.mem,
-                }
-            ]
-            * scale_up_delta
+        # Verify via get_total_resources which returns what was allocated
+        resources_allocated = autoscaler.get_total_resources()
+        expected_resources = ExecutionResources(
+            cpu=resource_spec1.cpu * scale_up_delta
+            + resource_spec2.cpu * scale_up_delta,
+            gpu=resource_spec1.gpu * scale_up_delta
+            + resource_spec2.gpu * scale_up_delta,
+            memory=resource_spec1.mem * scale_up_delta
+            + resource_spec2.mem * scale_up_delta,
         )
-
-        expected_resource_request.extend(
-            [
-                {
-                    "CPU": resource_spec2.cpu,
-                    "GPU": resource_spec2.gpu,
-                    "memory": resource_spec2.mem,
-                }
-            ]
-            * scale_up_delta
-        )
-
-        _send_resource_request.assert_called_with(expected_resource_request)
+        assert resources_allocated == expected_resources
 
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
@@ -349,10 +333,7 @@ class TestClusterAutoscaling:
             result = _get_node_resource_spec_and_count()
             assert result == expected
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_respects_cpu_limits(self, _send_resource_request):
+    def test_try_scale_up_respects_cpu_limits(self):
         """Test that cluster autoscaling respects user-configured CPU limits."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -362,6 +343,7 @@ class TestClusterAutoscaling:
         # Each node has 4 CPUs, 2 nodes = 8 CPUs total
         # Requesting 3 nodes (2+1 delta) would be 12 CPUs, exceeding limit
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -371,23 +353,18 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {resource_spec: 2},
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # With limit of 8 CPUs, should only request 2 bundles (8 CPUs), not 3 (12 CPUs)
-        expected_resource_request = [
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-        ]
-        _send_resource_request.assert_called_with(expected_resource_request)
+        resources_allocated = autoscaler.get_total_resources()
+        assert resources_allocated.cpu == 8
+        assert resources_allocated.memory == 2000
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_respects_gpu_limits(self, _send_resource_request):
+    def test_try_scale_up_respects_gpu_limits(self):
         """Test that cluster autoscaling respects user-configured GPU limits."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -397,6 +374,7 @@ class TestClusterAutoscaling:
         # Each node has 1 GPU, 2 nodes = 2 GPUs total
         # Requesting 3 nodes (2+1 delta) would be 3 GPUs, exceeding limit
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -406,23 +384,18 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {resource_spec: 2},
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # With limit of 2 GPUs, should only request 2 bundles, not 3
-        expected_resource_request = [
-            {"CPU": 4, "GPU": 1, "memory": 1000},
-            {"CPU": 4, "GPU": 1, "memory": 1000},
-        ]
-        _send_resource_request.assert_called_with(expected_resource_request)
+        resources_allocated = autoscaler.get_total_resources()
+        assert resources_allocated.gpu == 2
+        assert resources_allocated.cpu == 8
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_respects_memory_limits(self, _send_resource_request):
+    def test_try_scale_up_respects_memory_limits(self):
         """Test that cluster autoscaling respects user-configured memory limits."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -432,6 +405,7 @@ class TestClusterAutoscaling:
         # Each node has 2000 memory, 2 nodes = 4000 memory total
         # Requesting 3 nodes (2+1 delta) would be 6000 memory, exceeding limit
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -441,23 +415,18 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {resource_spec: 2},
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # With limit of 4000 memory, should only request 2 bundles, not 3
-        expected_resource_request = [
-            {"CPU": 4, "GPU": 0, "memory": 2000},
-            {"CPU": 4, "GPU": 0, "memory": 2000},
-        ]
-        _send_resource_request.assert_called_with(expected_resource_request)
+        resources_allocated = autoscaler.get_total_resources()
+        assert resources_allocated.memory == 4000
+        assert resources_allocated.cpu == 8
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_no_limits(self, _send_resource_request):
+    def test_try_scale_up_no_limits(self):
         """Test that cluster autoscaling works normally when no limits are set."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -465,6 +434,7 @@ class TestClusterAutoscaling:
         utilization = ExecutionResources(cpu=0.9, gpu=0.5, object_store_memory=0.5)
 
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -474,19 +444,16 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {resource_spec: 2},
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # With no limits, all 3 bundles (2+1 delta) should be requested
-        expected_resource_request = [
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-        ]
-        _send_resource_request.assert_called_with(expected_resource_request)
+        resources_allocated = autoscaler.get_total_resources()
+        assert resources_allocated.cpu == 12  # 3 nodes * 4 CPUs
+        assert resources_allocated.memory == 3000  # 3 nodes * 1000 memory
 
 
 if __name__ == "__main__":
