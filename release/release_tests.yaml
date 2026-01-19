@@ -3869,9 +3869,6 @@
   team: core
 
   cluster:
-    byod:
-      pip:
-        - ray[default]
     cluster_compute: aws.yaml
 
   run:
