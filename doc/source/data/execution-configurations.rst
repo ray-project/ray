@@ -67,3 +67,32 @@ and most users shouldn't need to modify them. However, some of the most importan
 * `raise_original_map_exception`: Whether to raise the original exception encountered in map UDF instead of wrapping it in a `UserCodeException`.
 
 For more details on each of the preceding options, see :class:`~ray.data.DataContext`.
+
+Job-level Checkpointing
+-----------------------
+
+Ray Data supports job-level checkpointing to improve fault tolerance for
+long-running batch pipelines. When enabled, Ray Data can resume a failed job
+from the last successfully processed records instead of restarting from the
+beginning.
+
+Job-level checkpointing is configured through the
+:class:`~ray.data.checkpoint.CheckpointConfig` and is set on the current
+:class:`~ray.data.DataContext`.
+
+**Example configuration:**
+
+.. code-block:: python
+
+    import ray
+    from ray.data.checkpoint import CheckpointConfig
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path="s3://my-bucket/ray-data-checkpoints", 
+        delete_checkpoint_on_success=False,
+    ) 
+
+.. The checkpoint path must be accessible by all nodes in the Ray cluster.
+.. delete_checkpoint_on_success=False preserves checkpoints after successful runs.

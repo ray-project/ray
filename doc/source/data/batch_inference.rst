@@ -236,6 +236,25 @@ Configuration and troubleshooting
 
 .. _batch_inference_gpu:
 
+Job-level Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Job-level checkpointing can be used to make offline batch inference jobs
+resilient to failures such as node restarts or transient execution errors.
+
+When enabled, Ray Data records progress during execution. If a batch inference
+job fails partway through processing, rerunning the same pipeline with the same
+checkpoint configuration will resume from the last completed checkpoint instead
+of reprocessing all records.
+
+This is especially useful for large batch inference workloads where restarting
+from the beginning would be expensive.
+
+To enable job-level checkpointing, configure a
+:class:`~ray.data.checkpoint.CheckpointConfig` on the current
+:class:`~ray.data.DataContext`. See the
+:ref:`Execution Configurations <execution_configurations>` guide for details.
+
 Using GPUs for inference
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
