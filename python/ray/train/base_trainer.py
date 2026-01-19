@@ -922,6 +922,7 @@ class BaseTrainer(abc.ABC):
         return tune.with_parameters(trainable_cls, **base_config)
 
 
+@DeveloperAPI
 def format_datasets_for_repr(datasets: Optional[Dict[str, GenDataset]]) -> str:
     """Format datasets for BaseTrainer repr using plan strings.
 
