@@ -3,12 +3,17 @@ import logging
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data._internal.logical.operators.n_ary_operator import Union
-from ray.data._internal.logical.operators.one_to_one_operator import (
+from ray.data._internal.logical.operators import (
+    AbstractMap,
     AbstractOneToOne,
     Limit,
+    Union,
 )
+
+__all__ = [
+    "LimitPushdownRule",
+]
+
 
 logger = logging.getLogger(__name__)
 
