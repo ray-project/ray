@@ -97,6 +97,14 @@ def test_autoscaling_config_validation():
     )
     assert non_default_autoscaling_config.policy.is_default_policy_function() is False
 
+    # look_back_period_s must be greater than metrics_interval_s
+    with pytest.warns(FutureWarning):
+        AutoscalingConfig(look_back_period_s=5.0, metrics_interval_s=10.0)
+    with pytest.warns(FutureWarning):
+        AutoscalingConfig(look_back_period_s=10.0, metrics_interval_s=10.0)
+    AutoscalingConfig(look_back_period_s=30.0, metrics_interval_s=10.0)
+    AutoscalingConfig(look_back_period_s=20.0, metrics_interval_s=10.0)
+
 
 def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
     """Test that the metrics_interval_s deprecation warning is raised."""
@@ -675,13 +683,13 @@ def test_prepare_imperative_http_options():
         proxy_location=None,
         http_options=HTTPOptions(**{}),
     ) == HTTPOptions(
-        location=DeploymentMode.HeadOnly
+        location=DeploymentMode.EveryNode
     )  # in this case we can't know whether location was provided or not
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(),
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,

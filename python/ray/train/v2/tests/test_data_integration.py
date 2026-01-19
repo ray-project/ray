@@ -1,13 +1,22 @@
+import os
+import tempfile
 from unittest.mock import MagicMock
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray.data
 import ray.train
-from ray.data import DataContext, ExecutionOptions, ExecutionResources
+from ray.data import (
+    DataContext,
+    ExecutionOptions,
+    ExecutionResources,
+    FileShuffleConfig,
+)
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -82,8 +91,8 @@ def test_data_config_validation():
         ray.train.DataConfig(datasets_to_split={})
 
 
-def test_dataset_setup_callback(ray_start_4_cpus):
-    """Check that the `DatasetsSetupCallback` correctly configures the
+def test_datasets_callback(ray_start_4_cpus):
+    """Check that the `DatasetsCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
 
@@ -112,7 +121,7 @@ def test_dataset_setup_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsSetupCallback(train_run_context)
+    callback = DatasetsCallback(train_run_context)
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -227,6 +236,139 @@ def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
     trainer.fit()
 
 
+@pytest.mark.parametrize("different_seeds_across_executions", [True, False])
+def test_parquet_file_shuffle_with_executions(
+    ray_start_4_cpus,
+    restore_data_context,  # noqa: F811
+    different_seeds_across_executions,  # noqa: F811,
+):
+    """Test that Parquet file shuffling produces:
+    1. Different results across executions when different_seeds_across_executions=True
+       (FileShuffleConfig with reseed_after_execution=True: seed = seed + execution_idx)
+    2. Same results across executions when different_seeds_across_executions=False
+       (FileShuffleConfig with seed: seed remains constant)
+    3. Same results for different datasets with same shuffle config per execution
+    """
+    NUM_WORKERS = 2
+    NUM_EXECUTIONS = 5
+    NUM_FILES = 15
+
+    # Create temporary directory for test files
+    with tempfile.TemporaryDirectory() as tmp_path:
+
+        def write_parquet_file(path, file_index):
+            """Write a Parquet file with unique data for each file."""
+            data = {
+                "file_id": [file_index] * 10,
+                "row_id": range(10 * file_index, 10 * (file_index + 1)),
+                "value": [f"file_{file_index}_row_{i}" for i in range(10)],
+            }
+            table = pa.Table.from_pydict(data)
+            pq.write_table(table, path)
+
+        # Create multiple Parquet files
+        paths = [
+            os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(NUM_FILES)
+        ]
+        for i, path in enumerate(paths):
+            write_parquet_file(path, i)
+
+        # Configure execution with preserve_order to ensure deterministic results
+        execution_options = ExecutionOptions()
+        execution_options.preserve_order = True
+
+        # Create shuffle config based on parameter
+        if different_seeds_across_executions:
+            shuffle_config = FileShuffleConfig(seed=42)
+        else:
+            shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+
+        # Create two datasets with the same shuffle config
+        ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+        ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+        data_config = ray.train.DataConfig(execution_options=execution_options)
+
+        def train_fn():
+            # Get dataset shards for both datasets
+            train_ds1 = ray.train.get_dataset_shard("train1")
+            train_ds2 = ray.train.get_dataset_shard("train2")
+
+            # Collect results across multiple executions
+            ds1_execution_results = []
+            ds2_execution_results = []
+
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds1_execution_data = list(train_ds1.iter_rows())
+                ds1_execution_results.append(ds1_execution_data)
+
+            for execution_idx in range(NUM_EXECUTIONS):
+                ds2_execution_data = list(train_ds2.iter_rows())
+                ds2_execution_results.append(ds2_execution_data)
+
+            # Assertion 1: For the same execution, ds1 and ds2 should yield identical results
+            # (deterministic shuffling with same base_seed)
+            for i in range(NUM_EXECUTIONS):
+                assert ds1_execution_results[i] == ds2_execution_results[i], (
+                    f"Execution {i}: ds1 and ds2 should produce identical results "
+                    f"for the same execution with the same shuffle seed"
+                )
+
+            # Convert results to hashable format for uniqueness check
+            def make_hashable(rows):
+                """Convert a list of dicts to a hashable tuple representation."""
+                return tuple(tuple(sorted(row.items())) for row in rows)
+
+            ds1_hashable_results = {
+                make_hashable(result) for result in ds1_execution_results
+            }
+            ds2_hashable_results = {
+                make_hashable(result) for result in ds2_execution_results
+            }
+
+            # Assertion 2: Different executions produce different results vs same results
+            # based on whether seed varies by execution_idx
+            if different_seeds_across_executions:
+                # seed varies by execution, so expect variation
+                assert len(ds1_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds1 should produce different results across executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+                assert len(ds2_hashable_results) == NUM_EXECUTIONS, (
+                    f"ds2 should produce different results across executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+            else:
+                # seed is constant, so expect no variation
+                assert len(ds1_hashable_results) == 1, (
+                    f"ds1 should produce the same results across all executions, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+                assert len(ds2_hashable_results) == 1, (
+                    f"ds2 should produce the same results across all executions, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EXECUTIONS}"
+                )
+
+            # Additional verification: Check that the total number of rows is consistent
+            for execution_idx in range(NUM_EXECUTIONS):
+                assert (
+                    len(ds1_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
+                )
+                assert (
+                    len(ds2_execution_results[execution_idx])
+                    == (NUM_FILES * 10) // NUM_WORKERS
+                )
+
+        trainer = DataParallelTrainer(
+            train_fn,
+            datasets={"train1": ds1, "train2": ds2},
+            dataset_config=data_config,
+            scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        )
+        trainer.fit()
+
+
 @pytest.mark.parametrize("exclude_resources", [None, ExecutionResources(cpu=2, gpu=1)])
 def test_data_config_exclude_resources(ray_start_4_cpus, exclude_resources):
     execution_options = ExecutionOptions(exclude_resources=exclude_resources)
@@ -287,6 +429,184 @@ def test_data_config_resource_limits(ray_start_4_cpus, resource_limits):
         check_resource_limits,
         train_loop_config={"resource_limits": resource_limits},
         datasets={"train": ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_per_dataset_execution_options_single(ray_start_4_cpus):
+    """Test that a single ExecutionOptions object applies to all datasets."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+
+    # Create execution options with specific settings
+    execution_options = ExecutionOptions()
+    execution_options.preserve_order = True
+    execution_options.verbose_progress = True
+
+    data_config = ray.train.DataConfig(execution_options=execution_options)
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+
+        # Verify both datasets have the same execution options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is True
+        assert val_shard.get_context().execution_options.verbose_progress is True
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds, "val": val_ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_per_dataset_execution_options_dict(ray_start_4_cpus):
+    """Test that a dict of ExecutionOptions maps to specific datasets, and datasets not in the dict get default ingest options. Also tests resource limits."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+    test_ds = ray.data.range(NUM_ROWS)
+    test_ds_2 = ray.data.range(NUM_ROWS)
+
+    # Create different execution options for different datasets
+    train_options = ExecutionOptions()
+    train_options.preserve_order = True
+    train_options.verbose_progress = True
+    train_options.resource_limits = train_options.resource_limits.copy(cpu=4, gpu=2)
+
+    val_options = ExecutionOptions()
+    val_options.preserve_order = False
+    val_options.verbose_progress = False
+    val_options.resource_limits = val_options.resource_limits.copy(cpu=2, gpu=1)
+
+    execution_options_dict = {
+        "train": train_options,
+        "val": val_options,
+    }
+
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+        test_shard = ray.train.get_dataset_shard("test")
+        test_shard_2 = ray.train.get_dataset_shard("test_2")
+
+        # Verify each dataset in the dict gets its specific options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is False
+        assert val_shard.get_context().execution_options.verbose_progress is False
+
+        # Verify resource limits
+        assert train_shard.get_context().execution_options.resource_limits.cpu == 4
+        assert train_shard.get_context().execution_options.resource_limits.gpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.cpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.gpu == 1
+
+        # Verify dataset not in the dict gets default options
+        assert (
+            test_shard.get_context().execution_options.preserve_order
+            == test_shard_2.get_context().execution_options.preserve_order
+        )
+        assert (
+            test_shard.get_context().execution_options.verbose_progress
+            == test_shard_2.get_context().execution_options.verbose_progress
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.cpu
+            == test_shard_2.get_context().execution_options.resource_limits.cpu
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.gpu
+            == test_shard_2.get_context().execution_options.resource_limits.gpu
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={
+            "train": train_ds,
+            "val": val_ds,
+            "test": test_ds,
+            "test_2": test_ds_2,
+        },
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
+    """Test that the default behavior of excluding train worker resources
+    applies to each dataset individually when using per-dataset execution options."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    # Create different execution options for different datasets
+    train_options = ExecutionOptions()
+    train_options.exclude_resources = train_options.exclude_resources.copy(cpu=2, gpu=1)
+
+    test_options = ExecutionOptions()
+    test_options.exclude_resources = test_options.exclude_resources.copy(cpu=1, gpu=0)
+
+    # val dataset not in dict, should get default options
+    execution_options_dict = {
+        "train": train_options,
+        "test": test_options,
+    }
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
+
+    def train_fn():
+        # Check that each dataset has the train resources excluded,
+        # in addition to any per-dataset exclude_resources.
+
+        # Check train dataset
+        train_ds = ray.train.get_dataset_shard("train")
+        train_exec_options = train_ds.get_context().execution_options
+        assert train_exec_options.is_resource_limits_default()
+        # Train worker resources: NUM_WORKERS CPUs (default 1 CPU per worker)
+        expected_train_cpu = NUM_WORKERS + 2  # 2 from user-defined
+        expected_train_gpu = 0 + 1  # 1 from user-defined (no GPUs allocated)
+        assert train_exec_options.exclude_resources.cpu == expected_train_cpu
+        assert train_exec_options.exclude_resources.gpu == expected_train_gpu
+
+        # Check test dataset
+        test_ds = ray.train.get_dataset_shard("test")
+        test_exec_options = test_ds.get_context().execution_options
+        assert test_exec_options.is_resource_limits_default()
+        expected_test_cpu = NUM_WORKERS + 1  # 1 from user-defined
+        expected_test_gpu = 0 + 0  # 0 from user-defined
+        assert test_exec_options.exclude_resources.cpu == expected_test_cpu
+        assert test_exec_options.exclude_resources.gpu == expected_test_gpu
+
+        # Check val dataset (should have default + train resources excluded)
+        val_ds = ray.train.get_dataset_shard("val")
+        val_exec_options = val_ds.get_context().execution_options
+        assert val_exec_options.is_resource_limits_default()
+        default_options = ray.train.DataConfig.default_ingest_options()
+        expected_val_cpu = NUM_WORKERS + default_options.exclude_resources.cpu
+        expected_val_gpu = 0 + default_options.exclude_resources.gpu
+        assert val_exec_options.exclude_resources.cpu == expected_val_cpu
+        assert val_exec_options.exclude_resources.gpu == expected_val_gpu
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={
+            "train": ray.data.range(NUM_ROWS),
+            "test": ray.data.range(NUM_ROWS),
+            "val": ray.data.range(NUM_ROWS),
+        },
         dataset_config=data_config,
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )

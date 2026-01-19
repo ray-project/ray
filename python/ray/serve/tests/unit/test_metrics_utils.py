@@ -4,10 +4,10 @@ import sys
 import pytest
 
 from ray._common.test_utils import async_wait_for_condition
+from ray.serve._private.common import TimeStampedValue
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
-    TimeStampedValue,
     aggregate_timeseries,
     merge_instantaneous_total,
     merge_timeseries_dicts,
@@ -726,6 +726,7 @@ class TestInstantaneousMerge:
 
     def test_merge_instantaneous_total_no_changes_filtered(self):
         """Test that zero-change events are filtered even with rounding."""
+        # Use multiple replicas to trigger the merge logic (single replica returns as-is)
         series1 = [
             TimeStampedValue(1.001, 5.0),  # Rounds to 1.00
             TimeStampedValue(1.004, 5.0),  # Also rounds to 1.00, no change

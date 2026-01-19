@@ -11,7 +11,7 @@ import aiohttp.web
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray import ActorID, NodeID
+from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.grpc_utils import init_grpc_channel
@@ -796,42 +796,6 @@ class ReportHead(SubprocessModule):
             )
 
         return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
-
-    @routes.get("/api/actors/kill")
-    async def kill_actor_gcs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        actor_id = req.query.get("actor_id")
-        force_kill = req.query.get("force_kill", False) in ("true", "True")
-        no_restart = req.query.get("no_restart", False) in ("true", "True")
-        if not actor_id:
-            return dashboard_optional_utils.rest_response(
-                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                message="actor_id is required.",
-            )
-
-        status_code = await self.gcs_client.async_kill_actor(
-            ActorID.from_hex(actor_id),
-            force_kill,
-            no_restart,
-            timeout=30,
-        )
-
-        if status_code == dashboard_utils.HTTPStatusCode.NOT_FOUND:
-            message = f"Actor with id {actor_id} not found."
-        elif status_code == dashboard_utils.HTTPStatusCode.INTERNAL_ERROR:
-            message = f"Failed to kill actor with id {actor_id}."
-        elif status_code == dashboard_utils.HTTPStatusCode.OK:
-            message = (
-                f"Force killed actor with id {actor_id}"
-                if force_kill
-                else f"Requested actor with id {actor_id} to terminate. "
-                + "It will exit once running tasks complete"
-            )
-        else:
-            message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
-
-        return dashboard_optional_utils.rest_response(
-            status_code=status_code, message=message
-        )
 
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:

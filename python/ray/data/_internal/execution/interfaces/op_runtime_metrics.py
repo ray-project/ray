@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces.common import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -137,6 +138,7 @@ class RunningTaskInfo:
     num_rows_produced: int
     start_time: float
     cum_block_gen_time: float
+    task_id: ray.TaskID
 
 
 @dataclass
@@ -684,7 +686,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if bytes_per_output is None:
             if context.target_max_block_size is None:
                 return None
-            bytes_per_output = context.target_max_block_size
+            else:
+                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
+                bytes_per_output = (
+                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+                )
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
@@ -835,7 +841,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.row_outputs_taken += output.num_rows() or 0
         self.bytes_outputs_taken += output.size_bytes()
 
-    def on_task_submitted(self, task_index: int, inputs: RefBundle):
+    def on_task_submitted(
+        self,
+        task_index: int,
+        inputs: RefBundle,
+        task_id: Optional[ray.TaskID] = None,
+    ):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
@@ -849,6 +860,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             num_rows_produced=0,
             start_time=time.perf_counter(),
             cum_block_gen_time=0,
+            task_id=ray.TaskID.nil() if task_id is None else task_id,
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):

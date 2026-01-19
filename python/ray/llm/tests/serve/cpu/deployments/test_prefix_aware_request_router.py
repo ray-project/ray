@@ -56,7 +56,7 @@ def prefix_request_router(tree_actor, request):
         construct_request_router(get_or_create_event_loop())
     )
     request_router.initialize_state(
-        imbalanced_threshold=params.get("imbalanced_threshold", 10),
+        imbalanced_threshold=params.get("imbalanced_threshold", float("inf")),
         match_rate_threshold=params.get("match_rate_threshold", 0.1),
         do_eviction=params.get("do_eviction", False),
         eviction_threshold_chars=params.get("eviction_threshold_chars"),
@@ -399,6 +399,102 @@ class TestPromptNormalization:
 
         ray.get(prefix_request_router._tree_actor.stop_eviction_loop.remote())
         await asyncio.sleep(0.1)
+
+
+class TestMultiDeploymentIsolation:
+    """Tests that multiple deployments get isolated prefix tree actors."""
+
+    @pytest.mark.asyncio
+    async def test_two_deployments_get_separate_tree_actors(self):
+        """Verify that two deployments using PrefixCacheAffinityRouter get
+        deployment-specific prefix tree actors to avoid replica ID conflicts."""
+
+        # Create two routers for different deployments (e.g., Prefill and Decode in PD setup)
+        async def construct_router(deployment_name: str):
+            router = PrefixCacheAffinityRouter(
+                deployment_id=DeploymentID(name=deployment_name),
+                handle_source=DeploymentHandleSource.REPLICA,
+                use_replica_queue_len_cache=False,
+                get_curr_time_s=TIMER.time,
+            )
+            router.initialize_state()
+            return router
+
+        prefill_router = await construct_router("Prefill:deepseek")
+        decode_router = await construct_router("Decode:deepseek")
+
+        # Create replicas for each deployment
+        prefill_r1 = FakeRunningReplica("prefill_r1")
+        prefill_r1.set_queue_len_response(0)
+        prefill_r2 = FakeRunningReplica("prefill_r2")
+        prefill_r2.set_queue_len_response(0)
+
+        decode_r1 = FakeRunningReplica("decode_r1")
+        decode_r1.set_queue_len_response(0)
+        decode_r2 = FakeRunningReplica("decode_r2")
+        decode_r2.set_queue_len_response(0)
+
+        # Update replicas for each router
+        prefill_router.update_replicas([prefill_r1, prefill_r2])
+        decode_router.update_replicas([decode_r1, decode_r2])
+
+        # Verify replicas are tracked independently in each tree
+        prefill_tenants = ray.get(
+            prefill_router._tree_actor.getattr.remote("tenant_to_char_count")
+        )
+        decode_tenants = ray.get(
+            decode_router._tree_actor.getattr.remote("tenant_to_char_count")
+        )
+
+        # Each tree should only know about its own replicas
+        assert set(prefill_tenants.keys()) == {
+            prefill_r1.replica_id.to_full_id_str(),
+            prefill_r2.replica_id.to_full_id_str(),
+        }
+        assert set(decode_tenants.keys()) == {
+            decode_r1.replica_id.to_full_id_str(),
+            decode_r2.replica_id.to_full_id_str(),
+        }
+
+        # Insert text into prefill tree
+        ray.get(
+            prefill_router._tree_actor.insert.remote(
+                "prefill text", prefill_r1.replica_id.to_full_id_str(), time.time()
+            )
+        )
+
+        # Insert text into decode tree
+        ray.get(
+            decode_router._tree_actor.insert.remote(
+                "decode text", decode_r1.replica_id.to_full_id_str(), time.time()
+            )
+        )
+
+        # Verify routing works correctly for both deployments without KeyErrors
+        prefill_req = fake_pending_request(prompt="prefill text continued")
+        chosen_prefill = await prefill_router._choose_replica_for_request(prefill_req)
+        assert chosen_prefill == prefill_r1
+
+        decode_req = fake_pending_request(prompt="decode text continued")
+        chosen_decode = await decode_router._choose_replica_for_request(decode_req)
+        assert chosen_decode == decode_r1
+
+        # Verify trees remain isolated
+        prefill_tenants_after = ray.get(
+            prefill_router._tree_actor.getattr.remote("tenant_to_char_count")
+        )
+        decode_tenants_after = ray.get(
+            decode_router._tree_actor.getattr.remote("tenant_to_char_count")
+        )
+
+        assert prefill_tenants_after[prefill_r1.replica_id.to_full_id_str()] > 0
+        assert prefill_tenants_after[prefill_r2.replica_id.to_full_id_str()] == 0
+        assert decode_tenants_after[decode_r1.replica_id.to_full_id_str()] > 0
+        assert decode_tenants_after[decode_r2.replica_id.to_full_id_str()] == 0
+
+        # Cleanup
+        ray.kill(prefill_router._tree_actor)
+        ray.kill(decode_router._tree_actor)
 
 
 if __name__ == "__main__":

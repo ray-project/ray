@@ -142,6 +142,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.grpc_util.RayServegRPCContext
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
+   serve.exceptions.RayServeConfigException
    serve.exceptions.RequestCancelledError
    serve.exceptions.DeploymentUnavailableError
 ```
@@ -416,6 +417,9 @@ Content-Type: application/json
    schema.ProxyStatus
    schema.TargetGroup
    schema.Target
+   schema.DeploymentNode
+   schema.DeploymentTopology
+
 ```
 
 ## Observability

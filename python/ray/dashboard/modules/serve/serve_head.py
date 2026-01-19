@@ -170,11 +170,6 @@ class ServeHead(SubprocessModule):
                 global_logging_config=config.logging_config,
             )
 
-        # Serve ignores HTTP options if it was already running when
-        # serve_start_async() is called. Therefore we validate that no
-        # existing HTTP options are updated and print warning in case they are
-        self.validate_http_options(client, full_http_options)
-
         try:
             if config.logging_config:
                 client.update_global_logging_config(config.logging_config)
@@ -203,7 +198,10 @@ class ServeHead(SubprocessModule):
     @validate_endpoint()
     async def scale_deployment(self, req: Request) -> Response:
         from ray.serve._private.common import DeploymentID
-        from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve._private.exceptions import (
+            DeploymentIsBeingDeletedError,
+            ExternalScalerDisabledError,
+        )
         from ray.serve.schema import ScaleDeploymentRequest
 
         # Extract path parameters
@@ -250,13 +248,14 @@ class ServeHead(SubprocessModule):
                 200,
             )
         except Exception as e:
-            if isinstance(e.cause, DeploymentIsBeingDeletedError):
+            if isinstance(e, DeploymentIsBeingDeletedError):
+                # From customer's viewpoint, the deployment is deleted instead of being deleted
+                # as they must have already executed the delete command
                 return self._create_json_response(
-                    # From customer's viewpoint, the deployment is deleted instead of being deleted
-                    # as they must have already executed the delete command
-                    {"error": "Deployment is deleted"},
-                    412,
+                    {"error": "Deployment is deleted"}, 412
                 )
+            elif isinstance(e, ExternalScalerDisabledError):
+                return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400
@@ -268,22 +267,6 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response(
                     {"error": "Internal Server Error"}, 503
                 )
-
-    def validate_http_options(self, client, http_options):
-        divergent_http_options = []
-
-        for option, new_value in http_options.items():
-            prev_value = getattr(client.http_config, option)
-            if prev_value != new_value:
-                divergent_http_options.append(option)
-
-        if divergent_http_options:
-            logger.warning(
-                "Serve is already running on this Ray cluster and "
-                "it's not possible to update its HTTP options without "
-                "restarting it. Following options are attempted to be "
-                f"updated: {divergent_http_options}."
-            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.

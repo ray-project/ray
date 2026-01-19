@@ -24,14 +24,14 @@ apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-tran
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 # Download and install Microsoft signing key
-curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc |
   gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
 chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
@@ -45,7 +45,7 @@ URIs: https://packages.microsoft.com/repos/azure-cli/
 Suites: ${AZ_DIST}
 Components: main
 Architectures: $(dpkg --print-architecture)
-Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-cli.sources
 
 # Install packages
 
@@ -57,10 +57,10 @@ apt-get install -y \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 mkdir -p /usr/local/python
-# Install Python 3.9 using uv
+# Install Python using uv
 UV_PYTHON_VERSION=3.10
 uv python install --install-dir /usr/local/python "$UV_PYTHON_VERSION"
 
@@ -92,10 +92,33 @@ usermod -a -G docker0 forge
 usermod -a -G docker1 forge
 usermod -a -G docker forge
 
+# Create a shared directory for the ray repository checkout.
+mkdir /rayci
+chown forge:users /rayci
+
 if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh
 fi
 
+# Install crane (container registry tool)
+CRANE_VERSION=0.19.0
+case "$(uname -m)" in
+  x86_64|amd64)
+    CRANE_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    CRANE_ARCH="arm64"
+    ;;
+  *)
+    echo "Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_${CRANE_ARCH}.tar.gz" \
+  | tar -xzf - -C /usr/local/bin crane
+
+chmod +x /usr/local/bin/crane
 EOF
 
 USER forge
@@ -116,4 +139,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-11-12
+# last update: 2026-01-13

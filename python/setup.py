@@ -1,5 +1,4 @@
 import errno
-import io
 import logging
 import os
 import pathlib
@@ -23,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -136,10 +135,6 @@ else:
         "universal API for building distributed applications.",
         BUILD_TYPE,
     )
-    RAY_EXTRA_CPP = True
-    # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or not BUILD_CPP:
-        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -175,8 +170,6 @@ generated_python_directories = [
     "ray/core/generated",
     "ray/serve/generated",
 ]
-
-ray_files.append("ray/nightly-wheels.yaml")
 
 # Autoscaler files.
 ray_files += [
@@ -230,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -250,14 +243,13 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
+            "aiohttp >= 3.13.3",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
-            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
             "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0",
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -302,8 +294,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0",
                 "pyOpenSSL",
             ]
         )
@@ -320,14 +311,13 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.1.1",
+        "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack==1.7.0",
+        "ormsgpack>=1.7.0",
         "pyyaml",
         "scipy",
     ]
@@ -359,10 +349,9 @@ if setup_spec.type == SetupType.RAY:
             chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
         )
     )
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["all-cpp"] = list(
-            set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
-        )
+    setup_spec.extras["all-cpp"] = list(
+        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+    )
 
     # "llm" is not included in all, by design. vllm's dependency set is very
     # large and specific, will likely run into dependency conflicts with other
@@ -376,8 +365,10 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.11.0",
+                "vllm[audio]>=0.13.0",
                 "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -406,7 +397,7 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging>=24.2",
         "protobuf>=3.20.3",
         "pyyaml",
         "requests",
@@ -760,6 +751,13 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
+    try:
+        from setuptools.command.bdist_wheel import bdist_wheel
+    except ImportError:
+        from wheel.bdist_wheel import bdist_wheel
+
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -768,10 +766,43 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
+    class RayCppBdistWheel(bdist_wheel):
+        """Build a Python-agnostic wheel for ray-cpp.
+
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
+        """
+
+        def finalize_options(self):
+            super().finalize_options()
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
+            self.root_is_pure = False
+
+        def get_tag(self):
+            _, _, platform_tag = super().get_tag()
+            return "py3", "none", platform_tag
+
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
+
+    with open(
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+    ) as f:
+        long_readme = f.read()
+
+    with open(os.path.join(ROOT_DIR, "LICENSE.txt"), "r", encoding="utf-8") as f:
+        license_text = f.read().strip()
+    if "\n" in license_text:
+        # If the license text has multiple lines, add an ending endline.
+        license_text += "\n"
+
+    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
+    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
+    cmdclass = {"build_ext": build_ext}
+    if setup_spec.type == SetupType.RAY_CPP:
+        cmdclass["bdist_wheel"] = RayCppBdistWheel
 
     setuptools.setup(
         name=setup_spec.name,
@@ -779,24 +810,21 @@ if __name__ == "__main__":
         author="Ray Team",
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
-        long_description=io.open(
-            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-        ).read(),
+        long_description=long_readme,
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.9",
+        python_requires=">=3.10",
         classifiers=[
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
-        cmdclass={"build_ext": build_ext},
+        cmdclass=cmdclass,
         distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),
@@ -824,5 +852,5 @@ if __name__ == "__main__":
             "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
-        license="Apache 2.0",
+        license=license_text,
     )

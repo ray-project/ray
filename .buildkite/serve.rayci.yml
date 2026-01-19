@@ -1,7 +1,7 @@
 group: serve tests
 depends_on:
   - forge
-  - oss-ci-base_build
+  - oss-ci-base_build-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:
@@ -14,7 +14,6 @@ steps:
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_build-multipy
     tags: cibase
 
   - name: servepydantic1build
@@ -27,6 +26,7 @@ steps:
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_test-multipy
     matrix:
       setup:
         python: ["3.10"]
@@ -50,6 +50,20 @@ steps:
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
     depends_on: servebuild-multipy
 
+  - label: ":ray-serve: serve: gRPC tests"
+    parallelism: 2
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
+        --except-tags post_wheel_build,gpu,ha_integration
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name servebuild-py3.10 --python-version 3.10
+        --test-env=RAY_SERVE_USE_GRPC_BY_DEFAULT=1
+        --test-env=RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+    depends_on: servebuild-multipy
+    tags:
+      - serve
+
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
     parallelism: 2
     tags:
@@ -62,7 +76,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --python-version 3.10
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: same event loop tests"
@@ -125,7 +140,7 @@ steps:
         --build-name servebuild-py3.10
         --python-version 3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - servebuild-multipy
       - forge
 
@@ -151,7 +166,10 @@ steps:
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: default minimal"
-    tags: python
+    tags:
+      - python
+      - serve
+      - min_build
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve
@@ -164,8 +182,9 @@ steps:
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
-      - serve
       - python
+      - serve
+      - min_build
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
@@ -200,7 +219,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --only-tags ha_integration --python-version 3.10 --build-name servebuild-py3.10
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubase
       - servebuild-multipy
@@ -213,6 +232,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --only-tags serve_tracing --build-name servetracingbuild
+        --python-version 3.10
     depends_on: servetracingbuild
 
   - label: ":ray-serve: serve: doc gpu tests"

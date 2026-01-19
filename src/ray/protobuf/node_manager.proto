@@ -406,6 +406,14 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message GetAgentPIDsRequest {}
+
+message GetAgentPIDsReply {
+  // All agent pids
+  optional int32 dashboard_agent_pid = 1;
+  optional int32 runtime_env_agent_pid = 2;
+}
+
 message KillLocalActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
@@ -418,6 +426,26 @@ message KillLocalActorRequest {
 }
 
 message KillLocalActorReply {}
+
+message CancelLocalTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
+  // The worker ID of the executor.
+  bytes executor_worker_id = 5;
+}
+
+message CancelLocalTaskReply {
+  // Whether the requested task is the currently running task.
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
@@ -538,8 +566,19 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Get the PIDs of dashboard and runtime env agent currently alive that are managed by
+  // the local Raylet. Failure: Will retry with the default timeout 1000ms. If fails,
+  // reply return an empty list.
+  rpc GetAgentPIDs(GetAgentPIDsRequest) returns (GetAgentPIDsReply);
   // Request from the GCS actor manager or actor scheduler that the worker shut down
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.
   rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
+  // Cancels a task on the local node. If the reply is OK, the task is canceled.
+  // If force_kill is true, the worker executing the task will be killed. We will
+  // initially try to gracefully kill the worker, and will escalate to a SIGKILL
+  // in the case of a hang.
+  // If force_kill is false, the worker remains alive for subsequent tasks.
+  // Failure: Retries, it's idempotent.
+  rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
 }

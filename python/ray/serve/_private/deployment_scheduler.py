@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
@@ -669,7 +671,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             d.is_non_strict_pack_pg() for d in self._deployments.values()
         )
         # Schedule replicas using compact strategy.
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+            warnings.warn(
+                "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
+                "is deprecated and will be removed in a v2.55.0 release. "
+                "Please use 'RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
             # Flatten dict of deployment replicas into all replicas,
             # then sort by decreasing resource size
             all_scheduling_requests = sorted(
@@ -735,17 +745,25 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for (
             pending_launching_recovering_replica
         ) in pending_launching_recovering_replicas:
+            replicas_to_stop.add(pending_launching_recovering_replica)
             if len(replicas_to_stop) == max_num_to_stop:
                 return replicas_to_stop
-            else:
-                replicas_to_stop.add(pending_launching_recovering_replica)
 
-        node_to_running_replicas_of_target_deployment = (
-            self._get_node_to_running_replicas(deployment_id)
-        )
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
+
+        # _running_replicas preserves insertion order (oldest → newest).
+        # Reverse once so we have newest → oldest, then bucket by node.
+        ordered_running_replicas = list(self._running_replicas[deployment_id].items())
+        ordered_running_replicas.reverse()
+        ordered_running_replicas_of_target_deployment: Dict[
+            str, List[ReplicaID]
+        ] = defaultdict(list)
+        for replica_id, replica_node_id in ordered_running_replicas:
+            ordered_running_replicas_of_target_deployment[replica_node_id].append(
+                replica_id
+            )
 
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
@@ -760,15 +778,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
         ):
-            if node_id not in node_to_running_replicas_of_target_deployment:
+            if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
-            for running_replica in node_to_running_replicas_of_target_deployment[
-                node_id
-            ]:
+
+            # Newest-first list for this node.
+            for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
-                else:
-                    replicas_to_stop.add(running_replica)
 
         return replicas_to_stop
 
