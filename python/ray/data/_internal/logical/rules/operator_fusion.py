@@ -291,7 +291,10 @@ class FuseOperators(Rule):
             # When batch_size % target == 0, each batch can be perfectly sliced into chunks
             # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
             # docstring for details.
-            return up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
+            return (
+                up_logical_op._batch_size % down_logical_op.target_num_rows_per_block
+                == 0
+            )
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
             return False
@@ -320,9 +323,7 @@ class FuseOperators(Rule):
         if down_logical_op._strict:
             # Strict mode: use StreamingRepartitionRefBundler for stitching.
             # Only works when batch_size % target == 0 (verified in _can_fuse).
-            assert (
-                batch_size % down_logical_op.target_num_rows_per_block == 0
-            ), (
+            assert batch_size % down_logical_op.target_num_rows_per_block == 0, (
                 f"Strict mode fusion requires batch_size ({batch_size}) to be "
                 f"a multiple of target_num_rows_per_block "
                 f"({down_logical_op.target_num_rows_per_block})"

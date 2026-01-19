@@ -486,10 +486,12 @@ def test_streaming_repartition_non_strict_mode(
     # Each input block (10 rows) should produce exactly 1 block of 10 rows
     # (since 10 < 20, no splitting needed, and no stitching with other blocks)
     assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
-    assert len(block_row_counts) == 10, f"Expected 10 blocks, got {len(block_row_counts)}"
-    assert all(count == 10 for count in block_row_counts), (
-        f"Expected all blocks to have 10 rows (no stitching), got {block_row_counts}"
-    )
+    assert (
+        len(block_row_counts) == 10
+    ), f"Expected 10 blocks, got {len(block_row_counts)}"
+    assert all(
+        count == 10 for count in block_row_counts
+    ), f"Expected all blocks to have 10 rows (no stitching), got {block_row_counts}"
 
 
 @pytest.mark.parametrize("batch_size", [30, 35, 45])
