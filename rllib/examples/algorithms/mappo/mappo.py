@@ -31,7 +31,7 @@ class MAPPO(PPO):
         return MAPPOConfig()
 
 
-class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
+class MAPPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a MAPPO Algorithm can be built."""
 
     def __init__(self, algo_class=None):
@@ -74,15 +74,11 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        if self.framework_str == "torch":
-            return RLModuleSpec(module_class=DefaultMAPPOTorchRLModule)
-        raise NotImplementedError()
+        return RLModuleSpec(module_class=DefaultMAPPOTorchRLModule)
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
-        if self.framework_str == "torch":
-            return MAPPOTorchLearner
-        raise NotImplementedError()
+        return MAPPOTorchLearner
 
     @override(AlgorithmConfig)
     def training(
