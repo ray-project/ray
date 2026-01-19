@@ -703,7 +703,7 @@ def dedupe_schemas_with_validation(
 
 
 def format_op_state_summary(
-    op_state: OpState, resource_manager: ResourceManager, verbose: bool
+    op_state: OpState, resource_manager: ResourceManager, verbose: bool = False
 ) -> str:
     """Get a formatted summary of the OpState for progress reporting."""
     # Active tasks
