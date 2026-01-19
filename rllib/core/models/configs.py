@@ -1056,3 +1056,26 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchStatefulActorCriticEncoder(self)
             else:
                 return TorchActorCriticEncoder(self)
+
+
+@ExperimentalAPI
+@dataclass
+class DualStreamEncoderConfig(ModelConfig):
+
+    base_encoder_configs: Dict[str, ModelConfig] = None
+    hidden_dim: int = None
+
+    @property
+    def output_dims(self):
+        return (self.hidden_dim,)
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> "Encoder":
+        if framework == "torch":
+            from ray.rllib.core.models.torch.encoder import TorchDualStreamEncoder
+
+            return TorchDualStreamEncoder(self)
+        else:
+            raise NotImplementedError(
+                f"DualStreamEncoder is not implemented for framework {framework}"
+            )
