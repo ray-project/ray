@@ -9,6 +9,7 @@ from ray import train, tune
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
 from ray.train._internal.session import get_session
+from ray.train.base_trainer import format_datasets_for_repr
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
@@ -177,6 +178,17 @@ def test_large_params(ray_start_4_cpus):
 
     trainer = DummyTrainer(training_loop)
     trainer.fit()
+
+
+def test_format_datasets_for_repr(ray_start_4_cpus):
+    datasets = {"train": ray.data.range(1), "test": ray.data.range(1)}
+
+    actual_repr = format_datasets_for_repr(datasets)
+
+    assert actual_repr == (
+        "{'train': Dataset(num_rows=1, schema={id: int64}), "
+        "'test': Dataset(num_rows=1, schema={id: int64})}"
+    )
 
 
 if __name__ == "__main__":

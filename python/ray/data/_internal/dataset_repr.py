@@ -39,14 +39,12 @@ def _build_dataset_ascii_repr(
             head_data, tail_data, _ = _collect_materialized_rows_for_repr(
                 dataset, num_rows
             )
-            head_rows = _format_rows_for_repr(head_data, columns)
-            tail_rows = _format_rows_for_repr(tail_data, columns)
         except RayError:
             head_rows = []
             tail_rows = []
-        except Exception:
-            head_rows = []
-            tail_rows = []
+
+        head_rows = _format_rows_for_repr(head_data, columns)
+        tail_rows = _format_rows_for_repr(tail_data, columns)
 
     return _build_dataset_ascii_repr_from_rows(
         schema=schema,
