@@ -353,6 +353,27 @@ WebDataset
 
    read_webdataset
 
+Partitioning API
+^^^^^^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   datasource.Partitioning
+   datasource.PartitionStyle
+   datasource.PathPartitionFilter
+   datasource.PathPartitionParser
+
+Shuffling API
+^^^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig
+
 Developer APIs
 --------------
 
@@ -407,25 +428,3 @@ Pandas refs
    :toctree: doc/
 
    from_pandas_refs
-
-Partitioning API
-^^^^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.Partitioning
-   datasource.PartitionStyle
-   datasource.PathPartitionFilter
-   datasource.PathPartitionParser
-
-Shuffling API
-^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   FileShuffleConfig
-
