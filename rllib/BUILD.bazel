@@ -4659,6 +4659,27 @@ py_test(
 
 #@OldAPIStack
 py_test(
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_attention_torch",
+    size = "medium",
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_attention.py"],
+    args = [
+        "--stop-iters=1",
+        "--framework=torch",
+        "--prev-n-actions=2",
+        "--use-onnx-for-inference",
+        "--num-episodes-during-inference=2",
+    ],
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_attention.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+#@OldAPIStack
+py_test(
     name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
     srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
