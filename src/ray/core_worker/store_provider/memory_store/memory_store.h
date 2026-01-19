@@ -134,12 +134,7 @@ class CoreWorkerMemoryStore {
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
-  template <typename Container>
-  void Delete(const Container &object_ids) {
-    absl::flat_hash_set<ObjectID> plasma_ids_to_delete;
-    Delete(absl::flat_hash_set<ObjectID>(object_ids.begin(), object_ids.end()),
-           &plasma_ids_to_delete);
-  }
+  void Delete(const absl::InlinedVector<ObjectID, 8> &object_ids);
 
   /// Check whether this store contains the object.
   ///

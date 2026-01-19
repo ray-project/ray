@@ -4272,7 +4272,7 @@ Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool loca
 
   // Store an error in the in-memory store to indicate that the plasma value is
   // no longer reachable.
-  memory_store_->Delete(object_ids);
+  memory_store_->Delete(ids);
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
     memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),

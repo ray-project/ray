@@ -458,6 +458,18 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
   }
 }
 
+void CoreWorkerMemoryStore::Delete(const absl::InlinedVector<ObjectID, 8> &object_ids) {
+  absl::MutexLock lock(&mu_);
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Delete an object from a memory store. ObjectId: " << object_id;
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      OnDelete(it->second);
+      EraseObjectAndUpdateStats(object_id);
+    }
+  }
+}
+
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
