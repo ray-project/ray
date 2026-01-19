@@ -144,6 +144,7 @@ def test_repartition_target_num_rows_per_block(
     # Each block is 8 ints
     ds = ray.data.range(total_rows, override_num_blocks=num_blocks).repartition(
         target_num_rows_per_block=target_num_rows_per_block,
+        strict=True,
     )
 
     num_blocks = 0
@@ -270,16 +271,16 @@ def test_streaming_repartition_write_with_operator_fusion(
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
     # mess up with the block size
-    ds = ds.repartition(target_num_rows_per_block=30)
+    ds = ds.repartition(target_num_rows_per_block=30, strict=True)
 
     # Verify fusion of StreamingRepartition and MapBatches operators
     b_s = target_num_rows * n_target_num_rows
     if streaming_repartition_first:
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
         ds = ds.map_batches(fn, batch_size=b_s)
     else:
         ds = ds.map_batches(fn, batch_size=b_s)
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -290,7 +291,7 @@ def test_streaming_repartition_write_with_operator_fusion(
     else:
         assert (
             physical_op.name
-            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]"
         )
 
     # Write output to local Parquet files partitioned by key
@@ -341,18 +342,18 @@ def test_streaming_repartition_fusion_output_shape(
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
     # mess up with the block size
-    ds = ds.repartition(target_num_rows_per_block=30)
+    ds = ds.repartition(target_num_rows_per_block=30, strict=True)
 
     # Verify fusion of StreamingRepartition and MapBatches operators
     ds = ds.map_batches(fn, batch_size=20)
-    ds = ds.repartition(target_num_rows_per_block=20)
+    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert (
         physical_op.name
-        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20,strict=True]"
     )
 
     for block in ds.iter_batches(batch_size=None):
@@ -382,6 +383,7 @@ def test_repartition_guarantee_row_num_to_be_exact(
         ds = ray.data.range(num_rows, override_num_blocks=override_num_blocks)
         ds = ds.repartition(
             target_num_rows_per_block=target_num_rows_per_block,
+            strict=True,
         )
         ds = ds.materialize()
 
@@ -431,7 +433,7 @@ def test_streaming_repartition_with_partial_last_block(
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20)
+    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
 
     ds = ds.materialize()
 
