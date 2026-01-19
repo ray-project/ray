@@ -69,7 +69,7 @@ steps:
 
   - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
     key: anyscalebuild
-    instance_type: release-medium
+    instance_type: large
     mount_buildkite_agent: true
     tags:
       - oss
@@ -87,11 +87,8 @@ steps:
         python:
           # This list should be kept in sync with the list of supported Python in
           # release test suite
-          - "3.10"
-          - "3.11"
           - "3.12"
         platform:
-          - cu12.3.2-cudnn9
           - cpu
 
   - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
