@@ -209,6 +209,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
+            self._data_context,
             execution_id=self._dataset_id,
         )
         self._actor_autoscaler = create_actor_autoscaler(

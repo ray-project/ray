@@ -13,7 +13,6 @@ from ray.data._internal.actor_autoscaler import (
     DefaultActorAutoscaler,
 )
 from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
-from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -339,14 +338,9 @@ def test_cluster_scaling():
         op2: op_state2,
     }
 
-    # Create execution options with no limits (default infinite)
-    options = ExecutionOptions()
-    resource_manager = MagicMock()
-    resource_manager._options = options
-
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=resource_manager,
+        resource_limits=ExecutionResources.inf(),
         execution_id="execution_id",
     )
 
@@ -377,14 +371,9 @@ def test_cluster_scaling_respects_cpu_limits():
         op1: op_state1,
     }
 
-    # Create execution options with CPU limit of 4
-    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=4))
-    resource_manager = MagicMock()
-    resource_manager._options = options
-
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=resource_manager,
+        resource_limits=ExecutionResources(cpu=4),
         execution_id="execution_id",
     )
 
@@ -415,14 +404,9 @@ def test_cluster_scaling_respects_gpu_limits():
         op1: op_state1,
     }
 
-    # Create execution options with GPU limit of 2
-    options = ExecutionOptions(resource_limits=ExecutionResources(gpu=2))
-    resource_manager = MagicMock()
-    resource_manager._options = options
-
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=resource_manager,
+        resource_limits=ExecutionResources(gpu=2),
         execution_id="execution_id",
     )
 
@@ -455,14 +439,9 @@ def test_cluster_scaling_no_limits():
         op1: op_state1,
     }
 
-    # Create execution options with no limits (default infinite)
-    options = ExecutionOptions()
-    resource_manager = MagicMock()
-    resource_manager._options = options
-
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=resource_manager,
+        resource_limits=ExecutionResources.inf(),
         execution_id="execution_id",
     )
 
@@ -479,14 +458,9 @@ def test_cluster_autoscaler_get_total_resources_respects_limits():
     """Test that get_total_resources respects user-configured limits."""
     topology = {}
 
-    # Create execution options with CPU limit of 4
-    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=4, gpu=1))
-    resource_manager = MagicMock()
-    resource_manager._options = options
-
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
-        resource_manager=resource_manager,
+        resource_limits=ExecutionResources(cpu=4, gpu=1),
         execution_id="execution_id",
     )
 

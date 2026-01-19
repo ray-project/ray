@@ -135,6 +135,7 @@ class TestClusterAutoscaling:
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -233,6 +234,7 @@ class TestClusterAutoscaling:
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -352,26 +354,18 @@ class TestClusterAutoscaling:
     )
     def test_try_scale_up_respects_cpu_limits(self, _send_resource_request):
         """Test that cluster autoscaling respects user-configured CPU limits."""
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionOptions,
-        )
-
         scale_up_threshold = 0.75
         scale_up_delta = 1
         # High utilization to trigger scaling
         utilization = ExecutionResources(cpu=0.9, gpu=0.5, object_store_memory=0.5)
-
-        # Create execution options with CPU limit of 8
-        options = ExecutionOptions(resource_limits=ExecutionResources(cpu=8))
-        resource_manager = MagicMock()
-        resource_manager._options = options
 
         # Each node has 4 CPUs, 2 nodes = 8 CPUs total
         # Requesting 3 nodes (2+1 delta) would be 12 CPUs, exceeding limit
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
 
         autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=resource_manager,
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources(cpu=8),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -395,26 +389,18 @@ class TestClusterAutoscaling:
     )
     def test_try_scale_up_respects_gpu_limits(self, _send_resource_request):
         """Test that cluster autoscaling respects user-configured GPU limits."""
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionOptions,
-        )
-
         scale_up_threshold = 0.75
         scale_up_delta = 1
         # High utilization to trigger scaling
         utilization = ExecutionResources(cpu=0.5, gpu=0.9, object_store_memory=0.5)
-
-        # Create execution options with GPU limit of 2
-        options = ExecutionOptions(resource_limits=ExecutionResources(gpu=2))
-        resource_manager = MagicMock()
-        resource_manager._options = options
 
         # Each node has 1 GPU, 2 nodes = 2 GPUs total
         # Requesting 3 nodes (2+1 delta) would be 3 GPUs, exceeding limit
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000)
 
         autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=resource_manager,
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources(gpu=2),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -438,24 +424,16 @@ class TestClusterAutoscaling:
     )
     def test_try_scale_up_no_limits(self, _send_resource_request):
         """Test that cluster autoscaling works normally when no limits are set."""
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionOptions,
-        )
-
         scale_up_threshold = 0.75
         scale_up_delta = 1
         # High utilization to trigger scaling
         utilization = ExecutionResources(cpu=0.9, gpu=0.5, object_store_memory=0.5)
 
-        # Create execution options with no limits (default infinite)
-        options = ExecutionOptions()
-        resource_manager = MagicMock()
-        resource_manager._options = options
-
         resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
 
         autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=resource_manager,
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -477,19 +455,11 @@ class TestClusterAutoscaling:
 
     def test_get_total_resources_respects_limits(self):
         """Test that get_total_resources respects user-configured limits."""
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionOptions,
-        )
-
-        # Create execution options with CPU limit of 4 and GPU limit of 1
-        options = ExecutionOptions(resource_limits=ExecutionResources(cpu=4, gpu=1))
-        resource_manager = MagicMock()
-        resource_manager._options = options
-
         fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=resource_manager,
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources(cpu=4, gpu=1),
             execution_id="test_execution_id",
             resource_utilization_calculator=StubUtilizationGauge(
                 ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.5)

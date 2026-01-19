@@ -120,6 +120,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def __init__(
         self,
         resource_manager: "ResourceManager",
+        resource_limits: ExecutionResources,
         execution_id: str,
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
@@ -138,7 +139,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
 
-        self._resource_manager = resource_manager
+        self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -163,10 +164,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
 
-    def _get_resource_limits(self) -> ExecutionResources:
-        """Get user-configured resource limits from execution options."""
-        return self._resource_manager._options.resource_limits
-
     def _cap_resource_request_to_limits(
         self, resource_request: List[Dict]
     ) -> List[Dict]:
@@ -182,7 +179,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         Returns:
             A filtered list of resource bundles that respects user limits.
         """
-        limits = self._get_resource_limits()
+        limits = self._resource_limits
 
         # If no explicit limits are set (all infinite), return the original request
         if limits.cpu == float("inf") and limits.gpu == float("inf"):
@@ -320,5 +317,5 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))
         # Respect user-configured resource limits
-        user_limits = self._get_resource_limits()
+        user_limits = self._resource_limits
         return total.min(user_limits)

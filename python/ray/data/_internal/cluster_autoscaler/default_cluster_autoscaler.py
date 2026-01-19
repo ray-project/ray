@@ -11,7 +11,6 @@ from ray.data._internal.execution.autoscaling_requester import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -26,20 +25,16 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
     def __init__(
         self,
         topology: "Topology",
-        resource_manager: "ResourceManager",
+        resource_limits: ExecutionResources,
         *,
         execution_id: str,
     ):
         self._topology = topology
-        self._resource_manager = resource_manager
+        self._resource_limits = resource_limits
         self._execution_id = execution_id
 
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
-
-    def _get_resource_limits(self) -> ExecutionResources:
-        """Get user-configured resource limits from execution options."""
-        return self._resource_manager._options.resource_limits
 
     def _cap_resource_request_to_limits(
         self, resource_request: List[Dict]
@@ -56,7 +51,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         Returns:
             A filtered list of resource bundles that respects user limits.
         """
-        limits = self._get_resource_limits()
+        limits = self._resource_limits
 
         # If no explicit limits are set (all infinite), return the original request
         if limits.cpu == float("inf") and limits.gpu == float("inf"):
@@ -181,5 +176,5 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             ray.cluster_resources()
         )
         # Respect user-configured resource limits
-        user_limits = self._get_resource_limits()
+        user_limits = self._resource_limits
         return cluster_resources.min(user_limits)
