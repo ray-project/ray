@@ -334,9 +334,10 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
     @override(Model)
     def _forward(self, inputs, **kwargs):
         # Run the inputs through the base encoders.
+        keys = sorted(self.config.base_encoder_configs.keys())
         outs = [
             self.nets[k]({Columns.OBS: inputs[k]})[ENCODER_OUT]
-            for k in self.config.base_encoder_configs.keys()
+            for k in keys
         ]
         # Concatenate the embeddings.
         embeds = torch.cat(outs, dim=-1)
