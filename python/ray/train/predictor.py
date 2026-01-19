@@ -37,7 +37,6 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@PublicAPI(stability="beta")
 @Deprecated
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
