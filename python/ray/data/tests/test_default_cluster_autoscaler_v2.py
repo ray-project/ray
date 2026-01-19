@@ -370,7 +370,12 @@ class TestClusterAutoscaling:
         ],
     )
     def test_try_scale_up_respects_resource_limits(
-        self, resource_limits, node_spec, existing_nodes, scale_up_increment, expected_nodes
+        self,
+        resource_limits,
+        node_spec,
+        existing_nodes,
+        scale_up_increment,
+        expected_nodes,
     ):
         """Test that cluster autoscaling respects user-configured resource limits."""
         scale_up_threshold = 0.75

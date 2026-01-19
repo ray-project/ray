@@ -26,7 +26,6 @@ logger = getLogger(__name__)
 
 @dataclass(frozen=True)
 class _NodeResourceSpec:
-
     cpu: int
     gpu: int
     mem: int

@@ -568,7 +568,6 @@ def test_autoscaling_config_validation_warnings(
     ray_start_10_cpus_shared, restore_data_context
 ):
     """Test that validation warnings are emitted when actor pool config won't allow scaling up."""
-    from unittest.mock import patch
 
     class SimpleMapper:
         """Simple callable class for testing autoscaling validation."""

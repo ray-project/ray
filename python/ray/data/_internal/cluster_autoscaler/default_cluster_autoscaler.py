@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class DefaultClusterAutoscaler(ClusterAutoscaler):
-
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
 
