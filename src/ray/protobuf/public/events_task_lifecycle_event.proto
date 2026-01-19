@@ -39,13 +39,13 @@ message TaskLifecycleEvent {
     // stderr log file absolute path.
     optional string stderr_file = 2;
     // Start offset of stdout when task starts.
-    optional int32 stdout_start = 3;
+    optional int64 stdout_start = 3;
     // End offset of stdout when task finishes.
-    optional int32 stdout_end = 4;
+    optional int64 stdout_end = 4;
     // Start offset of stderr when task starts.
-    optional int32 stderr_start = 5;
+    optional int64 stderr_start = 5;
     // End offset of stderr when task finishes.
-    optional int32 stderr_end = 6;
+    optional int64 stderr_end = 6;
   }
 
   repeated StateTransition state_transitions = 3;
