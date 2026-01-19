@@ -7,6 +7,11 @@ from ray.data._internal.logical.interfaces import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+__all__ = [
+    "ConfigureMapTaskMemoryRule",
+    "ConfigureMapTaskMemoryUsingOutputSize",
+]
+
 
 class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
