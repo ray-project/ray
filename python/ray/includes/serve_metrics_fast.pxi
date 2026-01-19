@@ -21,14 +21,12 @@ cdef struct ServeMetricsHeapNode:
     double timestamp
     int replica_idx
     double value
-    int series_idx  # Current position in the series
+    int position_in_series  # Current position within the replica's series
 
 
 cdef inline void serve_metrics_heap_sift_down(ServeMetricsHeapNode* heap, int size, int pos) noexcept nogil:
     """Sift down operation for min-heap (inline for performance)."""
-    cdef int smallest = pos
-    cdef int left = 2 * pos + 1
-    cdef int right = 2 * pos + 2
+    cdef int smallest, left, right
     cdef ServeMetricsHeapNode temp
 
     while True:
@@ -94,6 +92,10 @@ cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** v
     """
     Fully nogil k-way merge operating on C arrays.
 
+    Assumptions:
+        - Each input series is sorted by timestamp in ascending order
+        - Values represent instantaneous gauge measurements (non-negative)
+
     Args:
         timestamps_arrays: Array of pointers to timestamp arrays for each series
         values_arrays: Array of pointers to value arrays for each series
@@ -106,7 +108,7 @@ cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** v
     Returns: Number of points in merged result, or -1 on error
     """
     cdef:
-        int i, series_idx, replica_idx
+        int i, pos_in_series, replica_idx
         int heap_size = 0
         double timestamp, value, old_value
         double running_total = 0.0
@@ -144,7 +146,7 @@ cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** v
             merge_heap[heap_size].timestamp = timestamps_arrays[i][0]
             merge_heap[heap_size].replica_idx = i
             merge_heap[heap_size].value = values_arrays[i][0]
-            merge_heap[heap_size].series_idx = 0
+            merge_heap[heap_size].position_in_series = 0
             heap_size += 1
 
     # Build initial heap
@@ -157,7 +159,7 @@ cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** v
         timestamp = merge_heap[0].timestamp
         replica_idx = merge_heap[0].replica_idx
         value = merge_heap[0].value
-        series_idx = merge_heap[0].series_idx
+        pos_in_series = merge_heap[0].position_in_series
 
         # Update running total
         old_value = current_values[replica_idx]
@@ -168,12 +170,12 @@ cdef int serve_metrics_merge_series_nogil(double** timestamps_arrays, double** v
         serve_metrics_heap_pop(merge_heap, &heap_size)
 
         # Push next element from same series if available
-        series_positions[replica_idx] = series_idx + 1
+        series_positions[replica_idx] = pos_in_series + 1
         if series_positions[replica_idx] < series_lengths[replica_idx]:
             new_node.timestamp = timestamps_arrays[replica_idx][series_positions[replica_idx]]
             new_node.replica_idx = replica_idx
             new_node.value = values_arrays[replica_idx][series_positions[replica_idx]]
-            new_node.series_idx = series_positions[replica_idx]
+            new_node.position_in_series = series_positions[replica_idx]
 
             serve_metrics_heap_push(merge_heap, &heap_size, new_node)
 
@@ -210,6 +212,10 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
 
     This is a drop-in replacement for the Python version with 5-10x speedup.
 
+    Assumptions:
+        - Each input timeseries is sorted by timestamp in ascending order
+        - Values represent instantaneous gauge measurements
+
     Args:
         replicas_timeseries: List of timeseries. Each timeseries is a list of
             objects with .timestamp and .value attributes.
@@ -224,8 +230,8 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
         return []
 
     if len(active_series) == 1:
-        # Performance optimization: return single series directly
-        return active_series[0]
+        # Convert to tuples for consistent return type
+        return [(point.timestamp, point.value) for point in active_series[0]]
 
     cdef:
         int num_series = len(active_series)
@@ -288,6 +294,7 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
                                                &result_timestamps, &result_values)
 
         if result_count < 0:
+            # Note: serve_metrics_merge_series_nogil frees all memory on error
             raise MemoryError("Failed during merge operation")
 
         # Convert C arrays back to Python tuples
@@ -330,7 +337,7 @@ cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps
         double total_duration = 0.0
         double current_value = 0.0
         double current_time
-        double timestamp, value, segment_end, duration
+        double timestamp, value, duration
 
     if window_end <= window_start:
         return -1.0
@@ -358,15 +365,15 @@ cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps
             break
 
         # Add contribution of current segment
-        segment_end = timestamp if timestamp < window_end else window_end
-        duration = segment_end - current_time
+        # Note: timestamp < window_end is guaranteed here due to the break above
+        duration = timestamp - current_time
 
         if duration > 0:
             total_weighted_value += current_value * duration
             total_duration += duration
 
         current_value = value
-        current_time = segment_end
+        current_time = timestamp
 
     # Add final segment
     if current_time < window_end:
@@ -385,14 +392,18 @@ def time_weighted_average_cython(list timeseries, double window_start=-1.0,
     """
     Cython-optimized time-weighted average calculation.
 
+    Assumptions:
+        - Input timeseries is sorted by timestamp in ascending order
+        - Values are treated as a step function (LOCF - Last Observation Carried Forward)
+
     Args:
-        timeseries: List of TimeStampedValue objects
+        timeseries: List of objects with .timestamp and .value attributes
         window_start: Start of window (-1.0 means use first timestamp)
         window_end: End of window (-1.0 means use last timestamp + last_window_s)
         last_window_s: Window size for last segment
 
     Returns:
-        Time-weighted average or None
+        Time-weighted average or None (returned as None when result would be invalid)
     """
     if not timeseries:
         return None
