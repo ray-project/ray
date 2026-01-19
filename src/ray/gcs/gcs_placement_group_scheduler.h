@@ -228,6 +228,12 @@ class LeaseStatusTracker {
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
 
+  /// Mark that all prepare requests have returned. Records timestamp for gap calculation.
+  void MarkAllPrepareRequestsReturned();
+
+  /// Get the timestamp when all prepare requests returned.
+  absl::Time GetPrepareCompletedTime() const { return prepare_completed_time_; }
+
  private:
   /// Method to update leasing states.
   ///
@@ -274,6 +280,9 @@ class LeaseStatusTracker {
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
+
+  /// Timestamp when all prepare requests have returned.
+  absl::Time prepare_completed_time_ = absl::InfinitePast();
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered

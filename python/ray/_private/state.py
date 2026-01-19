@@ -382,6 +382,19 @@ class GlobalState:
                     stats.max_raylet_prepare_time_us / 1000.0
                 ),
                 "max_raylet_commit_time_ms": (stats.max_raylet_commit_time_us / 1000.0),
+                # Max Raylet queue time (in milliseconds)
+                "max_raylet_prepare_queue_time_ms": (
+                    stats.max_raylet_prepare_queue_time_us / 1000.0
+                ),
+                "max_raylet_commit_queue_time_ms": (
+                    stats.max_raylet_commit_queue_time_us / 1000.0
+                ),
+                # Gap between Prepare completion and Commit start (GCS processing + storage)
+                "prepare_to_commit_gap_ms": (stats.prepare_to_commit_gap_us / 1000.0),
+                # Number of nodes involved in this PG
+                "num_nodes": stats.num_nodes,
+                # Number of Prepare failures (resource conflicts)
+                "prepare_failure_count": stats.prepare_failure_count,
             },
         }
 

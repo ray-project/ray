@@ -259,6 +259,8 @@ void RayletClient::PrepareBundleResources(
     message_bundle->CopyFrom(bundle_spec->GetMessage());
   }
   RAY_CHECK(nodes.size() == 1);
+  // [TIMING] Set send timestamp for queue time measurement
+  request.set_send_time_ns(absl::ToUnixNanos(absl::Now()));
   INVOKE_RPC_CALL(NodeManagerService,
                   PrepareBundleResources,
                   request,
@@ -278,6 +280,8 @@ void RayletClient::CommitBundleResources(
     message_bundle->CopyFrom(bundle_spec->GetMessage());
   }
   RAY_CHECK(nodes.size() == 1);
+  // [TIMING] Set send timestamp for queue time measurement
+  request.set_send_time_ns(absl::ToUnixNanos(absl::Now()));
   INVOKE_RPC_CALL(NodeManagerService,
                   CommitBundleResources,
                   request,

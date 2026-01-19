@@ -247,10 +247,17 @@ void GcsPlacementGroupScheduler::PrepareResources(
           RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
                          << " for bundles: " << GetDebugStringForBundles(bundles);
         }
-        // Track max Raylet processing time
+        // Track max Raylet processing time and queue time
         auto *stats = lease_status_tracker->GetPlacementGroup()->GetMutableStats();
         if (reply.processing_time_us() > stats->max_raylet_prepare_time_us()) {
           stats->set_max_raylet_prepare_time_us(reply.processing_time_us());
+        }
+        if (reply.queue_time_us() > stats->max_raylet_prepare_queue_time_us()) {
+          stats->set_max_raylet_prepare_queue_time_us(reply.queue_time_us());
+        }
+        // Track prepare failures
+        if (!result.ok()) {
+          stats->set_prepare_failure_count(stats->prepare_failure_count() + 1);
         }
         callback(result);
       });
@@ -278,10 +285,13 @@ void GcsPlacementGroupScheduler::CommitResources(
           RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
                          << " for bundles: " << GetDebugStringForBundles(bundles);
         }
-        // Track max Raylet processing time for Commit
+        // Track max Raylet processing time and queue time for Commit
         auto *stats = lease_status_tracker->GetPlacementGroup()->GetMutableStats();
         if (reply.processing_time_us() > stats->max_raylet_commit_time_us()) {
           stats->set_max_raylet_commit_time_us(reply.processing_time_us());
+        }
+        if (reply.queue_time_us() > stats->max_raylet_commit_queue_time_us()) {
+          stats->set_max_raylet_commit_queue_time_us(reply.queue_time_us());
         }
         RAY_CHECK(callback);
         callback(status);
@@ -379,8 +389,17 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   }
   lease_status_tracker->MarkCommitPhaseStarted();
 
-  // [TIMING] Record start time for Commit RPC phase
+  // [TIMING] Record start time for Commit RPC phase and calculate gap from Prepare
+  // completion
   auto commit_rpc_start_time = absl::Now();
+  auto prepare_completed_time = lease_status_tracker->GetPrepareCompletedTime();
+  if (prepare_completed_time != absl::InfinitePast()) {
+    auto gap_us =
+        absl::ToInt64Microseconds(commit_rpc_start_time - prepare_completed_time);
+    lease_status_tracker->GetPlacementGroup()
+        ->GetMutableStats()
+        ->set_prepare_to_commit_gap_us(gap_us);
+  }
 
   for (const auto &node_to_bundles : bundle_locations_per_node) {
     const auto &node_id = node_to_bundles.first;
@@ -438,10 +457,21 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   RAY_CHECK(lease_status_tracker->AllPrepareRequestsReturned())
       << "This method can be called only after all bundle scheduling requests are "
          "returned.";
+
+  // [TIMING] Record when all prepare requests have returned
+  lease_status_tracker->MarkAllPrepareRequestsReturned();
+
   const auto &placement_group = lease_status_tracker->GetPlacementGroup();
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+
+  // [TIMING] Record number of nodes involved
+  absl::flat_hash_set<NodeID> unique_nodes;
+  for (const auto &bundle_location : *prepared_bundle_locations) {
+    unique_nodes.insert(bundle_location.second.first);
+  }
+  placement_group->GetMutableStats()->set_num_nodes(unique_nodes.size());
 
   if (!lease_status_tracker->AllPrepareRequestsSuccessful()) {
     // Erase the status tracker from a in-memory map if exists.
@@ -1038,6 +1068,10 @@ bool LeaseStatusTracker::UpdateLeasingState(LeasingState leasing_state) {
 
 void LeaseStatusTracker::MarkCommitPhaseStarted() {
   UpdateLeasingState(LeasingState::COMMITTING);
+}
+
+void LeaseStatusTracker::MarkAllPrepareRequestsReturned() {
+  prepare_completed_time_ = absl::Now();
 }
 
 }  // namespace gcs

@@ -1917,6 +1917,16 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto start_time = absl::Now();
+
+  // [TIMING] Calculate queue time if send_time_ns is provided
+  // This measures network delay + Raylet io_service queue time
+  if (request.send_time_ns() > 0) {
+    auto send_time = absl::FromUnixNanos(request.send_time_ns());
+    auto queue_time_us = absl::ToInt64Microseconds(start_time - send_time);
+    // Clamp to 0 if negative (clock skew)
+    reply->set_queue_time_us(std::max(queue_time_us, int64_t{0}));
+  }
+
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   bundle_specs.reserve(request.bundle_specs_size());
   for (auto &bundle_spec : *request.mutable_bundle_specs()) {
@@ -1941,6 +1951,14 @@ void NodeManager::HandleCommitBundleResources(
     rpc::CommitBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto start_time = absl::Now();
+
+  // [TIMING] Calculate queue time if send_time_ns is provided
+  if (request.send_time_ns() > 0) {
+    auto send_time = absl::FromUnixNanos(request.send_time_ns());
+    auto queue_time_us = absl::ToInt64Microseconds(start_time - send_time);
+    reply->set_queue_time_us(std::max(queue_time_us, int64_t{0}));
+  }
+
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   for (auto &bundle_spec : *request.mutable_bundle_specs()) {
     bundle_specs.push_back(

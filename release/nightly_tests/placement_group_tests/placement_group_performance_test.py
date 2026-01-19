@@ -52,6 +52,13 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     # Raylet processing times (actual work, excluding queue wait)
     raylet_prepare_times = []
     raylet_commit_times = []
+    # Raylet queue times (network + Raylet io_service queue)
+    raylet_prepare_queue_times = []
+    raylet_commit_queue_times = []
+    # GCS timing
+    prepare_to_commit_gaps = []
+    num_nodes_list = []
+    prepare_failure_counts = []
 
     for entry in ray.util.placement_group_table().values():
         latency = entry["stats"]["scheduling_latency_ms"]
@@ -68,6 +75,17 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         # Raylet processing times
         raylet_prepare_times.append(entry["stats"]["max_raylet_prepare_time_ms"])
         raylet_commit_times.append(entry["stats"]["max_raylet_commit_time_ms"])
+        # Raylet queue times
+        raylet_prepare_queue_times.append(
+            entry["stats"]["max_raylet_prepare_queue_time_ms"]
+        )
+        raylet_commit_queue_times.append(
+            entry["stats"]["max_raylet_commit_queue_time_ms"]
+        )
+        # GCS timing
+        prepare_to_commit_gaps.append(entry["stats"]["prepare_to_commit_gap_ms"])
+        num_nodes_list.append(entry["stats"]["num_nodes"])
+        prepare_failure_counts.append(entry["stats"]["prepare_failure_count"])
 
     latencies = sorted(latencies)
     e2e_latencies = sorted(e2e_latencies)
@@ -78,6 +96,9 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     commit_rpc_times = sorted(commit_rpc_times)
     raylet_prepare_times = sorted(raylet_prepare_times)
     raylet_commit_times = sorted(raylet_commit_times)
+    raylet_prepare_queue_times = sorted(raylet_prepare_queue_times)
+    raylet_commit_queue_times = sorted(raylet_commit_queue_times)
+    prepare_to_commit_gaps = sorted(prepare_to_commit_gaps)
 
     # Pure scheduling latency without queuing time.
     print("P50 scheduling latency ms: " f"{latencies[int(len(latencies) * 0.5)]}")
@@ -152,28 +173,63 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         f"P95={raylet_commit_times[int(len(raylet_commit_times) * 0.95)]:.3f}, "
         f"P99={raylet_commit_times[int(len(raylet_commit_times) * 0.99)]:.3f}"
     )
-    # Calculate queue wait time = RPC time - Raylet processing time
-    prepare_queue_times = [
-        rpc - raylet for rpc, raylet in zip(prepare_rpc_times, raylet_prepare_times)
-    ]
-    commit_queue_times = [
-        rpc - raylet for rpc, raylet in zip(commit_rpc_times, raylet_commit_times)
-    ]
-    prepare_queue_times = sorted(prepare_queue_times)
-    commit_queue_times = sorted(commit_queue_times)
-    print("--- Queue/Network Wait Time (RPC - Raylet processing, in ms) ---")
+    # Raylet queue time (network + Raylet io_service queue, measured by Raylet)
+    print("--- Raylet Queue Time (network + Raylet io_service queue, in ms) ---")
     print(
-        f"Prepare Queue: "
-        f"P50={prepare_queue_times[int(len(prepare_queue_times) * 0.5)]:.3f}, "
-        f"P95={prepare_queue_times[int(len(prepare_queue_times) * 0.95)]:.3f}, "
-        f"P99={prepare_queue_times[int(len(prepare_queue_times) * 0.99)]:.3f}"
+        f"Raylet Prepare Queue: "
+        f"P50={raylet_prepare_queue_times[int(len(raylet_prepare_queue_times) * 0.5)]:.3f}, "
+        f"P95={raylet_prepare_queue_times[int(len(raylet_prepare_queue_times) * 0.95)]:.3f}, "
+        f"P99={raylet_prepare_queue_times[int(len(raylet_prepare_queue_times) * 0.99)]:.3f}"
     )
     print(
-        f"Commit Queue: "
-        f"P50={commit_queue_times[int(len(commit_queue_times) * 0.5)]:.3f}, "
-        f"P95={commit_queue_times[int(len(commit_queue_times) * 0.95)]:.3f}, "
-        f"P99={commit_queue_times[int(len(commit_queue_times) * 0.99)]:.3f}"
+        f"Raylet Commit Queue: "
+        f"P50={raylet_commit_queue_times[int(len(raylet_commit_queue_times) * 0.5)]:.3f}, "
+        f"P95={raylet_commit_queue_times[int(len(raylet_commit_queue_times) * 0.95)]:.3f}, "
+        f"P99={raylet_commit_queue_times[int(len(raylet_commit_queue_times) * 0.99)]:.3f}"
     )
+    # GCS side timing: gap between Prepare completion and Commit start
+    print("--- GCS Timing (in ms) ---")
+    print(
+        f"Prepare->Commit Gap (storage Put + GCS processing): "
+        f"P50={prepare_to_commit_gaps[int(len(prepare_to_commit_gaps) * 0.5)]:.3f}, "
+        f"P95={prepare_to_commit_gaps[int(len(prepare_to_commit_gaps) * 0.95)]:.3f}, "
+        f"P99={prepare_to_commit_gaps[int(len(prepare_to_commit_gaps) * 0.99)]:.3f}"
+    )
+    # Derived GCS callback queue time = RPC time - Raylet processing - Raylet queue
+    # This is the time spent in GCS io_service queue waiting for callback to be processed
+    print(
+        "--- GCS Callback Queue Time (RPC - Raylet processing - Raylet queue, in ms) ---"
+    )
+    gcs_prepare_callback_times = [
+        rpc - raylet_proc - raylet_queue
+        for rpc, raylet_proc, raylet_queue in zip(
+            prepare_rpc_times, raylet_prepare_times, raylet_prepare_queue_times
+        )
+    ]
+    gcs_commit_callback_times = [
+        rpc - raylet_proc - raylet_queue
+        for rpc, raylet_proc, raylet_queue in zip(
+            commit_rpc_times, raylet_commit_times, raylet_commit_queue_times
+        )
+    ]
+    gcs_prepare_callback_times = sorted(gcs_prepare_callback_times)
+    gcs_commit_callback_times = sorted(gcs_commit_callback_times)
+    print(
+        f"GCS Prepare Callback: "
+        f"P50={gcs_prepare_callback_times[int(len(gcs_prepare_callback_times) * 0.5)]:.3f}, "
+        f"P95={gcs_prepare_callback_times[int(len(gcs_prepare_callback_times) * 0.95)]:.3f}, "
+        f"P99={gcs_prepare_callback_times[int(len(gcs_prepare_callback_times) * 0.99)]:.3f}"
+    )
+    print(
+        f"GCS Commit Callback: "
+        f"P50={gcs_commit_callback_times[int(len(gcs_commit_callback_times) * 0.5)]:.3f}, "
+        f"P95={gcs_commit_callback_times[int(len(gcs_commit_callback_times) * 0.95)]:.3f}, "
+        f"P99={gcs_commit_callback_times[int(len(gcs_commit_callback_times) * 0.99)]:.3f}"
+    )
+    # Summary stats
+    print("--- Summary Stats ---")
+    print(f"Avg nodes per PG: {sum(num_nodes_list) / len(num_nodes_list):.2f}")
+    print(f"Total prepare failures: {sum(prepare_failure_counts)}")
 
     return {
         "pg_creation_per_second": throughput[0][1],

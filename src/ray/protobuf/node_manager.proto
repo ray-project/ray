@@ -111,6 +111,8 @@ message PrestartWorkersReply {}
 message PrepareBundleResourcesRequest {
   // Bundles that containing the requested resources.
   repeated Bundle bundle_specs = 1;
+  // Timestamp when GCS sent this request (nanoseconds since epoch)
+  int64 send_time_ns = 2;
 }
 
 message PrepareBundleResourcesReply {
@@ -118,16 +120,22 @@ message PrepareBundleResourcesReply {
   bool success = 1;
   // Processing time in microseconds (from handler start to finish)
   int64 processing_time_us = 2;
+  // Time from request received to handler start (Raylet queue time) in microseconds
+  int64 queue_time_us = 3;
 }
 
 message CommitBundleResourcesRequest {
   // Bundles containing the requested resources.
   repeated Bundle bundle_specs = 1;
+  // Timestamp when GCS sent this request (nanoseconds since epoch)
+  int64 send_time_ns = 2;
 }
 
 message CommitBundleResourcesReply {
   // Processing time in microseconds (from handler start to finish)
   int64 processing_time_us = 1;
+  // Time from request received to handler start (Raylet queue time) in microseconds
+  int64 queue_time_us = 2;
 }
 
 message CancelResourceReserveRequest {

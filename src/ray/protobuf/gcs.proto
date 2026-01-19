@@ -645,6 +645,16 @@ message PlacementGroupStats {
   int64 max_raylet_prepare_time_us = 13;
   // Max Raylet processing time for Commit RPC (from all nodes)
   int64 max_raylet_commit_time_us = 14;
+  // Max Raylet queue time for Prepare RPC (from all nodes) - time from RPC received to handler start
+  int64 max_raylet_prepare_queue_time_us = 15;
+  // Max Raylet queue time for Commit RPC (from all nodes)
+  int64 max_raylet_commit_queue_time_us = 16;
+  // Time from Prepare RPCs completed to Commit RPCs started (GCS processing + storage Put)
+  int64 prepare_to_commit_gap_us = 17;
+  // Number of nodes involved in this PG
+  int32 num_nodes = 18;
+  // Number of Prepare failures (resource conflicts)
+  int32 prepare_failure_count = 19;
 }
 
 message PlacementGroupTableData {
