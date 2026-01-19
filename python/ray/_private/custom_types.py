@@ -120,7 +120,7 @@ ERROR_TYPE = [
     "OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND",
     "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
     "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
-    "POP_WORKER_RETRY_EXHAUSTED",
+    "WORKER_STARTUP_FAILED",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.

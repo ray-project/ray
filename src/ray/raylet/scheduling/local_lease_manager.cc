@@ -664,15 +664,15 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       auto max_retries = RayConfig::instance().pop_worker_max_retries();
       if (max_retries >= 0 && pop_worker_retries_[lease_id] > max_retries) {
         // In case of too many retries, we cancel this task
-        // directly and raise a `PopWorkerRetryExhaustedError` exception to user
+        // directly and raise a `RaySystemError` exception to user
         // eventually. The task will be removed from dispatch queue in
         // `CancelTask`.
         CancelLeases(
             [lease_id](const auto &w) {
               return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
             },
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_POP_WORKER_RETRY_EXHAUSTED,
-            absl::StrCat("Empty pop worker after retrying ",
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
+            absl::StrCat("Failed to startup worker after retrying ",
                          RayConfig::instance().pop_worker_max_retries(),
                          " times."));
       } else {

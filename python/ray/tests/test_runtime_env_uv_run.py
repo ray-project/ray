@@ -497,15 +497,15 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_pop_worker_retry_exhausted(shutdown_only, monkeypatch):
+def test_uv_run_worker_startup_failed(shutdown_only, monkeypatch):
     """Test that exception is raised when pop worker always fails
 
     This test uses an invalid py_executable command that will fail during worker startup,
     causing the worker registration to time out multiple times and eventually raise
-    PopWorkerRetryExhaustedError.
+    RaySystemError.
     """
     import ray
-    from ray.exceptions import PopWorkerRetryExhaustedError
+    from ray.exceptions import RaySystemError
 
     with monkeypatch.context() as m:
         # Set environment variables to speed up the test (only for this test context)
@@ -524,13 +524,13 @@ def test_uv_run_pop_worker_retry_exhausted(shutdown_only, monkeypatch):
         def failing_task():
             return "should not succeed"
 
-        # The task should raise PopWorkerRetryExhaustedError
-        with pytest.raises(PopWorkerRetryExhaustedError) as exc_info:
+        # The task should raise RaySystemError
+        with pytest.raises(RaySystemError) as exc_info:
             ray.get(failing_task.remote())
 
         # Assert that the exception was actually raised and contains expected message
-        assert exc_info.type is PopWorkerRetryExhaustedError
-        assert "Pop worker failed multiple times" in str(exc_info.value)
+        assert exc_info.type is RaySystemError
+        assert "Failed to startup worker" in str(exc_info.value)
 
 
 if __name__ == "__main__":

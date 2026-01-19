@@ -69,9 +69,9 @@ message RequestWorkerLeaseReply {
     SCHEDULING_CANCELLED_INTENDED = 4;
     // Scheduling is cancelled because the task/actor is no longer schedulable.
     SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
-    // Scheduling is cancelled because worker register repeatedly failed after max
+    // Scheduling is cancelled because worker startup repeatedly failed after max
     // retries.
-    SCHEDULING_CANCELLED_POP_WORKER_RETRY_EXHAUSTED = 6;
+    SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED = 6;
   }
 
   // Address of the leased worker. If this is empty, then the request should be

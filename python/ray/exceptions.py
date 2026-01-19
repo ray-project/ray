@@ -903,25 +903,6 @@ class RuntimeEnvSetupError(RayError):
 
 
 @PublicAPI
-class PopWorkerRetryExhaustedError(RayError):
-    """Raised when pop worker fails multiple times continuously.
-
-    Args:
-        error_message: The error message that explains
-            why pop worker failed.
-    """
-
-    def __init__(self, error_message: str = None):
-        self.error_message = error_message
-
-    def __str__(self):
-        msgs = ["Pop worker failed multiple times continuously."]
-        if self.error_message:
-            msgs.append(self.error_message)
-        return "\n".join(msgs)
-
-
-@PublicAPI
 class TaskPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
@@ -1108,7 +1089,6 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
-    PopWorkerRetryExhaustedError,
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
