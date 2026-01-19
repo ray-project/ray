@@ -2,7 +2,6 @@ import copy
 import time
 import uuid
 from collections import defaultdict
-from pprint import pprint
 from typing import (
     Any,
     Callable,
@@ -859,12 +858,10 @@ class MultiAgentEpisode:
                     )
 
                 # Concatenate the env- to agent-timestep mappings.
-                j = self.env_t
-                for i, val in enumerate(other.env_t_to_agent_t[agent_id][1:]):
-                    if val == self.SKIP_ENV_TS_TAG:
-                        self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
-                    else:
-                        self.env_t_to_agent_t[agent_id].append(i + 1 + j)
+                # Skip the first element (overlapping boundary) and append the rest.
+                # Values are agent timesteps, so append them directly.
+                for val in other.env_t_to_agent_t[agent_id][1:]:
+                    self.env_t_to_agent_t[agent_id].append(val)
 
             # Otherwise, the agent is only in `self` and not done. All data is stored
             # already -> skip
@@ -2181,9 +2178,13 @@ class MultiAgentEpisode:
             total_count = total_obs_count_per_agent[agent_id]
             new_chunk_obs = total_count - lookback_count
             if new_chunk_obs > 0:
-                current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count
+                current_agent_t[agent_id] = (
+                    self.agent_t_started[agent_id] - lookback_count
+                )
             else:
-                current_agent_t[agent_id] = self.agent_t_started[agent_id] - lookback_count + 1
+                current_agent_t[agent_id] = (
+                    self.agent_t_started[agent_id] - lookback_count + 1
+                )
 
         # Step through all observations and interpret these as the (global) env steps.
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
@@ -2331,13 +2332,6 @@ class MultiAgentEpisode:
             # and store it.
             self.agent_episodes[agent_id] = sa_episode
 
-        print("_init_single_agent_episode")
-        output = {
-            agent_id: f"get={buffer.get()}, lookback={buffer.lookback}, data={buffer.data}"
-            for agent_id, buffer in self.env_t_to_agent_t.items()
-        }
-        pprint(output)
-
     def _get(
         self,
         *,
@@ -2446,13 +2440,19 @@ class MultiAgentEpisode:
                 # the env_t_to_agent_t mappings.
                 _ignore_last_ts=what not in ["observations", "infos"],
             )
+            # Convert absolute agent_t to buffer position (including lookback offset).
+            # Formula: buffer_pos = agent_t - agent_t_started + lookback
+            sa_episode = self.agent_episodes[agent_id]
+            lookback = sa_episode.observations.lookback
             if isinstance(agent_t_indices, int):
                 if agent_t_indices != self.SKIP_ENV_TS_TAG:
-                    agent_t_indices = agent_t_indices - self.agent_t_started[agent_id]
+                    agent_t_indices = (
+                        agent_t_indices - self.agent_t_started[agent_id] + lookback
+                    )
             else:
                 assert isinstance(agent_t_indices, list)
                 agent_t_indices = [
-                    index - self.agent_t_started[agent_id]
+                    index - self.agent_t_started[agent_id] + lookback
                     if index != self.SKIP_ENV_TS_TAG
                     else index
                     for index in agent_t_indices
@@ -2529,10 +2529,13 @@ class MultiAgentEpisode:
                 hanging_val,
                 filter_for_skip_indices=agent_indices,
             )
+            # Convert absolute agent_t to buffer position (including lookback offset).
+            # Formula: buffer_pos = agent_t - agent_t_started + lookback
+            lookback = sa_episode.observations.lookback
             if isinstance(agent_indices, list):
                 agent_indices = [
-                    index - self.agent_t_started[agent_id]
-                    if agent_indices != self.SKIP_ENV_TS_TAG
+                    index - self.agent_t_started[agent_id] + lookback
+                    if index != self.SKIP_ENV_TS_TAG
                     else index
                     for index in agent_indices
                 ]
@@ -2550,7 +2553,9 @@ class MultiAgentEpisode:
                     ret[agent_id] = agent_values
             else:
                 if agent_indices != self.SKIP_ENV_TS_TAG:
-                    agent_indices = agent_indices - self.agent_t_started[agent_id]
+                    agent_indices = (
+                        agent_indices - self.agent_t_started[agent_id] + lookback
+                    )
 
                 agent_values = self._get_single_agent_data_by_index(
                     what=what,

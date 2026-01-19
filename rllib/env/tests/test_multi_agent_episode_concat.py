@@ -1,4 +1,3 @@
-from pprint import pprint
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import gymnasium as gym
@@ -15,7 +14,7 @@ from ray.rllib.utils.typing import MultiAgentDict
 from ray.tune import register_env
 
 
-class SequentialMultiAgentEnv(MultiAgentEnv):
+class MultiAgentCountingEnv(MultiAgentEnv):
     def __init__(
         self, agent_fns: dict[str, Callable[[int], bool]], max_episode_length: int = 100
     ):
@@ -151,21 +150,22 @@ class ObservationIncrementValidator(ConnectorV2):
 AGENT_FNS = {
     "p_true": lambda x: True,
     "p_mod_2": lambda x: x % 2 == 0,
-    "p_mod_5": lambda x: x % 5 == 0,
-    "p_within": lambda x: x in [2, 10, 15],
+    "p_mod_3+": lambda x: x % 3 == 0 and x > 0,
+    "p_in": lambda x: x in [2, 12, 18, 20],
 }
 MAX_EPISODE_LENGTH = 20
 
-# Env Time: 0  1  2  3  4  5  6  7  8 | 9 10 11 12 13 14 15 16 17 18 | 19 20
-#  Agents  ---------------------------|------------------------------|------
-# p_true  : 0  1  2  3  4  5  6  7  8 | 9 10 11 12 13 14 15 16 17 18 | 19 20
-# p_mod_2 : 0  -  1  -  2  -  3  -  4 | -  5  -  6  -  7  -  8  -  9 |  - 10
-# p_mod_5 : 0  -  -  -  -  1  -  -  - | -  2  -  -  -  -  3  -  -  - |  -  4
-# p_within: -  -  0  -  -  -  -  -  - | -  1  -  -  -  -  2  -  -  - |  -  -
+# Sample 8 timesteps
+# Env Time: 0 1 2 3 4 5 6 7 8 | 9 10 11 12 13 14 15 16 | 17 18 19 20 | 0 1 2 3
+#  Agents  -------------------|------------------------|-------------|--------
+# p_true  : 0 1 2 3 4 5 6 7 8 | 9 10 11 12 13 14 15 16 | 17 18 19 20 | 0 1 2 3
+# p_mod_2 : 0 - 1 - 2 - 3 - 4 | -  5  -  6  -  7  -  8 |  -  9  - 10 | 0 - 1 -
+# p_mod_5+: - - - 0 - - 1 - - | 2  -  -  3  -  -  4  - |  -  5  -  - | - - - 0
+# p_in    : - - 0 - - - - - - | -  -  -  1  -  -  -  - |  -  2  -  3 | - - 0 -
 
 
 def create_env(config):
-    return SequentialMultiAgentEnv(AGENT_FNS, max_episode_length=MAX_EPISODE_LENGTH)
+    return MultiAgentCountingEnv(AGENT_FNS, max_episode_length=MAX_EPISODE_LENGTH)
 
 
 register_env("env", create_env)
@@ -188,30 +188,24 @@ CONFIG = (
 )
 
 
-def test_multi_agent_episode_concat():
+def test_multi_agent_episode_concat(num_timesteps=8):
     env_runner = MultiAgentEnvRunner(CONFIG)
 
     episodes = []
-
-    print("SAMPLE")
-    new_episodes = env_runner.sample(num_timesteps=8, random_actions=False)
-    for ep in new_episodes:
-        print("sampled eps env_t_to_agent_t")
-        output = {
-            agent_id: agent_t.get() for agent_id, agent_t in ep.env_t_to_agent_t.items()
-        }
-        pprint(output)
-    episodes += new_episodes
-
-    for repeat in range(2):
+    for repeat in range(10):
         print("SAMPLE")
-        new_episodes = env_runner.sample(num_timesteps=8, random_actions=False)
+        new_episodes = env_runner.sample(
+            num_timesteps=num_timesteps, random_actions=False
+        )
         episodes += new_episodes
 
         # ADD TESTING FOR INDIVIDUAL EPS CHUNK THAT THE DATA IS CORRECT
         for ep in new_episodes:
             print(
-                f"{ep.id_}: {ep.env_t_started=}, {ep.env_t=}, {ep._len_lookback_buffers=}, {ep.agent_t_started=}"
+                f"{ep.id_}\n"
+                f"\t{ep.env_t_started=}, {ep.env_t=}\n"
+                f"\t{ep._len_lookback_buffers=}\n"
+                f"\t{ep.agent_t_started=}"
             )
             for agent_id, sa_episode in ep.agent_episodes.items():
                 obs = sa_episode.get_observations()
@@ -219,15 +213,17 @@ def test_multi_agent_episode_concat():
                 rewards = sa_episode.get_rewards()
                 infos = sa_episode.get_infos()
 
-                print(f"\n\t{agent_id=}")
-                print(f"\t\t{sa_episode.t_started=}, {sa_episode.t=}")
+                # print(f"\n\t{agent_id=}")
+                # print(f"\t\t{sa_episode.t_started=}, {sa_episode.t=}")
                 # print(f'\t\t{obs=}')
                 # print(f'\t\t{actions=}')
                 # print(f'\t\t{rewards=}')
                 # print(f'\t\t{infos=}')
 
                 # Check that the obs, actions and rewards are the expected values
-                assert list(obs) == list(range(sa_episode.t_started, sa_episode.t + 1))
+                assert list(obs) == list(
+                    range(sa_episode.t_started, sa_episode.t + 1)
+                ), f"{obs=}, expected-obs={list(range(sa_episode.t_started, sa_episode.t + 1))}, {sa_episode.observations=}"
                 assert list(actions) == list(range(sa_episode.t_started, sa_episode.t))
                 assert list(rewards) == [1] * (sa_episode.t - sa_episode.t_started)
 
@@ -235,15 +231,19 @@ def test_multi_agent_episode_concat():
                 assert len(list(infos)) == len(list(obs))
 
                 env_t_to_agent_t = ep.env_t_to_agent_t[agent_id].get()
-                print(
-                    f"\t\t{env_t_to_agent_t=}, lookback={ep.env_t_to_agent_t[agent_id].lookback}"
-                )
-                if not (len(env_t_to_agent_t) == ep.env_t + 1 - ep.env_t_started):
-                    print(
-                        f"AssertationError for length of env_t_to_agent_t: {len(env_t_to_agent_t)} != {ep.env_t + 1 - ep.env_t_started}"
-                    )
+                # print(
+                #     f"\t\t{env_t_to_agent_t=}, lookback={ep.env_t_to_agent_t[agent_id].lookback}"
+                # )
+                assert (
+                    len(env_t_to_agent_t) == ep.env_t + 1 - ep.env_t_started
+                ), f"AssertationError for length of env_t_to_agent_t: {len(env_t_to_agent_t)} ({env_t_to_agent_t}) != {ep.env_t + 1 - ep.env_t_started}"
 
-                agent_t = sa_episode.t_started
+                # Calculate the agent_t for the first observation in this chunk
+                # by counting how many times the agent was active before env_t_started
+                agent_t_at_chunk_start = sum(
+                    1 for t in range(ep.env_t_started) if AGENT_FNS[agent_id](t)
+                )
+                agent_t = agent_t_at_chunk_start
                 expected_env_t_to_agent_t = []
                 for env_t in range(ep.env_t_started, ep.env_t + 1):
                     if AGENT_FNS[agent_id](env_t):
@@ -254,25 +254,46 @@ def test_multi_agent_episode_concat():
                             MultiAgentEpisode.SKIP_ENV_TS_TAG
                         )
                 # print(f'\t\t{expected_env_t_to_agent_t=}')
-                if not (list(env_t_to_agent_t) == expected_env_t_to_agent_t):
-                    print(
-                        f"AssertationError for env_t_to_agent_t data: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t}"
-                    )
+                assert (
+                    list(env_t_to_agent_t) == expected_env_t_to_agent_t
+                ), f"AssertationError for env_t_to_agent_t data: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t}"
 
                 # You should have the same number of info as obs
                 # The info timesteps should equal to the non-skip timesteps
-                non_skip_env_t = [
+                # Calculate lookback env_ts (env_t values where agent was active before this chunk)
+                all_lookback_env_ts = [
                     env_t
-                    for env_t, agent_t in enumerate(env_t_to_agent_t)
+                    for env_t in range(ep.env_t_started)
+                    if AGENT_FNS[agent_id](env_t)
+                ]
+                # Calculate how many observations are in lookback vs current chunk
+                total_obs = sa_episode.t - sa_episode.t_started + 1
+                current_chunk_obs = sum(
+                    1
+                    for t in env_t_to_agent_t
+                    if t != MultiAgentEpisode.SKIP_ENV_TS_TAG
+                )
+                lookback_obs_count = total_obs - current_chunk_obs
+                # Take only the last lookback_obs_count env_ts from lookback
+                lookback_env_ts = (
+                    all_lookback_env_ts[-lookback_obs_count:]
+                    if lookback_obs_count > 0
+                    else []
+                )
+                # Current chunk's non-skip env_t
+                current_chunk_env_ts = [
+                    ep.env_t_started + idx
+                    for idx, agent_t in enumerate(env_t_to_agent_t)
                     if agent_t != MultiAgentEpisode.SKIP_ENV_TS_TAG
                 ]
+                non_skip_env_t = lookback_env_ts + current_chunk_env_ts
                 info_timesteps = [info["env_timestep"] for info in infos]
-                if not (non_skip_env_t == info_timesteps):
-                    print(
-                        f"AssertationError for env_t to info timesteps: {non_skip_env_t} != {info_timesteps}"
-                    )
+                assert (
+                    non_skip_env_t == info_timesteps
+                ), f"AssertationError for env_t to info timesteps: {non_skip_env_t} != {info_timesteps}"
 
     # CONCATENATE CHUNKS THEN TEST THAT THE CONCATENATED DATA IS CORRECT
+    print("\nCONCATENATE EPISODES\n")
     unique_episode_ids = {eps.id_ for eps in episodes}
     for ep_id in unique_episode_ids:
         print(f"{ep_id=}")
@@ -285,17 +306,17 @@ def test_multi_agent_episode_concat():
         #       f'env_t={combined.env_t}, is_done={combined.is_done}')
 
         # Check the episode contents for each agent
-        print("\nCONCATENATE EPISODES\n")
         for agent_id, sa_episode in combined.agent_episodes.items():
-            print(f"{agent_id=}")
-
             obs = sa_episode.get_observations()
             actions = sa_episode.get_actions()
             rewards = sa_episode.get_rewards()
             infos = sa_episode.get_infos()
+            env_t_to_agent_t = combined.env_t_to_agent_t[agent_id].get()
 
-            print(f'  Agent {agent_id}: len={len(sa_episode)}, '
-                  f'obs={list(obs)}, rewards={list(rewards)}')
+            print(
+                f"  Agent {agent_id}: len={len(sa_episode)}, "
+                f"obs={list(obs)}, env_t_to_agent_t={list(env_t_to_agent_t)}"
+            )
 
             # Observations should be sequential: 0, 1, 2, 3, ...
             expected_obs = list(range(len(obs)))
@@ -314,29 +335,26 @@ def test_multi_agent_episode_concat():
             # You should have the same number of info as obs
             assert len(list(infos)) == len(list(obs))
 
-            env_t_to_agent_t = combined.env_t_to_agent_t[agent_id].get()
-            # print(f'\t{env_t_to_agent_t=}')
-            expected_env_t_to_agent_t = [
-                env_t
-                if AGENT_FNS[agent_id](env_t)
-                else MultiAgentEpisode.SKIP_ENV_TS_TAG
-                for env_t in range(MAX_EPISODE_LENGTH + 1)
-            ]
-            # print(f'\t{expected_env_t_to_agent_t=}')
+            expected_env_t_to_agent_t = []
+            agent_t = 0
+            for env_t in range(combined.env_t + 1):
+                if AGENT_FNS[agent_id](env_t):
+                    expected_env_t_to_agent_t.append(agent_t)
+                    agent_t += 1
+                else:
+                    expected_env_t_to_agent_t.append(MultiAgentEpisode.SKIP_ENV_TS_TAG)
 
-            if not (list(env_t_to_agent_t) == expected_env_t_to_agent_t):
-                print(
-                    f"AssertationError: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t}"
-                )
-            if not (len(env_t_to_agent_t) == len(expected_obs)):
-                print(
-                    f"AssertationError: {len(env_t_to_agent_t)} != {len(expected_obs)}"
-                )
+            assert (
+                list(env_t_to_agent_t) == expected_env_t_to_agent_t
+            ), f"\tAssertationError for env_t_to_agent_t: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t}"
 
             # The info timesteps should equal to the non-skip timesteps
             non_skip_agent_t = [
-                t for t in env_t_to_agent_t if t != MultiAgentEpisode.SKIP_ENV_TS_TAG
+                env_t
+                for env_t, agent_t in enumerate(env_t_to_agent_t)
+                if agent_t != MultiAgentEpisode.SKIP_ENV_TS_TAG
             ]
             info_timesteps = [info["env_timestep"] for info in infos]
-            if not (non_skip_agent_t == info_timesteps):
-                print(f"AssertationError: {non_skip_agent_t=}, {info_timesteps=}")
+            assert (
+                non_skip_agent_t == info_timesteps
+            ), f"\tAssertationError non-skip-agent-t: {non_skip_agent_t=}, {info_timesteps=}"
