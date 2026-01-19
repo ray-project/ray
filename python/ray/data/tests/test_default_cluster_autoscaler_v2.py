@@ -122,7 +122,6 @@ class TestClusterAutoscaling:
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("mem_util", [0.5, 0.75])
     def test_try_scale_up_cluster(self, cpu_util, gpu_util, mem_util):
-
         # Test _try_scale_up_cluster
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -333,127 +332,70 @@ class TestClusterAutoscaling:
             result = _get_node_resource_spec_and_count()
             assert result == expected
 
-    def test_try_scale_up_respects_cpu_limits(self):
-        """Test that cluster autoscaling respects user-configured CPU limits."""
+    @pytest.mark.parametrize(
+        "resource_limits,node_spec,existing_nodes,scale_up_increment,expected_nodes",
+        [
+            # CPU limit: 8 CPUs allows 2 nodes (8 CPUs), not 3 (12 CPUs)
+            (
+                ExecutionResources(cpu=8),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000),
+                2,
+                1,
+                2,
+            ),
+            # GPU limit: 2 GPUs allows 2 nodes (2 GPUs), not 3 (3 GPUs)
+            (
+                ExecutionResources(gpu=2),
+                _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000),
+                2,
+                1,
+                2,
+            ),
+            # Memory limit: 4000 allows 2 nodes (4000 mem), not 3 (6000 mem)
+            (
+                ExecutionResources(memory=4000),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000),
+                2,
+                1,
+                2,
+            ),
+            # No limits: all 3 nodes (2 existing + 1 delta) should be requested
+            (
+                ExecutionResources.inf(),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000),
+                2,
+                1,
+                3,
+            ),
+        ],
+    )
+    def test_try_scale_up_respects_resource_limits(
+        self, resource_limits, node_spec, existing_nodes, scale_up_increment, expected_nodes
+    ):
+        """Test that cluster autoscaling respects user-configured resource limits."""
         scale_up_threshold = 0.75
-        scale_up_delta = 1
         # High utilization to trigger scaling
-        utilization = ExecutionResources(cpu=0.9, gpu=0.5, object_store_memory=0.5)
-
-        # Each node has 4 CPUs, 2 nodes = 8 CPUs total
-        # Requesting 3 nodes (2+1 delta) would be 12 CPUs, exceeding limit
-        resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
         fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
-            resource_limits=ExecutionResources(cpu=8),
+            resource_limits=resource_limits,
             execution_id="test_execution_id",
-            cluster_scaling_up_delta=scale_up_delta,
+            cluster_scaling_up_delta=scale_up_increment,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {resource_spec: 2},
+            get_node_counts=lambda: {node_spec: existing_nodes},
         )
 
         autoscaler.try_trigger_scaling()
 
-        # With limit of 8 CPUs, should only request 2 bundles (8 CPUs), not 3 (12 CPUs)
         resources_allocated = autoscaler.get_total_resources()
-        assert resources_allocated.cpu == 8
-        assert resources_allocated.memory == 2000
-
-    def test_try_scale_up_respects_gpu_limits(self):
-        """Test that cluster autoscaling respects user-configured GPU limits."""
-        scale_up_threshold = 0.75
-        scale_up_delta = 1
-        # High utilization to trigger scaling
-        utilization = ExecutionResources(cpu=0.5, gpu=0.9, object_store_memory=0.5)
-
-        # Each node has 1 GPU, 2 nodes = 2 GPUs total
-        # Requesting 3 nodes (2+1 delta) would be 3 GPUs, exceeding limit
-        resource_spec = _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000)
-        fake_coordinator = FakeAutoscalingCoordinator()
-
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            resource_limits=ExecutionResources(gpu=2),
-            execution_id="test_execution_id",
-            cluster_scaling_up_delta=scale_up_delta,
-            resource_utilization_calculator=StubUtilizationGauge(utilization),
-            cluster_scaling_up_util_threshold=scale_up_threshold,
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {resource_spec: 2},
-        )
-
-        autoscaler.try_trigger_scaling()
-
-        # With limit of 2 GPUs, should only request 2 bundles, not 3
-        resources_allocated = autoscaler.get_total_resources()
-        assert resources_allocated.gpu == 2
-        assert resources_allocated.cpu == 8
-
-    def test_try_scale_up_respects_memory_limits(self):
-        """Test that cluster autoscaling respects user-configured memory limits."""
-        scale_up_threshold = 0.75
-        scale_up_delta = 1
-        # High utilization to trigger scaling
-        utilization = ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.9)
-
-        # Each node has 2000 memory, 2 nodes = 4000 memory total
-        # Requesting 3 nodes (2+1 delta) would be 6000 memory, exceeding limit
-        resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
-        fake_coordinator = FakeAutoscalingCoordinator()
-
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            resource_limits=ExecutionResources(memory=4000),
-            execution_id="test_execution_id",
-            cluster_scaling_up_delta=scale_up_delta,
-            resource_utilization_calculator=StubUtilizationGauge(utilization),
-            cluster_scaling_up_util_threshold=scale_up_threshold,
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {resource_spec: 2},
-        )
-
-        autoscaler.try_trigger_scaling()
-
-        # With limit of 4000 memory, should only request 2 bundles, not 3
-        resources_allocated = autoscaler.get_total_resources()
-        assert resources_allocated.memory == 4000
-        assert resources_allocated.cpu == 8
-
-    def test_try_scale_up_no_limits(self):
-        """Test that cluster autoscaling works normally when no limits are set."""
-        scale_up_threshold = 0.75
-        scale_up_delta = 1
-        # High utilization to trigger scaling
-        utilization = ExecutionResources(cpu=0.9, gpu=0.5, object_store_memory=0.5)
-
-        resource_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
-        fake_coordinator = FakeAutoscalingCoordinator()
-
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            resource_limits=ExecutionResources.inf(),
-            execution_id="test_execution_id",
-            cluster_scaling_up_delta=scale_up_delta,
-            resource_utilization_calculator=StubUtilizationGauge(utilization),
-            cluster_scaling_up_util_threshold=scale_up_threshold,
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {resource_spec: 2},
-        )
-
-        autoscaler.try_trigger_scaling()
-
-        # With no limits, all 3 bundles (2+1 delta) should be requested
-        resources_allocated = autoscaler.get_total_resources()
-        assert resources_allocated.cpu == 12  # 3 nodes * 4 CPUs
-        assert resources_allocated.memory == 3000  # 3 nodes * 1000 memory
+        assert resources_allocated.cpu == node_spec.cpu * expected_nodes
+        assert resources_allocated.gpu == node_spec.gpu * expected_nodes
+        assert resources_allocated.memory == node_spec.mem * expected_nodes
 
 
 if __name__ == "__main__":
