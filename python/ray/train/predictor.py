@@ -1,4 +1,5 @@
 import abc
+import warnings
 from typing import Callable, Dict, Optional, Type, Union
 
 import numpy as np
@@ -77,6 +78,11 @@ class Predictor(abc.ABC):
 
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
+        warnings.warn(
+            "'Predictor' is deprecated."
+            "It has been unmaintained and hidden from the documentation for years.",
+            DeprecationWarning,
+        )
         self._preprocessor: Optional[Preprocessor] = preprocessor
         # Whether tensor columns should be automatically cast from/to the tensor
         # extension type at UDF boundaries. This can be overridden by subclasses.
