@@ -12,6 +12,7 @@ from ray.rllib.core.models.base import (
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
+    DualStreamEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
@@ -283,3 +284,89 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             lambda s: s.transpose(0, 1), states_out
         )
         return outputs
+
+
+class TorchDualStreamEncoder(TorchModel, Encoder):
+    def __init__(self, config: DualStreamEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
+        Encoder.__init__(self, config)
+
+        # Create the neural network for observation stream.
+        self.nets = {
+            k: cfg.build(framework="torch")
+            for k, cfg in config.base_encoder_configs.items()
+        }
+        # self.obs_net = TorchMLP(
+        #     input_dim=config.base_encoder_configs[Columns.OBS].input_dims[0],
+        #     hidden_layer_dims=config.base_encoder_configs[Columns.OBS].hidden_layer_dims,
+        #     hidden_layer_activation=config.base_encoder_configs[Columns.OBS].hidden_layer_activation,
+        #     hidden_layer_use_layernorm=config.base_encoder_configs[Columns.OBS].hidden_layer_use_layernorm,
+        #     hidden_layer_use_bias=config.base_encoder_configs[Columns.OBS].hidden_layer_use_bias,
+        #     hidden_layer_weights_initializer=config.base_encoder_configs[Columns.OBS].hidden_layer_weights_initializer,
+        #     hidden_layer_weights_initializer_config=(
+        #         config.base_encoder_configs[Columns.OBS].hidden_layer_weights_initializer_config
+        #     ),
+        #     hidden_layer_bias_initializer=config.base_encoder_configs[Columns.OBS].hidden_layer_bias_initializer,
+        #     hidden_layer_bias_initializer_config=(
+        #         config.base_encoder_configs[Columns.OBS].hidden_layer_bias_initializer_config
+        #     ),
+        #     output_dim=config.base_encoder_configs[Columns.OBS].output_layer_dim,
+        #     output_activation=config.base_encoder_configs[Columns.OBS].output_layer_activation,
+        #     output_use_bias=config.base_encoder_configs[Columns.OBS].output_layer_use_bias,
+        #     output_weights_initializer=config.base_encoder_configs[Columns.OBS].output_layer_weights_initializer,
+        #     output_weights_initializer_config=(
+        #         config.base_encoder_configs[Columns.OBS].output_layer_weights_initializer_config
+        #     ),
+        #     output_bias_initializer=config.base_encoder_configs[Columns.OBS].output_layer_bias_initializer,
+        #     output_bias_initializer_config=config.base_encoder_configs[Columns.OBS].output_layer_bias_initializer_config,
+        # )
+
+        # self.action_net = TorchMLP(
+        #     input_dim=config.base_encoder_configs[Columns.ACTIONS].input_dims[0],
+        #     hidden_layer_dims=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_dims,
+        #     hidden_layer_activation=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_activation,
+        #     hidden_layer_use_layernorm=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_use_layernorm,
+        #     hidden_layer_use_bias=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_use_bias,
+        #     hidden_layer_weights_initializer=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_weights_initializer,
+        #     hidden_layer_weights_initializer_config=(
+        #         config.base_encoder_configs[Columns.ACTIONS].hidden_layer_weights_initializer_config
+        #     ),
+        #     hidden_layer_bias_initializer=config.base_encoder_configs[Columns.ACTIONS].hidden_layer_bias_initializer,
+        #     hidden_layer_bias_initializer_config=(
+        #         config.base_encoder_configs[Columns.ACTIONS].hidden_layer_bias_initializer_config
+        #     ),
+        #     output_dim=config.base_encoder_configs[Columns.ACTIONS].output_layer_dim,
+        #     output_activation=config.base_encoder_configs[Columns.ACTIONS].output_layer_activation,
+        #     output_use_bias=config.base_encoder_configs[Columns.ACTIONS].output_layer_use_bias,
+        #     output_weights_initializer=config.base_encoder_configs[Columns.ACTIONS].output_layer_weights_initializer,
+        #     output_weights_initializer_config=(
+        #         config.base_encoder_configs[Columns.ACTIONS].output_layer_weights_initializer_config
+        #     ),
+        #     output_bias_initializer=config.base_encoder_configs[Columns.ACTIONS].output_layer_bias_initializer,
+        #     output_bias_initializer_config=config.base_encoder_configs[Columns.ACTIONS].output_layer_bias_initializer_config,
+        # )
+
+        self.net = nn.Linear(
+            sum(cfg.output_dims[0] for cfg in config.base_encoder_configs.values()),
+            config.output_dims[0],
+            bias=True,
+        )
+        # self.net = nn.Linear(
+        #     config.base_encoder_configs[Columns.OBS].output_dims[0] + config.base_encoder_configs[Columns.ACTIONS].output_dims[0],
+        #     config.output_dims[0],
+        #     bias=True,
+        # )
+
+    @override(Model)
+    def _forward(self, inputs: dict, **kwargs) -> dict:
+
+        outs = [
+            self.nets[k]({Columns.OBS: inputs[k]})[ENCODER_OUT]
+            for k in self.config.base_encoder_configs.keys()
+        ]
+        combined_out = self.net(torch.cat(outs, dim=-1))
+        # obs_out = self.obs_net(inputs[Columns.OBS])
+        # action_out = self.action_net(inputs[Columns.ACTIONS])
+
+        # combined_out = self.net(torch.cat([obs_out, action_out], dim=-1))
+        return {ENCODER_OUT: combined_out}
