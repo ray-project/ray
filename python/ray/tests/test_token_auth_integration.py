@@ -719,7 +719,8 @@ def _get_dashboard_agent_address(cluster_info):
     # Get agent address from GcsNodeInfo
     node_id_hex = ray.nodes()[0]["NodeID"]
     node_id = NodeID.from_hex(node_id_hex)
-    gcs_client = GcsClient(address=cluster_info["gcs_address"])
+    cluster = cluster_info["cluster"]
+    gcs_client = GcsClient(address=cluster.address)
 
     # Create node selector for filtering by node_id
     node_selector = GetAllNodeInfoRequest.NodeSelector()
