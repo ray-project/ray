@@ -158,11 +158,9 @@ def _apply_default_params_and_merge_state(
         desired_num_replicas, ctx, internal_policy_state
     )
     # Merge internal updated_state with the user's custom policy state.
-    final_state = user_policy_state.copy() or {}
-    final_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
     if updated_state:
-        final_state.update(updated_state)
-    return final_num_replicas, final_state
+        user_policy_state.update(updated_state)
+    return final_num_replicas, user_policy_state
 
 
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
