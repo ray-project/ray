@@ -6,15 +6,26 @@ import time
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ray import serve
+from ray.exceptions import RayTaskError
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.stages.common import truncate_str
 
 logger = logging.getLogger(__name__)
+
+_MAX_PROMPT_LENGTH_IN_ERROR = 200
+
+# Request-level errors safe to catch. Unknown errors are treated as fatal.
+_SERVE_RECOVERABLE_ERRORS = (
+    ValueError,
+    TypeError,
+    ValidationError,
+)
 
 
 class ServeDeploymentStageUDF(StatefulStageUDF):
@@ -26,6 +37,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         deployment_name: str,
         app_name: str,
         dtype_mapping: Dict[str, Type[Any]],
+        should_continue_on_error: bool = False,
     ):
         """
         Initialize the ServeDeploymentStageUDF.
@@ -36,9 +48,13 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             deployment_name: The name of the deployment.
             app_name: The name of the deployment app.
             dtype_mapping: The mapping of the request class name to the request class.
+            should_continue_on_error: If True, continue processing when inference
+                fails for a row instead of raising. Failed rows will have
+                '__inference_error__' set to the error message.
         """
         super().__init__(data_column, expected_input_keys)
         self._dtype_mapping = dtype_mapping
+        self.should_continue_on_error = should_continue_on_error
 
         # Using stream=True as LLM serve deployments return async generators.
         # TODO (Kourosh): Generalize this to support non-streaming deployments.
@@ -57,9 +73,9 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             row: The row.
 
         Returns:
-            A tuple of (decorated_request, dtype, method_name). dtype is the class of the request object and
-            can be None if the serve deployment accepts a raw dict. method_name is the name of the method to
-            invoke on the serve deployment.
+            A tuple of (decorated_request, dtype, method_name). dtype is the class of
+            the request object and can be None if the serve deployment accepts a raw
+            dict. method_name is the name of the method to invoke on the deployment.
         """
         method = row.get("method")
         dtype_name = row.get("dtype")
@@ -68,7 +84,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         if dtype_name is not None:
             if not self._dtype_mapping or dtype_name not in self._dtype_mapping:
                 raise ValueError(
-                    f"{dtype_name} must be provided in ServeDeploymentProcessorConfig's dtype_mapping."
+                    f"{dtype_name} must be provided in "
+                    "ServeDeploymentProcessorConfig's dtype_mapping."
                 )
             dtype = self._dtype_mapping[dtype_name]
 
@@ -111,6 +128,61 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
 
         return request, output_data, time_taken
 
+    def _is_recoverable_error(self, exc: Exception) -> bool:
+        """Check if exception is recoverable. Unknown errors are treated as fatal."""
+        if isinstance(exc, _SERVE_RECOVERABLE_ERRORS):
+            return True
+        # RayTaskError wraps remote exceptions - check the cause
+        if isinstance(exc, RayTaskError) and hasattr(exc, "cause"):
+            if isinstance(exc.cause, _SERVE_RECOVERABLE_ERRORS):
+                return True
+        return False
+
+    async def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        """Generate output for a row, yielding error row on recoverable failure."""
+        idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        # Save before generate_async pops it
+        original_request_kwargs = row.get("request_kwargs", {})
+        try:
+            request, output, time_taken = await self.generate_async(row)
+
+            return {
+                **output,
+                "request_id": request["request_id"],
+                self.IDX_IN_BATCH_COLUMN: request["idx_in_batch"],
+                "batch_uuid": batch_uuid.hex,
+                "time_taken": time_taken,
+                "__inference_error__": None,
+            }
+        except Exception as e:
+            # Only recover from known recoverable errors; unknown errors propagate
+            if not self._is_recoverable_error(e) or not self.should_continue_on_error:
+                raise
+
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.warning(
+                "[Serve Deployment] Inference failed for row %d in batch %s: %s",
+                idx_in_batch,
+                batch_uuid.hex,
+                error_msg,
+            )
+
+            # Include request_kwargs snippet for debuggability
+            request_str = truncate_str(
+                str(original_request_kwargs), _MAX_PROMPT_LENGTH_IN_ERROR
+            )
+
+            return {
+                self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "__inference_error__": error_msg,
+                "request_kwargs": request_str,
+            }
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the serve deployment.
@@ -119,23 +191,19 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             batch: A list of rows to run the serve deployment on.
 
         Yields:
-            Dict[str, Any]: A dictionary containing the response from the serve deployment
-            along with processing metadata.
+            Dict[str, Any]: A dictionary containing the response from the serve
+            deployment along with processing metadata.
         """
         batch_uuid = uuid.uuid4()
         t = time.perf_counter()
-        tasks = [asyncio.create_task(self.generate_async(row)) for row in batch]
+
+        tasks = [
+            asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
+            for row in batch
+        ]
 
         for resp in asyncio.as_completed(tasks):
-            request, output, time_taken = await resp
-
-            yield {
-                "request_id": request["request_id"],
-                self.IDX_IN_BATCH_COLUMN: request["idx_in_batch"],
-                "batch_uuid": batch_uuid.hex,
-                "time_taken": time_taken,
-                **output,
-            }
+            yield await resp
 
         batch_time_taken = time.perf_counter() - t
         logger.info(
@@ -152,5 +220,5 @@ class ServeDeploymentStage(StatefulStage):
     def get_required_input_keys(self) -> Dict[str, str]:
         return {
             "method": "Name of the method to invoke on the serve deployment.",
-            "request_kwargs": "The request_kwargs to construct the request to the serve deployment.",
+            "request_kwargs": "The request_kwargs to construct the request.",
         }
