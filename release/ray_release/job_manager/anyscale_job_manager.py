@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import anyscale
 from anyscale.sdk.anyscale_client.models import (
@@ -9,6 +9,7 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
@@ -37,6 +38,7 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
+        self._sdk = cluster_manager.sdk
         self._last_job_result = None
         self._last_logs = None
         self.cluster_startup_timeout = 600
@@ -48,7 +50,6 @@ class AnyscaleJobManager:
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> None:
         env_vars_for_job = env_vars.copy()
         env_vars_for_job[
@@ -59,11 +60,8 @@ class AnyscaleJobManager:
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
 
-        anyscale_client = self.sdk
-
         runtime_env = {
             "env_vars": env_vars_for_job,
-            "pip": pip or [],
         }
         if working_dir:
             runtime_env["working_dir"] = working_dir
@@ -83,7 +81,7 @@ class AnyscaleJobManager:
                     max_retries=0,
                 ),
             )
-            job_response = anyscale_client.create_job(job_request)
+            job_response = self._sdk.create_job(job_request)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -96,10 +94,6 @@ class AnyscaleJobManager:
 
         logger.info(f"Link to job: " f"{format_link(self.job_url)}")
         return
-
-    @property
-    def sdk(self):
-        return self.cluster_manager.sdk
 
     @property
     def last_job_result(self):
@@ -132,9 +126,8 @@ class AnyscaleJobManager:
         return self.last_job_result and self.last_job_status not in terminal_state
 
     def _get_job_status_with_retry(self):
-        anyscale_client = self.cluster_manager.sdk
         return exponential_backoff_retry(
-            lambda: anyscale_client.get_production_job(self.job_id),
+            lambda: self._sdk.get_production_job(self.job_id),
             retry_exceptions=Exception,
             initial_retry_delay_s=1,
             max_retries=3,
@@ -145,7 +138,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self.job_id}...")
         try:
-            self.sdk.terminate_job(self.job_id)
+            self._sdk.terminate_job(self.job_id)
             logger.info(f"Job {self.job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self.job_id}!"
@@ -250,26 +243,18 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
         timeout: int = 120,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> Tuple[int, float]:
         self._run_job(
             cmd_to_run,
             env_vars,
             working_dir=working_dir,
             upload_path=upload_path,
-            pip=pip,
         )
         return self._wait_job(timeout)
 
     def _get_ray_logs(self) -> str:
-        """
-        Obtain the last few logs
-        """
-        if self.cluster_manager.log_streaming_limit == -1:
-            return anyscale.job.get_logs(id=self.job_id)
-        return anyscale.job.get_logs(
-            id=self.job_id, max_lines=self.cluster_manager.log_streaming_limit
-        )
+        """Obtain the last few log"""
+        return anyscale.job.get_logs(id=self.job_id, max_lines=LAST_LOGS_LENGTH)
 
     def get_last_logs(self):
         if not self.job_id:

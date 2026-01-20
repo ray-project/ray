@@ -280,8 +280,6 @@
   frequency: manual
   team: ml
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -330,8 +328,6 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  stable: false
-
   # https://github.com/ray-project/ray/issues/49847
   frequency: manual
   team: ml
@@ -352,8 +348,6 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
-
-  stable: false
 
   # https://github.com/ray-project/ray/issues/49846
   frequency: manual
@@ -756,8 +750,6 @@
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
-  stable: true
-
   frequency: nightly-3x
   team: ml
 
@@ -947,8 +939,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: false
 
   frequency: weekly
   team: ml
@@ -1148,8 +1138,6 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: true
-
   frequency: weekly
   team: serve
 
@@ -1188,8 +1176,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: true
 
   frequency: weekly
   team: serve
@@ -2019,26 +2005,6 @@
     timeout: 1500  # expected 1000 seconds
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
-- name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
-
 ########################
 # Core Nightly Tests
 ########################
@@ -2092,29 +2058,6 @@
       frequency: manual
       cluster:
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
-
-- name: decision_tree_autoscaling_20_runs
-  python: "3.10"
-  group: core-multi-test
-  working_dir: nightly_tests
-
-  frequency: nightly
-
-  team: core
-  cluster:
-    cluster_compute: decision_tree/autoscaling_compute.yaml
-
-  run:
-    timeout: 9600
-    script: python decision_tree/cart_with_tree.py --concurrency=20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   python: "3.10"
@@ -3040,8 +2983,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#   stable: false
-
 # - name: scheduling_test_many_5s_tasks_many_nodes
 #   group: core-scalability-test
 #   working_dir: benchmarks
@@ -3059,8 +3000,6 @@
 #     wait_for_nodes:
 #       num_nodes: 32
 #       timeout: 600
-
-#   stable: false
 
 
 ##################
@@ -3562,8 +3501,6 @@
   group: k8s-test
   working_dir: k8s_tests
 
-  stable: false
-
   # Failing since Oct 2024.
   # https://github.com/ray-project/ray/issues/36190
   frequency: manual
@@ -3739,8 +3676,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3764,8 +3699,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3787,8 +3720,6 @@
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: manual
@@ -3813,8 +3744,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3838,8 +3767,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3862,8 +3789,6 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: weekly
@@ -3892,9 +3817,6 @@
   team: core
 
   cluster:
-    byod:
-      pip:
-        - ray[default]
     cluster_compute: aws.yaml
 
   run:
