@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
+    format_op_state_summary,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -703,8 +704,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
+        summary_str = format_op_state_summary(state, resource_manager, verbose=True)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
+            f"{i}: {op.name} - {summary_str}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
