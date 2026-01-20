@@ -794,35 +794,6 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
-    def _kill_actors_in_serve_subnamespaces(self) -> None:
-        """Kill all actors in namespaces that start with 'serve::'."""
-        from ray.util.state import list_actors
-        # Lazy import required. Since `list_actors` is client code, importing at the top level
-        # will tell poison the linter to think that internal Serve APIs need to be publicly documented
-
-        try:
-            gcs_address = ray.get_runtime_context().gcs_address
-            actors = list_actors(
-                address=gcs_address,
-                filters=[("state", "=", "ALIVE")],
-                limit=10000,
-            )
-        except Exception:
-            logger.debug(
-                "Failed to list actors for sub-namespace cleanup, skipping.",
-                exc_info=True,
-            )
-            return
-
-        for actor in actors:
-            name, namespace = actor.get("name"), actor.get("ray_namespace")
-            if name and namespace and namespace.startswith(f"{SERVE_NAMESPACE}::"):
-                try:
-                    ray.kill(ray.get_actor(name, namespace=namespace), no_restart=True)
-                except Exception:
-                    # Actor may have already died or be unreachable
-                    pass
-
     def shutdown(self):
         """Shuts down the serve instance completely.
 
@@ -861,9 +832,6 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
-            # Clean up actors in serve sub-namespaces before exiting
-            self._kill_actors_in_serve_subnamespaces()
-
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},

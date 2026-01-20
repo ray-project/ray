@@ -338,23 +338,22 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_shutdown_cleans_up_actors_in_serve_subnamespaces(ray_shutdown):
-    """Regression test: serve.shutdown() should clean up detached actors in sub-namespaces.
+def test_shutdown_cleans_up_prefix_tree_actor(ray_shutdown):
+    """Regression test: serve.shutdown() should clean up PrefixTreeActor.
 
-    Detached actors in namespaces like 'serve::app::deployment' (used by
-    PrefixTreeActor and similar components) should be killed on shutdown.
-    Previously, these actors would survive because the shutdown logic only
-    cleaned up the main 'serve' namespace, causing stale state to accumulate.
+    The PrefixTreeActor (used by prefix-aware routing) is created with a unique
+    name in the serve namespace. It should be cleaned up on shutdown so that
+    after restart, a fresh tree is created with no stale tenant state.
     """
     TEST_PORT = 8003
-    TREE_ACTOR_NAME = "LlmPrefixTreeActor"
-    sub_namespace = f"{SERVE_NAMESPACE}::test_app::test_deployment"
+    # Simulates the naming pattern from prefix_aware_router.py
+    TREE_ACTOR_NAME = "LlmPrefixTreeActor_test_app_test_deployment"
 
     def check_tree_actor_exists(expected_alive: bool):
         actors = list_actors(filters=[("state", "=", "ALIVE")])
         found = any(
             actor.get("name") == TREE_ACTOR_NAME
-            and actor.get("ray_namespace", "").startswith(f"{SERVE_NAMESPACE}::")
+            and actor.get("ray_namespace") == SERVE_NAMESPACE
             for actor in actors
         )
         return found if expected_alive else not found
@@ -375,7 +374,7 @@ def test_shutdown_cleans_up_actors_in_serve_subnamespaces(ray_shutdown):
 
     tree_actor = MockPrefixTreeActor.options(
         name=TREE_ACTOR_NAME,
-        namespace=sub_namespace,
+        namespace=SERVE_NAMESPACE,
         lifetime="detached",
         get_if_exists=True,
     ).remote()
@@ -391,7 +390,7 @@ def test_shutdown_cleans_up_actors_in_serve_subnamespaces(ray_shutdown):
     # Shutdown serve
     serve.shutdown()
 
-    # Verify the detached actor in the sub-namespace is cleaned up
+    # Verify the detached actor in the serve namespace is cleaned up
     wait_for_condition(lambda: check_tree_actor_exists(expected_alive=False))
 
     # Restart serve and verify a fresh tree actor would be created (no stale state)
@@ -399,7 +398,7 @@ def test_shutdown_cleans_up_actors_in_serve_subnamespaces(ray_shutdown):
 
     new_tree_actor = MockPrefixTreeActor.options(
         name=TREE_ACTOR_NAME,
-        namespace=sub_namespace,
+        namespace=SERVE_NAMESPACE,
         lifetime="detached",
         get_if_exists=True,
     ).remote()
