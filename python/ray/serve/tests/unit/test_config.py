@@ -794,13 +794,13 @@ def test_prepare_imperative_http_options():
         proxy_location=None,
         http_options=HTTPOptions(**{}),
     ) == HTTPOptions(
-        location=DeploymentMode.HeadOnly
+        location=DeploymentMode.EveryNode
     )  # in this case we can't know whether location was provided or not
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(),
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
