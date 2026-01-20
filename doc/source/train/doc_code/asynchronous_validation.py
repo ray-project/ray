@@ -149,7 +149,7 @@ def train_func(config: dict) -> None:
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validation=ValidationTaskConfig(fn_kwargs={
+                validate=ValidationTaskConfig(fn_kwargs={
                     "train_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
                 }),

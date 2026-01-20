@@ -86,7 +86,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
     ):
-        if training_report.validation:
+        if training_report.validate:
             self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
@@ -133,7 +133,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             training_report = self._training_report_queue.popleft()
             validate_task = run_validate_fn.remote(
                 self._validation_config,
-                training_report.validation,
+                training_report.validate,
                 training_report.checkpoint,
             )
             self._pending_validations[validate_task] = training_report.checkpoint

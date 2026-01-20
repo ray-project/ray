@@ -69,7 +69,7 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
                 ray.train.report(
                     metrics=metrics,
                     checkpoint=None,
-                    validation=False,
+                    validate=False,
                 )
                 assert prev_latest_checkpoint_iteration <= get_checkpoint_iteration(
                     ray.train.get_checkpoint()
@@ -234,7 +234,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
 
 def test_report_validation_without_validate_fn():
     def train_fn():
-        ray.train.report(metrics={}, checkpoint=None, validation=True)
+        ray.train.report(metrics={}, checkpoint=None, validate=True)
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -266,21 +266,21 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
             checkpoint=Checkpoint(checkpoint_dir),
             checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
             delete_local_checkpoint_after_upload=False,
-            validation=ValidationTaskConfig(fn_kwargs={}),
+            validate=ValidationTaskConfig(fn_kwargs={}),
         )
         with create_dict_checkpoint({}) as cp2:
             ray.train.report(
                 metrics={"score": 3},
                 checkpoint=cp2,
                 checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validation=True,
+                validate=True,
             )
         with create_dict_checkpoint({}) as cp3:
             ray.train.report(
                 metrics={"score": 2},
                 checkpoint=cp3,
                 checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validation=ValidationTaskConfig(fn_kwargs={"new_score": 5}),
+                validate=ValidationTaskConfig(fn_kwargs={"new_score": 5}),
             )
 
     trainer = DataParallelTrainer(
@@ -311,7 +311,7 @@ def test_report_validate_fn_overrides_default_kwargs():
             ray.train.report(
                 metrics={},
                 checkpoint=cp,
-                validation=ValidationTaskConfig(fn_kwargs={"validation_score": 2}),
+                validate=ValidationTaskConfig(fn_kwargs={"validation_score": 2}),
             )
 
     trainer = DataParallelTrainer(
@@ -343,17 +343,13 @@ def test_report_validate_fn_error():
             ray.train.report(
                 metrics={},
                 checkpoint=cp1,
-                validation=ValidationTaskConfig(
-                    fn_kwargs={"rank": rank, "iteration": 0}
-                ),
+                validate=ValidationTaskConfig(fn_kwargs={"rank": rank, "iteration": 0}),
             )
         with create_dict_checkpoint({}) as cp2:
             ray.train.report(
                 metrics={},
                 checkpoint=cp2,
-                validation=ValidationTaskConfig(
-                    fn_kwargs={"rank": rank, "iteration": 1}
-                ),
+                validate=ValidationTaskConfig(fn_kwargs={"rank": rank, "iteration": 1}),
             )
 
     trainer = DataParallelTrainer(
@@ -464,7 +460,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
                 ray.train.report(
                     metrics={"training_score": 1},
                     checkpoint=cp1,
-                    validation=True,
+                    validate=True,
                 )
             assert [
                 reported_checkpoint.metrics

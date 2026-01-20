@@ -46,7 +46,7 @@ class TrainFnUtils(ABC):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Union[bool, ValidationTaskConfig] = False,
+        validate: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -64,7 +64,7 @@ class TrainFnUtils(ABC):
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validation: If True, triggers validation with default kwargs from validation_config.
+            validate: If True, triggers validation with default kwargs from validation_config.
                 If a ValidationTaskConfig, triggers validation with the specified fn_kwargs
                 (merged with defaults from validation_config). If False, no validation.
         """
@@ -153,7 +153,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Union[bool, ValidationTaskConfig] = False,
+        validate: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         return get_internal_train_context().report(
             metrics,
@@ -162,7 +162,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_mode,
             delete_local_checkpoint_after_upload,
             checkpoint_upload_fn,
-            validation,
+            validate,
         )
 
     def get_checkpoint(self):
@@ -225,7 +225,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Union[bool, ValidationTaskConfig] = False,
+        validate: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint

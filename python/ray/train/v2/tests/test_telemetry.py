@@ -54,7 +54,7 @@ def test_used_on_trainer_fit(reset_usage_lib, callsite: TelemetryCallsite):
                 {},
                 checkpoint=Checkpoint.from_directory(tmpdir),
                 checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
-                validation=True,
+                validate=True,
             )
 
         trainer = DataParallelTrainer(

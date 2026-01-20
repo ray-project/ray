@@ -12,11 +12,11 @@ class _TrainingReport:
         self,
         checkpoint: Optional["Checkpoint"],
         metrics: Dict[str, Any],
-        validation: Union[bool, "ValidationTaskConfig"],
+        validate: Union[bool, "ValidationTaskConfig"],
     ):
         self.checkpoint = checkpoint
         self.metrics = metrics
-        self.validation = validation
+        self.validate = validate
 
     def __repr__(self) -> str:
-        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validation={self.validation})"
+        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validate={self.validate})"

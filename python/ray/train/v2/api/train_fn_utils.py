@@ -27,7 +27,7 @@ def report(
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
-    validation: Union[bool, ValidationTaskConfig] = False,
+    validate: Union[bool, ValidationTaskConfig] = False,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -102,7 +102,7 @@ def report(
         checkpoint_upload_fn: A user defined function that will be called with the
             checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
             utility for copying to the destination `storage_path`.
-        validation: If True, triggers validation with default kwargs from validation_config.
+        validate: If True, triggers validation with default kwargs from validation_config.
             If a ValidationTaskConfig, triggers validation with the specified fn_kwargs
             (merged with defaults from validation_config). If False, no validation.
     """
@@ -115,7 +115,7 @@ def report(
         record_extra_usage_tag(
             TagKey.TRAIN_CHECKPOINT_MODE, checkpoint_upload_mode.value
         )
-        if validation:
+        if validate:
             record_extra_usage_tag(TagKey.TRAIN_ASYNCHRONOUS_VALIDATION, "1")
 
     get_train_fn_utils().report(
@@ -125,7 +125,7 @@ def report(
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
         checkpoint_upload_fn=checkpoint_upload_fn,
-        validation=validation,
+        validate=validate,
     )
 
 
