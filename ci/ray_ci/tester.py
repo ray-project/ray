@@ -289,7 +289,7 @@ def main(
             "[Kunchd] Did not find any test targets to run defaulting to: //python/ray/tests:test_object_spilling",
             file=sys.stderr,
         )
-        test_targets = ["//python/ray/tests:test_object_spilling"]
+    test_targets = ["//python/ray/tests:test_object_spilling"]
 
     print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
