@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 
 #include <algorithm>
+#include <boost/asio.hpp>
 #include <boost/regex.hpp>
 #include <limits>
 #include <memory>
