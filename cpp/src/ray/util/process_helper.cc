@@ -50,8 +50,8 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true) << "Failed to spawn process to start ray node";
-  RAY_CHECK(spawn_result.ok());
+      Process::Spawn(cmdargs, true);
+  RAY_CHECK(spawn_result.ok()) << "Failed to spawn process to start ray node";
   spawn_result.value()->Wait();
   return;
 }
@@ -60,8 +60,8 @@ void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true) << "Failed to spawn process to stop ray node";
-  RAY_CHECK(spawn_result.ok());
+      Process::Spawn(cmdargs, true);
+  RAY_CHECK(spawn_result.ok()) << "Failed to spawn process to stop ray node";
   spawn_result.value()->Wait();
   return;
 }
@@ -109,7 +109,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
-    RAY_CHECK_OK(status);
+    RAY_CHECK_OK(status)
+        << "Failed to get node to connect for driver when starting the cluster";
     ray::rpc::GcsNodeInfo node_info;
     node_info.ParseFromString(node_to_connect);
     ConfigInternal::Instance().raylet_socket_name = node_info.raylet_socket_name();
@@ -118,9 +119,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
     ConfigInternal::Instance().UpdateSessionDir(node_info.session_dir());
   }
-  RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty());
-  RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty());
-  RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0);
+  RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty())
+      << "Failed to start ray cluster, raylet socket name could not be resolved";
+  RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty())
+      << "Failed to start ray cluster, plasma store socket name could not be resolved";
+  RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0)
+      << "Failed to start ray cluster, node manager port could not be resolved";
 
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(bootstrap_ip,
@@ -173,7 +177,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     }
   }
   std::string serialized_job_config;
-  RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
+  RAY_CHECK(job_config.SerializeToString(&serialized_job_config))
+      << "Could not start ray cluster: failed to serialize job config";
   options.serialized_job_config = serialized_job_config;
   CoreWorkerProcess::Initialize(options);
 }
