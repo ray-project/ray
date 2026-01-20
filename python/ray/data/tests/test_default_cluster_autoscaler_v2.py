@@ -274,6 +274,59 @@ class TestClusterAutoscaling:
 
         _send_resource_request.assert_called_with(expected_resource_request)
 
+    @patch(
+        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
+    )
+    def test_low_utilization_sends_current_allocation(self, _send_resource_request):
+        """Test that low utilization sends current allocation.
+
+        Test scenario:
+        1. Dataset has already been allocated resources (2 nodes)
+        2. Utilization is low (50%, below 75% threshold)
+        3. Should send current allocation to preserve resource footprint
+        """
+        scale_up_threshold = 0.75
+        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
+
+        # Low utilization, does not trigger scale-up
+        low_utilization = ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.5)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        initial_allocation = [
+            {"CPU": 4, "GPU": 0, "memory": 1000},
+            {"CPU": 8, "GPU": 2, "memory": 2000},
+        ]
+        fake_coordinator.request_resources(
+            requester_id="data-test_execution_id",
+            resources=initial_allocation,
+            expire_after_s=180,
+            request_remaining=True,
+        )
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=1,
+            resource_utilization_calculator=StubUtilizationGauge(low_utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {
+                resource_spec1: 1,
+                resource_spec2: 1,
+            },
+        )
+
+        # Initialization should send []
+        _send_resource_request.assert_called_with([])
+
+        # Trigger scaling with low utilization
+        autoscaler.try_trigger_scaling()
+
+        # Should send current allocation to preserve resource footprint
+        _send_resource_request.assert_called_with(initial_allocation)
+
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
         # Simulate a cluster with only head node (no worker nodes)
