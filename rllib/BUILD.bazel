@@ -4536,7 +4536,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 #@OldAPIStack
