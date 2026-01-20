@@ -210,8 +210,17 @@ Usage with NIXL (CPUs or NVIDIA GPUs)
 
 Installation
 ^^^^^^^^^^^^
+First, install NIXL with a plain ``pip install nixl``.
+For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. 
 
-For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
+Note that you should also set these UCX environment variables to either let UCX choose the right transport from all options, or so that you can yourself set your preferred transport option.
+
+
+.. code-block:: bash
+   # Example UCX configuration, adjust according to your environment
+   $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
+   $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
+
 
 Walkthrough
 ^^^^^^^^^^^
@@ -280,10 +289,10 @@ RDT is currently in alpha and currently has the following limitations, which may
 
 * Support for ``torch.Tensor`` objects only.
 * Support for Ray actors only, not Ray tasks.
-* Not yet compatible with `asyncio <https://docs.python.org/3/library/asyncio.html>`__. Follow the `tracking issue <https://github.com/ray-project/ray/issues/56398>`__ for updates.
-* Support for the following transports: Gloo, NCCL, and NIXL.
+* Support for the following transports: GLOO, NCCL, and NIXL.
 * Support for CPUs and NVIDIA GPUs only.
 * RDT objects are *mutable*. This means that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested. Thus, if the application code also keeps a reference to a tensor before returning it, and modifies the tensor in place, then some or all of the changes may be seen by the receiving actor.
+* `await` on an RDT ref is temporarily not supported.
 
 For collective-based tensor transports (Gloo and NCCL):
 
@@ -291,6 +300,7 @@ For collective-based tensor transports (Gloo and NCCL):
 * Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
+* No support for out-of-order actors such as async actors or actors with ``max_concurrency`` > 1.
 
 
 Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
@@ -317,54 +327,13 @@ Error handling
    * Any unexpected system bugs
 
 
-Advanced: Registering a new tensor transport
---------------------------------------------
+Advanced: Registering a custom tensor transport
+===============================================
 
-Ray allows users to register new tensor transports at runtime for use with RDT.
-To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
-defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
-Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport,
-and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
-to use the transport with, and actors only have access to transports registered before their creation.
+Ray allows you to register custom tensor transports at runtime for use with RDT.
+To implement a custom tensor transport, you can implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>` and register it using :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>`.
 
-.. code-block:: python
-
-   import sys
-   import ray
-   from ray.experimental import (
-      register_tensor_transport,
-      TensorTransportManager,
-      TensorTransportMetadata,
-      CommunicatorMetadata,
-   )
-
-   @dataclass
-   class CustomTransportMetadata(TensorTransportMetadata):
-      pass
-
-   @dataclass
-   class CustomCommunicatorMetadata(CommunicatorMetadata):
-      pass
-
-   class CustomTransport(TensorTransportManager):
-      ...
-
-
-   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
-
-
-Note that there are currently some limitations with custom transports:
-
-- Actor restarts aren't supported. Your actor doesn't have access to the custom
-  transport after the restart.
-- You must create your actor on the same process you registered the custom tensor
-  transport on. For example, you can't use your custom transport with an actor if
-  you registered the custom transport on the driver and created the actor inside
-  a task.
-- Actors only have access to custom transports registered before their creation.
-- If you have an out-of-order actor and the process where you submit the actor
-  task is different from where you created the actor, Ray can't guarantee it has
-  registered your custom transport on the actor at task submission time.
+For a complete guide on implementing custom tensor transports, including detailed documentation of all required methods, see :ref:`custom-tensor-transport`.
 
 
 Advanced: RDT Internals
