@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "ray/observability/ray_task_profile_event.h"
