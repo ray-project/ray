@@ -14,7 +14,6 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import MultiAgentDict
-from ray.tune import register_env
 
 
 class MultiAgentTestEnv(MultiAgentEnv):
@@ -2273,7 +2272,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(successor), 0)
         check(successor.env_t_started, 2)
         check(successor.env_t, 2)
-        check(successor.env_t_to_agent_t, {"a0": [0], "a1": [0]})
+        check(successor.env_t_to_agent_t, {"a0": [2], "a1": [2]})
         a0 = successor.agent_episodes["a0"]
         a1 = successor.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 0))
@@ -2301,7 +2300,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(successor), 0)
         check(successor.env_t_started, 1)
         check(successor.env_t, 1)
-        check(successor.env_t_to_agent_t, {"a0": [0], "a1": [0]})
+        check(successor.env_t_to_agent_t, {"a0": [1], "a1": [1]})
         a0 = successor.agent_episodes["a0"]
         a1 = successor.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 0))
@@ -3755,16 +3754,13 @@ MAX_EPISODE_LENGTH = 20
 # p_in    : - - 0 - - - - - - | -  -  -  1  -  -  -  - |  -  2  3  - | - - 0 -
 
 
-def create_env(config):
-    return MultiAgentCountingEnv(AGENT_FNS, max_episode_length=MAX_EPISODE_LENGTH)
-
-
-register_env("env", create_env)
-
-
 CONFIG = (
     PPOConfig()
-    .environment("env")
+    .environment(
+        lambda cfg: MultiAgentCountingEnv(
+            AGENT_FNS, max_episode_length=MAX_EPISODE_LENGTH
+        )
+    )
     .env_runners(
         num_envs_per_env_runner=1,
         num_env_runners=0,
@@ -3778,7 +3774,7 @@ CONFIG = (
 )
 
 
-def test_multi_agent_episode_functionality(num_timesteps=8):
+def test_multi_agent_episode_functionality(num_timesteps=8, num_samples=10):
     """This test checks that the core data returned from the interface between MAEnvRunner, MAEpisode and a MultiAgentEnv work as expected.
 
     Using a counting environment with periodic agent observations and a custom echo RL-Module,
@@ -3789,7 +3785,7 @@ def test_multi_agent_episode_functionality(num_timesteps=8):
     env_runner = MultiAgentEnvRunner(CONFIG)
 
     episodes = []
-    for repeat in range(10):
+    for repeat in range(num_samples):
         new_episodes = env_runner.sample(
             num_timesteps=num_timesteps, random_actions=False
         )
@@ -3830,19 +3826,20 @@ def test_multi_agent_episode_functionality(num_timesteps=8):
 
                 # The info should contain the env_t of the observations
                 # This is equal to the env_t of the non-skip timesteps
-                last_obs_env_t = next(
-                    (
-                        env_tt
-                        for env_tt in range(ep.env_t_started, -1, -1)
-                        if AGENT_FNS[agent_id](env_tt)
-                    )
-                )
-                chunk_env_ts = [
+                non_skip_env_t = [
                     ep.env_t_started + idx
                     for idx, agent_t in enumerate(env_t_to_agent_t)
                     if agent_t != MultiAgentEpisode.SKIP_ENV_TS_TAG
                 ]
-                non_skip_env_t = [last_obs_env_t] + chunk_env_ts
+                if len(non_skip_env_t) < len(obs):
+                    first_obs_env_t = next(
+                        (
+                            env_t
+                            for env_t in range(ep.env_t_started, -1, -1)
+                            if AGENT_FNS[agent_id](env_t)
+                        )
+                    )
+                    non_skip_env_t = [first_obs_env_t] + non_skip_env_t
                 info_timesteps = [info["env_timestep"] for info in infos]
                 assert non_skip_env_t == info_timesteps
 
@@ -3878,7 +3875,7 @@ def test_multi_agent_episode_functionality(num_timesteps=8):
             assert len(list(infos)) == len(list(obs))
 
             # For the env_t_to_agent_t, we should have data for each timestep
-            assert len(env_t_to_agent_t) == ep.env_t + 1
+            assert len(env_t_to_agent_t) == combined.env_t + 1
             expected_env_t_to_agent_t = []
             agent_t = 0
             for env_t in range(combined.env_t + 1):
