@@ -444,7 +444,8 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     def _str_len(array):
         return pc.greater(pc.binary_length(array), 0)
 
-    plan_str = str(ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item"))))
+    ds = ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item")))
+    plan_str = ds._plan.get_plan_as_string(ds.__class__)
     assert plan_str == (
         "Filter(_str_len(col('item')))\n"
         "+- Dataset(num_rows=2, schema={item: string})"

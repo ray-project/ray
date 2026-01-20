@@ -10,8 +10,19 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
-from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.block import Schema, UserDefinedFunction
+from ray.data.datatype import DataType
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    DownloadExpr,
+    Expr,
+    LiteralExpr,
+    StarExpr,
+    UDFExpr,
+    UnaryExpr,
+)
 from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
@@ -293,6 +304,11 @@ class Filter(AbstractUDFMap):
             return f"{op_name}({expr_str})"
         return super()._get_operator_name(op_name, fn)
 
+    def infer_schema(self) -> Optional["Schema"]:
+        if not self._input_dependencies:
+            return None
+        return self._input_dependencies[0].infer_schema()
+
 
 class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
@@ -384,6 +400,104 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self._exprs)
         return rename_map if rename_map else None
 
+    def infer_schema(self) -> Optional["Schema"]:
+        input_schema = self._input_dependencies[0].infer_schema()
+        if input_schema is None:
+            return None
+
+        return self._compute_projection_schema(input_schema)
+
+    def _compute_projection_schema(self, input_schema: "Schema") -> Optional["Schema"]:
+        import pyarrow as pa
+
+        fields = []
+        for expr in self._exprs:
+            field_name = expr.name
+            if isinstance(expr, StarExpr):
+                renamed_cols = [
+                    expr.expr.name
+                    for expr in self._exprs
+                    if isinstance(expr, AliasExpr) and expr._is_rename
+                ]
+
+                for f in input_schema:
+                    # filter out renamed columns
+                    if f.name not in renamed_cols:
+                        fields.append(f)
+            else:
+                field_type = self._infer_expr_type(expr, input_schema)
+                if field_type is None:
+                    # if the type cannot be inferred, we fall back to string
+                    field_type = pa.string()
+                fields.append(pa.field(field_name, field_type))
+        return pa.schema(fields)
+
+    def _infer_expr_type(self, expr: "Expr", input_schema: "Schema") -> "Schema":
+        """Infer the data type of expressions.
+
+        Args:
+            expr: Expression object.
+            input_schema: Input schema.
+
+        Returns:
+            Inferred PyArrow data type.
+        """
+        import pyarrow as pa
+
+        if isinstance(expr, AliasExpr):
+            return self._infer_expr_type(expr.expr, input_schema)
+        elif isinstance(expr, ColumnExpr):
+            try:
+                return input_schema.field(expr.name).type
+            except KeyError:
+                return None
+        elif isinstance(expr, UDFExpr):
+            return expr.data_type.to_arrow_dtype()
+        elif isinstance(expr, BinaryExpr):
+            # Binary expression, infer type based on operator
+            left_type = self._infer_expr_type(expr.left, input_schema)
+            right_type = self._infer_expr_type(expr.right, input_schema)
+
+            # If either operand type cannot be inferred return None
+            if left_type is None or right_type is None:
+                return None
+
+            op = expr.op.value
+            if op == "div":
+                return pa.float64()
+            if op in ["add", "sub", "mul", "floordiv", "mod"]:
+                if pa.types.is_integer(left_type) and pa.types.is_integer(right_type):
+                    return pa.int64()
+                return pa.float64()
+            elif op in [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge",
+                "and",
+                "or",
+                "in",
+                "not_in",
+            ]:
+                return pa.bool_()
+
+            return pa.string()
+        elif isinstance(expr, UnaryExpr):
+            return pa.bool_()
+        elif isinstance(expr, LiteralExpr):
+            # literal expression, infer type from value
+            value = expr.value
+            if value is None:
+                return pa.string()
+
+            return DataType.infer_dtype(value).to_arrow_dtype()
+        elif isinstance(expr, DownloadExpr):
+            # download expression, return binary data
+            return pa.binary()
+        return pa.string()
+
 
 class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
@@ -437,3 +551,9 @@ class StreamingRepartition(AbstractMap):
     @property
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
+
+    def infer_schema(self) -> Optional["Schema"]:
+        if not self._input_dependencies:
+            return None
+
+        return self._input_dependencies[0].infer_schema()
