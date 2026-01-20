@@ -2,10 +2,10 @@ import collections
 import logging
 import os
 import warnings
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     List,
     Literal,
@@ -101,6 +101,11 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.util.lerobot_utils.horizon_utils import (
+    process_horizon_batch,
+)
+from ray.data.util.lerobot_utils.lerobot_dataset_meta import LeRobotDatasetMetadata
+from ray.data.util.lerobot_utils.video_utils import decode_video_frames
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -3702,6 +3707,246 @@ def from_huggingface(
         raise TypeError(
             f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
         )
+
+
+@PublicAPI
+def read_lerobot(
+    repo_id: str,
+    root: str,
+    episode_indices: list[int] | int | None = None,
+    image_transform: Callable | None = None,
+    delta_timestamps: dict[str, list[float]] | None = None,
+    tolerance_s: float = 0.01,
+    force_cache_sync: bool = False,
+    video_backend: str = "torchcodec",
+    video_batch_size: int = 64,
+    parallelism: int = -1,
+    shuffle: bool = True,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **parquet_kwargs,
+) -> Dataset:
+    """Read a LeRobot dataset from HuggingFace Hub into a Ray Dataset.
+
+    This function reads LeRobot robotics datasets stored as Parquet files on
+    HuggingFace Hub, and optionally loads video frames from associated video files.
+    LeRobot datasets contain robot demonstration data including state, actions,
+    and multi-camera video observations.
+
+    Examples:
+        Read a LeRobot dataset with videos:
+
+        >>> import ray
+        >>> ds = ray.data.read_lerobot("lerobot/aloha_mobile_cabinet")
+        >>> ds.schema()
+        Column         Type
+        ------         ----
+        episode_index  int64
+        index          int64
+        timestamp      double
+        observation... ArrowTensorTypeV2(...)
+        action...      ArrowTensorTypeV2(...)
+        cam_high       ArrowTensorTypeV2(shape=(T, H, W, 3), dtype=uint8)
+        ...
+
+        Read without loading videos (faster, metadata only):
+
+        >>> ds = ray.data.read_lerobot("lerobot/pusht")
+
+        Customize video loading:
+
+        >>> ds = ray.data.read_lerobot(
+        ...     "lerobot/aloha_mobile_cabinet",
+        ...     video_backend="pyav",
+        ...     video_batch_size=64
+        ... )
+
+    Args:
+        repo_id: This is the repo id that will be used to fetch the dataset. Locally, the dataset
+                will be stored under root/repo_id.
+        root: Local directory to use for downloading/writing files. You can also
+            set the LEROBOT_HOME environment variable to point to a different location. Defaults to
+            '~/.cache/huggingface/lerobot'.
+        episode_indices: If specified, this will only load episodes specified by
+                their episode_index in this list. Defaults to None.
+        image_transform: You can pass standard v2 image transforms from
+            torchvision.transforms.v2 here which will be applied to visual modalities (whether they come
+            from videos or images). Defaults to None.
+        delta_timestamps: _description_. Defaults to None.
+        tolerance_s: Tolerance in seconds used to ensure data timestamps are actually in
+            sync with the fps value. It is used at the init of the dataset to make sure that each
+            timestamps is separated to the next by 1/fps +/- tolerance_s. This also applies to frames
+            decoded from video files. It is also used to check that `delta_timestamps` (when provided) are
+            multiples of 1/fps. Defaults to 1e-4.
+        force_cache_sync: Flag to sync and refresh local files first. If True and files
+            are already present in the local cache, this will be faster. However, files loaded might not
+            be in sync with the version on the hub, especially if you specified 'revision'. Defaults to
+            False.
+        video_backend: Video backend to use for decoding videos. Defaults to torchcodec when available int the platform; otherwise, defaults to 'pyav'.
+            You can also use the 'pyav' decoder used by Torchvision, which used to be the default option, or 'video_reader' which is another decoder of Torchvision.
+        video_batch_size: Batch size for video frame loading. Larger values may
+            improve throughput but use more memory. Default: 64.
+        parallelism: This argument is deprecated. Use ``override_num_blocks``.
+        shuffle: If True, randomly shuffle input files and rows. Default: True.
+        concurrency: Maximum number of Ray tasks to run concurrently. By default,
+            concurrency is dynamically decided based on available resources.
+        override_num_blocks: Override the number of output blocks. By default,
+            automatically decided based on data size and resources.
+        **parquet_kwargs: Additional arguments passed to read_parquet().
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing LeRobot demonstration data.
+        Each row represents one timestep with robot state, actions, and optionally
+        video frames from multiple cameras.
+
+    Raises:
+        ImportError: If required dependencies (lerobot, robot_common) are not installed.
+        ValueError: If the repo_id is invalid or dataset cannot be found.
+
+    See Also:
+        - LeRobot datasets: https://huggingface.co/lerobot
+        - :meth:`~ray.data.read_parquet`: For reading parquet files directly
+    """
+    import os
+
+    from huggingface_hub import HfFileSystem
+
+    meta = LeRobotDatasetMetadata(
+        repo_id=repo_id, root=root, force_cache_sync=force_cache_sync
+    )
+    episode_dict = meta.episodes
+    # Create metadata dict for video loading
+    metadata_dict = {
+        "url_root": meta.url_root,
+        "video_keys": meta.video_keys,
+        "fps": meta.fps,
+        "video_backend": video_backend,
+        "get_video_file_path": meta.get_video_file_path,
+    }
+    if root == "":
+        data_source = f"hf://datasets/{repo_id}/data"
+        root = metadata_dict["url_root"]
+    else:
+        data_source = f"{root}/data"
+
+    if root.startswith("hf://"):
+        filesystem = HfFileSystem(token=os.getenv("HF_TOKEN", None))
+    else:
+        filesystem = None
+
+    # Read parquet metadata files
+    ds = read_parquet(
+        data_source,
+        file_extensions=["parquet"],
+        filesystem=filesystem,
+        shuffle="files" if shuffle else None,
+        parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+        **parquet_kwargs,
+    ).filter(
+        lambda x: (
+            x["episode_index"] in episode_indices
+            if episode_indices is not None
+            else True
+        )
+    )
+    # assert delta_timestamps is not None, "delta_timestamps must be provided"
+    # print(f"delta_timestamps: {delta_timestamps}")
+    meta = LeRobotDatasetMetadata(
+        repo_id=repo_id, root=root, force_cache_sync=force_cache_sync
+    )
+    episode_dict = meta.episodes
+    # Create metadata dict for video loading
+    metadata_dict = {
+        "url_root": meta.url_root,
+        "video_keys": meta.video_keys,
+        "fps": meta.fps,
+        "video_backend": video_backend,
+        "get_video_file_path": meta.get_video_file_path,
+        "tasks": meta.tasks,
+    }
+    ds = ds.groupby("episode_index").map_groups(
+        lambda batch: process_horizon_batch(batch, delta_timestamps, episode_dict)
+    )
+    # Load LeRobot metadata
+
+    assert set(delta_timestamps.keys()) <= set(
+        meta.features.keys()
+    ), "delta_timestamps keys must be in the features keys"
+
+    # Define static video loading function
+    def _load_video_frames(batch, metadata_dict: dict, episode_dict: dict) -> dict:
+        """Static function to load video frames for a batch."""
+        from collections import defaultdict
+
+        ep_idx = batch["episode_index"]
+        timestamps = batch["timestamp"]
+
+        # Vectorized task mapping: map each task_index to its task name
+        task_indices = batch["task_index"].tolist()
+        # Map each task_index to task name using iloc
+        batch["task"] = [metadata_dict["tasks"].iloc[idx].name for idx in task_indices]
+
+        if not isinstance(timestamps, list):
+            timestamps = (
+                [timestamps]
+                if isinstance(timestamps, (int, float))
+                else timestamps.tolist()
+            )
+
+        video_keys = metadata_dict["video_keys"]
+
+        if len(video_keys) > 0:
+            for key in video_keys:
+                # Group by video path (multiple episodes may share the same video file)
+                video_path_groups = defaultdict(list)
+
+                for i, (ep, ts) in enumerate(zip(ep_idx, timestamps)):
+                    video_path = (
+                        f"{root}/{metadata_dict['get_video_file_path'](ep, key)}"
+                    )
+                    ts = episode_dict[ep][f"videos/{key}/from_timestamp"] + ts
+                    video_path_groups[video_path].append(
+                        (i, ts)
+                    )  # store (original_index, timestamp)
+
+                # Initialize output array
+                frames_output = [None] * len(timestamps)
+
+                # Decode frames for each unique video path (batch decode per video file)
+                for video_path, idx_ts_pairs in video_path_groups.items():
+                    indices = [idx for idx, _ in idx_ts_pairs]
+                    ts_list = [ts for _, ts in idx_ts_pairs]
+                    # Efficient batch decode for all timestamps in this video
+                    frames = decode_video_frames(
+                        video_path,
+                        ts_list,
+                        tolerance_s=tolerance_s,
+                        backend=metadata_dict["video_backend"],
+                    )
+
+                    # Place frames back in original order
+                    for idx, frame in zip(indices, frames):
+                        frames_output[idx] = frame
+
+                batch[key] = (
+                    image_transform(frames_output)
+                    if image_transform is not None
+                    else frames_output
+                )
+
+        return batch
+
+        # Apply video loading transformation
+
+    ds = ds.map_batches(
+        lambda batch: _load_video_frames(batch, metadata_dict, episode_dict),
+        batch_size=video_batch_size,
+        batch_format="numpy",
+    )
+
+    return ds
 
 
 @PublicAPI
