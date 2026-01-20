@@ -82,6 +82,7 @@ class Predictor(abc.ABC):
             "Predictor APIs were part of the Ray AI Runtime, which has been sunsetted,"
             "and the APIs have been unmaintained and hidden from the documentation.",
             DeprecationWarning,
+            stacklevel=2,
         )
         self._preprocessor: Optional[Preprocessor] = preprocessor
         # Whether tensor columns should be automatically cast from/to the tensor
