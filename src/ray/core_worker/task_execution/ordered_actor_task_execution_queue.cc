@@ -24,7 +24,7 @@ namespace core {
 
 OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
-    DependencyWaiter &waiter,
+    ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
@@ -114,7 +114,7 @@ void OrderedActorTaskExecutionQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
+    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
       TaskToExecute *ready_task = nullptr;
       if (is_retry) {
         // retry_task is guaranteed to be a valid pointer for retries because it
