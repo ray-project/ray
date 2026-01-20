@@ -8,6 +8,9 @@ from typing import Callable, Dict, List, Optional
 from ray._private.ray_constants import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.streaming_executor_state import (
+    format_op_state_summary,
+)
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
@@ -207,11 +210,11 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
     ):
         op_metrics = self._op_progress_metrics.get(opstate)
         if op_metrics is not None:
-            op_metrics.completed = opstate.output_row_count
+            op_metrics.completed = opstate.op.metrics.row_outputs_taken
             total = opstate.op.num_output_rows_total()
             if total is not None:
                 op_metrics.total = total
-            op_metrics.desc = opstate.summary_str_raw(resource_manager)
+            op_metrics.desc = format_op_state_summary(opstate, resource_manager)
 
 
 def _format_progress(m: _LoggingMetrics) -> str:
