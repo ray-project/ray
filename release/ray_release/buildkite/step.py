@@ -127,8 +127,6 @@ def get_step(
     cmd = [
         "./release/run_release_test.sh",
         shlex.quote(test["name"]),
-        "--log-streaming-limit",
-        "100",
     ]
 
     for file in test_collection_file or []:
