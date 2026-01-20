@@ -5326,7 +5326,7 @@ class Dataset:
 
         Example:
             >>> ds = ray.data.range(100)
-            >>> write_kafka(ds, "my-topic", "localhost:9092")
+            >>> ds.write_kafka("my-topic", "localhost:9092")
 
         Returns:
             Write statistics
