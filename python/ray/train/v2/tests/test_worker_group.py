@@ -389,6 +389,11 @@ def test_flush_worker_result_queue(queue_backlog_length):
         )
         assert not status.finished
 
+    # Wait for the workers to finish the training fn before polling.
+    # Otherwise, the poll_status call may return before the workers finish.
+    while not wg.poll_status().finished:
+        time.sleep(0.01)
+
     status = wg.poll_status()
     assert status.finished
 

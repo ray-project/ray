@@ -391,7 +391,7 @@ py_test(
 
 py_test(
     name = "test_placement_group_handle",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_placement_group_handle.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
