@@ -44,6 +44,39 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     return std::make_pair(nullptr, /*should retry*/ false);
   }
 
+  // Prioritize killing IDLE workers that doesn't have any lease granted and occupies
+  // large amount of memory first.
+  int64_t memory_threshold =
+      RayConfig::instance().idle_worker_killing_memory_threshold_bytes();
+  std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
+  int64_t max_idle_worker_used_memory = 0;
+  for (auto worker : workers) {
+    if (worker->GetGrantedLeaseId().IsNil()) {
+      int64_t used_memory =
+          system_memory.GetProcessUsedMemoryBytes(worker->GetProcess().GetId());
+      if (used_memory > memory_threshold && used_memory > max_idle_worker_used_memory) {
+        max_idle_worker_used_memory = used_memory;
+        idle_worker_to_kill = worker;
+      }
+    }
+  }
+
+  if (idle_worker_to_kill) {
+    RAY_LOG(INFO)
+            .WithField("worker_id", idle_worker_to_kill->WorkerId())
+            .WithField("worker_pid", idle_worker_to_kill->GetProcess().GetId())
+            .WithField("worker_used_memory", max_idle_worker_used_memory)
+            .WithField("memory_threshold", memory_threshold)
+        << "Selected a worker that doesn't have any lease granted and occupies large "
+           "amount of memory to kill. ";
+    return std::make_pair(idle_worker_to_kill, /*should retry*/ false);
+  }
+
+  // Group workers by owner id
+  RAY_LOG(INFO) << "No workers found that don't have any lease granted and occupies "
+                   "large amount of memory. "
+                << "Grouping the workers by owner id, sorting the groups by the "
+                << "policy, and picking a worker to kill from the top group.";
   TaskID non_retriable_owner_id = TaskID::Nil();
   std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
@@ -109,15 +142,8 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
 
     int64_t worker_index = 0;
     for (auto &worker : group.GetAllWorkers()) {
-      auto pid = worker->GetProcess().GetId();
-      int64_t used_memory = 0;
-      const auto pid_entry = system_memory.process_used_bytes.find(pid);
-      if (pid_entry != system_memory.process_used_bytes.end()) {
-        used_memory = pid_entry->second;
-      } else {
-        RAY_LOG_EVERY_MS(INFO, 60000)
-            << "Can't find memory usage for PID, reporting zero. PID: " << pid;
-      }
+      int64_t used_memory =
+          system_memory.GetProcessUsedMemoryBytes(worker->GetProcess().GetId());
       result << "Lease granted time "
              << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
              << " worker id " << worker->WorkerId() << " memory used " << used_memory

@@ -35,6 +35,16 @@ struct MemorySnapshot {
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const MemorySnapshot &memory_snapshot);
+
+  int64_t GetProcessUsedMemoryBytes(pid_t pid) const {
+    const auto used_memory_entry = process_used_bytes.find(pid);
+    if (used_memory_entry == process_used_bytes.end()) {
+      RAY_LOG_EVERY_MS(INFO, 60000)
+          << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+      return 0;
+    }
+    return used_memory_entry->second;
+  }
 };
 
 /// Callback that runs at each monitoring interval.

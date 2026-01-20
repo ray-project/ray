@@ -3,6 +3,7 @@ import fnmatch
 import io
 import json
 import logging
+import operator
 import os
 import pathlib
 import random
@@ -1134,7 +1135,6 @@ def raw_metric_timeseries(
 ) -> Dict[str, List[Any]]:
     """Return prometheus timeseries from a RayContext"""
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
@@ -1159,6 +1159,27 @@ def get_system_metric_for_component(
         raise Exception(f"Failed to query Prometheus: {resp.status_code}")
     result = resp.json()
     return [float(item["value"][1]) for item in result["data"]["result"]]
+
+
+def has_metric_tagged_with_value(
+    addr,
+    tag,
+    value,
+    timeseries: PrometheusTimeseries,
+    metric_name,
+    comparison_operator=operator.eq,
+) -> Optional[bool]:
+    result = None
+    metrics = raw_metric_timeseries(addr, timeseries)
+    for name, samples in metrics.items():
+        if name == metric_name:
+            for sample in samples:
+                if tag in set(sample.labels.values()):
+                    if comparison_operator(sample.value, value):
+                        return True
+                    else:
+                        result = False
+    return result
 
 
 def get_test_config_path(config_file_name):

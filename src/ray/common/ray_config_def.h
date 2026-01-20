@@ -1034,3 +1034,10 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
 RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+
+// The threshold of the memory usage in bytes for the idle worker to be considered as
+// a candidate for killing.
+// TODO: We should clean it up after the memory monitor is revamped.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
