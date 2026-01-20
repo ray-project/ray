@@ -15,6 +15,7 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
+from ray._private.ray_constants import env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
@@ -102,20 +103,36 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """
 
     # Default cluster utilization threshold to trigger scaling up.
-    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.75
+    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = env_float(
+        "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD",
+        0.75,
+    )
     # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = 0.25
+    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = env_float(
+        "RAY_DATA_CLUSTER_UTIL_CHECK_INTERVAL_S",
+        0.25,
+    )
     # Default time window in seconds to calculate the average of cluster utilization.
-    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
+    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
+        "RAY_DATA_CLUSTER_UTIL_AVG_WINDOW_S",
+        10,
+    )
     # Default number of nodes to add per node type.
-    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = 1
+    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = env_integer(
+        "RAY_DATA_CLUSTER_SCALING_UP_DELTA",
+        1,
+    )
 
     # Min number of seconds between two autoscaling requests.
-    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 10
+    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS: int = env_integer(
+        "RAY_DATA_MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS",
+        10,
+    )
     # The time in seconds after which an autoscaling request will expire.
-    AUTOSCALING_REQUEST_EXPIRE_TIME_S = 180
-    # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
-    AUTOSCALING_REQUEST_GET_TIMEOUT_S = 5
+    AUTOSCALING_REQUEST_EXPIRE_TIME_S: int = env_integer(
+        "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S",
+        180,
+    )
 
     def __init__(
         self,

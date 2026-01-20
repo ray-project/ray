@@ -48,10 +48,6 @@ class TqdmSubProgressBar(ProgressBar):
 class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using tqdm."""
 
-    # If the name/description of the progress bar exceeds this length,
-    # it will be truncated.
-    MAX_NAME_LENGTH = 100
-
     def __init__(
         self,
         dataset_id: str,
