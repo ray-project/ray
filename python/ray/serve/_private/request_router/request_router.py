@@ -499,6 +499,13 @@ class RequestRouter(ABC):
             get_curr_time_s=get_curr_time_s,
         )
 
+        # Background probe queue: replicas that need their queue length probed.
+        # Using a set (via dict) to deduplicate - if replica is already pending probe, skip.
+        # Maps replica_id -> RunningReplica for efficient lookup and deduplication.
+        self._probe_queue: Dict[ReplicaID, RunningReplica] = {}
+        self._probe_queue_event: Optional[asyncio.Event] = None  # Lazily constructed
+        self._background_probe_task: Optional[asyncio.Task] = None
+
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
         self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
@@ -662,6 +669,65 @@ class RequestRouter(ABC):
             self._lazily_constructed_replicas_updated_event = asyncio.Event()
 
         return self._lazily_constructed_replicas_updated_event
+
+    def _get_probe_queue_event(self) -> asyncio.Event:
+        """Lazily construct probe queue event."""
+        if self._probe_queue_event is None:
+            self._probe_queue_event = asyncio.Event()
+        return self._probe_queue_event
+
+    def _enqueue_replicas_for_probe(self, replicas: List[RunningReplica]) -> None:
+        """Enqueue replicas to have their queue length probed in background.
+
+        This is a non-blocking operation. Duplicate replicas are deduplicated.
+        """
+        if not replicas:
+            return
+
+        for r in replicas:
+            # Deduplicate: only add if not already pending
+            if r.replica_id not in self._probe_queue:
+                self._probe_queue[r.replica_id] = r
+
+        # Signal the background task that there's work to do
+        self._get_probe_queue_event().set()
+
+        # Start background probe task if not running
+        self._maybe_start_background_probe_task()
+
+    def _maybe_start_background_probe_task(self) -> None:
+        """Start the background probe task if not already running."""
+        if self._background_probe_task is None or self._background_probe_task.done():
+            self._background_probe_task = self._event_loop.create_task(
+                self._background_probe_loop()
+            )
+
+    async def _background_probe_loop(self) -> None:
+        """Background task that continuously processes the probe queue."""
+        while True:
+            # Wait for work
+            event = self._get_probe_queue_event()
+            await event.wait()
+
+            # Collect all pending replicas to probe (batch them)
+            if not self._probe_queue:
+                event.clear()
+                continue
+
+            # Take all pending replicas as a batch
+            replicas_to_probe = list(self._probe_queue.values())
+            self._probe_queue.clear()
+            event.clear()
+
+            # Probe the batch
+            if replicas_to_probe:
+                await self._probe_queue_lens(replicas_to_probe, backoff_index=0)
+
+    def shutdown(self) -> None:
+        """Shutdown the request router and cancel background tasks."""
+        if self._background_probe_task is not None:
+            self._background_probe_task.cancel()
+            self._background_probe_task = None
 
     @property
     def num_pending_requests(self) -> int:
@@ -840,8 +906,12 @@ class RequestRouter(ABC):
         for replica_id in list(self._queue_len_gauge_last_update.keys()):
             if replica_id not in new_replica_id_set:
                 del self._queue_len_gauge_last_update[replica_id]
-        # Populate cache for new replicas
-        self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
+        # Also clean up probe queue for removed replicas.
+        for replica_id in list(self._probe_queue.keys()):
+            if replica_id not in new_replica_id_set:
+                del self._probe_queue[replica_id]
+        # Populate cache for new replicas via background probe
+        self._enqueue_replicas_for_probe(replicas_to_ping)
         self._replicas_updated_event.set()
         self._maybe_start_routing_tasks()
 
@@ -966,27 +1036,50 @@ class RequestRouter(ABC):
         """
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
-        not_in_cache: List[RunningReplica] = []
+        # Track replicas with no cache entry at all (need probing)
+        no_cache_entry: List[RunningReplica] = []
+        # Track all replicas with their queue lengths for selection
+        all_with_queue_len: List[Tuple[RunningReplica, int]] = []
+
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
-                # Include replicas whose queues are full as not in the cache so we will
-                # actively probe them. Otherwise we may end up in "deadlock" until their
-                # cache entries expire.
-                if queue_len is None or queue_len >= r.max_ongoing_requests:
-                    not_in_cache.append(r)
-                elif queue_len < lowest_queue_len:
-                    lowest_queue_len = queue_len
-                    chosen_replica_id = r.replica_id
+                if queue_len is None:
+                    # No cache entry - need to probe
+                    no_cache_entry.append(r)
+                else:
+                    # Have cache entry - track for selection
+                    all_with_queue_len.append((r, queue_len))
+                    if (
+                        queue_len < r.max_ongoing_requests
+                        and queue_len < lowest_queue_len
+                    ):
+                        lowest_queue_len = queue_len
+                        chosen_replica_id = r.replica_id
         else:
-            not_in_cache = candidates
+            no_cache_entry = candidates
 
-        # If there is a valid replica to route based on the information in the
-        # cache, route it. Else fall back to actively probing.
-        if chosen_replica_id is None:
+        # If there is a valid replica (not full) based on cache, route to it.
+        if chosen_replica_id is not None:
+            if len(no_cache_entry) > 0:
+                # Enqueue replicas without cache entry for background probing
+                self._enqueue_replicas_for_probe(no_cache_entry)
+        elif len(all_with_queue_len) > 0:
+            # All cached replicas appear full. Optimistically pick the one with
+            # the lowest queue length. The replica can reject if truly full.
+            # Trust the cache - we don't need to re-probe just because replicas
+            # appear full; the optimistic increment/decrement keeps cache accurate.
+            all_with_queue_len.sort(key=lambda x: x[1])
+            chosen_replica_id = all_with_queue_len[0][0].replica_id
+            # Enqueue replicas with no cache entry for background probing
+            if len(no_cache_entry) > 0:
+                self._enqueue_replicas_for_probe(no_cache_entry)
+        else:
+            # No cache entries at all - fall back to actively probing (blocking).
+            # This should only happen on cold start or after cache eviction.
             for r, queue_len in await self._probe_queue_lens(
-                not_in_cache,
+                no_cache_entry,
                 backoff_index,
             ):
                 if queue_len is None:
@@ -996,12 +1089,6 @@ class RequestRouter(ABC):
                 if queue_len < r.max_ongoing_requests and queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
-        elif len(not_in_cache) > 0:
-            # If there are replicas without a valid cache entry, probe them in the
-            # background to populate the cache.
-            self._event_loop.create_task(
-                self._probe_queue_lens(not_in_cache, backoff_index)
-            )
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.

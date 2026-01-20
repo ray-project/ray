@@ -466,7 +466,6 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
-
         self._shutdown = True
 
 
@@ -925,6 +924,8 @@ class AsyncioRouter:
                 raise
 
     async def shutdown(self):
+        if self.request_router:
+            self.request_router.shutdown()
         await self._metrics_manager.shutdown()
 
 
