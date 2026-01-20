@@ -98,11 +98,12 @@ config = (
         clip_rewards=True,
     )
     .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
         env_to_module_connector=_make_env_to_module_connector,
-        num_envs_per_env_runner=2,
     )
     .learners(
-        num_aggregator_actors_per_learner=2,
+        num_learners=args.num_learners,
     )
     .training(
         learner_connector=_make_learner_connector,

@@ -64,16 +64,21 @@ args = parser.parse_args()
 config = (
     SACConfig()
     .environment(args.env)
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+    )
+    .learners(
+        num_learners=args.num_learners,
+    )
     .training(
         initial_alpha=1.001,
-        # lr=0.0006 is very high, w/ 4 GPUs -> 0.0012
-        # Might want to lower it for better stability, but it does learn well.
         actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
         critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
         alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
         lr=None,
         target_entropy="auto",
-        n_step=(1, 5),  # 1?
+        n_step=(1, 5),
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,

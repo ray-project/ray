@@ -60,6 +60,13 @@ args = parser.parse_args()
 config = (
     SACConfig()
     .environment(StatelessCartPole)
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+    )
+    .learners(
+        num_learners=args.num_learners,
+    )
     .training(
         initial_alpha=1.001,
         # Use a smaller learning rate for the policy.
