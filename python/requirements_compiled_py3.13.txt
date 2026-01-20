@@ -47,7 +47,7 @@ aiofiles==22.1.0
     #   gradio
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.16
+aiohttp==3.13.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -67,7 +67,7 @@ aioitertools==0.11.0
     # via aiobotocore
 aiorwlock==1.3.0
     # via -r python/requirements.txt
-aiosignal==1.3.1
+aiosignal==1.4.0
     # via aiohttp
 alabaster==0.7.13
     # via sphinx
