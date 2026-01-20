@@ -841,6 +841,9 @@ class ActorMethod:
                     "before calling actor tasks with non-default tensor_transport."
                 )
 
+            # Wait for source actor to have the transport registered.
+            gpu_object_manager.wait_until_custom_transports_registered(self._actor)
+
         args = args or []
         kwargs = kwargs or {}
 
@@ -1857,6 +1860,10 @@ class ActorClass(Generic[T]):
             original_handle=True,
             allow_out_of_order_execution=allow_out_of_order_execution,
         )
+
+        if meta.enable_tensor_transport:
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager.register_custom_transports_on_actor(actor_handle)
 
         return actor_handle
 
