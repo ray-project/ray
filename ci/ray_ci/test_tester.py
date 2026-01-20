@@ -289,22 +289,17 @@ def test_get_all_test_query() -> None:
     )
 
 
-def test_get_new_tests() -> None:
-    with mock.patch(
-        "subprocess.check_output",
-        return_value="\n".join(["//old_test_01", "//old_test_02", "//new_test"]).encode(
-            "utf-8"
-        ),
-    ), mock.patch(
-        "ray_release.test.Test.gen_from_s3",
-        return_value=[
-            _stub_test({"name": "linux://old_test_01"}),
-            _stub_test({"name": "linux://old_test_02"}),
-        ],
-    ):
-        assert _get_new_tests(
-            "linux", LinuxTesterContainer("test", skip_ray_installation=True)
-        ) == {"//new_test"}
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.run_script_with_output")
+@mock.patch("ray_release.test.Test.gen_from_s3")
+def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
+    mock_gen_from_s3.return_value = [
+        _stub_test({"name": "linux://old_test_01"}),
+        _stub_test({"name": "linux://old_test_02"}),
+    ]
+    mock_run_script_with_output.return_value = "//old_test_01\n//new_test"
+    assert _get_new_tests(
+        "linux", LinuxTesterContainer("test", skip_ray_installation=True)
+    ) == {"//new_test"}
 
 
 def test_get_flaky_test_targets() -> None:
