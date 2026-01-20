@@ -456,10 +456,11 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   void HandleSubmittedTaskFinished(
       const ObjectID &return_id,
       const ObjectID &arg_id,
-      const absl::flat_hash_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
+      const absl::flat_hash_map<ObjectID, absl::InlinedVector<ObjectID, 8>>
+          &nested_return_ids = {},
       const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounterInterface::ReferenceTableProto &borrower_refs = empty_refs) {
-    std::vector<ObjectID> arguments;
+    absl::InlinedVector<ObjectID, 8> arguments;
     for (const auto &pair : nested_return_ids) {
       // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
       rc_.AddNestedObjectIds(pair.first, pair.second, address_);
@@ -505,7 +506,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 // Tests basic incrementing/decrementing of direct/submitted task reference counts. An
 // entry should only be removed once both of its reference counts reach zero.
 TEST_F(ReferenceCountTest, TestBasic) {
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
 
   ObjectID id1 = ObjectID::FromRandom();
   ObjectID id2 = ObjectID::FromRandom();
@@ -598,7 +599,7 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id,
                      {},
@@ -2503,7 +2504,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id,
                      {},
@@ -2553,7 +2554,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
 
 // Test to make sure that we call the lineage released callback correctly.
 TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   std::vector<ObjectID> lineage_deleted;
 
   ObjectID id = ObjectID::FromRandom();
@@ -2588,7 +2589,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
 // have gone out of scope, but their Reference entry is pinned until the final
 // object goes out of scope.
 TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   std::vector<ObjectID> lineage_deleted;
 
   std::vector<ObjectID> ids;
@@ -2703,7 +2704,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
 }
 
 TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   std::vector<ObjectID> lineage_deleted;
 
   ObjectID id = ObjectID::FromRandom();

@@ -700,7 +700,9 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
 
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
+  // Convert InlinedVector to std::vector for provider.Get which requires std::vector
+  std::vector<ObjectID> ids_vec(ids.begin(), ids.end());
+  ASSERT_TRUE(provider.Get(ids_vec, owner_addresses, /*timeout_ms=*/-1, &results).ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);

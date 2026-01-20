@@ -295,7 +295,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
             0);
   ASSERT_EQ(num_retries_, 0);
 
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -330,7 +330,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(stored_error, error);
   ASSERT_EQ(num_retries_, 0);
 
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -399,7 +399,7 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_TRUE(results[0]->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::LOCAL_RAYLET_DIED);
 
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -465,7 +465,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_TRUE(results[0]->IsException(&stored_error));
   ASSERT_EQ(stored_error, error);
 
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -2530,7 +2530,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
     ASSERT_TRUE(status.ok());
   }
 
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(dynamic_return_id_index_1, &removed);
   ASSERT_EQ(removed.size(), 1UL);
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
@@ -2854,7 +2854,7 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
 
   // Call `RemoveLocalReference` to simulate that the GPU object ref is out of scope.
   // Then, the GPU object should be removed.
-  std::vector<ObjectID> removed;
+  absl::InlinedVector<ObjectID, 8> removed;
   reference_counter_->RemoveLocalReference(gpu_obj_ref, &removed);
   ASSERT_EQ(removed[0], gpu_obj_ref);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
