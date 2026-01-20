@@ -120,27 +120,15 @@ steps:
         --except-tags data_integration
     depends_on: [ "mlgpubuild-multipy", "forge" ]
 
-  - label: ":train: ml: data integration tests (cpu)"
+  - label: ":train: ml: data integration tests"
     tags:
       - data
       - train
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
-        --python-version 3.10 --build-name mlbuild-py3.10
-        --only-tags data_integration
-        --except-tags gpu,train_v2_gpu
-    depends_on: [ "mlbuild-multipy", "forge" ]
-
-  - label: ":train: ml: data integration tests (gpu)"
-    tags:
-      - data
-      - train
-      - gpu
     instance_type: gpu
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train:test_iter_torch_batches_gpu ml
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --python-version 3.10 --build-name mlgpubuild-py3.10
+        --only-tags data_integration
     depends_on: [ "mlgpubuild-multipy", "forge" ]
 
   - label: ":train: ml: train gpu {{matrix.python}} tests ({{matrix.worker_id}})"
