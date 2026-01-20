@@ -201,7 +201,7 @@ def validate_and_report(
         start_time = time.time()
         if validation_type == ValidationType.TORCH_TRAINER:
             validation = ValidationTaskConfig(
-                func_kwargs={
+                fn_kwargs={
                     "parent_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
                     "batch_idx": batch_idx,

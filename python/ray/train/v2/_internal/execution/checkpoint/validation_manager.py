@@ -37,16 +37,16 @@ def run_validate_fn(
 ) -> Dict:
     """Run the user-defined validation function.
 
-    Merges func_kwargs from validation_config.validation_task_config (defaults) with
-    func_kwargs from validation_task_config (per-report overrides).
+    Merges fn_kwargs from validation_config.validation_task_config (defaults) with
+    fn_kwargs from validation_task_config (per-report overrides).
     """
     # Merge kwargs: defaults from validation_config, overrides from validation_task_config
     if validation_task_config is True:
-        merged_kwargs = validation_config.validation_task_config.func_kwargs
+        merged_kwargs = validation_config.validation_task_config.fn_kwargs
     else:
         merged_kwargs = {
-            **validation_config.validation_task_config.func_kwargs,
-            **validation_task_config.func_kwargs,
+            **validation_config.validation_task_config.fn_kwargs,
+            **validation_task_config.fn_kwargs,
         }
     metrics_dict = validation_config.validate_fn(
         checkpoint,

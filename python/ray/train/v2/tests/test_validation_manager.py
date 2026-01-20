@@ -81,7 +81,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
             validate_fn=validate_fn,
-            validation_task_config=ValidationTaskConfig(func_kwargs={"score": 100}),
+            validation_task_config=ValidationTaskConfig(fn_kwargs={"score": 100}),
         ),
     )
     (
@@ -100,7 +100,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
             checkpoint=low_initial_high_final_training_result.checkpoint,
-            validation=ValidationTaskConfig(func_kwargs={"score": 200}),
+            validation=ValidationTaskConfig(fn_kwargs={"score": 200}),
         ),
         metrics={},
     )

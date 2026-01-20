@@ -65,7 +65,7 @@ class TrainFnUtils(ABC):
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
             validation: If True, triggers validation with default kwargs from validation_config.
-                If a ValidationTaskConfig, triggers validation with the specified func_kwargs
+                If a ValidationTaskConfig, triggers validation with the specified fn_kwargs
                 (merged with defaults from validation_config). If False, no validation.
         """
         pass

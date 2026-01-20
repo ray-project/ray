@@ -55,16 +55,16 @@ class ValidationTaskConfig:
     """Configuration for a specific validation task, passed to report().
 
     Args:
-        func_kwargs: json-serializable keyword arguments to pass to the validation function.
+        fn_kwargs: json-serializable keyword arguments to pass to the validation function.
             Note that we always pass `checkpoint` as the first argument to the
             validation function.
     """
 
-    func_kwargs: Optional[Dict[str, Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
-        if self.func_kwargs is None:
-            self.func_kwargs = {}
+        if self.fn_kwargs is None:
+            self.fn_kwargs = {}
 
 
 @PublicAPI(stability="alpha")
@@ -76,7 +76,7 @@ class ValidationConfig:
             This function should accept a checkpoint as the first argument
             and return a dictionary of metrics.
         validation_task_config: Default configuration for validation tasks.
-            The func_kwargs in this config can be overridden by
+            The fn_kwargs in this config can be overridden by
             ValidationTaskConfig passed to report().
     """
 

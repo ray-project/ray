@@ -266,7 +266,7 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
             checkpoint=Checkpoint(checkpoint_dir),
             checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
             delete_local_checkpoint_after_upload=False,
-            validation=ValidationTaskConfig(func_kwargs={}),
+            validation=ValidationTaskConfig(fn_kwargs={}),
         )
         with create_dict_checkpoint({}) as cp2:
             ray.train.report(
@@ -280,7 +280,7 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
                 metrics={"score": 2},
                 checkpoint=cp3,
                 checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validation=ValidationTaskConfig(func_kwargs={"new_score": 5}),
+                validation=ValidationTaskConfig(fn_kwargs={"new_score": 5}),
             )
 
     trainer = DataParallelTrainer(
@@ -311,7 +311,7 @@ def test_report_validate_fn_overrides_default_kwargs():
             ray.train.report(
                 metrics={},
                 checkpoint=cp,
-                validation=ValidationTaskConfig(func_kwargs={"validation_score": 2}),
+                validation=ValidationTaskConfig(fn_kwargs={"validation_score": 2}),
             )
 
     trainer = DataParallelTrainer(
@@ -319,7 +319,7 @@ def test_report_validate_fn_overrides_default_kwargs():
         validation_config=ValidationConfig(
             validate_fn=validate_fn,
             validation_task_config=ValidationTaskConfig(
-                func_kwargs={"validation_score": 1, "other_key": "other_value"}
+                fn_kwargs={"validation_score": 1, "other_key": "other_value"}
             ),
         ),
         scaling_config=ScalingConfig(num_workers=1),
@@ -344,7 +344,7 @@ def test_report_validate_fn_error():
                 metrics={},
                 checkpoint=cp1,
                 validation=ValidationTaskConfig(
-                    func_kwargs={"rank": rank, "iteration": 0}
+                    fn_kwargs={"rank": rank, "iteration": 0}
                 ),
             )
         with create_dict_checkpoint({}) as cp2:
@@ -352,7 +352,7 @@ def test_report_validate_fn_error():
                 metrics={},
                 checkpoint=cp2,
                 validation=ValidationTaskConfig(
-                    func_kwargs={"rank": rank, "iteration": 1}
+                    fn_kwargs={"rank": rank, "iteration": 1}
                 ),
             )
 
@@ -493,7 +493,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
         validation_config=ValidationConfig(
             validate_fn=validate_fn,
             validation_task_config=ValidationTaskConfig(
-                func_kwargs={"validation_score": 100}
+                fn_kwargs={"validation_score": 100}
             ),
         ),
         scaling_config=ScalingConfig(num_workers=2),
