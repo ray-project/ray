@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 
 #include <gtest/gtest.h>
 
@@ -28,8 +28,8 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
-#include "ray/gcs/gcs_actor.h"
-#include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/gcs/actor/gcs_actor.h"
+#include "ray/gcs/actor/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
