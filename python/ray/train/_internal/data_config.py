@@ -9,22 +9,6 @@ if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 
 
-def _get_execution_options_class():
-    """Lazy import of ExecutionOptions."""
-    from ray.data import ExecutionOptions
-
-    return ExecutionOptions
-
-
-def _get_execution_resources_class():
-    """Lazy import of ExecutionResources."""
-    from ray.data._internal.execution.interfaces.execution_options import (
-        ExecutionResources,
-    )
-
-    return ExecutionResources
-
-
 @PublicAPI(stability="stable")
 class DataConfig:
     """Class responsible for configuring Train dataset preprocessing.
@@ -66,7 +50,8 @@ class DataConfig:
             )
 
         default_execution_options = DataConfig.default_ingest_options()
-        ExecutionOptions = _get_execution_options_class()
+        from ray.data import ExecutionOptions
+
         if isinstance(execution_options, ExecutionOptions):
             default_execution_options = execution_options
         # If None, all datasets will use the default ingest options.
@@ -136,7 +121,10 @@ class DataConfig:
             if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overridden by the user,
                 # add training-reserved resources to Data's exclude_resources.
-                ExecutionResources = _get_execution_resources_class()
+                from ray.data._internal.execution.interfaces.execution_options import (
+                    ExecutionResources,
+                )
+
                 execution_options.exclude_resources = (
                     execution_options.exclude_resources.add(
                         ExecutionResources(
