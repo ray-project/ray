@@ -108,6 +108,13 @@ def throughput_same_send_per_recv(
 
 
 def latency_test(_num_transfers, transport, size, device, sender, receiver):
+    # Warmup.
+    ray.get(
+        receiver.recv.remote(
+            sender.send.options(tensor_transport=transport).remote(size, device)
+        )
+    )
+
     times = []
     for _ in range(10):
         start = time.perf_counter()
@@ -178,8 +185,13 @@ SIZES_AND_NUM_TRANSFERS = [
 
 def do_benchmark(transport, device, test_func):
     # Create actors + collective group
-    sender = GPUActor.remote()
-    receiver = GPUActor.remote()
+    if transport == "cuda_ipc":
+        sender = GPUActor.options(num_gpus=0.5).remote()
+        receiver = GPUActor.options(num_gpus=0.5).remote()
+    else:
+        sender = GPUActor.remote()
+        receiver = GPUActor.remote()
+
     if transport == "nccl" or transport == "gloo":
         create_collective_group([sender, receiver], transport)
 
@@ -237,6 +249,10 @@ parser.add_argument(
     "--enable_torch_bench",
     action="store_true",
 )
+parser.add_argument(
+    "--enable_cuda_ipc",
+    action="store_true",
+)
 args = parser.parse_args()
 if args.enable_10gb:
     SIZES_AND_NUM_TRANSFERS.append(("10GB", (10 * 1024 * 1024 * 1024), 1))
@@ -248,6 +264,9 @@ if args.enable_torch_bench:
     TEST_FUNCS.append(torch_latency)
     TEST_FUNCS.append(torch_throughput)
     TRANSPORTS_AND_DEVICE.append(("torch", "cuda"))
+
+if args.enable_cuda_ipc:
+    TRANSPORTS_AND_DEVICE.append(("cuda_ipc", "cuda"))
 
 
 bench_results = []
