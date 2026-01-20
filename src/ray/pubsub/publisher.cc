@@ -409,7 +409,7 @@ Status Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   if (subscription_index_it == subscription_index_map_.end()) {
     return Status::InvalidArgument("Invalid channel type: " +
-                                   std::to_string(static_cast<int>(channel_type)));
+                                   rpc::ChannelType_Name(channel_type));
   }
   subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
   return Status::OK();
