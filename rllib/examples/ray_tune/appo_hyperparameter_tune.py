@@ -25,7 +25,7 @@ Key hyperparameters being tuned:
 Note on storage for multi-node clusters
 ---------------------------------------
 Ray Tune requires centralized storage accessible by all nodes in a multi-node cluster.
-This can be an S3 bucket or local storage assessable to all nodes.
+This can be an S3 bucket or local storage accessible to all nodes.
 If running on an Anyscale job, it has an internal S3 bucket defined by the
 ANYSCALE_ARTIFACT_STORAGE environment variable.
 See https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html for more details.
