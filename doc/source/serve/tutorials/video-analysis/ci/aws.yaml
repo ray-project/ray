@@ -1,0 +1,19 @@
+cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
+region: us-west-2
+
+# Cluster resources
+head_node_type:
+  name: head
+  instance_type: m5.2xlarge
+  resources:
+    cpu: 8
+
+worker_node_types:
+  - name: 16CPU-64GB
+    instance_type: m8i.4xlarge
+    min_workers: 1
+    max_workers: 32
+  - name: 4CPU-16GB-1GPU
+    instance_type: g6.xlarge
+    min_workers: 1
+    max_workers: 32

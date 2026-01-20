@@ -8,7 +8,6 @@ from ray_release.aws import (
     add_tags_to_aws_config,
 )
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
-from ray_release.exception import CloudInfoError
 from ray_release.test import Test
 from ray_release.util import dict_hash, get_anyscale_sdk
 
@@ -45,7 +44,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute = None
         self.cluster_compute_name = None
         self.cluster_compute_id = None
-        self.cloud_provider = None
+        self.cloud_provider = test.get_cloud_env()
 
         self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
         self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
@@ -75,10 +74,8 @@ class ClusterManager(abc.ABC):
         self.cluster_compute.setdefault(
             "maximum_uptime_minutes", self.maximum_uptime_minutes
         )
-        self.cloud_provider = self._get_cloud_provider(cluster_compute)
         self.cluster_compute = self._annotate_cluster_compute(
             self.cluster_compute,
-            cloud_provider=self.cloud_provider,
             extra_tags=extra_tags,
         )
 
@@ -88,21 +85,12 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_compute)}"
         )
 
-    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> Optional[str]:
-        if not cluster_compute or "cloud_id" not in cluster_compute:
-            return None
-        try:
-            return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
-        except Exception as e:
-            raise CloudInfoError(f"Could not obtain cloud information: {e}") from e
-
     def _annotate_cluster_compute(
         self,
         cluster_compute: Dict[str, Any],
-        cloud_provider: str,
         extra_tags: Dict[str, str],
     ) -> Dict[str, Any]:
-        if not extra_tags or cloud_provider != "AWS":
+        if not extra_tags or self.cloud_provider != "aws":
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
@@ -118,10 +106,4 @@ class ClusterManager(abc.ABC):
         return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):
-        raise NotImplementedError
-
-    def delete_configs(self):
-        raise NotImplementedError
-
-    def get_cluster_address(self) -> str:
         raise NotImplementedError

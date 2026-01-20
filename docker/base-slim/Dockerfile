@@ -6,6 +6,8 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS main-build
 ARG PYTHON_VERSION
+ARG PYTHON_DEPSET
+ARG CONSTRAINTS_FILE
 
 RUN <<EOF
 #!/bin/bash
@@ -98,7 +100,8 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -119,23 +122,9 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
 /home/ray/anaconda3/bin/conda clean -a
 
-# Install python packages
-PIP_PKGS=(
-    anyscale
-    packaging
-    azure-identity
-    "adlfs[abfs]"
-    boto3
-    google-cloud-storage
-    jupyterlab
-    ipywidgets
-    supervisor
-    "smart_open[s3,gcs,azure,http]"
-)
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c /home/ray/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
 anyscale --version
 
 mkdir -p /tmp/supervisord
