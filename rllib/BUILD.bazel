@@ -470,8 +470,6 @@ py_test(
         "learning_tests",
         "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/43808
-        "manual",
     ],
 )
 
@@ -495,8 +493,6 @@ py_test(
         "learning_tests",
         "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/50538
-        "manual",
     ],
 )
 
