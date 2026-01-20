@@ -1,4 +1,5 @@
 import abc
+import warnings
 from typing import Callable, Dict, Optional, Type, Union
 
 import numpy as np
@@ -12,7 +13,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data import Preprocessor
 from ray.train import Checkpoint
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
@@ -36,7 +37,7 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
@@ -76,6 +77,11 @@ class Predictor(abc.ABC):
 
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
+        warnings.warn(
+            f"{self.__class__.__name__} is deprecated and will be removed after April 2026.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._preprocessor: Optional[Preprocessor] = preprocessor
         # Whether tensor columns should be automatically cast from/to the tensor
         # extension type at UDF boundaries. This can be overridden by subclasses.
