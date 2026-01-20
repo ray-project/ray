@@ -20,7 +20,6 @@ import argparse
 import io
 import itertools
 import logging
-import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -71,7 +70,7 @@ class BenchmarkConfig:
     num_image_columns_list: List[int] = field(default_factory=lambda: [32])
 
     # Number of batches to process per benchmark run
-    num_batches: int = 32
+    num_batches: int = 16
 
     # Optional simulated training time (seconds) per batch
     simulated_training_time: Optional[float] = None
