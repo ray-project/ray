@@ -82,17 +82,18 @@ TEST_P(RayActorLifecycleEventRestartTest, TestRestartingReason) {
   data.set_actor_id("test_actor_id");
   data.set_preempted(test_case.preempted);
 
+  std::unique_ptr<RayActorLifecycleEvent> event;
   if (test_case.input_reason ==
       rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION) {
     // restart reason is explicitly passed in constructor only incase of lineage
     // reconstruction
-    auto event = std::make_unique<RayActorLifecycleEvent>(
+    event = std::make_unique<RayActorLifecycleEvent>(
         data,
         rpc::events::ActorLifecycleEvent::RESTARTING,
         "sess1",
         test_case.input_reason);
   } else {
-    auto event = std::make_unique<RayActorLifecycleEvent>(
+    event = std::make_unique<RayActorLifecycleEvent>(
         data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
   }
 
