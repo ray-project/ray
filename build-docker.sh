@@ -38,9 +38,9 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS+=("-q")
         ;;
         --python-version)
-            # Python version to install. e.g. 3.9
+            # Python version to install. e.g. 3.10
             # Changing python versions may require a different wheel.
-            # If not provided defaults to 3.9
+            # If not provided defaults to 3.10
             shift
             PYTHON_VERSION="$1"
         ;;

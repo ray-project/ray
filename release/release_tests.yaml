@@ -299,8 +299,6 @@
   frequency: manual
   team: ml
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -349,8 +347,6 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  stable: false
-
   # https://github.com/ray-project/ray/issues/49847
   frequency: manual
   team: ml
@@ -371,8 +367,6 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
-
-  stable: false
 
   # https://github.com/ray-project/ray/issues/49846
   frequency: manual
@@ -775,8 +769,6 @@
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
-  stable: true
-
   frequency: nightly-3x
   team: ml
 
@@ -966,8 +958,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: false
 
   frequency: weekly
   team: ml
@@ -1167,8 +1157,6 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: true
-
   frequency: weekly
   team: serve
 
@@ -1207,8 +1195,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: true
 
   frequency: weekly
   team: serve
@@ -2037,26 +2023,6 @@
   run:
     timeout: 1500  # expected 1000 seconds
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
-
-- name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 ########################
 # Core Nightly Tests
@@ -3036,8 +3002,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#   stable: false
-
 # - name: scheduling_test_many_5s_tasks_many_nodes
 #   group: core-scalability-test
 #   working_dir: benchmarks
@@ -3055,8 +3019,6 @@
 #     wait_for_nodes:
 #       num_nodes: 32
 #       timeout: 600
-
-#   stable: false
 
 
 ##################
@@ -3558,8 +3520,6 @@
   group: k8s-test
   working_dir: k8s_tests
 
-  stable: false
-
   # Failing since Oct 2024.
   # https://github.com/ray-project/ray/issues/36190
   frequency: manual
@@ -3735,8 +3695,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3760,8 +3718,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3783,8 +3739,6 @@
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: manual
@@ -3809,8 +3763,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3834,8 +3786,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3858,8 +3808,6 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: weekly
@@ -4810,6 +4758,58 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: llm_batch_inference_text  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
