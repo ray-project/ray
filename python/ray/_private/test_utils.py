@@ -1174,7 +1174,7 @@ def has_metric_tagged_with_value(
     for name, samples in metrics.items():
         if name == metric_name:
             for sample in samples:
-                if tag in set(sample.labels.values()):
+                if tag in sample.labels.values():
                     if comparison_operator(sample.value, value):
                         return True
                     else:

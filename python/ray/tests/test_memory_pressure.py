@@ -79,7 +79,7 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
 
 
 @pytest.fixture
-def ray_with_memory_moinitor_and_10_cpus(shutdown_only):
+def ray_with_memory_monitor_and_10_cpus(shutdown_only):
     with ray.init(
         num_cpus=10,
         object_store_memory=100 * 1024 * 1024,
@@ -148,9 +148,9 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_idle_worker_terminate_first(ray_with_memory_moinitor_and_10_cpus):
+def test_idle_worker_terminate_first(ray_with_memory_monitor_and_10_cpus):
     # check the current number of idle workers and their memory usage
-    addr = ray_with_memory_moinitor_and_10_cpus
+    addr = ray_with_memory_monitor_and_10_cpus
 
     # obtains the current idle workers
     num_idle_workers = 0
