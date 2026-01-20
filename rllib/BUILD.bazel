@@ -2295,6 +2295,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
