@@ -140,6 +140,48 @@ class TestMockLLMEngine:
         async for response in engine.score(request):
             LLMResponseValidator.validate_score_response(response)
 
+    @pytest.mark.parametrize("return_token_strs", [False, True])
+    @pytest.mark.asyncio
+    async def test_tokenize_mock_engine(
+        self, mock_llm_config, mock_tokenize_request, return_token_strs: bool
+    ):
+        """Test tokenize API."""
+        # Create and start the engine
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        # Create tokenize request
+        request = mock_tokenize_request
+
+        print(f"\n\n_____ TOKENIZE return_token_strs={return_token_strs} _____\n\n")
+
+        async for response in engine.tokenize(request):
+            LLMResponseValidator.validate_tokenize_response(
+                response,
+                expected_prompt="Hello, world!",
+                return_token_strs=return_token_strs,
+            )
+
+    @pytest.mark.asyncio
+    async def test_detokenize_mock_engine(
+        self, mock_llm_config, mock_detokenize_request
+    ):
+        """Test detokenize API."""
+        # Create and start the engine
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        # Create detokenize request
+        request = mock_detokenize_request
+
+        print("\n\n_____ DETOKENIZE _____\n\n")
+
+        async for response in engine.detokenize(request):
+            LLMResponseValidator.validate_detokenize_response(
+                response,
+                expected_text="Hello",  # [72, 101, 108, 108, 111] = "Hello"
+            )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

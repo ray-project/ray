@@ -437,10 +437,8 @@ class ResourceManager:
         # Outputs usage of the current operator.
         op_outputs_usage = self._mem_op_outputs[op]
         # Also account the downstream ineligible operators' memory usage.
-        op_outputs_usage += sum(
-            self.get_op_usage(next_op).object_store_memory
-            for next_op in self._get_downstream_ineligible_ops(op)
-        )
+        for next_op in self._get_downstream_ineligible_ops(op):
+            op_outputs_usage += int(self.get_op_usage(next_op).object_store_memory)
         return op_outputs_usage
 
     def is_materializing_op(self, op: PhysicalOperator) -> bool:
@@ -454,27 +452,12 @@ class ResourceManager:
             for next_op in op.output_dependencies
         )
 
-    def get_available_object_store_budget_fraction(
-        self, op: PhysicalOperator
-    ) -> Optional[float]:
-        """Get available object store memory budget fraction for the operator. Returns None if not available."""
-        op_usage = self.get_op_usage(op)
-        op_budget = self.get_budget(op)
-        if op_usage is None or op_budget is None:
-            return None
-        total_mem = op_usage.object_store_memory + op_budget.object_store_memory
-        if total_mem == 0:
-            return None
-        return op_budget.object_store_memory / total_mem
-
-    def get_utilized_object_store_budget_fraction(
-        self, op: PhysicalOperator
-    ) -> Optional[float]:
-        """Get utilized object store memory budget fraction for the operator. Returns None if not available."""
-        available_fraction = self.get_available_object_store_budget_fraction(op)
-        if available_fraction is None:
-            return None
-        return 1 - available_fraction
+    def get_op_usage_object_store_with_downstream(self, op: PhysicalOperator) -> int:
+        """Get total object store usage of the given operator and its downstream ineligible ops."""
+        total_usage = int(self.get_op_usage(op).object_store_memory)
+        for next_op in self._get_downstream_ineligible_ops(op):
+            total_usage += int(self.get_op_usage(next_op).object_store_memory)
+        return total_usage
 
 
 def _get_first_pending_shuffle_op(topology: "Topology") -> int:
@@ -816,8 +799,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        # TODO fix
-        return ExecutionResources.zero()
+        budget = self.get_budget(op)
+        if budget is None:
+            return None
+        return budget.add(self._resource_manager.get_op_usage(op))
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
