@@ -2283,9 +2283,11 @@ py_test(
     deps = [":conftest"],
 )
 
-
 py_test(
     name = "test_torch_rl_module_gpu",
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+    args = ["TestRLModuleGPU"],
     main = "core/rl_module/torch/tests/test_torch_rl_module.py",
     tags = [
         "core",
@@ -2293,9 +2295,6 @@ py_test(
         "gpu",
         "team:rllib",
     ],
-    size = "medium",
-    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
-    args = ["TestRLModuleGPU"],
 )
 
 py_test(
