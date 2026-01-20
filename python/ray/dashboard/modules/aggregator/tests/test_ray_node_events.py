@@ -46,6 +46,16 @@ def test_ray_node_events(ray_start_cluster, httpserver):
         base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
+
+    # Verify the 4 new fields exist in the JSON
+    node_def_event = req_json[0]["nodeDefinitionEvent"]
+    assert "hostname" in node_def_event
+    assert "nodeName" in node_def_event
+    assert "instanceId" in node_def_event
+    assert "instanceTypeName" in node_def_event
+
+    # Hostname should be populated from system
+    assert len(node_def_event["hostname"]) > 0
     assert base64.b64decode(req_json[1]["nodeId"]).hex() == head_node_id
     assert (
         base64.b64decode(req_json[1]["nodeLifecycleEvent"]["nodeId"]).hex()
