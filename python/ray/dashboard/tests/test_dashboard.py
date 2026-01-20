@@ -116,6 +116,10 @@ def check_agent_register(raylet_proc, agent_pid):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{"_system_config": {"agent_register_timeout_ms": 5000}}],
@@ -170,7 +174,9 @@ def test_basic(ray_start_regular):
                     f"RuntimeEnvAgentPort: {node.get('RuntimeEnvAgentPort', 0)}"
                 )
                 return port > 0
-        logger.info(f"Node {node_id} not found in nodes: {[n['NodeID'] for n in nodes]}")
+        logger.info(
+            f"Node {node_id} not found in nodes: {[n['NodeID'] for n in nodes]}"
+        )
         return False
 
     wait_for_condition(is_agent_port_available, timeout=30)
