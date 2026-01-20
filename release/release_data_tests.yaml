@@ -528,6 +528,38 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
+# Heterogeneous cluster with both GPU and CPU worker nodes (fixed size)
+- name: image_classification_heterogeneous
+  python: "3.10"
+  group: data-batch-inference
+
+  cluster:
+    byod:
+      python_depset: image_classification_py3.10.lock
+    cluster_compute: heterogeneous_gpu_cpu_compute.yaml
+
+  run:
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+# Heterogeneous autoscaling cluster with both GPU and CPU worker nodes
+- name: image_classification_heterogeneous_autoscaling
+  python: "3.10"
+  group: data-batch-inference
+
+  cluster:
+    byod:
+      python_depset: image_classification_py3.10.lock
+    cluster_compute: autoscaling_gpu_cpu_compute.yaml
+
+  run:
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
 
 - name: image_embedding_from_uris_{{case}}
   python: "3.10"

@@ -1,0 +1,27 @@
+# Heterogeneous autoscaling cluster with both GPU and CPU worker nodes.
+# GPU nodes are used for inference, CPU nodes are used for preprocessing.
+# Both node types autoscale from 0 to max.
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: gpu-worker-node
+      instance_type: g4dn.2xlarge
+      min_workers: 0
+      max_workers: 10
+      use_spot: false
+    - name: cpu-worker-node
+      # 16 cores, 128GB memory - good memory/core ratio for preprocessing
+      instance_type: r6i.4xlarge
+      min_workers: 0
+      max_workers: 10
+      use_spot: false
