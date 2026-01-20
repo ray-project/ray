@@ -47,7 +47,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
+        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0 --python-version 3.10
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: gRPC tests"
@@ -60,6 +61,7 @@ steps:
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_USE_GRPC_BY_DEFAULT=1
         --test-env=RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on: servebuild-multipy
     tags:
       - serve
@@ -77,7 +79,7 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
-        --python-version 3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0 --python-version 3.10
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: same event loop tests"
@@ -93,7 +95,7 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-        --python-version 3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0 --python-version 3.10
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -108,6 +110,7 @@ steps:
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --test-env=EXPECTED_PYTHON_VERSION={{matrix.python}}
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on: servebuild-multipy
     matrix:
       setup:
@@ -137,6 +140,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
         --build-name servebuild-py3.10
         --python-version 3.10
     depends_on:
@@ -193,6 +197,7 @@ steps:
         --python-version 3.10
         --test-env=EXPECTED_PYTHON_VERSION=3.10
         --test-env=RAY_DEFAULT=1
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
         --only-tags minimal
     depends_on: minbuild-serve
 
@@ -207,6 +212,7 @@ steps:
         --parallelism-per-worker 3
         --build-name servebuild-py3.10
         --python-version 3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: HA integration tests"
@@ -218,6 +224,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration --python-version 3.10
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --only-tags ha_integration --python-version 3.10 --build-name servebuild-py3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on:
       - manylinux-x86_64
       - forge
@@ -233,6 +240,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --only-tags serve_tracing --build-name servetracingbuild
         --python-version 3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on: servetracingbuild
 
   - label: ":ray-serve: serve: doc gpu tests"
@@ -259,4 +267,5 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
         --python-version 3.10 --build-name servebuild-py3.10
+        --test-env=RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0
     depends_on: servebuild-multipy
