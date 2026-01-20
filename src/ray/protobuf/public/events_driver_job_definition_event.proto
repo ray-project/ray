@@ -32,4 +32,11 @@ message DriverJobDefinitionEvent {
   bytes driver_node_id = 4;
   string entrypoint = 5;
   Config config = 6;
+  string type = 7;
+  string submission_id = 8;
+  string driver_agent_http_address = 9;
+  double entrypoint_num_cpus = 10;
+  double entrypoint_num_gpus = 11;
+  uint64 entrypoint_memory = 12;
+  map<string, double> entrypoint_resources = 13;
 }
