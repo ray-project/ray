@@ -356,17 +356,23 @@ class JobSupervisor:
 
         from ray import NodeID
         from ray.core.generated import gcs_pb2
+        from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
         # Get GCS client to read fresh data
         gcs_client = ray._private.worker.global_worker.gcs_client
         node_id_obj = NodeID.from_hex(driver_node_id)
 
+        # Create NodeSelector to filter by node_id
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = node_id_obj.binary()
+
         for i in range(max_retries):
             try:
                 # Read directly from GCS (not from cached node object)
+                # IMPORTANT: sync get_all_node_info uses node_selectors, not node_id
                 node_info_dict = gcs_client.get_all_node_info(
-                    node_id=node_id_obj,
                     timeout=5,
+                    node_selectors=[node_selector],
                     state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
                 )
                 if node_id_obj in node_info_dict:
