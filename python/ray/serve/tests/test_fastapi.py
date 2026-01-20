@@ -1278,7 +1278,7 @@ def test_root_path(
     serve.run(App.bind())
 
     base = get_application_url("HTTP")
-    test_urls = [
+    test_urls = {
         f"{base}/hello",
         f"{base}{app_root_path}/hello",
         f"{base}{serve_root_path}/hello",
@@ -1286,7 +1286,7 @@ def test_root_path(
         f"{base}{serve_root_path}{app_root_path}/hello",
         f"{base}{app_root_path}{app_root_path}/hello",
         f"{base}{serve_root_path}{serve_root_path}/hello",
-    ]
+    }
 
     tested = set()
     working_url_params = []
