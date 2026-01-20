@@ -18,7 +18,7 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --no-header
     --generate-hashes
-    --index-strategy unsafe-best-match
+    --index-strategy first-index
     --no-strip-markers
     --emit-index-url
     --emit-find-links
