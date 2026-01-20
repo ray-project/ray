@@ -78,9 +78,7 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         warnings.warn(
-            f"{self.__class__.__name__} is deprecated and will be removed. "
-            "Predictor APIs were part of the Ray AI Runtime, which has been sunsetted,"
-            "and the APIs have been unmaintained and hidden from the documentation.",
+            f"{self.__class__.__name__} is deprecated and will be removed after April 2026.",
             DeprecationWarning,
             stacklevel=2,
         )
