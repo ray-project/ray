@@ -45,7 +45,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   OrderedActorTaskExecutionQueue(
       instrumented_io_context &task_execution_service,
       ActorTaskExecutionArgWaiterInterface &waiter,
-      worker::TaskEventBuffer &task_event_buffer,
+      worker::TaskEventBuffer *task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       int64_t reorder_wait_seconds);
 
@@ -98,7 +98,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
   ActorTaskExecutionArgWaiterInterface &waiter_;
-  worker::TaskEventBuffer &task_event_buffer_;
+  worker::TaskEventBuffer *task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Mutext to protect attributes used for thread safe APIs.

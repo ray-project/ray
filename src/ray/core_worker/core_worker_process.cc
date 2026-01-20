@@ -30,6 +30,9 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/metric_constants.h"
+#include "ray/observability/metrics.h"
+#include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
@@ -219,18 +222,40 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
   RAY_CHECK_GE(assigned_port, 0);
 
-  // Create EventAggregatorClient. Use deferred connection if port is invalid
-  // (minimal install writes -1 to indicate metrics agent not available).
-  auto event_aggregator_client =
+  const bool core_worker_task_Event_to_gcs_enabled =
+      RayConfig::instance().enable_core_worker_task_event_to_gcs();
+  const bool core_worker_ray_event_to_aggregator_enabled =
+      RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
+
+  // Create EventAggregatorClient unconditionally (used by both TaskEventBuffer and
+  // RayEventRecorder). Uses deferred init if metrics_agent_port is not set.
+  event_aggregator_client_ =
       (options.metrics_agent_port > 0)
           ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
                                                              *client_call_manager_)
           : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
-  auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
-      std::move(event_aggregator_client),
-      options.session_name,
-      local_node_id);
+
+  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer;
+  if (core_worker_task_Event_to_gcs_enabled) {
+    task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
+        std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
+        event_aggregator_client_.get(),
+        options.session_name,
+        local_node_id);
+  }
+
+  // Create RayEventRecorder if aggregator path is enabled.
+  if (core_worker_ray_event_to_aggregator_enabled) {
+    ray_event_recorder_ = std::make_shared<observability::RayEventRecorder>(
+        *event_aggregator_client_,
+        io_service_,
+        RayConfig::instance().ray_event_recorder_max_queued_events(),
+        observability::kMetricSourceCoreWorker,
+        *event_recorder_dropped_events_counter_,
+        *event_recorder_events_sent_counter_,
+        *event_recorder_events_failed_to_send_counter_,
+        local_node_id);
+  }
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -272,10 +297,16 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       options.gcs_options, options.node_ip_address, worker_context->GetWorkerID());
   RAY_CHECK_OK(gcs_client->Connect(io_service_));
 
-  if (RayConfig::instance().task_events_report_interval_ms() > 0) {
+  // Start TaskEventBuffer if it exists and task events are enabled.
+  if (task_event_buffer && RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer->Start().ok()) {
       RAY_CHECK(!task_event_buffer->Enabled()) << "TaskEventBuffer should be disabled.";
     }
+  }
+
+  // Start RayEventRecorder if it exists.
+  if (ray_event_recorder_) {
+    ray_event_recorder_->StartExportingEvents();
   }
 
   auto raylet_client_pool =
@@ -464,7 +495,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
-      *task_event_buffer,
+      task_event_buffer.get(),
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -494,7 +525,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
               set_direct_transport_metadata(object_id, direct_transport_metadata);
             },
             "CoreWorker.SetDirectTransportMetadata");
-      });
+      },
+      /*ray_event_recorder=*/ray_event_recorder_.get(),
+      /*node_id=*/local_node_id,
+      /*session_name=*/options.session_name);
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
                                    const std::string &actor_name,
@@ -702,6 +736,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
+                                   ray_event_recorder_,
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_);
@@ -828,6 +863,15 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
       new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+
+  // Initialize RayEventRecorder metrics (for task event aggregator path).
+  // Reuse metric definitions from observability/metrics.h.
+  event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
+  event_recorder_events_sent_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetRayEventRecorderEventsSentCounterMetric()));
+  event_recorder_events_failed_to_send_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetRayEventRecorderEventsFailedToSendCounterMetric()));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

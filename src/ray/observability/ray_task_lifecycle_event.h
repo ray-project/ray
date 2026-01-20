@@ -38,6 +38,12 @@ class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent> {
   std::string GetEntityId() const override;
   void MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
+
+  /// Set the is_debugger_paused field.
+  void SetIsDebuggerPaused(bool is_debugger_paused);
+
+  /// Set the error info field.
+  void SetErrorInfo(const rpc::RayErrorInfo &error_info);
 };
 
 }  // namespace observability

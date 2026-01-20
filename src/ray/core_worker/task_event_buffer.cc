@@ -449,13 +449,13 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
 
 TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+    rpc::EventAggregatorClient *event_aggregator_client,
     std::string session_name,
     const NodeID &node_id)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
-      event_aggregator_client_(std::move(event_aggregator_client)),
+      event_aggregator_client_(event_aggregator_client),
       session_name_(session_name),
       node_id_(node_id) {}
 

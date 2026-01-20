@@ -139,6 +139,9 @@ class TaskStatusEvent : public TaskEvent {
     explicit TaskStateUpdate(bool is_debugger_paused)
         : is_debugger_paused_(is_debugger_paused) {}
 
+    /// Get the error info if present.
+    const std::optional<rpc::RayErrorInfo> &GetErrorInfo() const { return error_info_; }
+
    private:
     friend class TaskStatusEvent;
 
@@ -394,12 +397,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  /// \param event_aggregator_client Event aggregator client
-  explicit TaskEventBufferImpl(
-      std::unique_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
-      std::string session_name,
-      const NodeID &node_id);
+  /// \param event_aggregator_client Event aggregator client (not owned, must outlive
+  /// this)
+  explicit TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client,
+                               rpc::EventAggregatorClient *event_aggregator_client,
+                               std::string session_name,
+                               const NodeID &node_id);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -568,7 +571,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// Client to the event aggregator used to push ray events to it.
-  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+  /// Not owned by this class.
+  rpc::EventAggregatorClient *event_aggregator_client_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;

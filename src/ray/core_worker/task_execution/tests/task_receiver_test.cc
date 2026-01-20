@@ -137,7 +137,7 @@ class TaskReceiverTest : public ::testing::Test {
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
-        task_event_buffer_,
+        &task_event_buffer_,
         execute_task,
         *actor_task_execution_arg_waiter_,
         /* initialize_thread_callback= */ []() { return []() { return; }; },

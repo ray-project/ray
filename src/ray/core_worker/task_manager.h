@@ -35,6 +35,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -182,14 +183,17 @@ class TaskManager : public TaskManagerInterface {
       std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
-      worker::TaskEventBuffer &task_event_buffer,
+      worker::TaskEventBuffer *task_event_buffer,
       std::function<std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>>(
           const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback,
-      SetDirectTransportMetadata set_direct_transport_metadata)
+      SetDirectTransportMetadata set_direct_transport_metadata,
+      observability::RayEventRecorderInterface *ray_event_recorder = nullptr,
+      NodeID node_id = NodeID::Nil(),
+      std::string session_name = "")
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -203,7 +207,10 @@ class TaskManager : public TaskManagerInterface {
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
-        set_direct_transport_metadata_(std::move(set_direct_transport_metadata)) {
+        set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
+        ray_event_recorder_(ray_event_recorder),
+        node_id_(node_id),
+        session_name_(std::move(session_name)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -798,10 +805,8 @@ class TaskManager : public TaskManagerInterface {
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ ABSL_GUARDED_BY(mu_) = nullptr;
 
-  /// A task state events buffer initialized managed by the CoreWorker.
-  /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
-  /// error).
-  worker::TaskEventBuffer &task_event_buffer_;
+  /// Task state events buffer managed by CoreWorker, can be nullptr if disabled.
+  worker::TaskEventBuffer *task_event_buffer_;
 
   /// Callback to get the actor RPC client.
   std::function<std::optional<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>>(
@@ -827,6 +832,16 @@ class TaskManager : public TaskManagerInterface {
 
   /// Callback to set the direct transport metadata for a object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
+
+  /// RayEventRecorder managed by CoreWorker. If non-null, sends task events to
+  /// aggregator.
+  observability::RayEventRecorderInterface *ray_event_recorder_ = nullptr;
+
+  /// Node ID for creating lifecycle events with RayEventRecorder.
+  NodeID node_id_;
+
+  /// Session name for creating lifecycle events with RayEventRecorder.
+  std::string session_name_;
 
   friend class TaskManagerTest;
 };

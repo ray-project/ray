@@ -22,9 +22,12 @@
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/time/clock.h"
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/observability/ray_task_definition_event.h"
+#include "ray/observability/ray_task_lifecycle_event.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -340,13 +343,38 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     num_pending_tasks_++;
   }
 
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-      spec.TaskId(),
-      spec.JobId(),
-      spec.AttemptNumber(),
-      spec,
-      rpc::TaskStatus::PENDING_ARGS_AVAIL,
-      /* include_task_info */ true));
+  // Route through RayEventRecorder if enabled.
+  if (ray_event_recorder_ != nullptr && spec.EnableTaskEvents()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+
+    // Include task definition for the initial status event.
+    auto definition_event = std::make_unique<observability::RayTaskDefinitionEvent>(
+        spec, spec.TaskId(), spec.AttemptNumber(), spec.JobId(), session_name_);
+    events.push_back(std::move(definition_event));
+
+    // Create lifecycle event with PENDING_ARGS_AVAIL status.
+    auto lifecycle_event = std::make_unique<observability::RayTaskLifecycleEvent>(
+        spec.TaskId(),
+        spec.AttemptNumber(),
+        spec.JobId(),
+        node_id_,
+        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+        absl::GetCurrentTimeNanos(),
+        session_name_);
+    events.push_back(std::move(lifecycle_event));
+
+    ray_event_recorder_->AddEvents(std::move(events));
+  }
+
+  if (task_event_buffer_ != nullptr) {
+    RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+        spec.TaskId(),
+        spec.JobId(),
+        spec.AttemptNumber(),
+        spec,
+        rpc::TaskStatus::PENDING_ARGS_AVAIL,
+        /* include_task_info */ true));
+  }
 
   return returned_refs;
 }
@@ -1714,13 +1742,51 @@ void TaskManager::SetTaskStatus(
       attempt_number.value_or(task_entry.spec_.AttemptNumber());
   const auto state_update_to_record =
       state_update.value_or(worker::TaskStatusEvent::TaskStateUpdate());
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec_.TaskId(),
-                                                              task_entry.spec_.JobId(),
-                                                              attempt_number_to_record,
-                                                              task_entry.spec_,
-                                                              status,
-                                                              include_task_info,
-                                                              state_update_to_record));
+
+  // Route through RayEventRecorder if enabled.
+  if (ray_event_recorder_ != nullptr && task_entry.spec_.EnableTaskEvents()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+
+    // Include task definition on first status event.
+    if (include_task_info) {
+      auto definition_event = std::make_unique<observability::RayTaskDefinitionEvent>(
+          task_entry.spec_,
+          task_entry.spec_.TaskId(),
+          attempt_number_to_record,
+          task_entry.spec_.JobId(),
+          session_name_);
+      events.push_back(std::move(definition_event));
+    }
+
+    // Create lifecycle event with the new status.
+    auto lifecycle_event = std::make_unique<observability::RayTaskLifecycleEvent>(
+        task_entry.spec_.TaskId(),
+        attempt_number_to_record,
+        task_entry.spec_.JobId(),
+        node_id_,
+        status,
+        absl::GetCurrentTimeNanos(),
+        session_name_);
+
+    // Set error info if present.
+    if (state_update_to_record.GetErrorInfo().has_value()) {
+      lifecycle_event->SetErrorInfo(state_update_to_record.GetErrorInfo().value());
+    }
+
+    events.push_back(std::move(lifecycle_event));
+    ray_event_recorder_->AddEvents(std::move(events));
+  }
+
+  if (task_event_buffer_ != nullptr) {
+    RAY_UNUSED(
+        task_event_buffer_->RecordTaskStatusEventIfNeeded(task_entry.spec_.TaskId(),
+                                                          task_entry.spec_.JobId(),
+                                                          attempt_number_to_record,
+                                                          task_entry.spec_,
+                                                          status,
+                                                          include_task_info,
+                                                          state_update_to_record));
+  }
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>

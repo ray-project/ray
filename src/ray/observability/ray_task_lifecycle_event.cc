@@ -50,8 +50,28 @@ std::string RayTaskLifecycleEvent::GetEntityId() const {
 
 void RayTaskLifecycleEvent::MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayTaskLifecycleEvent &&>(other);
+
+  // Merge state transitions
   for (auto &state : *other_event.data_.mutable_state_transitions()) {
     data_.mutable_state_transitions()->Add(std::move(state));
+  }
+
+  // Merge optional fields - take value from incoming event if it has the field set
+  if (other_event.data_.has_is_debugger_paused()) {
+    data_.set_is_debugger_paused(other_event.data_.is_debugger_paused());
+  }
+  if (!other_event.data_.worker_id().empty()) {
+    data_.set_worker_id(other_event.data_.worker_id());
+  }
+  if (other_event.data_.worker_pid() != 0) {
+    data_.set_worker_pid(other_event.data_.worker_pid());
+  }
+  if (other_event.data_.has_ray_error_info()) {
+    *data_.mutable_ray_error_info() =
+        std::move(*other_event.data_.mutable_ray_error_info());
+  }
+  if (other_event.data_.has_actor_repr_name()) {
+    data_.set_actor_repr_name(other_event.data_.actor_repr_name());
   }
 }
 
@@ -59,6 +79,14 @@ ray::rpc::events::RayEvent RayTaskLifecycleEvent::SerializeData() && {
   ray::rpc::events::RayEvent event;
   event.mutable_task_lifecycle_event()->Swap(&data_);
   return event;
+}
+
+void RayTaskLifecycleEvent::SetIsDebuggerPaused(bool is_debugger_paused) {
+  data_.set_is_debugger_paused(is_debugger_paused);
+}
+
+void RayTaskLifecycleEvent::SetErrorInfo(const rpc::RayErrorInfo &error_info) {
+  *data_.mutable_ray_error_info() = error_info;
 }
 
 }  // namespace observability

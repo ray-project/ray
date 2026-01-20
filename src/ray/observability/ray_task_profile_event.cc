@@ -73,5 +73,14 @@ ray::rpc::events::RayEvent RayTaskProfileEvent::SerializeData() && {
   return event;
 }
 
+void RayTaskProfileEvent::SetExtraData(const std::string &extra_data) {
+  // Set extra_data on the last event entry (the one added in constructor).
+  auto *profile_events = data_.mutable_profile_events();
+  if (profile_events->events_size() > 0) {
+    profile_events->mutable_events(profile_events->events_size() - 1)
+        ->set_extra_data(extra_data);
+  }
+}
+
 }  // namespace observability
 }  // namespace ray

@@ -56,7 +56,7 @@ class TaskReceiver {
   using OnActorCreationTaskDone = std::function<Status()>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
-               worker::TaskEventBuffer &task_event_buffer,
+               worker::TaskEventBuffer *task_event_buffer,
                TaskHandler task_handler,
                ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
                std::function<std::function<void()>()> initialize_thread_callback,
@@ -123,7 +123,7 @@ class TaskReceiver {
   /// The event loop for running tasks on.
   instrumented_io_context &task_execution_service_;
 
-  worker::TaskEventBuffer &task_event_buffer_;
+  worker::TaskEventBuffer *task_event_buffer_;
 
   /// Shared waiter for dependencies required by incoming tasks.
   ActorTaskExecutionArgWaiter &waiter_;

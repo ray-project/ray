@@ -25,7 +25,7 @@ namespace core {
 OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
-    worker::TaskEventBuffer &task_event_buffer,
+    worker::TaskEventBuffer *task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
@@ -107,13 +107,15 @@ void OrderedActorTaskExecutionQueue::Add(
   }
 
   if (!dependencies.empty()) {
-    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_id,
-        task_spec.JobId(),
-        task_spec.AttemptNumber(),
-        task_spec,
-        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
-        /* include_task_info */ false));
+    if (task_event_buffer_ != nullptr) {
+      RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+          task_id,
+          task_spec.JobId(),
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+          /* include_task_info */ false));
+    }
     waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task]() mutable {
       TaskToExecute *ready_task = nullptr;
       if (is_retry) {
@@ -130,25 +132,29 @@ void OrderedActorTaskExecutionQueue::Add(
 
       if (ready_task != nullptr) {
         const auto &ready_task_spec = ready_task->TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            ready_task_spec.TaskId(),
-            ready_task_spec.JobId(),
-            ready_task_spec.AttemptNumber(),
-            ready_task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
+        if (task_event_buffer_ != nullptr) {
+          RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+              ready_task_spec.TaskId(),
+              ready_task_spec.JobId(),
+              ready_task_spec.AttemptNumber(),
+              ready_task_spec,
+              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+              /* include_task_info */ false));
+        }
         ready_task->MarkDependenciesResolved();
         ExecuteQueuedTasks();
       }
     });
   } else {
-    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_id,
-        task_spec.JobId(),
-        task_spec.AttemptNumber(),
-        task_spec,
-        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-        /* include_task_info */ false));
+    if (task_event_buffer_ != nullptr) {
+      RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+          task_id,
+          task_spec.JobId(),
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          /* include_task_info */ false));
+    }
   }
 
   ExecuteQueuedTasks();

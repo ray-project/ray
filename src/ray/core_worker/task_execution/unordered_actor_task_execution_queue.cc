@@ -28,7 +28,7 @@ namespace core {
 UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
-    worker::TaskEventBuffer &task_event_buffer,
+    worker::TaskEventBuffer *task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
@@ -179,38 +179,44 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
 void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
-    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
-        task_spec.JobId(),
-        task_spec.AttemptNumber(),
-        task_spec,
-        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
-        /* include_task_info */ false));
+    if (task_event_buffer_ != nullptr) {
+      RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+          task_spec.TaskId(),
+          task_spec.JobId(),
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+          /* include_task_info */ false));
+    }
     // Make a copy since request is going to be moved.
     auto dependencies = request.PendingDependencies();
     waiter_.AsyncWait(dependencies, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
       const TaskSpecification &task = request.TaskSpec();
-      RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-          task.TaskId(),
-          task.JobId(),
-          task.AttemptNumber(),
-          task,
-          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-          /* include_task_info */ false));
+      if (task_event_buffer_ != nullptr) {
+        RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+            task.TaskId(),
+            task.JobId(),
+            task.AttemptNumber(),
+            task,
+            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+            /* include_task_info */ false));
+      }
 
       request.MarkDependenciesResolved();
       RunRequestWithResolvedDependencies(request);
     });
   } else {
-    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_spec.TaskId(),
-        task_spec.JobId(),
-        task_spec.AttemptNumber(),
-        task_spec,
-        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-        /* include_task_info */ false));
+    if (task_event_buffer_ != nullptr) {
+      RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
+          task_spec.TaskId(),
+          task_spec.JobId(),
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          /* include_task_info */ false));
+    }
     request.MarkDependenciesResolved();
     RunRequestWithResolvedDependencies(request);
   }
