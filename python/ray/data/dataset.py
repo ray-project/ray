@@ -39,6 +39,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -5309,6 +5310,47 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    def write_kafka(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        key_field: str | None = None,
+        value_serializer: str = "json",
+        producer_config: dict[str, Any] | None = None,
+        batch_size: int = 100,
+        delivery_callback: Callable | None = None,
+    ) -> Any:
+        """
+        Convenience method to write Ray Dataset to Kafka.
+
+        Example:
+            >>> ds = ray.data.range(100)
+            >>> write_kafka(ds, "my-topic", "localhost:9092")
+
+        Returns:
+            Write statistics
+
+        Args:
+            topic: Kafka topic name
+            bootstrap_servers: Comma-separated Kafka broker addresses
+            key_field: Optional field name to use as message key
+            value_serializer: Serialization format ('json', 'string', or 'bytes')
+            producer_config: Additional Kafka producer configuration (kafka-python format)
+            batch_size: Number of records to batch before flushing
+            delivery_callback: Optional callback for delivery reports
+        """
+        sink = KafkaDatasink(
+            topic=topic,
+            bootstrap_servers=bootstrap_servers,
+            key_field=key_field,
+            value_serializer=value_serializer,
+            producer_config=producer_config,
+            batch_size=batch_size,
+            delivery_callback=delivery_callback,
+        )
+        return self.write_datasink(sink)
+
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
         self,
@@ -6882,7 +6924,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype
