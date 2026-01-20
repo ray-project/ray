@@ -905,21 +905,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "build_pipeline",
-    srcs = ["ray_release/scripts/build_pipeline.py"],
-    data = glob(["**/*.yaml"]) + [
-        "ray_release/byod/byod.Dockerfile",
-        "ray_release/byod/byod.custom.Dockerfile",
-        "//python/ray/autoscaler/aws:test_configs",
-        "//python/ray/autoscaler/gcp:test_configs",
-    ],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ":ray_release",
-    ],
-)
-
 py_library(
     name = "custom_byod_build_lib",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
