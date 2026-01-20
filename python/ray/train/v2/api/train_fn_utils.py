@@ -103,8 +103,8 @@ def report(
             checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
             utility for copying to the destination `storage_path`.
         validate: If True, triggers validation with default kwargs from validation_config.
-            If a ValidationTaskConfig, triggers validation with the specified fn_kwargs
-            (merged with defaults from validation_config). If False, no validation.
+            If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
+            defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
