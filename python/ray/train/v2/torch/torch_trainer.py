@@ -163,7 +163,7 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        validation_config: Configuration for checkpoint validation.
+        validation_config: [Alpha] Configuration for checkpoint validation.
             If provided and ``ray.train.report`` is called with the ``validation``
             argument, Ray Train will validate the reported checkpoint using
             the validation function specified in this config.

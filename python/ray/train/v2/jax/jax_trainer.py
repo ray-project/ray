@@ -117,7 +117,7 @@ class JaxTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
-        validation_config: Configuration for checkpoint validation.
+        validation_config: [Alpha] Configuration for checkpoint validation.
             If provided and ``ray.train.report`` is called with the ``validation``
             argument, Ray Train will validate the reported checkpoint using
             the validation function specified in this config.
