@@ -4,7 +4,7 @@ import re
 import shlex
 import shutil
 import tempfile
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cloud_util import (
     convert_abfss_uri_to_https,
@@ -240,7 +240,6 @@ class AnyscaleJobRunner(CommandRunner):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
-        pip: Optional[List[str]] = None,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
@@ -335,7 +334,6 @@ class AnyscaleJobRunner(CommandRunner):
             working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
-            pip=pip,
         )
         try:
             error = self.job_manager.last_job_result.state.error
