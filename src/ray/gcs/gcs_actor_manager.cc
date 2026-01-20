@@ -418,7 +418,8 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      });
+      },
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
 }
 
 void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
@@ -1440,10 +1441,12 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::RestartActor(const ActorID &actor_id,
-                                   bool need_reschedule,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   std::function<void()> done_callback) {
+void GcsActorManager::RestartActor(
+    const ActorID &actor_id,
+    bool need_reschedule,
+    const rpc::ActorDeathCause &death_cause,
+    std::function<void()> done_callback,
+    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1515,13 +1518,14 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
+        {[this, actor, actor_id, mutable_actor_table_data, done_callback, restart_reason](
+             Status status) {
            if (done_callback) {
              done_callback();
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent(false);
+           actor->WriteActorExportEvent(false, restart_reason);
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);

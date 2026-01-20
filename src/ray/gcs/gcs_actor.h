@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "ray/common/id.h"
@@ -26,6 +27,7 @@
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/export_actor_data.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
+#include "src/ray/protobuf/public/events_actor_lifecycle_event.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -216,7 +218,10 @@ class GcsActor {
   rpc::LeaseSpec *GetMutableLeaseSpec();
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
-  void WriteActorExportEvent(bool is_actor_registration) const;
+  void WriteActorExportEvent(
+      bool is_actor_registration,
+      std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason =
+          std::nullopt) const;
   // Verify if export events should be written for EXPORT_ACTOR source types
   bool IsExportAPIEnabledActor() const {
     return IsExportAPIEnabledSourceType(
