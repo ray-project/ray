@@ -546,6 +546,7 @@ def get_data_loader(data_format: str, split: str = "train") -> BaseDataLoader:
         raise ValueError(f"Unknown data format: {data_format}")
 
 
+@ray.remote
 def benchmark_iteration(
     dataset: ray.data.Dataset,
     batch_size: int,
@@ -650,12 +651,14 @@ def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
         )
 
         # Run benchmark
-        metrics = benchmark_iteration(
-            dataset=ds,
-            batch_size=batch_size,
-            prefetch_batches=prefetch_batches,
-            num_batches=config.num_batches,
-            simulated_training_time=config.simulated_training_time,
+        metrics = ray.get(
+            benchmark_iteration.remote(
+                dataset=ds,
+                batch_size=batch_size,
+                prefetch_batches=prefetch_batches,
+                num_batches=config.num_batches,
+                simulated_training_time=config.simulated_training_time,
+            )
         )
 
         # Store results
