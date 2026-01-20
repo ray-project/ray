@@ -40,6 +40,8 @@ class DataConfig:
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
         """
+        from ray.data import ExecutionOptions
+
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
         else:
@@ -50,7 +52,6 @@ class DataConfig:
             )
 
         default_execution_options = DataConfig.default_ingest_options()
-        from ray.data import ExecutionOptions
 
         if isinstance(execution_options, ExecutionOptions):
             default_execution_options = execution_options
@@ -103,6 +104,10 @@ class DataConfig:
             equal to `world_size`. Each element of the list contains the assigned
             `DataIterator` instances by name for the worker.
         """
+        from ray.data._internal.execution.interfaces.execution_options import (
+            ExecutionResources,
+        )
+
         output = [{} for _ in range(world_size)]
 
         for dataset_name, dataset in datasets.items():
@@ -121,10 +126,6 @@ class DataConfig:
             if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overridden by the user,
                 # add training-reserved resources to Data's exclude_resources.
-                from ray.data._internal.execution.interfaces.execution_options import (
-                    ExecutionResources,
-                )
-
                 execution_options.exclude_resources = (
                     execution_options.exclude_resources.add(
                         ExecutionResources(

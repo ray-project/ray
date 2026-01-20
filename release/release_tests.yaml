@@ -280,8 +280,6 @@
   frequency: manual
   team: ml
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -330,8 +328,6 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  stable: false
-
   # https://github.com/ray-project/ray/issues/49847
   frequency: manual
   team: ml
@@ -352,8 +348,6 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
-
-  stable: false
 
   # https://github.com/ray-project/ray/issues/49846
   frequency: manual
@@ -756,8 +750,6 @@
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
-  stable: true
-
   frequency: nightly-3x
   team: ml
 
@@ -947,8 +939,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: false
 
   frequency: weekly
   team: ml
@@ -1148,8 +1138,6 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: true
-
   frequency: weekly
   team: serve
 
@@ -1188,8 +1176,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: true
 
   frequency: weekly
   team: serve
@@ -2997,8 +2983,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#   stable: false
-
 # - name: scheduling_test_many_5s_tasks_many_nodes
 #   group: core-scalability-test
 #   working_dir: benchmarks
@@ -3016,8 +3000,6 @@
 #     wait_for_nodes:
 #       num_nodes: 32
 #       timeout: 600
-
-#   stable: false
 
 
 ##################
@@ -3519,8 +3501,6 @@
   group: k8s-test
   working_dir: k8s_tests
 
-  stable: false
-
   # Failing since Oct 2024.
   # https://github.com/ray-project/ray/issues/36190
   frequency: manual
@@ -3696,8 +3676,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3721,8 +3699,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
@@ -3744,8 +3720,6 @@
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: manual
@@ -3770,8 +3744,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3795,8 +3767,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
@@ -3819,8 +3789,6 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
-  stable: true
 
   env: gce
   frequency: weekly

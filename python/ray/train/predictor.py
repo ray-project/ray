@@ -1,4 +1,5 @@
 import abc
+import warnings
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
@@ -11,10 +12,7 @@ from ray.air.util.data_batch_conversion import (
     _convert_batch_type_to_pandas,
 )
 from ray.train import Checkpoint
-
-if TYPE_CHECKING:
-    from ray.data import Preprocessor
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 try:
     import pyarrow
@@ -22,6 +20,9 @@ try:
     pa_table = pyarrow.Table
 except ImportError:
     pa_table = None
+
+if TYPE_CHECKING:
+    from ray.data import Preprocessor
 
 # Reverse mapping from data batch type to batch format.
 TYPE_TO_ENUM: Dict[Type[DataBatchType], BatchFormat] = {
@@ -38,7 +39,7 @@ class PredictorNotSerializableException(RuntimeError):
     pass
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
@@ -78,7 +79,12 @@ class Predictor(abc.ABC):
 
     def __init__(self, preprocessor: Optional["Preprocessor"] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
-        self._preprocessor: Optional["Preprocessor"] = preprocessor
+        warnings.warn(
+            f"{self.__class__.__name__} is deprecated and will be removed after April 2026.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._preprocessor: Optional[Preprocessor] = preprocessor
         # Whether tensor columns should be automatically cast from/to the tensor
         # extension type at UDF boundaries. This can be overridden by subclasses.
         self._cast_tensor_columns = False
