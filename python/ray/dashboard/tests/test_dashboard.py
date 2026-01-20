@@ -163,10 +163,17 @@ def test_basic(ray_start_regular):
         nodes = ray.nodes()
         for node in nodes:
             if node["NodeID"] == node_id:
-                return node.get("MetricsAgentPort", 0) > 0
+                port = node.get("MetricsAgentPort", 0)
+                logger.info(
+                    f"Node {node_id} MetricsAgentPort: {port}, "
+                    f"DashboardAgentListenPort: {node.get('DashboardAgentListenPort', 0)}, "
+                    f"RuntimeEnvAgentPort: {node.get('RuntimeEnvAgentPort', 0)}"
+                )
+                return port > 0
+        logger.info(f"Node {node_id} not found in nodes: {[n['NodeID'] for n in nodes]}")
         return False
 
-    wait_for_condition(is_agent_port_available)
+    wait_for_condition(is_agent_port_available, timeout=30)
 
 
 @pytest.mark.skipif(
