@@ -17,6 +17,7 @@ class FrameworkCheckpoint(Checkpoint):
     Example:
 
         >>> import tempfile
+        >>> from ray.data.preprocessor import Preprocessor
         >>> checkpoint = FrameworkCheckpoint(tempfile.mkdtemp())
         >>> checkpoint.get_preprocessor() is None
         True
