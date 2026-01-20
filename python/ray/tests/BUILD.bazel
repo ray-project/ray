@@ -202,8 +202,7 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_5.py",
         "test_scheduling.py",
-        # TODO(MengjinYan): https://github.com/anyscale/ray/issues/5
-        # "test_scheduling_2.py",
+        "test_scheduling_2.py",
         "test_token_auth_integration.py",
         "test_wait.py",
     ],
@@ -640,6 +639,7 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
+        "gpu_objects/test_gpu_objects_ipc.py",
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
         "test_gpu_tensor_zero_copy_serialization.py",
@@ -875,7 +875,6 @@ py_test_module_list(
         "test_placement_group.py",
         "test_ray_get.py",
         "test_state_api_2.py",
-        "test_task_events.py",
         "test_task_events_3.py",
         "test_unavailable_actors.py",
     ],
@@ -910,6 +909,7 @@ py_test_module_list(
         "test_reconstruction_2.py",
         "test_runtime_env_working_dir_uri.py",
         "test_state_api.py",
+        "test_task_events.py",
         "test_task_events_2.py",
     ],
     tags = [
