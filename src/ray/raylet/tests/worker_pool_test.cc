@@ -195,7 +195,6 @@ class WorkerPoolMock : public WorkerPool {
     last_worker_pid_ = pid;
     worker_commands_by_proc_[pid] = worker_command_args;
     worker_ids_by_proc_[pid] = worker_id;
-    std::cout << "[Kunchd] StartProcess: creating process: " << pid << std::endl;
     return std::make_unique<Process>(pid);
   }
 
@@ -271,13 +270,12 @@ class WorkerPoolMock : public WorkerPool {
   std::list<IdleWorkerEntry> &GetIdleWorkers() { return idle_of_all_languages_; }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
-      std::unique_ptr<ProcessInterface> proc,
       const WorkerID &worker_id,
+      std::unique_ptr<ProcessInterface> proc = nullptr,
       const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0,
-      bool set_process = true) {
+      int runtime_env_hash = 0) {
     auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
@@ -301,8 +299,7 @@ class WorkerPoolMock : public WorkerPool {
                                                                "127.0.0.1",
                                                                conn,
                                                                client_call_manager_);
-    std::cout << "[Kunchd] CreateWorker: Setting process: " << proc->GetId() << std::endl;
-    if (set_process && proc != nullptr) {
+    if (proc != nullptr) {
       worker_->SetProcess(std::move(proc));
     }
     std::shared_ptr<WorkerInterface> worker =
@@ -356,15 +353,12 @@ class WorkerPoolMock : public WorkerPool {
             << "The timeout worker number cannot exceed the total number of workers";
         int register_workers = num_workers - timeout_worker_number;
         for (int i = 0; i < register_workers; i++) {
-          auto worker = CreateWorker(
-              std::make_unique<Process>(pid),
-              GetWorkerId(it->first),
-              is_java ? Language::JAVA : Language::PYTHON,
-              job_id,
-              rpc::WorkerType::WORKER,
-              runtime_env_hash,
-              false);  // TODO(Kunchd): Figure out how process is set and maybe a cleaner
-                       // approach for this. current approach is from sangbincho
+          auto worker = CreateWorker(GetWorkerId(it->first),
+                                     nullptr,
+                                     is_java ? Language::JAVA : Language::PYTHON,
+                                     job_id,
+                                     rpc::WorkerType::WORKER,
+                                     runtime_env_hash);
           RAY_CHECK_OK(RegisterWorker(worker, pid, [](Status, int) {}));
           OnWorkerStarted(worker);
           PushAvailableWorker(worker);
@@ -427,7 +421,6 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   void SetUp() override {
-    std::cout << "[Kunchd] Setting up worker pool test" << std::endl;
     RayConfig::instance().initialize(
         R"({"worker_register_timeout_seconds": )" +
         std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
@@ -438,7 +431,6 @@ class WorkerPoolTest : public ::testing::Test {
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
     std::promise<bool> promise;
-    std::cout << "[Kunchd] Creating thread for io service" << std::endl;
     thread_io_service_.reset(new std::thread([this, &promise] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
           io_service_.get_executor());
@@ -446,9 +438,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    std::cout << "[Kunchd] Setting runtime env agent client" << std::endl;
     worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
-    std::cout << "[Kunchd] Runtime env agent client set" << std::endl;
   }
 
   void TearDown() override {
@@ -462,18 +452,18 @@ class WorkerPoolTest : public ::testing::Test {
   void AssertNoLeaks() { ASSERT_EQ(worker_pool_->pending_exit_idle_workers_.size(), 0); }
 
   std::shared_ptr<WorkerInterface> CreateSpillWorker(
-      std::unique_ptr<ProcessInterface> proc, const WorkerID &worker_id) {
-    return worker_pool_->CreateWorker(std::move(proc),
-                                      worker_id,
+      const WorkerID &worker_id, std::unique_ptr<ProcessInterface> proc = nullptr) {
+    return worker_pool_->CreateWorker(worker_id,
+                                      std::move(proc),
                                       Language::PYTHON,
                                       JobID::Nil(),
                                       rpc::WorkerType::SPILL_WORKER);
   }
 
   std::shared_ptr<WorkerInterface> CreateRestoreWorker(
-      std::unique_ptr<ProcessInterface> proc, const WorkerID &worker_id) {
-    return worker_pool_->CreateWorker(std::move(proc),
-                                      worker_id,
+      const WorkerID &worker_id, std::unique_ptr<ProcessInterface> proc = nullptr) {
+    return worker_pool_->CreateWorker(worker_id,
+                                      std::move(proc),
                                       Language::PYTHON,
                                       JobID::Nil(),
                                       rpc::WorkerType::RESTORE_WORKER);
@@ -483,13 +473,11 @@ class WorkerPoolTest : public ::testing::Test {
       const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
-    std::cout << "[Kunchd] Creating worker" << std::endl;
     std::shared_ptr<WorkerInterface> driver =
-        worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                   WorkerID::FromRandom(),
+        worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                   std::make_unique<FakeProcess>(),
                                    Language::PYTHON,
                                    job_id);
-    std::cout << "[Kunchd] Registering driver" << std::endl;
     RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
@@ -555,17 +543,9 @@ class WorkerPoolTest : public ::testing::Test {
 class WorkerPoolDriverRegisteredTest : public WorkerPoolTest {
  public:
   void SetUp() override {
-    std::cerr << "[Kunchd] WorkerPoolDriverRegisteredTest::SetUp() - calling parent SetUp"
-              << std::endl;
     WorkerPoolTest::SetUp();
-    std::cerr << "[Kunchd] WorkerPoolDriverRegisteredTest::SetUp() - parent SetUp "
-                 "complete, registering driver"
-              << std::endl;
     rpc::JobConfig job_config;
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
-    std::cerr << "[Kunchd] WorkerPoolDriverRegisteredTest::SetUp() - driver registered, "
-                 "SetUp complete"
-              << std::endl;
   }
 };
 
@@ -617,13 +597,10 @@ static inline LeaseSpecification ExampleLeaseSpec(
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {
-  std::cerr << "[Kunchd] TestGetRegisteredDriver" << std::endl;
   rpc::JobConfig job_config;
   JobID job_id = JobID::FromInt(11111);
   std::shared_ptr<WorkerInterface> driver =
       RegisterDriver(Language::PYTHON, job_id, job_config);
-  std::cerr << "[Kunchd] Registered driver with worker id: "
-            << driver->WorkerId().Binary() << std::endl;
   ASSERT_EQ(worker_pool_->GetRegisteredDriver(driver->WorkerId()), driver);
   ASSERT_EQ(worker_pool_->GetRegisteredDriver(WorkerID::FromRandom()), nullptr);
 }
@@ -633,8 +610,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
       Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  workers.push_back(
-      worker_pool_->CreateWorker(std::make_unique<Process>(), worker_id, Language::JAVA));
+  workers.push_back(worker_pool_->CreateWorker(worker_id, nullptr, Language::JAVA));
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
@@ -663,8 +639,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
     // AnnounceWorkerPort.
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
-    auto worker = worker_pool_->CreateWorker(
-        std::make_unique<Process>(), worker_id, Language::PYTHON);
+    auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc->GetId(), [](Status, int) {}));
     worker_pool_->DisconnectWorker(
@@ -674,8 +649,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, HandleUnknownWorkerRegistration) {
-  auto worker = worker_pool_->CreateWorker(
-      std::make_unique<Process>(), WorkerID::FromRandom(), Language::PYTHON);
+  auto worker =
+      worker_pool_->CreateWorker(WorkerID::FromRandom(), nullptr, Language::PYTHON);
   auto status = worker_pool_->RegisterWorker(
       worker, 1234, [](const Status & /*unused*/, int /*unused*/) {});
   ASSERT_FALSE(status.ok());
@@ -733,29 +708,24 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   const LeaseSpecification lease_spec = ExampleLeaseSpec();
   // Create some workers.
   std::unordered_set<std::shared_ptr<WorkerInterface>> workers;
-  workers.insert(worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                            WorkerID::FromRandom()));
-  workers.insert(worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                            WorkerID::FromRandom()));
-  std::cout << "[Kunchd] Created workers: " << workers.size() << std::endl;
+  workers.insert(worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                            std::make_unique<FakeProcess>()));
+  workers.insert(worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                            std::make_unique<FakeProcess>()));
   // Add the workers to the pool.
   for (auto &worker : workers) {
     worker_pool_->PushWorker(worker);
   }
-  std::cout << "[Kunchd] Pushed workers: " << workers.size() << std::endl;
   // Pop two workers and make sure they're one of the workers we created.
   popped_worker = worker_pool_->PopWorkerSync(lease_spec);
-  std::cout << "[Kunchd] Popped worker: " << popped_worker->WorkerId().Hex() << std::endl;
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_GT(workers.count(popped_worker), 0);
   popped_worker = worker_pool_->PopWorkerSync(lease_spec);
-  std::cout << "[Kunchd] Popped worker: " << popped_worker->WorkerId().Hex() << std::endl;
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_GT(workers.count(popped_worker), 0);
   // Pop a worker from the empty pool and make sure it isn't one of the workers we
   // created.
   popped_worker = worker_pool_->PopWorkerSync(lease_spec);
-  std::cout << "[Kunchd] Popped worker: " << popped_worker->WorkerId().Hex() << std::endl;
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_EQ(workers.count(popped_worker), 0);
 }
@@ -763,7 +733,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
   auto py_worker = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::PYTHON);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON);
   worker_pool_->PushWorker(py_worker);
   // Check that the Python worker will not be popped if the given lease is a Java lease
   const LeaseSpecification java_lease_spec =
@@ -776,7 +746,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
 
   // Create a Java Worker, and add it to the pool
   auto java_worker = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::JAVA);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::JAVA);
   worker_pool_->PushWorker(java_worker);
   // Check that the Java worker will be popped now for Java lease
   ASSERT_EQ(worker_pool_->PopWorkerSync(java_lease_spec), java_worker);
@@ -949,8 +919,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
             ExampleLeaseSpec(actor_creation_id, Language::PYTHON, job_id);
         runtime_env_hash = lease_spec.GetRuntimeEnvHash();
       }
-      auto worker = worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                               WorkerID::FromRandom(),
+      auto worker = worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                               std::make_unique<FakeProcess>(),
                                                Language::PYTHON,
                                                job_id,
                                                rpc::WorkerType::WORKER,
@@ -1019,8 +989,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 1 (match):
   //   worker has no root detached actor ID and no job ID
   std::shared_ptr<WorkerInterface> worker_no_job_no_detached_actor =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  JobID::Nil());
 
@@ -1032,8 +1002,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 2 (match):
   //   worker has no root detached actor ID and matching job ID
   std::shared_ptr<WorkerInterface> worker_job_1_no_detached_actor =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_1_id);
 
@@ -1045,8 +1015,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 3 (match):
   //   worker has matching root detached actor ID and job ID
   std::shared_ptr<WorkerInterface> worker_job_1_detached_actor_1 =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_1_id);
   RayLease job_1_detached_actor_1_lease(lease_spec_job_1_detached_actor_1);
@@ -1061,8 +1031,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 4 (mismatch):
   //   worker has no root detached actor ID and mismatched job ID
   std::shared_ptr<WorkerInterface> worker_job_2_no_detached_actor =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_2_id);
 
@@ -1077,8 +1047,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 5 (mismatch):
   //   worker has mismatched detached actor ID and mismatched job ID
   std::shared_ptr<WorkerInterface> worker_job_2_detached_actor_3 =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_2_id);
   ActorID detached_actor_3_id_job_2 =
@@ -1102,8 +1072,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // Case 6 (mismatch):
   //   worker has mismatched detached actor ID and matching job ID
   std::shared_ptr<WorkerInterface> worker_job_1_detached_actor_2 =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_1_id);
   ActorID detached_actor_id_2_job_1 =
@@ -1131,8 +1101,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerForRequestWithRootDetachedActor)
   // in a detached actor ID should have the job ID that created the detached actor.
   // Test the worker pool logic regardless for completeness.
   std::shared_ptr<WorkerInterface> worker_job_2_detached_actor_1 =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_2_id);
   LeaseSpecification lease_spec_job_2_detached_actor_1 =
@@ -1163,8 +1133,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRootDetachedActorID) {
 
   // NOTE: in all test cases the only worker in the pool is worker_job_1_detached_actor_1.
   std::shared_ptr<WorkerInterface> worker_job_1_detached_actor_1 =
-      worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                 WorkerID::FromRandom(),
+      worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                 std::make_unique<FakeProcess>(),
                                  Language::PYTHON,
                                  job_1_id);
   LeaseSpecification lease_spec_job_1_detached_actor_1 =
@@ -1251,8 +1221,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   // Call `RegisterWorker` to emulate worker registration.
   for (const auto &process : started_processes) {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_->CreateWorker(
-        std::make_unique<Process>(), worker_pool_->GetWorkerId(process->GetId()));
+    std::shared_ptr<WorkerInterface> worker =
+        worker_pool_->CreateWorker(worker_pool_->GetWorkerId(process->GetId()));
     RAY_CHECK_OK(
         worker_pool_->RegisterWorker(worker, process->GetId(), [](Status, int) {}));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
@@ -1349,7 +1319,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
     pid_t pid = proc->GetId();
-    auto worker = CreateSpillWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateSpillWorker(worker_id);
     spill_workers.insert(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
@@ -1366,7 +1336,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
     pid_t pid = proc->GetId();
-    auto worker = CreateSpillWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateSpillWorker(worker_id);
     spill_workers.insert(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
@@ -1389,7 +1359,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleIOWorkersPushPop) {
         rpc::Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
     pid_t pid = proc->GetId();
-    auto worker = CreateRestoreWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateRestoreWorker(worker_id);
     restore_workers.insert(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
@@ -1425,7 +1395,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerSimpleTest) {
   for (auto &process : started_processes) {
     WorkerID worker_id = worker_pool_->GetWorkerId(process->GetId());
     std::shared_ptr<WorkerInterface> worker =
-        CreateSpillWorker(std::move(process), worker_id);
+        CreateSpillWorker(worker_id, std::move(process));
     spill_workers.insert(worker);
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
@@ -1458,7 +1428,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerComplicateTest) {
   for (auto &process : started_processes) {
     WorkerID worker_id = worker_pool_->GetWorkerId(process->GetId());
     std::shared_ptr<WorkerInterface> worker =
-        CreateSpillWorker(std::move(process), worker_id);
+        CreateSpillWorker(worker_id, std::move(process));
     spill_workers.insert(worker);
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
@@ -1484,7 +1454,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxIOWorkerComplicateTest) {
   for (auto &process : started_processes) {
     WorkerID worker_id = worker_pool_->GetWorkerId(process->GetId());
     std::shared_ptr<WorkerInterface> worker =
-        CreateSpillWorker(std::move(process), worker_id);
+        CreateSpillWorker(worker_id, std::move(process));
     spill_workers.insert(worker);
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
@@ -1529,7 +1499,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
         auto &proc = started_spill_processes[started_spill_processes.size() - 1];
         WorkerID worker_id = worker_pool_->GetWorkerId(proc->GetId());
         auto spill_worker =
-            CreateSpillWorker(std::make_unique<Process>(proc->GetId()), worker_id);
+            CreateSpillWorker(worker_id, std::make_unique<Process>(proc->GetId()));
         worker_pool_->OnWorkerStarted(spill_worker);
         worker_pool_->PushSpillWorker(spill_worker);
         started_spill_processes.pop_back();
@@ -1539,7 +1509,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
         auto &proc = started_restore_processes[started_restore_processes.size() - 1];
         WorkerID worker_id = worker_pool_->GetWorkerId(proc->GetId());
         auto restore_worker =
-            CreateRestoreWorker(std::make_unique<Process>(proc->GetId()), worker_id);
+            CreateRestoreWorker(worker_id, std::make_unique<Process>(proc->GetId()));
         worker_pool_->OnWorkerStarted(restore_worker);
         worker_pool_->PushRestoreWorker(restore_worker);
         started_restore_processes.pop_back();
@@ -1556,13 +1526,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, DeleteWorkerPushPop) {
   // 2 spill worker and 1 restore worker.
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
   spill_workers.insert(
-      CreateSpillWorker(std::make_unique<FakeProcess>(), WorkerID::FromRandom()));
+      CreateSpillWorker(WorkerID::FromRandom(), std::make_unique<FakeProcess>()));
   spill_workers.insert(
-      CreateSpillWorker(std::make_unique<FakeProcess>(), WorkerID::FromRandom()));
+      CreateSpillWorker(WorkerID::FromRandom(), std::make_unique<FakeProcess>()));
 
   std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
   restore_workers.insert(
-      CreateRestoreWorker(std::make_unique<FakeProcess>(), WorkerID::FromRandom()));
+      CreateRestoreWorker(WorkerID::FromRandom(), std::make_unique<FakeProcess>()));
 
   for (const auto &worker : spill_workers) {
     worker_pool_->PushSpillWorker(worker);
@@ -1580,7 +1550,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, DeleteWorkerPushPop) {
   // Add 2 more restore workers. Now we have 2 spill workers and 3 restore workers.
   for (int i = 0; i < 2; i++) {
     std::shared_ptr<WorkerInterface> restore_worker =
-        CreateRestoreWorker(std::make_unique<FakeProcess>(), WorkerID::FromRandom());
+        CreateRestoreWorker(WorkerID::FromRandom(), std::make_unique<FakeProcess>());
     restore_workers.insert(restore_worker);
     worker_pool_->PushRestoreWorker(restore_worker);
   }
@@ -1608,8 +1578,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     pid_t pid = proc->GetId();
-    auto worker = worker_pool_->CreateWorker(
-        std::make_unique<Process>(pid), worker_id, Language::PYTHON, job_id);
+    auto worker =
+        worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
@@ -1704,7 +1674,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     pid_t pid = proc->GetId();
-    auto worker = CreateSpillWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateSpillWorker(worker_id);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1715,7 +1685,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     pid_t pid = proc->GetId();
-    auto worker = CreateRestoreWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateRestoreWorker(worker_id);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1758,8 +1728,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
       pid_t pid = proc->GetId();
       int workers_to_start = 1;
       for (int j = 0; j < workers_to_start; j++) {
-        auto worker = worker_pool_->CreateWorker(
-            std::make_unique<Process>(pid), worker_id, language);
+        auto worker = worker_pool_->CreateWorker(worker_id, nullptr, language);
         workers.push_back(worker);
         RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
         worker_pool_->OnWorkerStarted(worker);
@@ -1829,8 +1798,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
       Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
   pid_t pid = proc->GetId();
-  auto worker = worker_pool_->CreateWorker(
-      std::make_unique<Process>(pid), worker_id, Language::PYTHON, job_id);
+  auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker);
   worker_pool_->PushWorker(worker);
@@ -1881,8 +1849,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   // Starts a worker for JOB_ID_2.
   pid_t last_pid = last_process->GetId();
   WorkerID last_worker_id = worker_pool_->GetWorkerId(last_pid);
-  worker = worker_pool_->CreateWorker(
-      std::move(last_process), last_worker_id, Language::PYTHON, job_id);
+  worker = worker_pool_->CreateWorker(last_worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, last_pid, [](Status, int) {}));
   // Call `OnWorkerStarted` to emulate worker port announcement.
   worker_pool_->OnWorkerStarted(worker);
@@ -1914,8 +1881,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
       Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
   pid_t pid = proc->GetId();
-  auto worker = worker_pool_->CreateWorker(
-      std::make_unique<Process>(pid), worker_id, Language::PYTHON, job_id);
+  auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker);
   worker_pool_->PushWorker(worker);
@@ -1964,8 +1930,8 @@ TEST_F(WorkerPoolDriverRegisteredTest,
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id_alive, &status);
     pid_t pid = proc->GetId();
-    auto worker = worker_pool_->CreateWorker(
-        std::make_unique<Process>(pid), worker_id, Language::PYTHON, job_id_alive);
+    auto worker =
+        worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id_alive);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushWorker(worker);
@@ -1981,8 +1947,8 @@ TEST_F(WorkerPoolDriverRegisteredTest,
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id_dead, &status);
     pid_t pid = proc->GetId();
-    auto worker = worker_pool_->CreateWorker(
-        std::make_unique<Process>(pid), worker_id, Language::PYTHON, job_id_dead);
+    auto worker =
+        worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id_dead);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushWorker(worker);
@@ -2208,8 +2174,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   const int runtime_env_hash_1 = actor_creation_lease_spec_1.GetRuntimeEnvHash();
 
   // Push worker with runtime env 1.
-  auto worker = worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                           WorkerID::FromRandom(),
+  auto worker = worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                           std::make_unique<FakeProcess>(),
                                            Language::PYTHON,
                                            JOB_ID,
                                            rpc::WorkerType::WORKER,
@@ -2228,8 +2194,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   ASSERT_EQ(popped_worker, worker);
 
   // Push another worker with runtime env 1.
-  worker = worker_pool_->CreateWorker(std::make_unique<FakeProcess>(),
-                                      WorkerID::FromRandom(),
+  worker = worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                      std::make_unique<FakeProcess>(),
                                       Language::PYTHON,
                                       JOB_ID,
                                       rpc::WorkerType::WORKER,
@@ -2380,7 +2346,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
     processes.push_back({process->GetId(), worker_id});
   }
   for (const auto [pid, worker_id] : processes) {
-    auto worker = CreateSpillWorker(std::make_unique<Process>(pid), worker_id);
+    auto worker = CreateSpillWorker(worker_id);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
@@ -2393,7 +2359,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
-    auto worker = CreateSpillWorker(std::make_unique<Process>(proc->GetId()), worker_id);
+    auto worker = CreateSpillWorker(worker_id);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc->GetId(), [](Status, int) {}));
     // The worker failed before announcing the worker port (i.e. OnworkerStarted)
     worker_pool_->DisconnectWorker(worker,
@@ -2433,7 +2399,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
   auto [proc2, worker_id2] = worker_pool_->StartWorkerProcess(
       rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
   ASSERT_EQ(status, PopWorkerStatus::OK);
-  auto worker2 = CreateSpillWorker(std::make_unique<Process>(proc2->GetId()), worker_id2);
+  auto worker2 = CreateSpillWorker(worker_id2);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc2->GetId(), [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker2);
   worker_pool_->PushSpillWorker(worker2);
@@ -2458,7 +2424,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
   auto [proc3, worker_id3] = worker_pool_->StartWorkerProcess(
       rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
   ASSERT_EQ(status, PopWorkerStatus::OK);
-  auto worker3 = CreateSpillWorker(std::make_unique<Process>(proc3->GetId()), worker_id3);
+  auto worker3 = CreateSpillWorker(worker_id3);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker3, proc3->GetId(), [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker3);
   worker_pool_->PushSpillWorker(worker3);
@@ -2531,7 +2497,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
 
 TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
   std::shared_ptr<WorkerInterface> driver = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::PYTHON, JOB_ID);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON, JOB_ID);
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
     *callback_called_ptr = true;
@@ -2542,7 +2508,7 @@ TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
 
 TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   std::shared_ptr<WorkerInterface> driver = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::PYTHON, JOB_ID);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON, JOB_ID);
   RAY_CHECK_OK(
       worker_pool_->RegisterDriver(driver, rpc::JobConfig(), [](Status, int) {}));
 
@@ -2551,14 +2517,14 @@ TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
     *callback_called_ptr = true;
   };
   std::shared_ptr<WorkerInterface> second_driver = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::PYTHON, JOB_ID);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON, JOB_ID);
   RAY_CHECK_OK(worker_pool_->RegisterDriver(second_driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
 }
 
 TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   std::shared_ptr<WorkerInterface> driver = worker_pool_->CreateWorker(
-      std::make_unique<FakeProcess>(), WorkerID::FromRandom(), Language::PYTHON, JOB_ID);
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::JAVA, JOB_ID);
 
   bool callback_called = false;
   auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {

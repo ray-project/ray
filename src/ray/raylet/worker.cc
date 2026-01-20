@@ -110,10 +110,6 @@ WorkerID Worker::WorkerId() const { return worker_id_; }
 const std::unique_ptr<ProcessInterface> &Worker::GetProcess() const { return proc_; }
 
 void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
-  if (proc_ != nullptr) {
-    std::cout << "[Kunchd] SetProcess: proc_ is not null. Existing process: "
-              << proc_->GetId() << std::endl;
-  }
   RAY_CHECK(proc_ == nullptr ||
             proc_->IsNull());  // this procedure should not be called multiple times
   proc_ = std::move(proc);
