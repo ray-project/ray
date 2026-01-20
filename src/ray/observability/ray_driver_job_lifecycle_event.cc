@@ -32,6 +32,23 @@ RayDriverJobLifecycleEvent::RayDriverJobLifecycleEvent(
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
 
+  // Populate additional state transition fields from job_info
+  if (data.has_job_info()) {
+    const auto &job_info = data.job_info();
+
+    if (job_info.has_message()) {
+      state_transition.set_message(job_info.message());
+    }
+
+    if (job_info.has_error_type()) {
+      state_transition.set_error_type(job_info.error_type());
+    }
+
+    if (job_info.has_driver_exit_code()) {
+      state_transition.set_exit_code(job_info.driver_exit_code());
+    }
+  }
+
   data_.mutable_state_transitions()->Add(std::move(state_transition));
   data_.set_job_id(data.job_id());
 }
