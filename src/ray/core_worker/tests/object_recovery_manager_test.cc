@@ -49,10 +49,15 @@ class MockTaskManager : public MockTaskManagerInterface {
     task_specs[task_id] = task_deps;
   }
 
+  void CancelTask(const TaskID &task_id) { cancelled_tasks.insert(task_id); }
+
   std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
                                              std::vector<ObjectID> *task_deps) override {
     if (task_specs.find(task_id) == task_specs.end()) {
       return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
+    }
+    if (cancelled_tasks.contains(task_id)) {
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED;
     }
 
     for (const auto &dep : task_specs[task_id]) {
@@ -63,6 +68,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   }
 
   absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;
+  absl::flat_hash_set<TaskID> cancelled_tasks;
   int num_tasks_resubmitted = 0;
 };
 
@@ -208,23 +214,27 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(object_directory_->Flush(), 1);
-  ASSERT_EQ(failed_reconstructions_[object_id], rpc::ErrorType::OBJECT_LOST);
+  // When lineage is disabled, reconstruction fails with LINEAGE_DISABLED error.
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 
   // Borrowed object.
   object_id = ObjectID::FromRandom();
   ref_counter_->AddLocalReference(object_id, "");
-  ASSERT_FALSE(manager_.RecoverObject(object_id));
+  ASSERT_EQ(manager_.RecoverObject(object_id),
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 
   // Ref went out of scope.
   object_id = ObjectID::FromRandom();
-  ASSERT_FALSE(manager_.RecoverObject(object_id));
+  ASSERT_EQ(manager_.RecoverObject(object_id),
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND);
   ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 }
@@ -236,13 +246,13 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   rpc::Address address;
   address.set_node_id(NodeID::FromRandom().Binary());
   object_directory_->SetLocations(object_id, {address});
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(raylet_client_->Flush(), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
@@ -256,7 +266,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   rpc::Address address1;
   address1.set_node_id(NodeID::FromRandom().Binary());
@@ -264,7 +274,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   address2.set_node_id(NodeID::FromRandom().Binary());
   object_directory_->SetLocations(object_id, {address1, address2});
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
   // First copy is evicted so pin fails.
   ASSERT_EQ(raylet_client_->Flush(false), 1);
@@ -281,11 +291,11 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {});
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
 
@@ -300,14 +310,14 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->AddLocalReference(object_id, "");
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   // A second attempt to recover the object will not trigger any more
   // callbacks.
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   // A new copy of the object is pinned.
   NodeID remote_node_id = NodeID::FromRandom();
   rpc::Address address;
@@ -319,7 +329,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   // The object has been marked as failed but it is still pinned on the new
   // node. Another attempt to recover the object will not trigger any
   // callbacks.
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 0);
 
   // The object is removed and can be recovered again.
@@ -328,7 +338,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], object_id);
   memory_store_->Delete(objects);
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
 }
 
@@ -342,14 +352,14 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
                                  rpc::Address(),
                                  "",
                                  0,
-                                 true,
+                                 LineageReconstructionEligibility::ELIGIBLE,
                                  /*add_local_ref=*/true);
     task_manager_->AddTask(object_id.TaskId(), dependencies);
     dependencies = {object_id};
     object_ids.push_back(object_id);
   }
 
-  ASSERT_TRUE(manager_.RecoverObject(object_ids.back()));
+  ASSERT_FALSE(manager_.RecoverObject(object_ids.back()).has_value());
   for (int i = 0; i < 3; i++) {
     RAY_LOG(INFO) << i;
     ASSERT_EQ(object_directory_->Flush(), 1);
@@ -365,10 +375,10 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
 
   ASSERT_TRUE(failed_reconstructions_[object_id] ==
@@ -383,7 +393,7 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
 
   ObjectID object_id = ObjectID::FromRandom();
@@ -392,12 +402,12 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   task_manager_->AddTask(object_id.TaskId(), {dep_id});
   RAY_LOG(INFO) << object_id;
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
   // Trigger callback for dep ID.
   ASSERT_EQ(object_directory_->Flush(), 1);
@@ -414,12 +424,12 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->AddLocalReference(object_id, "");
   ref_counter_->EvictLineage(1);
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(failed_reconstructions_[object_id],
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
@@ -434,12 +444,12 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
                                rpc::Address(),
                                "",
                                0,
-                               true,
+                               LineageReconstructionEligibility::ELIGIBLE,
                                /*add_local_ref=*/true);
   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, NodeID::FromRandom());
 
   memory_store_->Delete({object_id});
-  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(object_directory_->Flush(), 0);
   ASSERT_EQ(raylet_client_->Flush(), 0);
@@ -449,6 +459,89 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
   bool in_plasma = false;
   ASSERT_TRUE(memory_store_->Contains(object_id, &in_plasma));
   ASSERT_TRUE(in_plasma);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestPutObjectReconstructionFails) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::INELIGIBLE_PUT,
+                               /*add_local_ref=*/true);
+
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestNoRetriesReconstructionFails) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES,
+                               /*add_local_ref=*/true);
+
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestBorrowedObjectReconstructionFails) {
+  // Create a borrowed dependency (we don't own it)
+  ObjectID dep_id = ObjectID::FromRandom();
+  ref_counter_->AddLocalReference(dep_id, "");
+
+  // Create an owned object that depends on the borrowed object
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+  task_manager_->AddTask(object_id.TaskId(), {dep_id});
+
+  // Try to recover the owned object
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+
+  // The task is resubmitted successfully
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+
+  // But the dependency recovery fails with BORROWED error
+  // because we don't own the dependency
+  ASSERT_EQ(failed_reconstructions_[dep_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED);
+  ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+  task_manager_->AddTask(object_id.TaskId(), {});
+  task_manager_->CancelTask(object_id.TaskId());
+
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 }
 
 }  // namespace core

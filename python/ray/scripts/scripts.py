@@ -75,7 +75,7 @@ def _check_ray_version(gcs_client):
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
         raise RuntimeError(
             "Ray version mismatch: cluster has Ray version "
-            f'{cluster_metadata["ray_version"]} '
+            f"{cluster_metadata['ray_version']} "
             f"but local Ray version is {ray.__version__}"
         )
 
@@ -558,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -771,14 +771,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -965,9 +957,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
+                    (
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else ""
+                    ),
                     bootstrap_address,
                 )
 
@@ -978,11 +972,13 @@ def start(
                 cli_logger.print(
                     "ray{}init({})",
                     cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
-                    )
-                    if include_node_ip_address
-                    else "",
+                    (
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else ""
+                    ),
                 )
 
             if dashboard_url:
@@ -1089,7 +1085,7 @@ def start(
                 cf.bold("--address"),
                 cf.bold(address),
             )
-            raise Exception("Cannot canonicalize address " f"`--address={address}`.")
+            raise Exception(f"Cannot canonicalize address `--address={address}`.")
 
         ray_params.gcs_address = bootstrap_address
 
@@ -1615,6 +1611,12 @@ def monitor(cluster_config_file, lines, cluster_name):
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
+@click.option(
+    "--node-ip",
+    required=False,
+    type=str,
+    help="IP address of the node to attach to. If not specified, attaches to head node.",
+)
 @add_click_logging_options
 @PublicAPI
 def attach(
@@ -1626,6 +1628,7 @@ def attach(
     no_config_cache,
     new,
     port_forward,
+    node_ip,
 ):
     """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
@@ -1638,6 +1641,7 @@ def attach(
         no_config_cache=no_config_cache,
         new=new,
         port_forward=port_forward,
+        node_ip=node_ip,
     )
 
 
@@ -2061,11 +2065,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
