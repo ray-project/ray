@@ -68,7 +68,7 @@ class BenchmarkConfig:
     prefetch_batches_list: List[int] = field(default_factory=lambda: [1, 4])
 
     # Number of image columns per row to test
-    num_image_columns_list: List[int] = field(default_factory=lambda: [64])
+    num_image_columns_list: List[int] = field(default_factory=lambda: [32])
 
     # Number of batches to process per benchmark run
     num_batches: int = 32

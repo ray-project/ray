@@ -331,6 +331,9 @@
           --data-format images_with_read_parquet --simulated-training-time 0.01
 
     - __suffix__: images_with_map_batches
+      cluster:
+        byod:
+          post_build_script: byod_install_torchdata.sh
       run:
         timeout: 3600
         script: >
