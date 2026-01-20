@@ -168,7 +168,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_rewards_end, {"a0": 0.1})
         check(episode._hanging_extra_model_outputs_end, {"a0": {}})
         check(episode.env_t_to_agent_t["a0"].data, [0, "S", "S", "S"])
-        check(episode.env_t_to_agent_t["a1"].data, [0, 1, 2, 3])
+        check(episode.env_t_to_agent_t["a1"].data, [-3, -2, -1, 0])
         check(episode.env_t_to_agent_t["a0"].lookback, 3)
         check(episode.env_t_to_agent_t["a1"].lookback, 3)
 
@@ -188,8 +188,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_actions_end, {"a0": 2})
         check(episode._hanging_rewards_end, {"a0": 0.3})
         check(episode._hanging_extra_model_outputs_end, {"a0": {}})
-        check(episode.env_t_to_agent_t["a0"].data, [0, "S", 1, "S", "S"])
-        check(episode.env_t_to_agent_t["a1"].data, ["S", 0, 1, 2, 3])
+        check(episode.env_t_to_agent_t["a0"].data, [-1, "S", 0, "S", "S"])
+        check(episode.env_t_to_agent_t["a1"].data, ["S", -3, -2, -1, 0])
         check(episode.env_t_to_agent_t["a0"].lookback, 4)
         check(episode.env_t_to_agent_t["a1"].lookback, 4)
 
@@ -2317,8 +2317,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(successor), 0)
         check(successor.env_t_started, 1)
         check(successor.env_t, 1)
-        check(successor.env_t_to_agent_t["a0"].data, [0, 1, 2])
-        check(successor.env_t_to_agent_t["a1"].data, [0, 1, 2])
+        check(successor.env_t_to_agent_t["a0"].data, [-1, 0, 1])
+        check(successor.env_t_to_agent_t["a1"].data, [-1, 0, 1])
         check(successor.env_t_to_agent_t["a0"].lookback, 2)
         check(successor.env_t_to_agent_t["a1"].lookback, 2)
         a0 = successor.agent_episodes["a0"]
@@ -2334,7 +2334,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(successor._hanging_extra_model_outputs_end, {})
 
         # Multi-agent episode, in which one agent has a long sequence of not acting,
-        # but does receive (intermittend/hanging) rewards during this time.
+        # but does receive (intermittent/hanging) rewards during this time.
         observations = [
             {"a0": 0, "a1": 0},  # 0
             {"a0": 1},  # 1
@@ -2413,8 +2413,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
 
-        # Generate a simple multi-agent episode and check all internals after
-        # construction.
+        # Generate a simple multi-agent episode and check all internals after construction.
         episode_1 = self._create_simple_episode(
             [
                 {"a0": 0, "a1": 0},
@@ -2440,7 +2439,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # that we can add the buffered action to the new episode without problems.
         check(episode_2.env_t_to_agent_t["a0"].data, [0, "S", "S", "S"])
         check(episode_2.env_t_to_agent_t["a0"].lookback, 3)
-        check(episode_2.env_t_to_agent_t["a1"].data, [0, 1, 2, 3])
+        check(episode_2.env_t_to_agent_t["a1"].data, [-3, -2, -1, 0])
         check(episode_2.env_t_to_agent_t["a1"].lookback, 3)
         # Check all other internals of the cut episode chunk.
         check(episode_2.agent_episodes["a0"].observations.data, [0])
@@ -2476,7 +2475,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(episode_2), 1)
         check(episode_2.env_t_to_agent_t["a0"].data, [0, "S", "S", "S", 1])
         check(episode_2.env_t_to_agent_t["a0"].lookback, 3)
-        check(episode_2.env_t_to_agent_t["a1"].data, [0, 1, 2, 3, 4])
+        check(episode_2.env_t_to_agent_t["a1"].data, [-3, -2, -1, 0, 1])
         check(episode_2.env_t_to_agent_t["a1"].lookback, 3)
         check(episode_2.agent_episodes["a0"].observations.data, [0, 1])
         check(episode_2.agent_episodes["a0"].observations.lookback, 0)
@@ -2550,9 +2549,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(
             all(e.lookback == 2 for e in successor.env_t_to_agent_t.values())
         )
-        check(successor.env_t_to_agent_t["a0"].data, ["S", 0, "S"])
+        check(successor.env_t_to_agent_t["a0"].data, ["S", 2, "S"])
         check(successor.env_t_to_agent_t["a1"].data, ["S", "S", 0])
-        check(successor.env_t_to_agent_t["a2"].data, [0, "S", "S"])
+        check(successor.env_t_to_agent_t["a2"].data, [5, "S", "S"])
 
         check(successor.get_observations(0), {"a1": 0})
         with self.assertRaises(IndexError):
