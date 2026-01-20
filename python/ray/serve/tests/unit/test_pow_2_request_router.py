@@ -1628,24 +1628,30 @@ async def test_queue_len_cache_active_probing(pow_2_router):
     ],
     indirect=True,
 )
-async def test_queue_len_cache_replica_at_capacity_is_optimistically_routed(
-    pow_2_router,
-):
+async def test_queue_len_cache_replica_at_capacity_not_routed(pow_2_router):
     """
-    Verify that if a replica has a cache entry but is at max_ongoing_requests, it's
-    optimistically routed to (not blocked waiting for a probe). The replica can reject
-    if truly full, and the request will retry.
+    Verify that if a replica has a cache entry but is at max_ongoing_requests,
+    it's not immediately routed to when load shedding is enabled. The routing task
+    should wait/retry, which allows load shedding to work properly.
     """
     s = pow_2_router
     loop = get_or_create_event_loop()
+
+    # Enable load shedding - without this, optimistic routing would be used.
+    s._max_queued_requests = 10
 
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
-    # Request should complete immediately with optimistic routing to the "full" replica.
-    # The replica can reject if truly full, triggering a retry at a higher level.
+    # Request should NOT complete immediately because replica is at capacity.
+    # The routing task will retry with backoff.
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    # Now let the replica have capacity, the request should be routed.
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS - 1)
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
@@ -1773,30 +1779,73 @@ async def test_probe_queue_cleanup_on_replica_removal(pow_2_router):
     ],
     indirect=True,
 )
-async def test_optimistic_routing_chooses_lowest_queue_len_when_all_full(pow_2_router):
+async def test_routing_waits_when_all_replicas_full(pow_2_router):
     """
     Verify that when all cached replicas appear full (at max_ongoing_requests),
-    the one with the lowest queue length is chosen optimistically.
+    routing waits/retries instead of immediately routing when load shedding is
+    enabled. This is essential for load shedding to work properly.
     """
     s = pow_2_router
     loop = get_or_create_event_loop()
+
+    # Enable load shedding - without this, optimistic routing would be used.
+    s._max_queued_requests = 10
 
     r1 = FakeRunningReplica("r1")
     r2 = FakeRunningReplica("r2")
     s.update_replicas([r1, r2])
 
-    # Set both replicas as "full" but r1 has slightly lower queue length
+    # Set both replicas as "full"
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
-    s.replica_queue_len_cache.update(r2.replica_id, DEFAULT_MAX_ONGOING_REQUESTS + 5)
+    s.replica_queue_len_cache.update(r2.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+
+    # Request should NOT complete immediately - all replicas are full
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    # Now let r1 have capacity, the request should be routed to it
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_optimistic_routing_when_load_shedding_disabled(pow_2_router):
+    """
+    Verify that when load shedding is disabled (max_queued_requests=-1),
+    requests are optimistically routed to full replicas for better performance.
+    """
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    # Load shedding disabled by default (_max_queued_requests = -1)
+    assert s._max_queued_requests == -1
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    s.update_replicas([r1, r2])
+
+    # Set both replicas as "full"
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+    s.replica_queue_len_cache.update(r2.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
     # Request should complete immediately with optimistic routing
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
 
-    # Should choose r1 since it has lower queue length
+    # Should be routed to one of the replicas
     result = await task
-    assert result == r1
+    assert result in {r1, r2}
 
 
 @pytest.mark.asyncio

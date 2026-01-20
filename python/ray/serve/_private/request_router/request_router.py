@@ -506,6 +506,10 @@ class RequestRouter(ABC):
         self._probe_queue_event: Optional[asyncio.Event] = None  # Lazily constructed
         self._background_probe_task: Optional[asyncio.Task] = None
 
+        # Max queued requests limit. When -1, load shedding is disabled and we can
+        # use optimistic routing to full replicas for better performance.
+        self._max_queued_requests: int = -1
+
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
         self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
@@ -1066,13 +1070,13 @@ class RequestRouter(ABC):
                 # Enqueue replicas without cache entry for background probing
                 self._enqueue_replicas_for_probe(no_cache_entry)
         elif len(all_with_queue_len) > 0:
-            # All cached replicas appear full. Optimistically pick the one with
-            # the lowest queue length. The replica can reject if truly full.
-            # Trust the cache - we don't need to re-probe just because replicas
-            # appear full; the optimistic increment/decrement keeps cache accurate.
-            all_with_queue_len.sort(key=lambda x: x[1])
-            chosen_replica_id = all_with_queue_len[0][0].replica_id
-            # Enqueue replicas with no cache entry for background probing
+            # All cached replicas appear full.
+            if self._max_queued_requests == -1:
+                # Load shedding disabled - optimistically pick the one with lowest
+                # queue length. The replica can reject if truly full.
+                all_with_queue_len.sort(key=lambda x: x[1])
+                chosen_replica_id = all_with_queue_len[0][0].replica_id
+            # Enqueue replicas without cache entry for background probing
             if len(no_cache_entry) > 0:
                 self._enqueue_replicas_for_probe(no_cache_entry)
         else:
