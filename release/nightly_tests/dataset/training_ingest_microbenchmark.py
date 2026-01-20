@@ -12,7 +12,7 @@ This script benchmarks different approaches for loading and preprocessing images
 
 Supported data formats:
 - images_with_read_parquet: Uses ray.data.read_parquet() with embedded image bytes
-- images_with_map_batches: Lists JPEG files via torchdata, downloads with map_batches
+- images_with_map_batches: Lists JPEG files via boto3, downloads with map_batches
 - images_with_read_images: Uses ray.data.read_images() with Partitioning
 """
 
@@ -309,7 +309,7 @@ class ParquetS3Loader(BaseDataLoader):
 class MapBatchesS3Loader(BaseDataLoader):
     """Data loader for JPEG files stored in S3.
 
-    Uses torchdata for S3 file listing (same approach as multi_node_train_benchmark.py).
+    Uses boto3 for S3 file listing.
     Caches the file listing and base dataset to avoid repeated slow listings.
     """
 
@@ -334,36 +334,42 @@ class MapBatchesS3Loader(BaseDataLoader):
     def _list_files(self) -> List[Dict[str, str]]:
         """List JPEG files from S3 with class labels extracted from path.
 
-        Uses torchdata's S3 listing. Results are cached.
+        Uses boto3's S3 listing. Results are cached.
         """
-        from torchdata.datapipes.iter import IterableWrapper
-
         if self._file_records_cache is not None:
             logger.info(
                 f"Using cached file list ({len(self._file_records_cache)} files)"
             )
             return self._file_records_cache
 
-        # Required for torchdata S3 access
-        os.environ.setdefault("S3_VERIFY_SSL", "0")
-        os.environ.setdefault("AWS_REGION", self.AWS_REGION)
-
         logger.info(f"Listing JPEG files from {self.data_dir}...")
 
-        # List all files using torchdata
-        file_url_dp = IterableWrapper([self.data_dir]).list_files_by_s3()
+        # Parse S3 URL: s3://bucket/prefix
+        s3_path = self.data_dir
+        if s3_path.startswith("s3://"):
+            s3_path = s3_path[5:]
+        parts = s3_path.split("/", 1)
+        bucket = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+
+        # List all files using boto3
+        s3_client = boto3.client("s3", region_name=self.AWS_REGION)
+        paginator = s3_client.get_paginator("list_objects_v2")
 
         # Extract class labels from path structure: .../class_name/image.jpg
         file_records = []
-        for file_path in file_url_dp:
-            if not file_path.lower().endswith((".jpg", ".jpeg")):
-                continue
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.lower().endswith((".jpg", ".jpeg")):
+                    continue
 
-            # Extract class from path: s3://bucket/prefix/class/image.jpg
-            parts = file_path.rstrip("/").split("/")
-            if len(parts) >= 2:
-                class_name = parts[-2]  # Parent directory is the class
-                file_records.append({"path": file_path, "class": class_name})
+                # Extract class from path: prefix/class/image.jpg
+                key_parts = key.rstrip("/").split("/")
+                if len(key_parts) >= 2:
+                    class_name = key_parts[-2]  # Parent directory is the class
+                    file_path = f"s3://{bucket}/{key}"
+                    file_records.append({"path": file_path, "class": class_name})
 
         logger.info(f"Listed and cached {len(file_records)} JPEG files")
         self._file_records_cache = file_records
@@ -399,18 +405,21 @@ class MapBatchesS3Loader(BaseDataLoader):
         def download_and_process_batch(
             batch: Dict[str, np.ndarray]
         ) -> Dict[str, np.ndarray]:
-            from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+            s3_client = boto3.client("s3", region_name=MapBatchesS3Loader.AWS_REGION)
 
             processed_images = []
             labels = []
 
-            # Use torchdata's S3FileLoader for downloading
+            # Download files using boto3
             paths = list(batch["path"])
             classes = list(batch["class"])
-            file_dp = S3FileLoader(IterableWrapper(paths))
 
-            for (url, fd), wnid in zip(file_dp, classes):
-                data = fd.file_obj.read()
+            for s3_url, wnid in zip(paths, classes):
+                # Parse S3 URL: s3://bucket/key
+                url_path = s3_url[5:] if s3_url.startswith("s3://") else s3_url
+                bucket, key = url_path.split("/", 1)
+                response = s3_client.get_object(Bucket=bucket, Key=key)
+                data = response["Body"].read()
                 image_pil = Image.open(io.BytesIO(data)).convert("RGB")
                 processed_images.append(
                     BaseDataLoader.tensor_to_numpy(transform(image_pil))
