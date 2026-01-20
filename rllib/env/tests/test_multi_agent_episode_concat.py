@@ -4,7 +4,6 @@ import gymnasium as gym
 
 from ray.rllib import MultiAgentEnv
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
@@ -41,6 +40,14 @@ class MultiAgentCountingEnv(MultiAgentEnv):
         self.env_timestep = 0
         self.max_episode_length = max_episode_length
 
+        # Precompute the last env_t where each agent will receive an observation
+        self.agent_last_obs_t = {}
+        for agent, fn in agent_fns.items():
+            for t in range(max_episode_length, -1, -1):
+                if fn(t):
+                    self.agent_last_obs_t[agent] = t
+                    break
+
     def reset(
         self,
         *,
@@ -60,14 +67,17 @@ class MultiAgentCountingEnv(MultiAgentEnv):
     ]:
         self.env_timestep += 1
 
-        if self.env_timestep >= self.max_episode_length:
-            obs = self.agent_timestep
-        else:
-            obs = self.get_obs()
-
+        obs = self.get_obs()
         # replace 1 with self.env_timestep for debugging to see what time that the observation is from
         rewards = {agent: 1 for agent in obs.keys()}
-        terminated = {"__all__": self.env_timestep == self.max_episode_length}
+
+        # Terminate agents when this is their last observation
+        terminated = {
+            agent: self.env_timestep == self.agent_last_obs_t[agent]
+            for agent in obs.keys()
+        }
+        terminated["__all__"] = self.env_timestep == self.max_episode_length
+
         truncated = {}
         info = {agent: {"env_timestep": self.env_timestep} for agent in obs.keys()}
 
@@ -109,49 +119,11 @@ class EchoRLModule(RLModule):
         raise NotImplementedError("EchoRLModule is not trainable!")
 
 
-class ObservationIncrementValidator(ConnectorV2):
-    """Connector that validates observations increment by 1 for each agent."""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Track last observation per agent (agent_id -> last_obs)
-        self._last_obs_per_agent = {}
-
-    def __call__(
-        self,
-        *,
-        rl_module,
-        batch,
-        episodes,
-        explore=None,
-        shared_data=None,
-        **kwargs,
-    ):
-        # Iterate over all single-agent episodes (handles multi-agent automatically)
-        for sa_episode, agent_id, module_id in self.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=True
-        ):
-            # Get the current observation
-            current_obs = sa_episode.get_observations(-1)
-
-            if agent_id in self._last_obs_per_agent:
-                expected_obs = self._last_obs_per_agent[agent_id] + 1
-                if current_obs != expected_obs:
-                    raise AssertionError(
-                        f"Agent {agent_id}: Expected obs {expected_obs}, got {current_obs}"
-                    )
-
-            # Update last observed
-            self._last_obs_per_agent[agent_id] = current_obs
-
-        return batch
-
-
 AGENT_FNS = {
     "p_true": lambda x: True,
     "p_mod_2": lambda x: x % 2 == 0,
     "p_mod_3+": lambda x: x % 3 == 0 and x > 0,
-    "p_in": lambda x: x in [2, 12, 18, 20],
+    "p_in": lambda x: x in [2, 12, 18, 19],
 }
 MAX_EPISODE_LENGTH = 20
 
@@ -161,7 +133,7 @@ MAX_EPISODE_LENGTH = 20
 # p_true  : 0 1 2 3 4 5 6 7 8 | 9 10 11 12 13 14 15 16 | 17 18 19 20 | 0 1 2 3
 # p_mod_2 : 0 - 1 - 2 - 3 - 4 | -  5  -  6  -  7  -  8 |  -  9  - 10 | 0 - 1 -
 # p_mod_5+: - - - 0 - - 1 - - | 2  -  -  3  -  -  4  - |  -  5  -  - | - - - 0
-# p_in    : - - 0 - - - - - - | -  -  -  1  -  -  -  - |  -  2  -  3 | - - 0 -
+# p_in    : - - 0 - - - - - - | -  -  -  1  -  -  -  - |  -  2  3  - | - - 0 -
 
 
 def create_env(config):
@@ -177,7 +149,6 @@ CONFIG = (
     .env_runners(
         num_envs_per_env_runner=1,
         num_env_runners=0,
-        # env_to_module_connector=lambda env: ObservationIncrementValidator(),
     )
     .rl_module(rl_module_spec=RLModuleSpec(module_class=EchoRLModule))
     .multi_agent(
@@ -193,7 +164,7 @@ def test_multi_agent_episode_concat(num_timesteps=8):
 
     episodes = []
     for repeat in range(10):
-        print("SAMPLE")
+        print("\nSAMPLE")
         new_episodes = env_runner.sample(
             num_timesteps=num_timesteps, random_actions=False
         )
@@ -204,7 +175,7 @@ def test_multi_agent_episode_concat(num_timesteps=8):
             print(
                 f"{ep.id_}\n"
                 f"\t{ep.env_t_started=}, {ep.env_t=}\n"
-                f"\t{ep._len_lookback_buffers=}\n"
+                # f"\t{ep._len_lookback_buffers=}\n"
                 f"\t{ep.agent_t_started=}"
             )
             for agent_id, sa_episode in ep.agent_episodes.items():
@@ -212,6 +183,7 @@ def test_multi_agent_episode_concat(num_timesteps=8):
                 actions = sa_episode.get_actions()
                 rewards = sa_episode.get_rewards()
                 infos = sa_episode.get_infos()
+                env_t_to_agent_t = ep.env_t_to_agent_t[agent_id].get()
 
                 # print(f"\n\t{agent_id=}")
                 # print(f"\t\t{sa_episode.t_started=}, {sa_episode.t=}")
@@ -221,22 +193,17 @@ def test_multi_agent_episode_concat(num_timesteps=8):
                 # print(f'\t\t{infos=}')
 
                 # Check that the obs, actions and rewards are the expected values
-                assert list(obs) == list(
-                    range(sa_episode.t_started, sa_episode.t + 1)
-                ), f"{obs=}, expected-obs={list(range(sa_episode.t_started, sa_episode.t + 1))}, {sa_episode.observations=}"
+                assert list(obs) == list(range(sa_episode.t_started, sa_episode.t + 1)), f"{agent_id=}, {obs=}, expected-obs={list(range(sa_episode.t_started, sa_episode.t + 1))}, {sa_episode.observations=}, {env_t_to_agent_t=}"
                 assert list(actions) == list(range(sa_episode.t_started, sa_episode.t))
                 assert list(rewards) == [1] * (sa_episode.t - sa_episode.t_started)
 
                 # Check that the info is the same length as the observations
                 assert len(list(infos)) == len(list(obs))
 
-                env_t_to_agent_t = ep.env_t_to_agent_t[agent_id].get()
-                # print(
-                #     f"\t\t{env_t_to_agent_t=}, lookback={ep.env_t_to_agent_t[agent_id].lookback}"
-                # )
+                # print(f"\t\t{env_t_to_agent_t=}, lookback={ep.env_t_to_agent_t[agent_id].lookback}")
                 assert (
                     len(env_t_to_agent_t) == ep.env_t + 1 - ep.env_t_started
-                ), f"AssertationError for length of env_t_to_agent_t: {len(env_t_to_agent_t)} ({env_t_to_agent_t}) != {ep.env_t + 1 - ep.env_t_started}"
+                ), f"AssertationError for length of env_t_to_agent_t for {agent_id}: {len(env_t_to_agent_t)} ({env_t_to_agent_t}) != {ep.env_t + 1 - ep.env_t_started}, {obs=}"
 
                 # Calculate the agent_t for the first observation in this chunk
                 # by counting how many times the agent was active before env_t_started
@@ -253,10 +220,10 @@ def test_multi_agent_episode_concat(num_timesteps=8):
                         expected_env_t_to_agent_t.append(
                             MultiAgentEpisode.SKIP_ENV_TS_TAG
                         )
-                # print(f'\t\t{expected_env_t_to_agent_t=}')
+                print(f'{agent_id} - {ep.env_t_to_agent_t[agent_id].get()}, {sa_episode.observations=}')
                 assert (
                     list(env_t_to_agent_t) == expected_env_t_to_agent_t
-                ), f"AssertationError for env_t_to_agent_t data: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t}"
+                ), f"AssertationError for env_t_to_agent_t data: {list(env_t_to_agent_t)} != {expected_env_t_to_agent_t} ({agent_id})"
 
                 # You should have the same number of info as obs
                 # The info timesteps should equal to the non-skip timesteps

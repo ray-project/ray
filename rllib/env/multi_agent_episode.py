@@ -2245,11 +2245,12 @@ class MultiAgentEpisode:
                     done_per_agent[agent_id] = terminateds[agent_id] = True
 
                 # Update env_t_to_agent_t mapping using the recovered agent_t.
-                # For agents in the lookback, current_agent_t was computed as:
+                # For agents in the lookback, current_agent_t was computed earlier as:
                 #   agent_t_started - lookback_obs_count
-                # For new agents (not in lookback), initialize current_agent_t to 0.
+                # For agents not in lookback but with prior history, use agent_t_started.
+                # For truly new agents (no prior history), start at 0.
                 if agent_id not in current_agent_t:
-                    current_agent_t[agent_id] = 0
+                    current_agent_t[agent_id] = self.agent_t_started.get(agent_id, 0)
                 self.env_t_to_agent_t[agent_id].append(current_agent_t[agent_id])
                 current_agent_t[agent_id] += 1
 
