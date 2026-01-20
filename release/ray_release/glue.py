@@ -9,7 +9,6 @@ from google.cloud import storage as gcs_storage
 
 from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import (
-    LAST_LOGS_LENGTH,
     create_cluster_env_from_image,
     get_custom_cluster_env_name,
 )
@@ -81,7 +80,6 @@ def _load_test_configuration(
     anyscale_project: str,
     result: Result,
     smoke_test: bool = False,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
@@ -128,7 +126,6 @@ def _load_test_configuration(
             test,
             anyscale_project,
             smoke_test=smoke_test,
-            log_streaming_limit=log_streaming_limit,
         )
         command_runner = command_runner_cls(
             cluster_manager,
@@ -359,12 +356,6 @@ def _fetching_results(
         )
 
     try:
-        # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.py
-        # Timeout is the time the test took divided by 200
-        # (~7 minutes for a 24h test) but no less than 30s
-        # and no more than 900s
-        metrics_timeout = max(30, min((time.time() - start_time_unix) / 200, 900))
-        command_runner.save_metrics(start_time_unix, timeout=metrics_timeout)
         metrics = command_runner.fetch_metrics()
     except Exception as e:
         logger.exception(f"Could not fetch metrics for test command: {e}")
@@ -386,7 +377,6 @@ def run_release_test(
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ) -> Result:
     if test.is_kuberay():
@@ -403,7 +393,6 @@ def run_release_test(
         reporters=reporters,
         smoke_test=smoke_test,
         test_definition_root=test_definition_root,
-        log_streaming_limit=log_streaming_limit,
         image=image,
     )
 
@@ -448,7 +437,6 @@ def run_release_test_kuberay(
             autoscaler_config=kuberay_autoscaler_config,
             timeout=command_timeout,
         )
-        kuberay_job_manager.fetch_results()
         result.return_code = retcode
         result.runtime = duration
     except Exception as e:
@@ -470,7 +458,6 @@ def run_release_test_anyscale(
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
@@ -488,7 +475,6 @@ def run_release_test_anyscale(
             anyscale_project,
             result,
             smoke_test,
-            log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
