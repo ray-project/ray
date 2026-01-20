@@ -72,7 +72,7 @@ class ReportCallbackHandler(WorkerGroupCallback):
         ]
 
         consolidated_checkpoint = None
-        validate = None
+        validate = False
         if checkpoint_results:
             # Double check the storage path of the checkpoints in the training results.
             unique_checkpoint_paths = {tr.checkpoint.path for tr in checkpoint_results}
