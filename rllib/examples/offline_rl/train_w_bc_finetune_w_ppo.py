@@ -302,12 +302,12 @@ if __name__ == "__main__":
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
     # Check, whether training 2 times causes catastrophic forgetting.
-    for _ in range(3):
+    for _ in range(5):
         ppo.train()
     eval_results = ppo.evaluate()
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 250.0, f"PPO performance (training) bad! R={R} (expected 250.0+)."
-    print(f"PPO return after 2x training: {R}")
+    print(f"PPO return after 5x training: {R}")
 
     # Perform actual PPO training run (this time until 450.0 return).
     stop = {
