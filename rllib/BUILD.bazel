@@ -5152,8 +5152,8 @@ py_test(
     size = "medium",
     srcs = ["examples/ray_tune/appo_hyperparameter_tune.py"],
     args = [
-        "--num-samples=6",
-        "--max-concurrent-trials=2",
+        "--num-samples=12",
+        "--max-concurrent-trials=4",
         "--num-env-runners=4",
         "--num-envs-per-env-runner=6",
         "--num-learners=1",

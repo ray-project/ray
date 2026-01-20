@@ -1,10 +1,9 @@
 """Hyperparameter tuning script for APPO on CartPole using HyperOpt.
 
 This script uses Ray Tune's HyperOpt search algorithm to optimize APPO
-hyperparameters for CartPole-v1, targeting convergence within 2 million
-timesteps for each individual trial.
-HyperOpt uses Tree-structured Parzen Estimators (TPE)
-for efficient Bayesian optimization of the hyperparameter search space.
+hyperparameters for CartPole-v1 (though is applicable to any RLlib algorithm).
+HyperOpt uses Tree-structured Parzen Estimators (TPE) for efficient Bayesian
+optimization of the hyperparameter search space.
 
 The script runs 4 parallel trials by default, with HyperOpt suggesting new
 hyperparameter configurations based on results from completed trials.
@@ -26,11 +25,9 @@ Key hyperparameters being tuned:
 Note on storage for multi-node clusters
 ---------------------------------------
 Ray Tune requires centralized storage accessible by all nodes in a multi-node cluster.
-This script defaults to using the ANYSCALE_ARTIFACT_STORAGE environment variable,
-which is automatically set in Anyscale jobs. For other environments, override with:
-`python appo_hyperparameter_tune.py --storage-path=s3://my-bucket/path`
-For local development, override with a local path:
-`python appo_hyperparameter_tune.py --storage-path=~/ray_results`
+This can be an S3 bucket or local storage assessable to all nodes.
+If running on an Anyscale job, it has an internal S3 bucket defined by the
+ANYSCALE_ARTIFACT_STORAGE environment variable.
 See https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html for more details.
 
 How to run this script
@@ -55,7 +52,6 @@ HyperOpt will explore the hyperparameter space and converge toward configuration
 that achieve reward of 475+ on CartPole within 2 million timesteps. The best
 trial's hyperparameters will be logged at the end of training.
 """
-import os
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
@@ -78,7 +74,7 @@ parser = add_rllib_example_script_args(
 )
 parser.add_argument(
     "--storage-path",
-    default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"),
+    default="~/ray_results",
     help="The storage path for checkpoints and related tuning data.",
 )
 parser.set_defaults(
