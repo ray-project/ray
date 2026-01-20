@@ -516,7 +516,7 @@ TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
   // Check that resubmitting a canceled task does not crash and returns
   // OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.
   manager_.MarkTaskCanceled(spec.TaskId());
-  std::vector<ObjectID> task_deps;
+  absl::InlinedVector<ObjectID, 8> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
 
@@ -1054,7 +1054,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   int num_retries = 3;
 
   // Cannot resubmit a task whose spec we do not have.
-  std::vector<ObjectID> resubmitted_task_deps;
+  absl::InlinedVector<ObjectID, 8> resubmitted_task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
   ASSERT_TRUE(resubmitted_task_deps.empty());
@@ -1149,7 +1149,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(stored_in_plasma.empty());
-  std::vector<ObjectID> resubmitted_task_deps;
+  absl::InlinedVector<ObjectID, 8> resubmitted_task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
@@ -1213,7 +1213,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(stored_in_plasma.empty());
-  std::vector<ObjectID> resubmitted_task_deps;
+  absl::InlinedVector<ObjectID, 8> resubmitted_task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
@@ -1333,7 +1333,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
 
   // Resubmit the task.
   ASSERT_TRUE(stored_in_plasma.empty());
-  std::vector<ObjectID> resubmitted_task_deps;
+  absl::InlinedVector<ObjectID, 8> resubmitted_task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
@@ -2772,7 +2772,7 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   manager_.MarkTaskWaitingForExecution(
       spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
-  std::vector<ObjectID> task_deps;
+  absl::InlinedVector<ObjectID, 8> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps), std::nullopt);
   ASSERT_TRUE(task_deps.empty());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));

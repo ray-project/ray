@@ -2559,7 +2559,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ObjectID id = ObjectID::FromRandom();
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         return 0;
       });
@@ -2605,7 +2605,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   }
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         // Simulate releasing objects in downstream_id's lineage.
         size_t i = 0;
@@ -2665,7 +2665,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
   }
   std::vector<ObjectID> lineage_deleted;
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         if (object_id == ids[1]) {
           // ID1 depends on ID0.
@@ -2716,7 +2716,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
                      /*add_local_ref=*/true);
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         return 0;
       });
@@ -3109,7 +3109,7 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_TRUE(rc->GetOwner(object_id, &added_address));
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
   // Verify it had 1 local reference.
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   rc->RemoveLocalReference(object_id, &deleted);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(deleted.size(), 1);
@@ -3197,7 +3197,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
 
   // Test 6: Delete objects
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   rc->RemoveLocalReference(pending_id1, &deleted);
   rc->RecordMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
