@@ -7,9 +7,8 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_LOGGER_NAME,
-    SERVE_NAMESPACE,
 )
-from ray.serve._private.queue_monitor import get_queue_monitor_actor_name
+from ray.serve._private.queue_monitor import get_queue_monitor_actor
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -143,13 +142,13 @@ def replica_queue_length_autoscaling_policy(
 
 
 @PublicAPI(stability="alpha")
-def combined_workload_autoscaling_policy(
+def async_inference_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[int, Dict[str, Any]]:
     """
-    Autoscaling policy for TaskConsumer deployments based on total workload.
+    Async inference autoscaling policy for TaskConsumer deployments.
 
-    This policy scales replicas based on the combined workload from:
+    This policy scales replicas based on the total workload from:
     - Pending tasks in the message queue (via QueueMonitor)
     - Ongoing HTTP requests (from context)
 
@@ -178,10 +177,7 @@ def combined_workload_autoscaling_policy(
 
     # === STEP 1: Get queue length from QueueMonitor actor ===
     try:
-        queue_monitor_actor_name = get_queue_monitor_actor_name(ctx.deployment_name)
-        queue_monitor_actor = ray.get_actor(
-            queue_monitor_actor_name, namespace=SERVE_NAMESPACE
-        )
+        queue_monitor_actor = get_queue_monitor_actor(ctx.deployment_name)
         queue_length = ray.get(
             queue_monitor_actor.get_queue_length.remote(), timeout=5.0
         )
@@ -296,4 +292,4 @@ def _apply_scaling_decision_smoothing(
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
 
-default_combined_workload_autoscaling_policy = combined_workload_autoscaling_policy
+default_async_inference_autoscaling_policy = async_inference_autoscaling_policy

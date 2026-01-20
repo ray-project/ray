@@ -9,10 +9,9 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
 )
-from ray.serve._private.queue_monitor import get_queue_monitor_actor_name
 from ray.serve.autoscaling_policy import (
     _apply_scaling_decision_smoothing,
-    combined_workload_autoscaling_policy,
+    async_inference_autoscaling_policy,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
@@ -63,76 +62,74 @@ def create_autoscaling_context(
     )
 
 
+class MockQueueMonitor:
+    """Simple mock for queue monitor in tests."""
+
+    def __init__(self):
+        self.queue_length = 0
+        self.error = None
+        self.get_actor_mock = None
+
+    def set_queue_length(self, length: int):
+        self.queue_length = length
+        self.error = None
+
+    def set_actor_not_found(self):
+        self.error = ValueError("Actor not found")
+
+    def set_query_failed(self):
+        self.error = Exception("Query failed")
+
+
 @pytest.fixture
 def queue_monitor_mock():
-    """Fixture that provides a helper to mock queue monitor with a specific queue length."""
-    with patch("ray.serve.autoscaling_policy.ray.get_actor") as mock_get_actor, patch(
-        "ray.serve.autoscaling_policy.ray.get"
-    ) as mock_ray_get:
+    """Fixture that mocks get_queue_monitor_actor and ray.get for testing."""
+    mock = MockQueueMonitor()
 
-        def setup(queue_length: int, deployment_name: str = "test_deployment"):
-            """Set up mocks for a successful queue monitor query.
+    def get_actor(deployment_name, namespace="serve"):
+        if mock.error and isinstance(mock.error, ValueError):
+            raise mock.error
+        return MagicMock()
 
-            Args:
-                queue_length: The queue length to return from the mock.
-                deployment_name: The deployment name for actor name verification.
+    def ray_get(obj_ref, timeout=None):
+        if mock.error and not isinstance(mock.error, ValueError):
+            raise mock.error
+        return mock.queue_length
 
-            Returns:
-                The expected queue monitor actor name.
-            """
-            actor_name = get_queue_monitor_actor_name(deployment_name)
-
-            mock_actor = MagicMock()
-            mock_queue_length_ref = MagicMock()
-            mock_actor.get_queue_length.remote.return_value = mock_queue_length_ref
-            mock_get_actor.return_value = mock_actor
-            mock_ray_get.return_value = queue_length
-
-            return actor_name
-
-        def set_actor_not_found():
-            """Set up mocks to simulate actor not found."""
-            mock_get_actor.side_effect = ValueError("Actor not found")
-
-        def set_query_failed():
-            """Set up mocks to simulate successful actor lookup but failed query."""
-            mock_actor = MagicMock()
-            mock_get_actor.return_value = mock_actor
-            mock_ray_get.side_effect = Exception("Query failed")
-
-        yield {
-            "setup": setup,
-            "set_actor_not_found": set_actor_not_found,
-            "set_query_failed": set_query_failed,
-            "mock_get_actor": mock_get_actor,
-        }
+    with patch(
+        "ray.serve.autoscaling_policy.get_queue_monitor_actor", side_effect=get_actor
+    ) as get_actor_mock, patch(
+        "ray.serve.autoscaling_policy.ray.get", side_effect=ray_get
+    ):
+        mock.get_actor_mock = get_actor_mock
+        yield mock
 
 
 class TestCombinedWorkloadAutoscalingPolicy:
-    """Tests for combined_workload_autoscaling_policy function."""
+    """Tests for async_inference_autoscaling_policy function."""
 
     def test_queue_monitor_unavailable_maintains_replicas(self, queue_monitor_mock):
         """Test that unavailable QueueMonitor maintains current replica count."""
-        queue_monitor_mock["set_actor_not_found"]()
+        queue_monitor_mock.set_actor_not_found()
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 5
 
     def test_queue_monitor_query_fails_maintains_replicas(self, queue_monitor_mock):
         """Test that failed query maintains current replica count."""
-        queue_monitor_mock["set_query_failed"]()
+        queue_monitor_mock.set_query_failed()
 
         ctx = create_autoscaling_context(
             current_num_replicas=3,
             target_num_replicas=3,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 3
 
     @pytest.mark.parametrize(
@@ -152,7 +149,7 @@ class TestCombinedWorkloadAutoscalingPolicy:
         expected_replicas,
     ):
         """Test basic scaling formula: ceil(queue_length / target_per_replica)."""
-        queue_monitor_mock["setup"](queue_length)
+        queue_monitor_mock.set_queue_length(queue_length)
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
@@ -162,7 +159,7 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=20,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == expected_replicas
 
     def test_scaling_with_combined_workload(self, queue_monitor_mock):
@@ -171,7 +168,7 @@ class TestCombinedWorkloadAutoscalingPolicy:
         total_num_requests = 20
         # Total workload = 30 + 20 = 50
         # With target_ongoing_requests=10, expected = ceil(50/10) = 5
-        queue_monitor_mock["setup"](queue_length)
+        queue_monitor_mock.set_queue_length(queue_length)
 
         ctx = create_autoscaling_context(
             current_num_replicas=2,
@@ -182,12 +179,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=20,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 5
 
     def test_scale_down_to_one_before_zero(self, queue_monitor_mock):
         """Test that scaling to zero goes through 1 first (policy enforces 1->0)."""
-        queue_monitor_mock["setup"](0)
+        queue_monitor_mock.set_queue_length(0)
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
@@ -197,13 +194,13 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=20,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         # Policy enforces min of 1 for non-zero to zero transition
         assert new_replicas == 1
 
     def test_respects_max_replicas(self, queue_monitor_mock):
         """Test that scaling respects max_replicas bound."""
-        queue_monitor_mock["setup"](1000)
+        queue_monitor_mock.set_queue_length(1000)
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
@@ -212,12 +209,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=10,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 10
 
     def test_respects_min_replicas(self, queue_monitor_mock):
         """Test that scaling respects min_replicas bound."""
-        queue_monitor_mock["setup"](5)
+        queue_monitor_mock.set_queue_length(5)
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
@@ -226,12 +223,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             min_replicas=3,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 3
 
     def test_scale_from_zero(self, queue_monitor_mock):
         """Test scaling up from zero replicas."""
-        queue_monitor_mock["setup"](50)
+        queue_monitor_mock.set_queue_length(50)
 
         ctx = create_autoscaling_context(
             current_num_replicas=0,
@@ -241,12 +238,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=10,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 1
 
     def test_scale_from_zero_with_one_task(self, queue_monitor_mock):
         """Test scaling from zero with a single task."""
-        queue_monitor_mock["setup"](1)
+        queue_monitor_mock.set_queue_length(1)
 
         ctx = create_autoscaling_context(
             current_num_replicas=0,
@@ -256,12 +253,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             max_replicas=10,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 1
 
     def test_stay_at_zero_with_empty_queue(self, queue_monitor_mock):
         """Test staying at zero replicas when queue is empty."""
-        queue_monitor_mock["setup"](0)
+        queue_monitor_mock.set_queue_length(0)
 
         ctx = create_autoscaling_context(
             current_num_replicas=0,
@@ -270,12 +267,12 @@ class TestCombinedWorkloadAutoscalingPolicy:
             min_replicas=0,
         )
 
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 0
 
-    def test_correct_queue_monitor_actor_name(self, queue_monitor_mock):
-        """Test that correct QueueMonitor actor name is used."""
-        actor_name = queue_monitor_mock["setup"](50, deployment_name="my_task_consumer")
+    def test_correct_deployment_name_passed(self, queue_monitor_mock):
+        """Test that correct deployment name is passed to get_queue_monitor_actor."""
+        queue_monitor_mock.set_queue_length(50)
 
         ctx = create_autoscaling_context(
             current_num_replicas=5,
@@ -284,21 +281,18 @@ class TestCombinedWorkloadAutoscalingPolicy:
             app_name="my_app",
         )
 
-        combined_workload_autoscaling_policy(ctx)
+        async_inference_autoscaling_policy(ctx)
 
-        # Verify ray.get_actor was called with the correct actor name
-        queue_monitor_mock["mock_get_actor"].assert_called_once_with(
-            actor_name,
-            namespace="serve",
-        )
+        # Verify get_queue_monitor_actor was called with the correct deployment name
+        queue_monitor_mock.get_actor_mock.assert_called_once_with("my_task_consumer")
 
 
 class TestCombinedWorkloadAutoscalingPolicyDelays:
-    """Tests for upscale and downscale delays in combined_workload_autoscaling_policy."""
+    """Tests for upscale and downscale delays in async_inference_autoscaling_policy."""
 
     def test_upscale_delay(self, queue_monitor_mock):
         """Test that upscale decisions require delay."""
-        queue_monitor_mock["setup"](200)
+        queue_monitor_mock.set_queue_length(200)
 
         upscale_delay_s = 30.0
         wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
@@ -315,17 +309,17 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
 
         # First wait_periods calls should not scale
         for i in range(wait_periods):
-            new_replicas, policy_state = combined_workload_autoscaling_policy(ctx)
+            new_replicas, policy_state = async_inference_autoscaling_policy(ctx)
             ctx.policy_state = policy_state
             assert new_replicas == 5, f"Should not scale up at iteration {i}"
 
         # Next call should scale
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 20
 
     def test_downscale_delay(self, queue_monitor_mock):
         """Test that downscale decisions require delay."""
-        queue_monitor_mock["setup"](20)
+        queue_monitor_mock.set_queue_length(20)
 
         downscale_delay_s = 60.0
         wait_periods = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
@@ -342,12 +336,12 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
 
         # First wait_periods calls should not scale down
         for i in range(wait_periods):
-            new_replicas, policy_state = combined_workload_autoscaling_policy(ctx)
+            new_replicas, policy_state = async_inference_autoscaling_policy(ctx)
             ctx.policy_state = policy_state
             assert new_replicas == 10, f"Should not scale down at iteration {i}"
 
         # Next call should scale
-        new_replicas, _ = combined_workload_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 2
 
 
@@ -356,7 +350,7 @@ class TestCombinedWorkloadAutoscalingPolicyState:
 
     def test_preserves_decision_counter(self, queue_monitor_mock):
         """Test that decision counter is preserved across calls."""
-        queue_monitor_mock["setup"](200)
+        queue_monitor_mock.set_queue_length(200)
 
         policy_state = {}
         ctx = create_autoscaling_context(
@@ -367,7 +361,7 @@ class TestCombinedWorkloadAutoscalingPolicyState:
             policy_state=policy_state,
         )
 
-        _, policy_state = combined_workload_autoscaling_policy(ctx)
+        _, policy_state = async_inference_autoscaling_policy(ctx)
         assert policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0) == 1
 
         # Call again
@@ -378,7 +372,7 @@ class TestCombinedWorkloadAutoscalingPolicyState:
             upscale_delay_s=30.0,
             policy_state=policy_state,
         )
-        _, policy_state = combined_workload_autoscaling_policy(ctx)
+        _, policy_state = async_inference_autoscaling_policy(ctx)
         assert policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0) == 2
 
 
