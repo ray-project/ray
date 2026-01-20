@@ -213,13 +213,21 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Collect metrics from that episode
         metrics = env_runner.get_metrics()
         # Expected singular policy name when setting num_agents != num_policies and num_policies = 1
-        assert "p0" in  metrics["module_episode_returns_mean"].keys()
+        assert "p0" in metrics["module_episode_returns_mean"].keys()
         # Collect episode return, module return, and sum of agent returns
         episode_return_mean = metrics["episode_return_mean"].reduce()
-        module_episode_returns_mean = metrics["module_episode_returns_mean"]["p0"].reduce()
-        sum_agent_episode_returns_mean = sum([value.reduce() for value in metrics["agent_episode_returns_mean"].values() ])
+        module_episode_returns_mean = metrics["module_episode_returns_mean"][
+            "p0"
+        ].reduce()
+        sum_agent_episode_returns_mean = sum(
+            value.reduce() for value in metrics["agent_episode_returns_mean"].values()
+        )
         # Expect episode_return_mean == module_return_mean == sum_agent_returns_mean
-        assert episode_return_mean == module_episode_returns_mean == sum_agent_episode_returns_mean
+        assert (
+            episode_return_mean
+            == module_episode_returns_mean
+            == sum_agent_episode_returns_mean
+        )
 
 
 if __name__ == "__main__":
