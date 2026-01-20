@@ -54,16 +54,16 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
-# Accelerators that are 4 chips per host: v2, v3, v4, v5p
+# Accelerators that are 4 chips per host: v2, v3, v4, v5p, v7x
 # Accelerators that are 8 chips per host: v5e, v6e
 SINGLE_HOST_8_CHIPS_TPU_TYPES = ("v5litepod", "v6e")
 
-# Accelerators that are 2 cores per chip: v2, v3, v4, v5p
+# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
 # Accelerators that are 1 core per chip: v5e, v6e
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 
 # The valid TPU types.
-VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
+VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
 
 # This is only used to construct TPU 3D topologies
 def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
@@ -100,6 +100,18 @@ VALID_TPU_TOPOLOGY = {
     }.union(_get_larger_3d_topologies(16, 16, 24)),
     "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
     "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v7x": {
+        "2x2x1",
+        "2x2x2",
+        "2x2x4",
+        "2x4x4",
+        "4x4x4",
+        "4x4x8",
+        "4x8x8",
+        "8x8x8",
+        "8x8x16",
+        "8x16x16",
+    },
 }
 
 
@@ -366,6 +378,8 @@ class TPUAcceleratorManager(AcceleratorManager):
             True if it's a valid topology, False otherwise.
         """
         tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
+        if tpu_version_formatted.startswith("tpu"):
+            tpu_version_formatted = "v" + tpu_version_formatted[3:]
         if (
             tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
             or tpu_topology.strip().lower()
