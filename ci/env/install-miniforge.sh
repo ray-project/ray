@@ -93,19 +93,22 @@ install_miniforge() {
         echo "Creating new conda environment for Python ${PYTHON}..."
       )
       local env_name="py${PYTHON}"
-      local conda_prefix
-      conda_prefix="$(conda info --base)"
-      "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n "${env_name}" python="${PYTHON}"
-      # Symlink the new environment's binaries to the base conda bin directory
-      # so they take precedence (base conda bin is already in PATH)
-      local env_path="${conda_prefix}/envs/${env_name}"
-      ln -sf "${env_path}/bin/python" "${conda_prefix}/bin/python"
-      ln -sf "${env_path}/bin/python${PYTHON}" "${conda_prefix}/bin/python${PYTHON}"
-      ln -sf "${env_path}/bin/python3" "${conda_prefix}/bin/python3"
-      ln -sf "${env_path}/bin/pip" "${conda_prefix}/bin/pip"
-      ln -sf "${env_path}/bin/pip3" "${conda_prefix}/bin/pip3"
+
+      # Create the environment if it doesn't exist
+      if ! conda env list | grep -q "^${env_name} "; then
+        "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n "${env_name}" python="${PYTHON}"
+      fi
+
+      # Activate the environment
+      (
+        set +x
+        echo "Activating conda environment ${env_name}..."
+      )
+      conda activate "${env_name}"
+
       # Update CONDA_PYTHON_EXE for the current session
-      export CONDA_PYTHON_EXE="${env_path}/bin/python"
+      CONDA_PYTHON_EXE="$(command -v python)"
+      export CONDA_PYTHON_EXE
     else
       (
         set +x
