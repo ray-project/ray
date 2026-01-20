@@ -624,6 +624,15 @@ class RequestRouter(ABC):
             }
         )
 
+    def set_max_queued_requests(self, max_queued_requests: int) -> None:
+        """Set the max queued requests limit for optimistic routing decisions.
+
+        When max_queued_requests is -1 (disabled), optimistic routing to full
+        replicas is enabled for better performance. When set to a positive value,
+        optimistic routing is disabled to allow load shedding to work correctly.
+        """
+        self._max_queued_requests = max_queued_requests
+
     def _update_router_queue_len_gauge(
         self, replica_id: ReplicaID, queue_len: int, *, force: bool = False
     ) -> None:

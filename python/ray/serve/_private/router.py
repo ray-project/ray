@@ -687,8 +687,10 @@ class AsyncioRouter:
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
         )
-        # Update max_queued_requests on the request router for optimistic routing.
-        self.request_router._max_queued_requests = deployment_config.max_queued_requests
+        # Update max_queued_requests for optimistic routing decision.
+        self.request_router.set_max_queued_requests(
+            deployment_config.max_queued_requests
+        )
 
     async def _resolve_request_arguments(
         self,
