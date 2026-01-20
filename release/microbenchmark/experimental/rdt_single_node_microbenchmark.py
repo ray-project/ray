@@ -162,8 +162,8 @@ TRANSPORTS_AND_DEVICE = [
     # ("nixl", "cuda"), # nixl enabled based on cli arg
     # ("nixl", "cpu"),
     ("gloo", "cpu"),
-    # ("object_store", "cpu"),
-    # ("object_store", "cuda"),
+    (None, "cpu"),
+    (None, "cuda"),
     # ("torch", "cuda") # only works with torch TEST_FUNCS, added based on cli arg
 ]
 
