@@ -432,7 +432,6 @@
 - name: random_shuffle_chaos
   python: "3.10"
   working_dir: nightly_tests
-  stable: False
 
   cluster:
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
@@ -464,7 +463,6 @@
 - name: sort_chaos
   python: "3.10"
   working_dir: nightly_tests
-  stable: False
 
   cluster:
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
@@ -507,7 +505,6 @@
 
 - name: image_classification_chaos
   python: "3.10"
-  stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
