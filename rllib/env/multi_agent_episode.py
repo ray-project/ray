@@ -832,8 +832,15 @@ class MultiAgentEpisode:
             # wrt agent in `self`.
             if sa_episode is None:
                 self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
-                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
                 self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
+
+                # If agent only has the first reset observation then no episode exists but `env_t_to_agent_t` does
+                if agent_id not in self.env_t_to_agent_t:
+                    self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
+                else:
+                    for val in other.env_t_to_agent_t[agent_id][1:]:
+                        self.env_t_to_agent_t[agent_id].append(val)
+
                 self._copy_hanging(agent_id, other)
 
             # If the agent was done in `self`, ignore and continue. There should not be
