@@ -281,6 +281,8 @@ cdef extern from "ray/common/scheduling/cluster_resource_data.h" namespace "ray"
         unordered_map[c_string, c_string] labels
         c_bool HasRequiredLabels(const CLabelSelector &label_selector) const
 
+    void SetNodeResourcesLabels(CNodeResources& resources, const unordered_map[c_string, c_string]& labels)
+
 cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
     cdef cppclass CLabelSelector "ray::LabelSelector":
         CLabelSelector() nogil except +

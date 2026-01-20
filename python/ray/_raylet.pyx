@@ -143,6 +143,7 @@ from ray.includes.common cimport (
     PersistPort,
     WaitForPersistedPort,
     CWaitForPersistedPortResult,
+    SetNodeResourcesLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -598,19 +599,6 @@ cdef int prepare_label_selector(
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
-
-cdef extern from * nogil:
-    """
-    #include "ray/common/scheduling/cluster_resource_data.h"
-
-    // Helper function convert a std::unordered_map to the absl::flat_hash_map used by NodeResources.
-    void SetNodeResourcesLabels(ray::NodeResources& resources, const std::unordered_map<std::string, std::string>& labels) {
-        for (const auto& pair : labels) {
-            resources.labels[pair.first] = pair.second;
-        }
-    }
-    """
-    void SetNodeResourcesLabels(CNodeResources& resources, const unordered_map[c_string, c_string]& labels)
 
 def node_labels_match_selector(node_labels: Dict[str, str], selector: Dict[str, str]) -> bool:
     """
