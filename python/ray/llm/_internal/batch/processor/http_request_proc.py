@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import Field
 
+from ray.data import ActorPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
@@ -90,7 +91,9 @@ def build_http_request_processor(
                 session_factory=config.session_factory,
             ),
             map_batches_kwargs=dict(
-                concurrency=config.concurrency,
+                compute=ActorPoolStrategy(
+                    **config.get_concurrency(autoscaling_enabled=False),
+                )
             ),
         )
     ]

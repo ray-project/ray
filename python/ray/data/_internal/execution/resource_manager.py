@@ -89,6 +89,12 @@ class ResourceManager:
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
 
+        # Bytes buffered by external consumers (iterators) consuming Batches
+        # (including the prefetched blocks). For example,
+        # - ds.iter_batches -> one iterator
+        # - streaming_split -> multiple iterators
+        self._external_consumer_bytes: int = 0
+
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
         ] = create_resource_allocator(self, data_context)
@@ -133,6 +139,14 @@ class ResourceManager:
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
                 )
+
+    def set_external_consumer_bytes(self, num_bytes: int) -> None:
+        """Set the bytes buffered by external consumers."""
+        self._external_consumer_bytes = num_bytes
+
+    def get_external_consumer_bytes(self) -> int:
+        """Get the bytes buffered by external consumers."""
+        return self._external_consumer_bytes
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"
@@ -423,11 +437,13 @@ class ResourceManager:
         # Outputs usage of the current operator.
         op_outputs_usage = self._mem_op_outputs[op]
         # Also account the downstream ineligible operators' memory usage.
-        op_outputs_usage += sum(
-            self.get_op_usage(next_op).object_store_memory
-            for next_op in self._get_downstream_ineligible_ops(op)
-        )
+        for next_op in self._get_downstream_ineligible_ops(op):
+            op_outputs_usage += int(self.get_op_usage(next_op).object_store_memory)
         return op_outputs_usage
+
+    def is_materializing_op(self, op: PhysicalOperator) -> bool:
+        """Check if the operator is a materializing operator."""
+        return isinstance(op, MATERIALIZING_OPERATORS)
 
     def has_materializing_downstream_op(self, op: PhysicalOperator) -> bool:
         """Check if the operator has a downstream materializing operator."""
@@ -435,6 +451,13 @@ class ResourceManager:
             isinstance(next_op, MATERIALIZING_OPERATORS)
             for next_op in op.output_dependencies
         )
+
+    def get_op_usage_object_store_with_downstream(self, op: PhysicalOperator) -> int:
+        """Get total object store usage of the given operator and its downstream ineligible ops."""
+        total_usage = int(self.get_op_usage(op).object_store_memory)
+        for next_op in self._get_downstream_ineligible_ops(op):
+            total_usage += int(self.get_op_usage(next_op).object_store_memory)
+        return total_usage
 
 
 def _get_first_pending_shuffle_op(topology: "Topology") -> int:
@@ -776,8 +799,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        # TODO fix
-        return ExecutionResources.zero()
+        budget = self.get_budget(op)
+        if budget is None:
+            return None
+        return budget.add(self._resource_manager.get_op_usage(op))
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""

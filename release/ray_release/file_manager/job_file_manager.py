@@ -1,7 +1,5 @@
 import os
-import shutil
 import sys
-import tempfile
 
 import boto3
 from azure.storage.blob import BlobServiceClient
@@ -10,8 +8,6 @@ from google.cloud import storage
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cloud_util import generate_tmp_cloud_storage_path, get_azure_credential
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.exception import FileUploadError
-from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import (
     AZURE_CLOUD_STORAGE,
@@ -29,7 +25,6 @@ class JobFileManager:
         import anyscale
 
         self.cluster_manager = cluster_manager
-        self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client(S3_CLOUD_STORAGE)
         self.cloud_storage_provider = os.environ.get(
             "ANYSCALE_CLOUD_STORAGE_PROVIDER", S3_CLOUD_STORAGE
@@ -46,7 +41,6 @@ class JobFileManager:
                 f"Non supported anyscale service provider: "
                 f"{self.cloud_storage_provider}"
             )
-        self.job_manager = JobManager(cluster_manager)
         # Backward compatible
         if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
             sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
@@ -89,45 +83,6 @@ class JobFileManager:
                 blob_client.download_blob().readinto(f)
         if delete_after_download:
             self.delete(key)
-
-    def _push_local_dir(self):
-        remote_upload_to = self._generate_tmp_cloud_storage_path()
-        # pack local dir
-        _, local_path = tempfile.mkstemp()
-        shutil.make_archive(local_path, "gztar", os.getcwd())
-        # local source -> s3
-        self._run_with_retry(
-            lambda: self.s3_client.upload_file(
-                Filename=local_path + ".tar.gz",
-                Bucket=self.bucket,
-                Key=remote_upload_to,
-            )
-        )
-        # remove local archive
-        os.unlink(local_path)
-
-        bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
-        # s3 -> remote target
-        retcode, _ = self.job_manager.run_and_wait(
-            f"pip install -q awscli && "
-            f"aws s3 cp {bucket_address} archive.tar.gz && "
-            f"tar xf archive.tar.gz ",
-            {},
-        )
-        if retcode != 0:
-            raise FileUploadError(
-                f"Error uploading local dir to session "
-                f"{self.cluster_manager.cluster_name}."
-            )
-        try:
-            self._run_with_retry(
-                lambda: self.s3_client.delete_object(
-                    Bucket=self.bucket, Key=remote_upload_to
-                ),
-                initial_retry_delay_s=2,
-            )
-        except RuntimeError as e:
-            logger.warning(f"Could not remove temporary S3 object: {e}")
 
     def _delete_gs_fn(self, key: str, recursive: bool = False):
         if recursive:

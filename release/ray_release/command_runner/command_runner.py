@@ -1,6 +1,6 @@
 import abc
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from click.exceptions import ClickException
 
@@ -96,7 +96,6 @@ class CommandRunner(abc.ABC):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
-        pip: Optional[List[str]] = None,
     ) -> float:
         """Run command."""
         raise NotImplementedError
@@ -132,5 +131,5 @@ class CommandRunner(abc.ABC):
     def fetch_metrics(self) -> Dict[str, Any]:
         raise NotImplementedError
 
-    def fetch_artifact(self, artifact_path):
+    def fetch_artifact(self) -> None:
         raise NotImplementedError

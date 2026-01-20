@@ -573,7 +573,7 @@ class InfiniteLookbackBuffer:
                     one_hot_discrete=one_hot_discrete,
                 )
             else:
-                raise e
+                raise e from ValueError(f"Trying to get index {idx} from {data_to_use}")
 
         # Convert discrete/multi-discrete components to one-hot vectors, if required.
         if one_hot_discrete:

@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import anyscale
 from anyscale.sdk.anyscale_client.models import (
@@ -9,7 +9,6 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 
-from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
@@ -49,7 +48,6 @@ class AnyscaleJobManager:
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> None:
         env_vars_for_job = env_vars.copy()
         env_vars_for_job[
@@ -64,7 +62,6 @@ class AnyscaleJobManager:
 
         runtime_env = {
             "env_vars": env_vars_for_job,
-            "pip": pip or [],
         }
         if working_dir:
             runtime_env["working_dir"] = working_dir
@@ -108,13 +105,6 @@ class AnyscaleJobManager:
 
     @last_job_result.setter
     def last_job_result(self, value):
-        cluster_id = value.state.cluster_id
-        # Set this only once.
-        if self.cluster_manager.cluster_id is None and cluster_id:
-            self.cluster_manager.cluster_id = value.state.cluster_id
-            self.cluster_manager.cluster_name = get_cluster_name(
-                value.state.cluster_id, self.sdk
-            )
         self._last_job_result = value
 
     @property
@@ -258,14 +248,12 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
         timeout: int = 120,
         upload_path: Optional[str] = None,
-        pip: Optional[List[str]] = None,
     ) -> Tuple[int, float]:
         self._run_job(
             cmd_to_run,
             env_vars,
             working_dir=working_dir,
             upload_path=upload_path,
-            pip=pip,
         )
         return self._wait_job(timeout)
 

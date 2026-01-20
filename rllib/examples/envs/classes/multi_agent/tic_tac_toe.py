@@ -30,6 +30,18 @@ class TicTacToe(MultiAgentEnv):
 
     # __sphinx_doc_1_end__
 
+    # Winning line indices: rows, columns, and diagonals.
+    WIN_LINES = [
+        [0, 1, 2],  # rows
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],  # cols
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],  # diagonals
+        [2, 4, 6],
+    ]
+
     # __sphinx_doc_2_begin__
     def __init__(self, config=None):
         super().__init__()
@@ -50,7 +62,7 @@ class TicTacToe(MultiAgentEnv):
             "player1": gym.spaces.Discrete(9),
             "player2": gym.spaces.Discrete(9),
         }
-        self.max_timesteps = 20
+        self.max_timesteps = 30
 
         self.board = None
         self.current_player = None
@@ -76,85 +88,82 @@ class TicTacToe(MultiAgentEnv):
     def step(self, action_dict):
         action = action_dict[self.current_player]
 
-        opponent = "player1" if self.current_player == "player2" else "player2"
+        opponent = "player2" if self.current_player == "player1" else "player1"
+        self.timestep += 1
 
-        # Penalize trying to place a piece on an already occupied field.
+        # Invalid move: penalize and return without changing board.
         if self.board[action] != 0:
-            rewards = {self.current_player: -1.0}
-            terminations = {"__all__": False}
-        # Truncate the agents after `max_timesteps`
-        elif self.timestep >= self.max_timesteps:
-            rewards = {
-                self.current_player: -0.0,
-                opponent: -0.0,
-            }
-            obs = {
-                self.current_player: np.array(self.board, np.float32),
-                opponent: np.array(self.board, np.float32) * -1,
-            }
+            truncated = self.timestep >= self.max_timesteps
+            board_arr = np.array(self.board, np.float32)
+            if truncated:
+                return (
+                    {self.current_player: board_arr, opponent: board_arr * -1},
+                    {self.current_player: -0.5, opponent: 0.0},
+                    {"__all__": False},
+                    {"__all__": True},
+                    {},
+                )
+            else:
+                reward = {self.current_player: -0.5}
+                self.current_player = opponent
+                return (
+                    {opponent: board_arr * -1},
+                    reward,
+                    {"__all__": False},
+                    {"__all__": False},
+                    {},
+                )
+
+        # Place the piece on the board.
+        self.board[action] = 1
+        board_arr = np.array(self.board, np.float32)
+
+        # Check for win.
+        if any(all(self.board[i] == 1 for i in line) for line in self.WIN_LINES):
             return (
-                obs,
-                rewards,
+                {self.current_player: board_arr, opponent: board_arr * -1},
+                {self.current_player: 1.0, opponent: -1.0},
+                {"__all__": True},
+                {"__all__": False},
+                {},
+            )
+
+        # Check for draw (board full, no winner).
+        if 0 not in self.board:
+            return (
+                {self.current_player: board_arr, opponent: board_arr * -1},
+                {self.current_player: 0.0, opponent: 0.0},
+                {"__all__": True},
+                {"__all__": False},
+                {},
+            )
+
+        # Check for truncation.
+        if self.timestep >= self.max_timesteps:
+            return (
+                {self.current_player: board_arr, opponent: board_arr * -1},
+                {self.current_player: 0.0, opponent: 0.0},
                 {"__all__": False},
                 {"__all__": True},
                 {},
             )
-        else:
-            # Change the board according to the (valid) action taken.
-            # For the next turn we "flip" the tokens so that the agent is always playing with the 1 vs the -1
-            self.board[action] = 1
 
-            # After having placed a new piece, figure out whether the current player won or not.
-            win_val = [1, 1, 1]
-
-            if (
-                # Horizontal win.
-                self.board[:3] == win_val
-                or self.board[3:6] == win_val
-                or self.board[6:] == win_val
-                # Vertical win.
-                or self.board[0:7:3] == win_val
-                or self.board[1:8:3] == win_val
-                or self.board[2:9:3] == win_val
-                # Diagonal win.
-                or self.board[::4] == win_val
-                or self.board[2:7:2] == win_val
-            ):
-                # Final reward is +1 for victory and -1 for a loss.
-                rewards = {
-                    self.current_player: 1.0,
-                    opponent: -1.0,
-                }
-
-                # Episode is done and needs to be reset for a new game.
-                terminations = {"__all__": True}
-
-            # The board might also be full w/o any player having won/lost.
-            # In this case, we simply end the episode and none of the players receives
-            # +1 or -1 reward.
-            elif 0 not in self.board:
-                rewards = {
-                    self.current_player: 0.0,
-                    opponent: 0.0,
-                }
-                terminations = {"__all__": True}
-            # Standard move with no reward
-            else:
-                rewards = {self.current_player: 0.0}
-                terminations = {"__all__": False}
-
-        # Flip players and board so the next player sees their pieces as 1.
+        # Continue game: flip board and switch player.
+        self.board = [-x for x in self.board]
+        reward = {self.current_player: 0.0}
         self.current_player = opponent
         self.timestep += 1
         self.board = [-x for x in self.board]
 
         return (
-            {self.current_player: np.array(self.board, np.float32)},
-            rewards,
-            terminations,
-            {},
+            {opponent: np.array(self.board, np.float32)},
+            reward,
+            {"__all__": False},
+            {"__all__": False},
             {},
         )
+
+    # __sphinx_doc_4_end__
 
     def render(self) -> str:
         """Render the current board state as an ASCII grid.
@@ -172,6 +181,3 @@ class TicTacToe(MultiAgentEnv):
             rows.append(" " + " | ".join(row_cells) + " ")
         separator = "-----------"
         return "\n" + f"\n{separator}\n".join(rows) + "\n"
-
-
-# __sphinx_doc_4_end__
