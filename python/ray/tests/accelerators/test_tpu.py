@@ -60,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v6e-8", "TPU-V6E"),
+        ("gke", "tpu7x-16", "TPU-V7X"),
     ],
 )
 @patch("requests.get")
@@ -258,6 +259,32 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
                 )
 
     assert final_resources == expected_value
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("v2-8", True),
+        ("v3-32", True),
+        ("v4-8", True),
+        ("v5p-8", True),
+        ("v5litepod-8", True),
+        ("v6e-8", True),
+        ("tpu7x-16", True),
+        ("v7x-16", True),
+        ("v-8", False),
+        ("8", False),
+        ("tpu-8", False),
+        ("v2", False),
+        ("v2-", False),
+        ("random-string", False),
+    ],
+)
+def test_is_valid_tpu_accelerator_type(accelerator_type, expected):
+    assert (
+        TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type)
+        == expected
+    )
 
 
 if __name__ == "__main__":

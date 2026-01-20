@@ -327,7 +327,8 @@ class TPUAcceleratorManager(AcceleratorManager):
     def is_valid_tpu_accelerator_type(tpu_accelerator_type: str) -> bool:
         """Check whether the tpu accelerator_type is formatted correctly.
 
-        The accelerator_type field follows a form of v{generation}-{cores/chips}.
+        The accelerator_type field typically follows a form of v{generation}-{cores/chips},
+        but newer generations like 7x may follow tpu{generation}-{cores/chips}.
 
         See the following for more information:
         https://cloud.google.com/sdk/gcloud/reference/compute/tpus/tpu-vm/accelerator-types/describe
@@ -339,7 +340,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             True if it's valid, false otherwise.
         """
-        expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
+        # 1. Legacy format: v2-8, v3-32.
+        # 2. Newer format with letters in generation: v5litepod-16, v6e-4.
+        # 3. Ironwood TPU format which contains a tpu prefix: tpu7x-16.
+        expected_pattern = re.compile(r"^(v|tpu)\d+[a-zA-Z]*-\d+$")
         if not expected_pattern.match(tpu_accelerator_type):
             return False
         return True
@@ -563,7 +567,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         def tpu_pod_type_to_ray_accelerator_type(
             tpu_pod_type: str,
         ) -> Optional[str]:
-            return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
+            tpu_generation = tpu_pod_type.split("-")[0]
+            if tpu_generation.lower().startswith("tpu"):
+                tpu_generation = "v" + tpu_generation[3:]
+            return "TPU-" + tpu_generation.upper()
 
         ray_accelerator_type = None
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
