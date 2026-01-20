@@ -202,8 +202,6 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
-        # Progress Manager
-        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,8 +251,6 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
-        if ref.num_rows() is not None:
-            self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting

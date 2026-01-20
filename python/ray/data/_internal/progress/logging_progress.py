@@ -210,7 +210,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
     ):
         op_metrics = self._op_progress_metrics.get(opstate)
         if op_metrics is not None:
-            op_metrics.completed = opstate.output_row_count
+            op_metrics.completed = opstate.op.metrics.row_outputs_taken
             total = opstate.op.num_output_rows_total()
             if total is not None:
                 op_metrics.total = total

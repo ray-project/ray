@@ -156,7 +156,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
         pg = self._op_display.get(opstate)
         if pg is not None:
             pg.update_absolute(
-                opstate.output_row_count, opstate.op.num_output_rows_total()
+                opstate.op.metrics.row_outputs_taken, opstate.op.num_output_rows_total()
             )
             summary_str = format_op_state_summary(opstate, resource_manager)
             pg.set_description(f"- {opstate.op.name}: {summary_str}")
