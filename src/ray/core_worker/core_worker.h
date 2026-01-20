@@ -50,6 +50,7 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/util/shared_lru.h"
@@ -199,6 +200,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<ActorManager> actor_manager,
              instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+             std::shared_ptr<observability::RayEventRecorderInterface> ray_event_recorder,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
              ray::observability::MetricInterface &actor_by_state_counter);
@@ -1935,6 +1937,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+
+  /// RayEventRecorder for sending task events to the event aggregator.
+  /// Used when RAY_enable_core_worker_ray_event_to_aggregator is true.
+  std::shared_ptr<observability::RayEventRecorderInterface> ray_event_recorder_ = nullptr;
 
   /// Worker's PID
   uint32_t pid_;

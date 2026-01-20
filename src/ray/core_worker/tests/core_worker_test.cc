@@ -168,9 +168,11 @@ class CoreWorkerTest : public ::testing::Test {
         core_worker_client_pool,
         rpc_address_);
 
+    event_aggregator_client_ =
+        std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
+        event_aggregator_client_.get(),
         "test_session",
         NodeID::Nil());
 
@@ -185,7 +187,7 @@ class CoreWorkerTest : public ::testing::Test {
            const std::string &error_message,
            double timestamp) { return Status::OK(); },
         RayConfig::instance().max_lineage_bytes(),
-        *task_event_buffer,
+        task_event_buffer.get(),
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
@@ -281,6 +283,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(actor_manager),
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
+                                                nullptr,  // ray_event_recorder
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
                                                 fake_actor_by_state_gauge_);
@@ -297,6 +300,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;

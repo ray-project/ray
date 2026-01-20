@@ -1515,6 +1515,8 @@ def event_routing_config(request, monkeypatch):
 
     if mode == "aggregator":
         print("using aggregator mode")
+        # Enable RayEventRecorder to start exporting events
+        monkeypatch.setenv("RAY_enable_ray_event", "1")
         # Enable aggregator path in core worker
         monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
         # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)

@@ -94,11 +94,12 @@ class TaskEventBufferTest : public ::testing::Test {
 }
   )");
 
-    task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name",
-        NodeID::Nil());
+    event_aggregator_client_ = std::make_unique<MockEventAggregatorClient>();
+    task_event_buffer_ =
+        std::make_unique<TaskEventBufferImpl>(std::make_unique<ray::gcs::MockGcsClient>(),
+                                              event_aggregator_client_.get(),
+                                              "test_session_name",
+                                              NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -279,6 +280,7 @@ class TaskEventBufferTest : public ::testing::Test {
     }
   }
 
+  std::unique_ptr<MockEventAggregatorClient> event_aggregator_client_ = nullptr;
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
 };
 
@@ -481,7 +483,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
 
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
@@ -539,7 +541,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
 
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   if (to_aggregator) {
     rpc::events::AddEventsReply reply_1;
     Status status_1 = Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN);
@@ -613,7 +615,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestBackPressure) {
   }
 
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(1);
   } else {
@@ -651,7 +653,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestForcedFlush) {
   }
 
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(2);
   } else {
@@ -697,7 +699,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   }
 
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
@@ -804,7 +806,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   }
 
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
@@ -1129,7 +1131,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
 
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
-      task_event_buffer_->event_aggregator_client_.get());
+      task_event_buffer_->event_aggregator_client_);
   rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;

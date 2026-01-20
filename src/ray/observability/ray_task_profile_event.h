@@ -41,6 +41,9 @@ class RayTaskProfileEvent : public RayEvent<rpc::events::TaskProfileEvents> {
   std::string GetEntityId() const override;
   void MergeData(RayEvent<rpc::events::TaskProfileEvents> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
+
+  /// Set extra data on the profile event entry.
+  void SetExtraData(const std::string &extra_data);
 };
 
 }  // namespace observability

@@ -105,7 +105,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -177,7 +177,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -213,7 +213,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
@@ -273,7 +273,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -325,7 +325,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -369,7 +369,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -411,7 +411,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+      io_service, waiter, &task_event_buffer, pool_manager, 1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -464,7 +464,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 2);
+      io_service, waiter, &task_event_buffer, pool_manager, 2);
   std::vector<int64_t> accept_seq_nos;
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
@@ -523,7 +523,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
 
   UnorderedActorTaskExecutionQueue queue(io_service,
                                          waiter,
-                                         task_event_buffer,
+                                         &task_event_buffer,
                                          pool_manager,
                                          /*fiber_state_manager=*/nullptr,
                                          /*is_asyncio=*/false,
@@ -599,7 +599,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
-      task_event_buffer,
+      &task_event_buffer,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
@@ -668,7 +668,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
-      task_event_buffer,
+      &task_event_buffer,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),

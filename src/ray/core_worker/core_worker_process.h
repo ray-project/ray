@@ -22,6 +22,8 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
+#include "ray/observability/ray_event_recorder_interface.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
@@ -195,6 +197,18 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
   std::unique_ptr<ray::stats::Histogram> scheduler_placement_time_ms_histogram_;
+
+  /// Event aggregator client for RayEventRecorder.
+  /// Held here to keep it alive for the lifetime of the recorder.
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+
+  /// Metrics counters for RayEventRecorder.
+  std::unique_ptr<ray::stats::Count> event_recorder_dropped_events_counter_;
+  std::unique_ptr<ray::stats::Count> event_recorder_events_sent_counter_;
+  std::unique_ptr<ray::stats::Count> event_recorder_events_failed_to_send_counter_;
+
+  /// RayEventRecorder for sending task events to the event aggregator.
+  std::shared_ptr<observability::RayEventRecorderInterface> ray_event_recorder_;
 };
 }  // namespace core
 }  // namespace ray

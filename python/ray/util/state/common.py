@@ -1618,7 +1618,9 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
             # End/start times are recorded in ns. We convert them to ms.
             event["end_time"] = int(event["end_time"]) / 1e6
             event["start_time"] = int(event["start_time"]) / 1e6
-            event["extra_data"] = json.loads(event["extra_data"])
+            # extra_data is optional and only set for some profile events
+            if "extra_data" in event:
+                event["extra_data"] = json.loads(event["extra_data"])
     task_state["profiling_data"] = profiling_data
 
     # Convert those settable fields

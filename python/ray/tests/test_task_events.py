@@ -14,7 +14,6 @@ from ray._private.state_api_test_utils import (
 from ray._private.test_utils import (
     PrometheusTimeseries,
     raw_metric_timeseries,
-    wait_for_aggregator_agent_if_enabled,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
@@ -403,10 +402,7 @@ def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
 
 
 def test_is_debugger_paused(shutdown_only):
-    ray_context = ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
-    address = ray_context.address_info["address"]
-    node_id = ray_context.address_info["node_id"]
-    wait_for_aggregator_agent_if_enabled(address, node_id)
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
 
     @ray.remote(max_retries=0)
     def f():
