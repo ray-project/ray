@@ -314,7 +314,6 @@ def _running_test_script(
             env=command_env,
             timeout=command_timeout,
             raise_on_timeout=not is_long_running,
-            pip=test.get_byod_pips(),
         )
     except (
         TestCommandError,
@@ -445,7 +444,6 @@ def run_release_test_kuberay(
             cmd_to_run=test["run"]["script"],
             env_vars=test.get_byod_runtime_env(),
             working_dir=working_dir_upload_path,
-            pip=test.get_byod_pips(),
             compute_config=kuberay_compute_config,
             autoscaler_config=kuberay_autoscaler_config,
             timeout=command_timeout,
