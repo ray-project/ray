@@ -153,18 +153,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "throttler_test",
-    size = "small",
-    srcs = ["throttler_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:throttler",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "process_test",
     size = "small",
     srcs = ["process_test.cc"],

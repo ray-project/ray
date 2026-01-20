@@ -1273,7 +1273,7 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
+def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
     """
     The partial function name should show up as
     +- Sort
@@ -1297,7 +1297,9 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
         {"x_add_5": 25},
     ]
-    assert "MapBatches(func)" in ds.__repr__()
+    ds.explain()
+    captured = capsys.readouterr()
+    assert "MapBatches(func)" in captured.out
 
 
 def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):

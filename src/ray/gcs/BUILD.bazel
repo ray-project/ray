@@ -108,7 +108,6 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
         "//src/ray/ray_syncer",
-        "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -333,7 +332,7 @@ ray_cc_library(
     hdrs = [
         "grpc_service_interfaces.h",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:status",
         "//src/ray/protobuf:autoscaler_cc_grpc",
@@ -365,96 +364,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_actor",
-    srcs = [
-        "gcs_actor.cc",
-    ],
-    hdrs = [
-        "gcs_actor.h",
-    ],
-    deps = [
-        "//src/ray/common:id",
-        "//src/ray/common:lease",
-        "//src/ray/common:task_common",
-        "//src/ray/common/scheduling:cluster_resource_data",
-        "//src/ray/common/scheduling:label_selector",
-        "//src/ray/observability:ray_actor_definition_event",
-        "//src/ray/observability:ray_actor_lifecycle_event",
-        "//src/ray/observability:ray_event_recorder_interface",
-        "//src/ray/protobuf:core_worker_cc_proto",
-        "//src/ray/protobuf:export_event_cc_proto",
-        "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/util:counter_map",
-        "//src/ray/util:event",
-        "//src/ray/util:logging",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_actor_scheduler",
-    srcs = [
-        "gcs_actor_scheduler.cc",
-    ],
-    hdrs = [
-        "gcs_actor_scheduler.h",
-    ],
-    deps = [
-        ":gcs_actor",
-        ":gcs_node_manager",
-        ":gcs_table_storage",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
-        "//src/ray/raylet/scheduling:cluster_lease_manager",
-        "//src/ray/raylet_rpc_client:raylet_client_interface",
-        "//src/ray/raylet_rpc_client:raylet_client_pool",
-        "//src/ray/util:logging",
-        "//src/ray/util:time",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_actor_manager",
-    srcs = [
-        "gcs_actor_manager.cc",
-    ],
-    hdrs = [
-        "gcs_actor_manager.h",
-    ],
-    deps = [
-        ":gcs_actor",
-        ":gcs_actor_scheduler",
-        ":gcs_function_manager",
-        ":gcs_init_data",
-        ":gcs_table_storage",
-        ":gcs_usage_stats_client",
-        ":grpc_service_interfaces",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:protobuf_utils",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
-        "//src/ray/core_worker_rpc_client:core_worker_client_interface",
-        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
-        "//src/ray/observability:ray_event_recorder_interface",
-        "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/pubsub:gcs_publisher",
-        "//src/ray/stats:stats_lib",
-        "//src/ray/util:counter_map",
-        "//src/ray/util:logging",
-        "//src/ray/util:thread_checker",
-        "//src/ray/util:time",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_library(
     name = "gcs_autoscaler_state_manager",
     srcs = [
         "gcs_autoscaler_state_manager.cc",
@@ -463,7 +372,6 @@ ray_cc_library(
         "gcs_autoscaler_state_manager.h",
     ],
     deps = [
-        ":gcs_actor_manager",
         ":gcs_init_data",
         ":gcs_kv_manager",
         ":gcs_node_manager",
@@ -474,6 +382,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:ray_config",
+        "//src/ray/gcs/actor:gcs_actor_manager",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/util:logging",
@@ -493,10 +402,14 @@ ray_cc_library(
     hdrs = [
         "gcs_server.h",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     deps = [
-        ":gcs_actor",
-        ":gcs_actor_manager",
-        ":gcs_actor_scheduler",
+        "//src/ray/gcs/actor:gcs_actor",
+        "//src/ray/gcs/actor:gcs_actor_manager",
+        "//src/ray/gcs/actor:gcs_actor_scheduler",
         ":gcs_autoscaler_state_manager",
         ":gcs_function_manager",
         ":gcs_health_check_manager",
@@ -531,6 +444,8 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
+        # TODO(irabbani): Refactor a subset of scheduling into a shared target
+        # between the GCS and Raylet.
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_rpc_client:raylet_client_lib",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
@@ -541,7 +456,6 @@ ray_cc_library(
         "//src/ray/util:exponential_backoff",
         "//src/ray/util:network_util",
         "//src/ray/util:thread_checker",
-        "//src/ray/util:throttler",
         "//src/ray/util:time",
         "//src/ray/util:type_traits",
         "@boost//:bimap",
@@ -554,6 +468,10 @@ ray_cc_binary(
     srcs = [
         "gcs_server_main.cc",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
