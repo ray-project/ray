@@ -119,8 +119,8 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "920cbcaad514cc185634f6f0dcd71df5e8f4ee4456d440a22e0f8c0f142a8203",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.17/uv-x86_64-unknown-linux-gnu.tar.gz"],
+    sha256 = "30ccbf0a66dc8727a02b0e245c583ee970bdafecf3a443c1686e1b30ec4939e8",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-x86_64-unknown-linux-gnu.tar.gz"],
 )
 
 http_archive(

@@ -98,7 +98,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.8.17" in result.stdout.decode("utf-8")
+        assert "uv 0.9.26" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
