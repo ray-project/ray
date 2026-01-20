@@ -89,8 +89,7 @@ if __name__ == "__main__":
     if args.use_onnx_for_inference:
         if args.explore_during_inference:
             raise ValueError(
-                "Can't set `--explore-during-inference` and `--use-onnx-for-inference` "
-                "together!"
+                "Can't set `--explore-during-inference` and `--use-onnx-for-inference` together!"
             )
         import onnxruntime
 
@@ -193,9 +192,7 @@ if __name__ == "__main__":
                     "frozenlake_attention_model_onnx/model.onnx"
                 )
             # Prepare the inputs dict.
-            seq_len = np.array(
-                [config["model"]["max_seq_len"]], dtype=np.int32
-            )
+            seq_len = np.array([config["model"]["max_seq_len"]], dtype=np.int32)
 
             # pre-process observation: obs is an integer.
             # we need to convert it to a one-hot vector (FrozenLake-v1 space).
@@ -230,9 +227,7 @@ if __name__ == "__main__":
             # Not implemented in this example.
             a = np.argmax(dist_inputs)
 
-            state_out = [
-                ort_outs[i + 1][0] for i in range(len(state))
-            ]
+            state_out = [ort_outs[i + 1][0] for i in range(len(state))]
         else:
             a, state_out, _ = algo.compute_single_action(
                 observation=obs,
