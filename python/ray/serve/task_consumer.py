@@ -201,8 +201,17 @@ def task_handler(
         raise ValueError(f"Task name must be a non-empty string, got {name}")
 
     def decorator(f):
-        # async functions are not supported yet in celery `threads` worker pool
-        if not inspect.iscoroutinefunction(f):
+        # Handle both sync and async functions
+        if inspect.iscoroutinefunction(f):
+
+            @wraps(f)
+            async def async_wrapper(*args, **kwargs):
+                return await f(*args, **kwargs)
+
+            async_wrapper._is_task_handler = True  # type: ignore
+            async_wrapper._task_name = name or f.__name__  # type: ignore
+            return async_wrapper
+        else:
 
             @wraps(f)
             def wrapper(*args, **kwargs):
@@ -211,9 +220,6 @@ def task_handler(
             wrapper._is_task_handler = True  # type: ignore
             wrapper._task_name = name or f.__name__  # type: ignore
             return wrapper
-
-        else:
-            raise NotImplementedError("Async task handlers are not supported yet")
 
     if _func is not None:
         # Used without arguments: @task_handler
