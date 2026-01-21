@@ -1490,7 +1490,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
     }
     const auto &transition = lifecycle_event.state_transitions(0);
     if (transition.state() == rpc::events::ActorLifecycleEvent::RESTARTING) {
-      ASSERT_EQ(transition.restarting_reason(),
+      ASSERT_EQ(transition.restart_reason(),
                 rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
       found_lineage_restart_event = true;
       break;

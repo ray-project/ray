@@ -45,10 +45,10 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(
 
   if (state == rpc::events::ActorLifecycleEvent::RESTARTING) {
     if (data.preempted()) {
-      state_transition.set_restarting_reason(
+      state_transition.set_restart_reason(
           rpc::events::ActorLifecycleEvent::NODE_PREEMPTION);
     } else if (restart_reason != rpc::events::ActorLifecycleEvent::ACTOR_FAILURE) {
-      state_transition.set_restarting_reason(restart_reason);
+      state_transition.set_restart_reason(restart_reason);
     }
     // ACTOR_FAILURE is the default (0), no need to explicitly set
   }
