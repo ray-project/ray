@@ -794,6 +794,41 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
+    def _kill_prefix_tree_actors(self) -> None:
+        """Kill all PrefixTreeActor instances in the serve namespace.
+
+        TODO(https://github.com/ray-project/ray/issues/60359): Replace this
+        with proper controller-managed actor lifecycle management.
+        """
+        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (  # noqa: E501
+            LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
+        )
+        from ray.util.state import list_actors
+
+        try:
+            actors = list_actors(
+                address=ray.get_runtime_context().gcs_address,
+                filters=[("state", "=", "ALIVE")],
+                limit=10000,
+            )
+        except Exception:
+            logger.debug("Failed to list actors for cleanup", exc_info=True)
+            return
+
+        for actor in actors:
+            name = actor.get("name")
+            namespace = actor.get("ray_namespace")
+            if (
+                name
+                and namespace
+                and namespace.startswith(SERVE_NAMESPACE)
+                and name.startswith(LLM_PREFIX_TREE_ACTOR_NAME_PREFIX)
+            ):
+                try:
+                    ray.kill(ray.get_actor(name, namespace=namespace), no_restart=True)
+                except Exception:
+                    pass
+
     def shutdown(self):
         """Shuts down the serve instance completely.
 
@@ -832,6 +867,7 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
+            self._kill_prefix_tree_actors()
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
