@@ -434,6 +434,11 @@ class StreamingRepartition(AbstractMap):
         target_num_rows_per_block: int,
         strict: bool = False,
     ):
+        if target_num_rows_per_block <= 0:
+            raise ValueError(
+                "target_num_rows_per_block must be positive for streaming repartition, "
+                f"got {target_num_rows_per_block}"
+            )
         super().__init__(
             f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block},strict={strict}]",
             input_op,
