@@ -4,8 +4,9 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import aiohttp
 import pytest
 
 import ray.experimental.internal_kv as kv
@@ -306,9 +307,6 @@ async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
     This is required because aiohttp's ClientSession does not automatically
     include session headers in WebSocket upgrade requests.
     """
-    import aiohttp
-    from unittest.mock import AsyncMock, MagicMock
-
     dashboard_url = ray_start_regular.dashboard_url
     test_headers = {"Authorization": "Bearer test-token"}
     client = JobSubmissionClient(format_web_url(dashboard_url), headers=test_headers)
@@ -343,7 +341,6 @@ async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
         mock_session.ws_connect.assert_called_once()
         call_args = mock_session.ws_connect.call_args
 
-        # Check that headers were passed to ws_connect
         assert "headers" in call_args.kwargs
         assert call_args.kwargs["headers"] == test_headers
 
