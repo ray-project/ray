@@ -103,8 +103,7 @@ TEST_P(RayActorLifecycleEventRestartTest, TestRestartingReason) {
   ASSERT_EQ(actor_life.state_transitions_size(), 1);
   ASSERT_EQ(actor_life.state_transitions(0).state(),
             rpc::events::ActorLifecycleEvent::RESTARTING);
-  ASSERT_EQ(actor_life.state_transitions(0).restart_reason(),
-            test_case.expected_reason);
+  ASSERT_EQ(actor_life.state_transitions(0).restart_reason(), test_case.expected_reason);
 }
 
 INSTANTIATE_TEST_SUITE_P(
