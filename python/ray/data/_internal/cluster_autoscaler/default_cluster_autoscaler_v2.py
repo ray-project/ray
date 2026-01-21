@@ -107,11 +107,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD",
         0.75,
     )
-    # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = env_float(
-        "RAY_DATA_CLUSTER_UTIL_CHECK_INTERVAL_S",
-        0.25,
-    )
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
         "RAY_DATA_CLUSTER_UTIL_AVG_WINDOW_S",
@@ -143,14 +138,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
-        cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
         min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
             _get_node_resource_spec_and_count
         ),
     ):
-        assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
         assert min_gap_between_autoscaling_requests_s >= 0
@@ -168,12 +161,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
         self._cluster_scaling_up_delta = cluster_scaling_up_delta
-        self._cluster_util_check_interval_s = cluster_util_check_interval_s
         self._min_gap_between_autoscaling_requests_s = (
             min_gap_between_autoscaling_requests_s
         )
-        # Last time when the cluster utilization was checked.
-        self._last_cluster_util_check_time = 0
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         self._requester_id = f"data-{execution_id}"
@@ -187,17 +177,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def try_trigger_scaling(self):
         # Note, should call this method before checking `_last_request_time`,
         # in order to update the average cluster utilization.
-        now = time.time()
-        if (
-            now - self._last_cluster_util_check_time
-            >= self._cluster_util_check_interval_s
-        ):
-            # Update observed resource utilization
-            self._last_cluster_util_check_time = now
-
-            self._resource_utilization_calculator.observe()
+        self._resource_utilization_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
+        now = time.time()
         if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
