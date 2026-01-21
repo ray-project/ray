@@ -39,7 +39,7 @@ from ray.train.v2._internal.state.schema import (
     DataConfig as DataConfigSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
-    RunContext,
+    RunSettings,
     RunStatus,
     RuntimeConfig,
     ScalingConfig as ScalingConfigSchema,
@@ -181,7 +181,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         end_time_ns=None,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
-        run_context=RunContext(
+        run_settings=RunSettings(
             train_loop_config=None,
             backend_config=BackendConfigSchema(framework=None, config={}),
             scaling_config=ScalingConfigSchema(

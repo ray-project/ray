@@ -18,7 +18,9 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
-// Metadata for a Ray Train run, including its details and status
+import "google/protobuf/struct.proto";
+
+// Metadata for a Ray Train run, including its details, status, and run settings
 message ExportTrainRunEventData {
   // Version of the message schema
   uint32 schema_version = 1;
@@ -75,6 +77,126 @@ message ExportTrainRunEventData {
   repeated DashboardPanelMetadata train_run_panels = 12;
   // List of dashboard panels to include for TrainWorkers
   repeated DashboardPanelMetadata train_worker_panels = 13;
+
+  // Framework versions
+  map<string, string> framework_versions = 14;
+
+  // Run settings
+  RunSettings run_setting = 15;
+
+  // Settings for a Train run, primarily consisting of configs set before a train run starts.
+  message RunSettings {
+    // The user defined train loop config for a Train run.
+    // NOTE: This is expected to represent a JSON-serializable dict from Python.
+    string train_loop_config = 1;
+    // The backend config for a Train run, varies with the framework (e.g. TorchConfig)
+    BackendConfig backend_config = 2;
+    // The scaling config for this Train run.
+    ScalingConfig scaling_config = 3;
+    // A list of dataset names for a Train run.
+    repeated string datasets = 4;
+    // The data config for a Train run.
+    DataConfig data_config = 5;
+    // Runtime configuration for this Train run.
+    RuntimeConfig runtime_config = 6;
+  }
+
+  // Backend config for a Train run, varies with the framework (e.g. TorchConfig).
+  message BackendConfig {
+    // Training Framework used for the train run
+    enum TrainingFramework {
+      // Default framework
+      TRAINING_FRAMEWORK_UNSPECIFIED = 0;
+
+      TORCH = 1;
+      JAX = 2;
+      TENSORFLOW = 3;
+      XGBOOST = 4;
+      LIGHTGBM = 5;
+    }
+
+    // The training framework for this backend config.
+    TrainingFramework framework = 1;
+    // Training framework-specific configuration fields.
+    google.protobuf.Struct config = 2;
+  }
+
+  // Scaling config for a Train run.
+  message ScalingConfig {
+    message StringMap {
+      // The bundle label selector key/value pairs (one selector map).
+      map<string, string> values = 1;
+    }
+
+    // The number of workers for the Train run.
+    uint64 num_workers = 1;
+    // Whether to use GPUs for the Train run.
+    bool use_gpu = 2;
+    // The resources per worker for a Train run.
+    google.protobuf.Struct resources_per_worker = 3;
+    // The placement strategy for the Train run.
+    string placement_strategy = 4;
+    // The accelerator type for the Train run.
+    optional string accelerator_type = 5;
+    // Whether to use TPUs for the Train run.
+    bool use_tpu = 6;
+    // The topology for the Train run.
+    optional string topology= 7;
+    // The bundle label selector for the Train run.
+    repeated StringMap bundle_label_selector = 8;
+  }
+
+  // Configuration for dataset splitting and execution options within Ray Train.
+  message DataConfig {
+    // Marker for selecting all datasets.
+    message All {}
+    message StringList {
+      repeated string values = 1;
+    }
+    oneof datasets_to_split {
+      // Split all datasets.
+      All all = 1;
+      // Split only the listed datasets (by dataset name).
+      StringList datasets = 2;
+    }
+    // Data execution options.
+    google.protobuf.Struct execution_options = 3;
+    // Whether to enable shard locality optimization.
+    bool enable_shard_locality = 4;
+  }
+
+  // Runtime configuration parameters for a Train run
+  message RuntimeConfig {
+    // The failure config for a Train run.
+    FailureConfig failure_config = 1;
+    // The worker runtime env for a Train run.
+    google.protobuf.Struct worker_runtime_env = 2;
+    // The checkpoint config for a Train run.
+    CheckpointConfig checkpoint_config = 3;
+    // The storage path for a Train run.
+    string storage_path = 4;
+  }
+
+  // Failure config for a Train run.
+  message FailureConfig {
+    // The maximum number of failures for a Train run.
+    int32 max_failures = 1;
+    // The maximum number of controller failures to tolerate.
+    int32 controller_failure_limit = 2;
+  }
+
+  // Checkpoint config for a Train run.
+  message CheckpointConfig {
+    // The number of most recent checkpoints to keep. Older checkpoints may be deleted.
+    optional uint64 num_to_keep = 1;
+    // Attribute used to score and rank checkpoints; can be a metric key or attribute.
+    optional string checkpoint_score_attribute = 2;
+
+    // Can be either 'max' or 'min'
+    // Order to rank checkpoint scores, 'max' for higher-is-better, 'min' for lower-is-better.
+    string checkpoint_score_order = 3;
+  }
+
 }
 
 // Metadata for an individual attempt to execute a Train run

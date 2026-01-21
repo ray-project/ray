@@ -18,7 +18,7 @@ from ray.train.v2._internal.state.schema import (
     CheckpointConfig as CheckpointConfigSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
-    RunContext,
+    RunSettings,
     RunStatus,
     RuntimeConfig as RuntimeConfigSchema,
     ScalingConfig as ScalingConfigSchema,
@@ -100,9 +100,10 @@ class TrainStateManager:
         try:
             json.dumps(train_loop_config)
         except (TypeError, ValueError):
-            train_loop_config = "Non-JSON serializable"
+            train_loop_config = {"message": "Non-JSON serializable train_loop_config"}
+            logger.debug("train_loop_config is not JSON serializable")
 
-        run_context = RunContext(
+        run_settings = RunSettings(
             train_loop_config=train_loop_config,
             backend_config=backend_config,
             scaling_config=scaling_config,
@@ -122,7 +123,7 @@ class TrainStateManager:
             end_time_ns=None,
             controller_log_file_path=controller_log_file_path,
             framework_versions={"ray": ray.__version__},
-            run_context=run_context,
+            run_settings=run_settings,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -298,7 +299,7 @@ class TrainStateManager:
 
     def get_train_run_framework(self, run_id: str) -> Optional[TrainingFramework]:
         run = self._runs[run_id]
-        return run.run_context.backend_config.framework
+        return run.run_settings.backend_config.framework
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)

@@ -232,16 +232,12 @@ class DataConfig(BaseModel):
 class ScalingConfig(BaseModel):
     """Scaling config for a Train run."""
 
-    num_workers: Union[int, Dict[str, List]] = Field(
-        description="The number of workers for the Train run."
-    )
-    use_gpu: Union[bool, Dict[str, List]] = Field(
-        description="Whether to use GPUs for the Train run."
-    )
+    num_workers: int = Field(description="The number of workers for the Train run.")
+    use_gpu: bool = Field(description="Whether to use GPUs for the Train run.")
     resources_per_worker: Optional[Dict] = Field(
         description="The resources per worker for a Train run."
     )
-    placement_strategy: Union[str, Dict[str, List]] = Field(
+    placement_strategy: str = Field(
         description="The placement strategy for the Train run."
     )
     accelerator_type: Optional[str] = Field(
@@ -311,14 +307,14 @@ class BackendConfig(BaseModel):
 
 
 @DeveloperAPI
-class RunContext(BaseModel):
-    """Context for a Train run.
+class RunSettings(BaseModel):
+    """Settings for a Train run, primarily consisting of configs set before a train run starts.
 
     This includes the train loop config, backend config, scaling config, dataset configs,
     and runtime configuration.
     """
 
-    train_loop_config: Optional[Union[Dict[str, Any], str]] = Field(
+    train_loop_config: Dict[str, Any] = Field(
         description="The user defined train loop config for a Train run."
     )
     backend_config: BackendConfig = Field(
@@ -369,8 +365,8 @@ class TrainRun(BaseModel):
         description="The relevant framework versions for this Train run,"
         "including the Ray version and training framework version."
     )
-    run_context: RunContext = Field(
-        description="The run context for this Train run, including train loop config, "
+    run_settings: RunSettings = Field(
+        description="The run settings for this Train run, including train loop config, "
         "backend config, scaling config, dataset details, and runtime configuration."
     )
 
