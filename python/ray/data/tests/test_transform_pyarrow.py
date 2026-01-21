@@ -3247,6 +3247,82 @@ def block_slice_data():
     }
 
 
+def test_concat_tensor_arrays_share_same_type_instance():
+    """Test that unified tensor arrays share the same type instance."""
+    # Create multiple blocks with tensors of different shapes
+    # This forces unification to variable-shaped tensors
+    blocks = []
+    for i in range(5):
+        # Each block has tensors with different shapes
+        shape = (2 + i, 2 + i)
+        data = np.ones((3,) + shape, dtype=np.float32)
+        tensor_arr = ArrowTensorArray.from_numpy(data)
+        blocks.append(
+            pa.table({"tensor": tensor_arr, "id": [i * 3, i * 3 + 1, i * 3 + 2]})
+        )
+
+    # This should not raise: ArrowTypeError: Array chunks must all be same type
+    result = concat(blocks)
+
+    # Verify the result
+    assert len(result) == 15
+    assert result.column_names == ["tensor", "id"]
+
+    # Verify all chunks share the same type instance
+    tensor_col = result["tensor"]
+    if tensor_col.num_chunks > 1:
+        first_type = tensor_col.chunk(0).type
+        for i in range(1, tensor_col.num_chunks):
+            chunk_type = tensor_col.chunk(i).type
+            # Types should be the exact same instance (identity check)
+            assert chunk_type is first_type, (
+                f"Chunk {i} type {chunk_type} is not the same instance as "
+                f"chunk 0 type {first_type}"
+            )
+
+    # Verify the tensor type is variable-shaped
+    assert isinstance(result.schema.field("tensor").type, ArrowVariableShapedTensorType)
+
+
+def test_concat_many_tensor_blocks_with_varying_ndim():
+    """Test concatenating many blocks with tensors that have varying dimensions."""
+    # Simulate reading images with varying dimensions.
+    blocks = []
+    for i in range(10):
+        # Alternate between 2D and 3D tensor shapes
+        if i % 2 == 0:
+            # 2D tensors (grayscale images)
+            data = [np.ones((32, 32), dtype=np.float32) for _ in range(5)]
+        else:
+            # 3D tensors (RGB images)
+            data = [np.ones((32, 32, 3), dtype=np.float32) for _ in range(5)]
+
+        tensor_arr = ArrowVariableShapedTensorArray.from_numpy(data)
+        blocks.append(pa.table({"image": tensor_arr}))
+
+    # This should not raise any errors
+    result = concat(blocks)
+
+    # Verify the result
+    assert len(result) == 50
+    assert result.column_names == ["image"]
+
+    # Verify the tensor column can be converted to numpy without errors
+    tensor_col = result["image"]
+
+    # Verify all chunks share the same type instance (zero-copy preserving)
+    if tensor_col.num_chunks > 1:
+        first_type = tensor_col.chunk(0).type
+        for i in range(1, tensor_col.num_chunks):
+            assert tensor_col.chunk(i).type is first_type
+
+    # Verify data integrity - collect all arrays from all chunks
+    all_arrays = []
+    for i in range(tensor_col.num_chunks):
+        all_arrays.extend(tensor_col.chunk(i).to_numpy())
+    assert len(all_arrays) == 50
+
+
 if __name__ == "__main__":
     import sys
 

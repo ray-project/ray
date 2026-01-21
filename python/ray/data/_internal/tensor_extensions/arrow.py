@@ -1314,7 +1314,10 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             [_pad_shape_with_singleton_axes(s, ndim) for s in shapes_array.to_pylist()]
         )
 
-        storage = pa.StructArray.from_arrays([data_array, expanded_shapes_array])
+        storage = pa.StructArray.from_arrays(
+            [data_array, expanded_shapes_array],
+            ["data", "shape"],
+        )
 
         return target_type.wrap_array(storage)
 
@@ -1324,7 +1327,7 @@ def _pad_shape_with_singleton_axes(
 ) -> Tuple[int, ...]:
     assert ndim >= len(shape)
 
-    return (1,) * (ndim - len(shape)) + shape
+    return (1,) * (ndim - len(shape)) + tuple(shape)
 
 
 def _ravel_tensors(
@@ -1422,19 +1425,30 @@ def unify_tensor_arrays(
 ) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
     supported_tensor_types = get_arrow_extension_tensor_types()
 
-    # Derive number of distinct tensor types
-    distinct_types_ = set()
+    # Track distinct types by object identity, not by __eq__.
+    # This is important because ArrowVariableShapedTensorType.__eq__ ignores
+    # ndim, but PyArrow's chunked_array validation requires exact type match.
+    # Using a dict with id() as key to track unique type instances.
+    distinct_types_by_id: Dict[int, Any] = {}
 
     for arr in arrs:
         if isinstance(arr.type, supported_tensor_types):
-            distinct_types_.add(arr.type)
+            type_id = id(arr.type)
+            if type_id not in distinct_types_by_id:
+                distinct_types_by_id[type_id] = arr.type
         else:
             raise ValueError(
-                f"Trying to unify unsupported tensor type: {arr.type} (supported types: {supported_tensor_types})"
+                f"Trying to unify unsupported tensor type: {arr.type} "
+                f"(supported types: {supported_tensor_types})"
             )
 
-    if len(distinct_types_) == 1:
+    # If all arrays share the exact same type instance, no unification needed
+    if len(distinct_types_by_id) == 1:
         return arrs
+
+    # Collect distinct types for unification (use list to preserve all types,
+    # since set would deduplicate based on __eq__ which ignores ndim)
+    distinct_types_ = list(distinct_types_by_id.values())
 
     # Verify provided tensor arrays could be unified
     #
@@ -1444,11 +1458,16 @@ def unify_tensor_arrays(
 
     assert isinstance(unified_tensor_type, ArrowVariableShapedTensorType)
 
+    # Convert all arrays to variable-shaped tensors, then re-wrap with the
+    # SAME type instance. This is critical because PyArrow's chunked_array
+    # validation compares extension types by identity/storage-type, not by
+    # Python's __eq__. Without sharing the same type instance, PyArrow will
+    # reject the chunks as having different types.
     unified_arrs = []
     for arr in arrs:
-        unified_arrs.append(
-            arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
-        )
+        converted = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
+        # Re-wrap storage with the shared unified type instance
+        unified_arrs.append(unified_tensor_type.wrap_array(converted.storage))
 
     return unified_arrs
 
