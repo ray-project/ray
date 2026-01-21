@@ -344,15 +344,8 @@ async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
         call_args = mock_session.ws_connect.call_args
 
         # Check that headers were passed to ws_connect
-        assert "headers" in call_args.kwargs, (
-            "Headers must be explicitly passed to ws_connect(). "
-            "aiohttp ClientSession does not automatically include "
-            "session headers in WebSocket upgrade requests."
-        )
-        assert call_args.kwargs["headers"] == test_headers, (
-            f"Expected headers {test_headers} to be passed to ws_connect, "
-            f"but got {call_args.kwargs.get('headers')}"
-        )
+        assert "headers" in call_args.kwargs
+        assert call_args.kwargs["headers"] == test_headers
 
 
 @pytest.mark.asyncio
