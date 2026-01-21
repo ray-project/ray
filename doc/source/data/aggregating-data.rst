@@ -106,6 +106,10 @@ The ``batch_format`` parameter controls the data format passed to ``aggregate()`
 
 If the ``on`` parameter is specified, the batch contains only that column (but still as the same container type).
 
+.. note::
+    As of Ray 2.54, ``AggregateFunction`` replaces the ``AggregateFnV2`` interface. Code that uses ``AggregateFnV2`` will continue to work,
+    but the interface is deprecated and will be removed in a future release.
+
 Example: Creating a Custom Mean Aggregator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
