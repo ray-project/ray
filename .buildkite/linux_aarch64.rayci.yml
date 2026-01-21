@@ -138,6 +138,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
@@ -154,6 +155,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
