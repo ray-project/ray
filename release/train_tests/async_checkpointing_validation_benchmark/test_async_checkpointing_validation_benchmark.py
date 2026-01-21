@@ -215,7 +215,7 @@ def validate_and_report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validation=validation,
+            validate=validation,
         )
         blocked_times.append(time.time() - start_time)
     else:
