@@ -1184,6 +1184,7 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
+        - RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE=0
     cluster_compute: tpl_cpu_1.yaml
 
   run:
