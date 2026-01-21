@@ -1650,5 +1650,90 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyInfeasible) {
   CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::FAILURE);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestPGResetFallbackToPrimaryBundles) {
+  auto node_fallback = GenNodeInfo(0);
+  (*node_fallback->mutable_resources_total())["CPU"] = 10;
+  node_fallback->mutable_resources_total()->erase("CustomResource");
+  AddNode(node_fallback);
+
+  // Create a PG Request that is only satisfied by fallback option.
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 1, 1);
+
+  // Infeasible primary bundle.
+  auto *primary_bundle = request.mutable_placement_group_spec()->mutable_bundles(0);
+  (*primary_bundle->mutable_unit_resources())["CustomResource"] = 1.0;
+  primary_bundle->mutable_unit_resources()->erase("CPU");
+
+  // Feasible fallback option.
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  auto *fallback_bundle = fallback_option->add_bundles();
+  (*fallback_bundle->mutable_unit_resources())["CPU"] = 1.0;
+  fallback_bundle->mutable_bundle_id()->set_bundle_index(0);
+  fallback_bundle->mutable_bundle_id()->set_placement_group_id(
+      request.placement_group_spec().placement_group_id());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+
+  // Schedule to fallback.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group,
+                        [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          failure_placement_groups_.emplace_back(std::move(pg));
+                        },
+                        [this](std::shared_ptr<GcsPlacementGroup> pg) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          success_placement_groups_.emplace_back(std::move(pg));
+                        }});
+
+  ASSERT_EQ(1, raylet_clients_[0]->num_lease_requested);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Verify fallback bundle is being utilized.
+  ASSERT_EQ(placement_group->GetBundles()[0]
+                ->GetRequiredResources()
+                .Get(scheduling::ResourceID("CPU"))
+                .Double(),
+            1.0);
+
+  // Simulate node failure to reset PG.
+  RemoveNode(node_fallback);
+  placement_group->GetMutableBundle(0)->clear_node_id();
+
+  // Add a new node that satisfies the primary bundles.
+  auto node_primary = GenNodeInfo(1);
+  (*node_primary->mutable_resources_total())["CustomResource"] = 10;
+  node_primary->mutable_resources_total()->erase("CPU");
+  AddNode(node_primary);
+
+  // Validate that during rescheduling the scheduler should reset to primary option.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group,
+                        [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          failure_placement_groups_.emplace_back(std::move(pg));
+                        },
+                        [this](std::shared_ptr<GcsPlacementGroup> pg) {
+                          absl::MutexLock lock(&placement_group_requests_mutex_);
+                          success_placement_groups_.emplace_back(std::move(pg));
+                        }});
+
+  ASSERT_EQ(1, raylet_clients_[1]->num_lease_requested);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
+
+  // Validate the PG reverted to primary strategy.
+  ASSERT_EQ(placement_group->GetBundles()[0]
+                ->GetRequiredResources()
+                .Get(scheduling::ResourceID("CustomResource"))
+                .Double(),
+            1.0);
+}
+
 }  // namespace gcs
 }  // namespace ray

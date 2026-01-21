@@ -77,6 +77,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
 
+  const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
+  bool is_whole_pg_reschedule = (bundles.size() == placement_group->GetBundles().size());
+
+  if (is_whole_pg_reschedule && !scheduling_strategies.empty()) {
+    RAY_LOG(INFO) << "Whole Placement Group " << placement_group->GetPlacementGroupID()
+                  << " is being rescheduled. Resetting to Primary Strategy.";
+
+    const auto &primary_option = scheduling_strategies.Get(0);
+    placement_group->UpdateActiveBundles(primary_option);
+    bundles = placement_group->GetUnplacedBundles();
+  }
+
   auto scheduling_result =
       TrySchedule(placement_group, bundles, placement_group->GetStrategy());
 
@@ -84,8 +96,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
 
   if (!scheduling_result.status.IsSuccess()) {
-    const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
-
     bool is_scheduling_whole_pg =
         (bundles.size() == placement_group->GetBundles().size());
     if (scheduling_strategies.size() > 1 && is_scheduling_whole_pg) {
