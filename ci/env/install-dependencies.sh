@@ -162,8 +162,10 @@ install_node() {
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      # Install Node.js 14.x - use legacy method with apt-key
-      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | sudo apt-key add -
+      # Install Node.js 14.x - fetch GPG key from keyserver
+      sudo apt-get update
+      sudo apt-get install -y gnupg
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1655A0AB68576280
       local DISTRO_CODENAME
       DISTRO_CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
       echo "deb https://deb.nodesource.com/node_14.x ${DISTRO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/nodesource.list
