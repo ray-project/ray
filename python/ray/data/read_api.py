@@ -3811,26 +3811,32 @@ def read_lerobot(
 
     from huggingface_hub import HfFileSystem
 
+    # Initialize metadata once - it will determine the correct root internally
     meta = LeRobotDatasetMetadata(
         repo_id=repo_id, root=root, force_cache_sync=force_cache_sync
     )
     episode_dict = meta.episodes
-    # Create metadata dict for video loading
-    metadata_dict = {
-        "url_root": meta.url_root,
-        "video_keys": meta.video_keys,
-        "fps": meta.fps,
-        "video_backend": video_backend,
-        "get_video_file_path": meta.get_video_file_path,
-    }
+
+    # Determine data source based on whether we're using local or remote paths
     if root == "":
         data_source = f"hf://datasets/{repo_id}/data"
-        root = metadata_dict["url_root"]
+        resolved_root = meta.url_root
     else:
         data_source = f"{root}/data"
+        resolved_root = root
 
-    if root.startswith("hf://"):
+    # Auto-switch to torchcodec for remote URLs since pyav doesn't support streaming
+    if resolved_root.startswith("hf://"):
         filesystem = HfFileSystem(token=os.getenv("HF_TOKEN", None))
+        if video_backend in ["pyav", "video_reader"]:
+            import logging
+
+            logging.warning(
+                f"Switching from '{video_backend}' to 'torchcodec' backend. "
+                f"The '{video_backend}' backend doesn't support streaming from remote URLs (hf://). "
+                "To use pyav, download the dataset locally first by specifying a local root path."
+            )
+            video_backend = "torchcodec"
     else:
         filesystem = None
 
@@ -3851,13 +3857,8 @@ def read_lerobot(
             else True
         )
     )
-    # assert delta_timestamps is not None, "delta_timestamps must be provided"
-    # print(f"delta_timestamps: {delta_timestamps}")
-    meta = LeRobotDatasetMetadata(
-        repo_id=repo_id, root=root, force_cache_sync=force_cache_sync
-    )
-    episode_dict = meta.episodes
-    # Create metadata dict for video loading
+
+    # Create metadata dict for video loading (using the already initialized meta)
     metadata_dict = {
         "url_root": meta.url_root,
         "video_keys": meta.video_keys,
@@ -3870,10 +3871,10 @@ def read_lerobot(
         lambda batch: process_horizon_batch(batch, delta_timestamps, episode_dict)
     )
     # Load LeRobot metadata
-
-    assert set(delta_timestamps.keys()) <= set(
-        meta.features.keys()
-    ), "delta_timestamps keys must be in the features keys"
+    if delta_timestamps is not None:
+        assert set(delta_timestamps.keys()) <= set(
+            meta.features.keys()
+        ), "delta_timestamps keys must be in the features keys"
 
     # Define static video loading function
     def _load_video_frames(batch, metadata_dict: dict, episode_dict: dict) -> dict:
@@ -3903,9 +3904,7 @@ def read_lerobot(
                 video_path_groups = defaultdict(list)
 
                 for i, (ep, ts) in enumerate(zip(ep_idx, timestamps)):
-                    video_path = (
-                        f"{root}/{metadata_dict['get_video_file_path'](ep, key)}"
-                    )
+                    video_path = f"{resolved_root}/{metadata_dict['get_video_file_path'](ep, key)}"
                     ts = episode_dict[ep][f"videos/{key}/from_timestamp"] + ts
                     video_path_groups[video_path].append(
                         (i, ts)

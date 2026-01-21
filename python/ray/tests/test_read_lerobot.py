@@ -892,7 +892,6 @@ def run_manual_tests():
             test_suite.test_read_lerobot_schema_validation,
         ),
         ("test_read_lerobot_local_dataset", test_suite.test_read_lerobot_local_dataset),
-        # ("test_read_lerobot_iter_batches", test_suite.test_read_lerobot_iter_batches),
         (
             "test_read_lerobot_local_iter_batches",
             test_suite.test_read_lerobot_local_iter_batches,

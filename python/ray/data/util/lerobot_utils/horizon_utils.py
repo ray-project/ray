@@ -58,19 +58,17 @@ def process_horizon_batch(
     """Sort batch by timestamp and build temporal horizons for specified keys."""
 
     sorted_batch = batch.sort_values(by="timestamp").reset_index(drop=True)
-    ep_start = episode_dict[sorted_batch["episode_index"].values[0]][
-        "dataset_from_index"
-    ]
+    ep_start = 0
     ep_end = (
         episode_dict[sorted_batch["episode_index"].values[0]]["dataset_to_index"]
-        - ep_start
-        - 1
+        - episode_dict[sorted_batch["episode_index"].values[0]]["dataset_from_index"]
     )
-    ep_start = 0
     # Assert timestamps are monotonically increasing after sort
     timestamps = sorted_batch["timestamp"].values
     assert (timestamps != np.nan).all(), "Timestamps are nan"
-    # assert (timestamps[1:] >= timestamps[:-1]).all(), "Timestamps are not sorted in increasing order"
+    assert (
+        timestamps[1:] >= timestamps[:-1]
+    ).all(), "Timestamps are not sorted in increasing order"
 
     # Build horizon for each key in delta_timestamps
     for key, deltas in delta_timestamps.items():

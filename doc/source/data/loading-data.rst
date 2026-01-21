@@ -157,6 +157,7 @@ To view the full list of supported file formats, see the
         .. note::
 
             You need to install ``huggingface_hub`` and a video backend (``av`` or ``torchcodec``).
+            Note that ``torchcodec`` requires FFmpeg shared libraries to be installed on your system.
             See :ref:`Working with Robotics Data <working_with_robotics>` for complete
             installation instructions.
 
