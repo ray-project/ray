@@ -62,6 +62,16 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
+def _dict_to_namespace(obj):
+    """Рекурсивно преобразует словари в argparse.Namespace"""
+    if isinstance(obj, dict):
+        return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [_dict_to_namespace(item) for item in obj]
+    else:
+        return obj
+
+
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
@@ -260,6 +270,10 @@ class VLLMEngine(LLMEngine):
         args = argparse.Namespace(
             **(vllm_frontend_args.__dict__ | vllm_engine_args.__dict__)
         )
+        # Рекурсивно преобразуем вложенные dict в Namespace
+        for key, value in vars(args).items():
+            if isinstance(value, dict):
+                setattr(args, key, _dict_to_namespace(value))
 
         if "vllm_config" in inspect.signature(init_app_state).parameters:
             await init_app_state(
