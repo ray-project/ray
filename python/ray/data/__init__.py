@@ -21,6 +21,7 @@ from ray.data.dataset import (
     ClickHouseTableSettings,
     SaveMode,
 )
+from ray.data.exceptions import DatasetJobTimeoutError
 from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
     BlockBasedFileDatasink,
@@ -129,6 +130,7 @@ __all__ = [
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
+    "DatasetJobTimeoutError",
     "DatasetSummary",
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
