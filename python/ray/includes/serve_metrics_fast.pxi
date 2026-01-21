@@ -14,7 +14,7 @@ particularly the k-way merge algorithm for timeseries.
 
 # C library imports
 from libc.stdlib cimport malloc, free
-from libc.math cimport round as c_round
+from libc.math cimport round as c_round, isnan, nan
 
 # Heap node for k-way merge
 cdef struct ServeMetricsHeapNode:
@@ -302,14 +302,15 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
         for i in range(result_count):
             merged[i] = (result_timestamps[i], result_values[i])
 
-        # Free result arrays
-        free(result_timestamps)
-        free(result_values)
-
         return merged
 
     finally:
         # Centralized cleanup: safe even if some allocations failed
+        # Free result arrays (allocated by serve_metrics_merge_series_nogil)
+        if result_timestamps:
+            free(result_timestamps)
+        if result_values:
+            free(result_values)
         if timestamps_arrays:
             for i in range(num_series):
                 if timestamps_arrays[i]:
@@ -329,7 +330,7 @@ cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps
     """
     Fully nogil time-weighted average computation on C arrays.
 
-    Returns: Time-weighted average or -1.0 to indicate None
+    Returns: Time-weighted average or NaN to indicate None (invalid result)
     """
     cdef:
         int i
@@ -340,7 +341,7 @@ cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps
         double timestamp, value, duration
 
     if window_end <= window_start:
-        return -1.0
+        return nan("")
 
     current_time = window_start
 
@@ -384,7 +385,7 @@ cdef double serve_metrics_compute_time_weighted_average_nogil(double* timestamps
     if total_duration > 0:
         return total_weighted_value / total_duration
 
-    return -1.0
+    return nan("")
 
 
 def time_weighted_average_cython(list timeseries, double window_start=-1.0,
@@ -431,10 +432,11 @@ def time_weighted_average_cython(list timeseries, double window_start=-1.0,
             values[i] = point.value
 
         # Handle window boundaries
-        if window_start < 0:
+        # Use exact sentinel value check (-1.0) to preserve negative timestamps
+        if window_start == -1.0:
             window_start = timestamps[0]
 
-        if window_end < 0:
+        if window_end == -1.0:
             window_end = timestamps[n - 1] + last_window_s
 
         # Compute with full nogil
@@ -442,7 +444,7 @@ def time_weighted_average_cython(list timeseries, double window_start=-1.0,
             result = serve_metrics_compute_time_weighted_average_nogil(timestamps, values, n,
                                                           window_start, window_end)
 
-        return None if result < 0 else result
+        return None if isnan(result) else result
 
     finally:
         free(timestamps)

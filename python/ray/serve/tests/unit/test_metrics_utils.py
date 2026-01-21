@@ -984,6 +984,95 @@ class TestCythonImplementationEdgeCases:
         # Expected: (1e-12*1 + 2e-12*1 + 3e-12*1) / 3 = 2e-12
         assert result == pytest.approx(2e-12, rel=1e-6)
 
+    def test_time_weighted_average_negative_values(self):
+        """Test time_weighted_average with negative metric values.
+
+        Regression test: Ensures negative results are returned correctly,
+        not incorrectly treated as None/invalid.
+        """
+        # All negative values
+        series = [
+            TimeStampedValue(1.0, -5.0),
+            TimeStampedValue(2.0, -10.0),
+            TimeStampedValue(3.0, -15.0),
+        ]
+        result = time_weighted_average(series, None, None)
+
+        # Expected: (-5*1 + -10*1 + -15*1) / 3 = -10.0
+        assert result == pytest.approx(-10.0, rel=1e-9)
+
+        # Mixed positive and negative values with negative average
+        series_mixed = [
+            TimeStampedValue(1.0, -20.0),
+            TimeStampedValue(2.0, 5.0),
+            TimeStampedValue(3.0, -10.0),
+        ]
+        result_mixed = time_weighted_average(series_mixed, None, None)
+
+        # Expected: (-20*1 + 5*1 + -10*1) / 3 = -25/3 ≈ -8.333...
+        assert result_mixed == pytest.approx(-25.0 / 3.0, rel=1e-9)
+
+        # Single negative value
+        series_single = [TimeStampedValue(1.0, -0.5)]
+        result_single = time_weighted_average(series_single, None, None)
+        assert result_single == pytest.approx(-0.5, rel=1e-9)
+
+        # Negative value exactly at -1.0 (the old sentinel value)
+        series_sentinel = [TimeStampedValue(1.0, -1.0)]
+        result_sentinel = time_weighted_average(series_sentinel, None, None)
+        assert result_sentinel == pytest.approx(-1.0, rel=1e-9)
+
+    def test_time_weighted_average_negative_timestamps(self):
+        """Test time_weighted_average with negative timestamps.
+
+        Regression test: Ensures negative window_start and window_end values
+        are used as actual timestamps, not incorrectly treated as the sentinel
+        value for None. The Cython implementation uses -1.0 as a sentinel for
+        None, so only exactly -1.0 should trigger the default behavior.
+        """
+        # Series with negative timestamps
+        series = [
+            TimeStampedValue(-10.0, 5.0),
+            TimeStampedValue(-5.0, 10.0),
+            TimeStampedValue(0.0, 15.0),
+        ]
+
+        # Test with explicit negative window_start
+        result_neg_start = time_weighted_average(series, -8.0, -2.0)
+        # [-8.0, -5.0): value = 5.0, duration = 3.0
+        # [-5.0, -2.0): value = 10.0, duration = 3.0
+        expected = (5.0 * 3.0 + 10.0 * 3.0) / 6.0
+        assert result_neg_start == pytest.approx(expected, rel=1e-9)
+
+        # Test with negative window_end (but positive window_start)
+        series_pos = [
+            TimeStampedValue(-5.0, 20.0),
+            TimeStampedValue(-2.0, 30.0),
+        ]
+        result_neg_end = time_weighted_average(series_pos, -5.0, -1.5)
+        # [-5.0, -2.0): value = 20.0, duration = 3.0
+        # [-2.0, -1.5): value = 30.0, duration = 0.5
+        expected_neg_end = (20.0 * 3.0 + 30.0 * 0.5) / 3.5
+        assert result_neg_end == pytest.approx(expected_neg_end, rel=1e-9)
+
+        # Test with both negative window boundaries
+        result_both_neg = time_weighted_average(series, -10.0, -5.0)
+        # [-10.0, -5.0): value = 5.0, duration = 5.0
+        assert result_both_neg == pytest.approx(5.0, rel=1e-9)
+
+        # Test that -1.0 as window_start is still treated as "use default"
+        # (this is the sentinel value behavior we want to preserve)
+        series_for_sentinel = [
+            TimeStampedValue(2.0, 100.0),
+            TimeStampedValue(3.0, 200.0),
+        ]
+        result_sentinel_start = time_weighted_average(series_for_sentinel, None, 4.0)
+        # With None (sentinel -1.0), should use first timestamp (2.0) as start
+        # [2.0, 3.0): value = 100.0, duration = 1.0
+        # [3.0, 4.0): value = 200.0, duration = 1.0
+        expected_sentinel = (100.0 * 1.0 + 200.0 * 1.0) / 2.0
+        assert result_sentinel_start == pytest.approx(expected_sentinel, rel=1e-9)
+
     def test_time_weighted_average_with_long_series(self):
         """Test time_weighted_average with a very long series (stress test)."""
         # Create a series with 10,000 points
