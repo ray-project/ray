@@ -5013,12 +5013,12 @@ py_test(
     size = "medium",
     srcs = ["examples/ray_tune/appo_hyperparameter_tune.py"],
     args = [
-        "--num-samples=12",
-        "--max-concurrent-trials=4",
         "--num-env-runners=4",
         "--num-envs-per-env-runner=6",
-        "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--num-learners=1",
+        "--num-samples=12",
+        "--max-concurrent-trials=4",
     ],
     main = "examples/ray_tune/appo_hyperparameter_tune.py",
     tags = [
