@@ -14,6 +14,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.data_llm_dashboard_panels import (
+    data_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
 )
@@ -139,6 +142,21 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(data_dashboard_config)
+
+
+def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the Data LLM dashboard and returns
+    both the content and the uid.
+
+    This dashboard provides vLLM metrics visibility for Ray Data LLM workloads,
+    including latency (TTFT, TPOT), throughput, cache utilization, and
+    prefix cache hit rate.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(data_llm_dashboard_config)
 
 
 def generate_train_grafana_dashboard() -> Tuple[str, str]:
