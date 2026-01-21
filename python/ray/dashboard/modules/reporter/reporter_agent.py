@@ -25,7 +25,6 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
     get_or_create_event_loop,
 )
@@ -379,20 +378,15 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = (
-    [
-        "pid",
-        "create_time",
-        "cpu_percent",
-        "cpu_times",
-        "cmdline",
-        "memory_info",
-        "memory_full_info",
-    ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
-)
+PSUTIL_PROCESS_ATTRS = [
+    "pid",
+    "create_time",
+    "cpu_percent",
+    "cpu_times",
+    "cmdline",
+    "memory_info",
+    "memory_full_info",
+] + (["num_fds"] if sys.platform != "win32" else [])
 
 
 class ReporterAgent(
@@ -453,7 +447,7 @@ class ReporterAgent(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=dashboard_agent.metrics_export_port,
-                    address=get_localhost_ip() if is_localhost(self._ip) else "",
+                    address="127.0.0.1" if self._ip == "127.0.0.1" else "",
                 )
             )
             dashboard_agent.metrics_export_port = stats_exporter.port

@@ -416,7 +416,11 @@ def test_merge_resources_to_ray_remote_args():
     ],
 )
 def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal: bool):
-    assert rows_same(actual, expected) == expected_equal
+    if expected_equal:
+        assert rows_same(actual, expected)
+    else:
+        with pytest.raises(AssertionError):
+            assert rows_same(actual, expected)
 
 
 if __name__ == "__main__":
