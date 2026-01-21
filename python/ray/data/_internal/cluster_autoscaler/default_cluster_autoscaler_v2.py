@@ -1,10 +1,9 @@
-import logging
 import math
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 import ray
 from .base_autoscaling_coordinator import AutoscalingCoordinator
@@ -19,6 +18,7 @@ from .util import cap_resource_request_to_limits
 from ray._private.ray_constants import env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.execution.util import memory_string
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -39,6 +39,13 @@ class _NodeResourceSpec:
         assert self.gpu >= 0
         assert isinstance(self.mem, int)
         assert self.mem >= 0
+
+    def __str__(self):
+        return (
+            "{"
+            + f"CPU: {self.cpu}, GPU: {self.gpu}, memory: {memory_string(self.mem)}"
+            + "}"
+        )
 
     @classmethod
     def of(cls, *, cpu=0, gpu=0, mem=0):
@@ -132,8 +139,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def __init__(
         self,
         resource_manager: "ResourceManager",
-        resource_limits: ExecutionResources,
         execution_id: str,
+        resource_limits: ExecutionResources = ExecutionResources.for_limits(),
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
@@ -201,18 +208,11 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
         # to ensure existing nodes' resources are never crowded out by scale-up requests.
-        active_bundles = []
-        pending_bundles = []
-        debug_msg = ""
-        if logger.isEnabledFor(logging.DEBUG):
-            debug_msg = (
-                "Scaling up cluster. Current utilization: "
-                f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, object_store_memory={util.object_store_memory:.2f}."
-                " Requesting resources:"
-            )
         # TODO(hchen): We scale up all nodes by the same delta for now.
         # We may want to distinguish different node types based on their individual
         # utilization.
+        active_bundles = []
+        pending_bundles = []
         node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
@@ -221,10 +221,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             # Bundles for scale-up delta -> pending (best-effort)
             delta_count = int(math.ceil(self._cluster_scaling_up_delta))
             pending_bundles.extend([bundle] * delta_count)
-            if logger.isEnabledFor(logging.DEBUG):
-                num_to_request = count + delta_count
-                debug_msg += f" [{bundle}: {count} -> {num_to_request}]"
-        logger.debug(debug_msg)
 
         # Cap the resource request to respect user-configured limits.
         # Active bundles (existing nodes) are always included; pending bundles
@@ -233,7 +229,37 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             active_bundles, pending_bundles, self._resource_limits
         )
 
+        if pending_bundles:
+            self._log_resource_request(util, pending_bundles)
+
         self._send_resource_request(resource_request)
+
+    def _log_resource_request(
+        self,
+        current_utilization: ExecutionResources,
+        pending_bundles: List[Dict[str, float]],
+    ) -> None:
+        message = (
+            "Scaling up cluster. Current utilization: "
+            f"CPU={current_utilization.cpu:.2f}, GPU={current_utilization.gpu:.2f}, "
+            f"object_store_memory={current_utilization.object_store_memory:.2f}. "
+            "Requesting resources:"
+        )
+
+        node_resurce_spec_counts = Counter(
+            [
+                _NodeResourceSpec.of(
+                    cpu=bundle.get("CPU", 0),
+                    gpu=bundle.get("GPU", 0),
+                    mem=bundle.get("memory", 0),
+                )
+                for bundle in pending_bundles
+            ]
+        )
+        for node_resurce_spec, count in node_resurce_spec_counts.items():
+            message += f" [{node_resurce_spec}: +{count}]"
+
+        logger.info(message)
 
     def _send_resource_request(self, resource_request):
         # Make autoscaler resource request.
