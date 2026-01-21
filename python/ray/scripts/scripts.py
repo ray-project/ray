@@ -2624,18 +2624,19 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
-        cli_logger.print(
-            "Project template generated to {}",
-            cf.bold(f"{os.path.abspath(out_dir)}"),
-        )
-        cli_logger.print("To build and run this template, run")
-        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
-
         # This assumes that your current working directory has a .bazelversion file.
         shutil.copyfile(
             bazel_version_filename,
             os.path.join(out_dir, bazel_version_filename),
         )
+
+        cli_logger.print(
+            "Project template generated to {}",
+            cf.bold(f"{os.path.abspath(out_dir)}"),
+        )
+
+        cli_logger.print("To build and run this template, run")
+        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
 
 @cli.command(hidden=True)
