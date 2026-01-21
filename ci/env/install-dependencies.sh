@@ -162,14 +162,11 @@ install_node() {
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      # Install Node.js 14.x with updated GPG key method
+      # Install Node.js 14.x - use legacy method with apt-key
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | sudo apt-key add -
       local DISTRO_CODENAME
       DISTRO_CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
-      sudo apt-get update
-      sudo apt-get install -y ca-certificates curl gnupg
-      sudo mkdir -p /etc/apt/keyrings
-      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_14.x ${DISTRO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+      echo "deb https://deb.nodesource.com/node_14.x ${DISTRO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/nodesource.list
       sudo apt-get update
       sudo apt-get install -y nodejs
       return
