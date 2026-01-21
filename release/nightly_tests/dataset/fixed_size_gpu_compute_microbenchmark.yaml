@@ -22,9 +22,8 @@ worker_node_types:
 
     - name: gpu-worker
       # GPU node for training ingest microbenchmark
-      # g4dn.16xlarge: 64 vCPU, 256 GiB memory, 1 NVIDIA L4 GPU (24 GB)
-      # Largest single-GPU g4dn instance for high memory workloads
-      instance_type: g4dn.16xlarge
+      # g4dn.8xlarge: 32 vCPU, 1 NVIDIA T4 GPU, 128 GiB memory
+      instance_type: g4dn.8xlarge
       min_workers: 1
       max_workers: 1
       use_spot: false
