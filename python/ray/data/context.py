@@ -185,6 +185,9 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
 
 DEFAULT_MAX_ERRORED_BLOCKS = 0
 
+# Default job timeout is disabled (-1 means no timeout)
+DEFAULT_JOB_TIMEOUT_S = env_integer("RAY_DATA_JOB_TIMEOUT_S", -1)
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -437,6 +440,10 @@ class DataContext:
             encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
+        job_timeout_s: Maximum time in seconds for a Ray Data job to run. If the job
+            exceeds this timeout, it will be terminated with a DatasetJobTimeoutError.
+            Set to -1 or 0 to disable timeout (default: -1). This timeout applies to
+            the entire execution from start to finish.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
@@ -595,6 +602,12 @@ class DataContext:
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
+    # Timeout threshold (in seconds) for the entire Ray Data job execution.
+    # If the job exceeds this time limit, it will be terminated with a
+    # DatasetJobTimeoutError exception.
+    #
+    # Setting a non-positive value (i.e., <= 0) disables this functionality (defaults to -1).
+    job_timeout_s: int = DEFAULT_JOB_TIMEOUT_S
     # Timeout threshold (in seconds) for how long it should take for actors in the
     # Actor Pool to start up. Exceeding this threshold will lead to execution being
     # terminated with exception due to inability to secure min required capacity.

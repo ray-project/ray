@@ -1499,6 +1499,36 @@ Timing        block_completion_time                             (samples: 0, avg
     assert _format_metrics_table({}) == "(no metrics)"
 
 
+def test_job_timeout_integration(ray_start_regular_shared):
+    """Integration test for job timeout with real workload."""
+    from ray.data import DataContext
+    from ray.data.exceptions import DatasetJobTimeoutError
+
+    ctx = DataContext.get_current()
+    original_timeout = ctx.job_timeout_s
+
+    try:
+        # Set timeout to 3 seconds
+        ctx.job_timeout_s = 3
+
+        # Create a workload that will exceed timeout
+        ds = ray.data.range(1000)
+
+        def slow_transform(row):
+            time.sleep(0.01)  # 10ms per row, total ~10 seconds for 1000 rows
+            return {"id": row["id"] * 2}
+
+        # Should raise timeout
+        with pytest.raises(DatasetJobTimeoutError) as exc_info:
+            ds.map(slow_transform).take_all()
+
+        # Verify error message
+        assert "exceeded the configured timeout of 3s" in str(exc_info.value)
+
+    finally:
+        ctx.job_timeout_s = original_timeout
+
+
 if __name__ == "__main__":
     import sys
 

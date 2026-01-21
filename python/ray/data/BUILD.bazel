@@ -706,6 +706,20 @@ py_test(
 )
 
 py_test(
+    name = "test_job_timeout",
+    size = "medium",
+    srcs = ["tests/test_job_timeout.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_json",
     size = "medium",
     srcs = ["tests/datasource/test_json.py"],

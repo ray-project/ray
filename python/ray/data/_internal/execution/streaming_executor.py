@@ -49,6 +49,7 @@ from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.data.exceptions import DatasetJobTimeoutError
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
@@ -334,6 +335,8 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
+        job_timeout_s = self._data_context.job_timeout_s
+        timeout_enabled = job_timeout_s > 0
         try:
             # Run scheduling loop until complete.
             while True:
@@ -341,6 +344,16 @@ class StreamingExecutor(Executor, threading.Thread):
                 # time spent on IO, like RPCs to Ray Core.
                 t_start = time.perf_counter()
                 continue_sched = self._scheduling_loop_step(self._topology)
+
+                # Check if job has exceeded timeout
+                if timeout_enabled:
+                    elapsed_time = time.perf_counter() - self._start_time
+                    if elapsed_time > job_timeout_s:
+                        raise DatasetJobTimeoutError(
+                            f"Dataset job exceeded the configured timeout of {job_timeout_s}s. "
+                            f"Elapsed time: {elapsed_time:.2f}s. "
+                            f"Configure DataContext.job_timeout_s to adjust the timeout."
+                        )
 
                 sched_loop_duration = time.perf_counter() - t_start
 

@@ -35,6 +35,16 @@ class SystemException(Exception):
 
 
 @DeveloperAPI
+class DatasetJobTimeoutError(Exception):
+    """Raised when a Ray Data job exceeds the configured timeout.
+
+    This exception is raised when the total execution time of a Dataset job
+    exceeds the `job_timeout_s` configured in DataContext."""
+
+    pass
+
+
+@DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
     """Decorator which runs the function, and if there is an exception raised,
     drops the stack trace before re-raising the exception. The original exception,
