@@ -73,6 +73,9 @@ class RayEventRecorder : public RayEventRecorderInterface {
   ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
+  // Flag to track if the recorder is enabled and accepting new events.
+  // Set to false during shutdown to prevent event loss.
+  bool enabled_ ABSL_GUARDED_BY(mutex_) = false;
   // Node ID to be set on all events
   const NodeID node_id_;
 

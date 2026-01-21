@@ -46,6 +46,7 @@ void RayEventRecorder::StartExportingEvents() {
     return;
   }
   exporting_started_ = true;
+  enabled_ = true;
   periodical_runner_->RunFnPeriodically(
       [this]() { ExportEvents(); },
       RayConfig::instance().ray_events_report_interval_ms(),
@@ -53,6 +54,15 @@ void RayEventRecorder::StartExportingEvents() {
 }
 
 void RayEventRecorder::StopExportingEvents() {
+  {
+    absl::MutexLock lock(&mutex_);
+    if (!enabled_) {
+      return;
+    }
+    // Set enabled_ to false early to prevent new events from being added during shutdown.
+    // This prevents event loss from events added after ExportEvents() clears the buffer.
+    enabled_ = false;
+  }
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
@@ -141,6 +151,9 @@ void RayEventRecorder::ExportEvents() {
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
+  if (!enabled_) {
+    return;
+  }
   if (!RayConfig::instance().enable_ray_event()) {
     return;
   }
