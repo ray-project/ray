@@ -18,6 +18,9 @@ from ray._common.network_utils import build_address
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+    LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
+)
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -800,9 +803,6 @@ class ServeController:
         TODO(https://github.com/ray-project/ray/issues/60359): Replace this
         with proper controller-managed actor lifecycle management.
         """
-        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (  # noqa: E501
-            LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
-        )
         from ray.util.state import list_actors
 
         try:
