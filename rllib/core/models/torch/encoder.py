@@ -299,16 +299,16 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         Encoder.__init__(self, config)
 
         # Create the neural network for observation stream.
-        self.nets = self.nets = nn.ModuleDict(
+        self.feature_encoders = self.nets = nn.ModuleDict(
             {
                 k: cfg.build(framework="torch")
-                for k, cfg in config.base_encoder_configs.items()
+                for k, cfg in sorted(config.base_encoder_configs.items())
             }
         )
 
         # Create the final network.
         self.hidden_activation = get_activation_fn(
-            config.output_layer_activation, framework="torch"
+            config.hidden_layer_activation, framework="torch"
         )
         self.output_activation = get_activation_fn(
             config.output_layer_activation, framework="torch"
@@ -318,35 +318,45 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
             cfg.output_dims[0] for cfg in config.base_encoder_configs.values()
         )
         # Create the final network layers.
-        self.net = nn.ModuleList(
-            [
-                nn.Linear(total_embed_dim, config.output_dims[0]),
-                nn.Linear(
-                    config.output_dims[0] + total_embed_dim, config.output_dims[0]
-                ),
-                nn.Linear(
-                    config.output_dims[0] + total_embed_dim, config.output_dims[0]
-                ),
-                nn.Linear(
-                    config.output_dims[0] + total_embed_dim, config.output_dims[0]
-                ),
-            ]
+        input_layer = nn.Linear(total_embed_dim, config.hidden_layer_dims[0])
+        fusion_layers = [
+            nn.Linear(config.hidden_layer_dims[i - 1], config.hidden_layer_dims[i])
+            for i in range(1, len(config.hidden_layer_dims))
+        ]
+        output_layer = nn.Linear(
+            config.hidden_layer_dims[-1], config.output_layer_dim[0]
         )
+
+        self.net = nn.ModuleList([input_layer] + fusion_layers + [output_layer])
+        # self.net = nn.ModuleList(
+        #     [
+        #         nn.Linear(total_embed_dim, config.output_dims[0]),
+        #         nn.Linear(
+        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
+        #         ),
+        #         nn.Linear(
+        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
+        #         ),
+        #         nn.Linear(
+        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
+        #         ),
+        #     ]
+        # )
 
     @override(Model)
     def _forward(self, inputs, **kwargs):
         # Run the inputs through the base encoders.
         keys = sorted(self.config.base_encoder_configs.keys())
-        outs = [
-            self.nets[k]({Columns.OBS: inputs[k]})[ENCODER_OUT]
-            for k in keys
+        encoder_outs = [
+            self.nets[k]({Columns.OBS: inputs[k]})[ENCODER_OUT] for k in keys
         ]
         # Concatenate the embeddings.
-        embeds = torch.cat(outs, dim=-1)
+        embeds = torch.cat(encoder_outs, dim=-1)
 
         # Pass through the final network.
         out = self.hidden_activation()(self.net[0](embeds))
-        for layer in self.net[1:]:
+        for layer in self.net[1:-1]:
             out = self.hidden_activation()(layer(torch.cat([out, embeds], dim=-1)))
+        out = self.output_activation()(self.net[-1](torch.cat([out, embeds], dim=-1)))
 
         return {ENCODER_OUT: out}

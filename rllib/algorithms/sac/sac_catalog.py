@@ -173,8 +173,10 @@ class SACCatalog(Catalog):
                     Columns.OBS: self._encoder_config,
                     Columns.ACTIONS: self.qf_action_encoder_config,
                 },
-                hidden_dim=self.latent_dims[0],
-                output_layer_activation=self.qf_action_encoder_activation,
+                hidden_layer_dims=self._model_config_dict["fusionnet_hiddens"],
+                hidden_layer_activation=self._model_config_dict["fusionnet_activation"],
+                output_layer_dim=self.latent_dims[0],
+                output_layer_activation=self._model_config_dict["fusionnet_activation"],
             )
 
             return self.qf_encoder_config.build(framework=framework)

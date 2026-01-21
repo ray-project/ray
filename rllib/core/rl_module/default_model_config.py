@@ -202,3 +202,37 @@ class DefaultModelConfig:
     #: Kwargs passed into the initializer function defined through
     #: `lstm_bias_initializer`.
     lstm_bias_initializer_kwargs: Optional[dict] = None
+
+    # ====================================================
+    # Fusion settings
+    # ====================================================
+    #: List containing the sizes (number of nodes) of a fully connected (MLP) stack.
+    #: Note that in an encoder-based default architecture with a policy head (and
+    #: possible value head), this setting only affects the encoder component. To set the
+    #: policy (and value) head sizes, use `post_fcnet_hiddens`, instead. For example,
+    #: if you set `fcnet_hiddens=[32, 32]` and `post_fcnet_hiddens=[64]`, you would get
+    #: an RLModule with a [32, 32] encoder, a [64, act-dim] policy head, and a [64, 1]
+    #: value head (if applicable).
+    fusionnet_hiddens: List[int] = field(default_factory=lambda: [256, 256])
+    #: Activation function descriptor for the stack configured by `fcnet_hiddens`.
+    #: Supported values are: 'tanh', 'relu', 'swish' (or 'silu', which is the same),
+    #: and 'linear' (or None).
+    fusionnet_activation: str = "tanh"
+    #: Initializer function or class descriptor for the weight/kernel matrices in the
+    #: stack configured by `fusionnet_hiddens`. Supported values are the initializer names
+    #: (str), classes or functions listed by the frameworks (`torch`). See
+    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: the default initializer defined by `torch` is used.
+    fusionnet_kernel_initializer: Optional[Union[str, Callable]] = None
+    #: Kwargs passed into the initializer function defined through
+    #: `fcnet_kernel_initializer`.
+    fusionnet_kernel_initializer_kwargs: Optional[dict] = None
+    #: Initializer function or class descriptor for the bias vectors in the stack
+    #: configured by `fusionnet_hiddens`. Supported values are the initializer names (str),
+    #: classes or functions listed by the frameworks (`torch`). See
+    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: the default initializer defined by `torch` is used.
+    fusionnet_bias_initializer: Optional[Union[str, Callable]] = None
+    #: Kwargs passed into the initializer function defined through
+    #: `fusionnet_bias_initializer`.
+    fusionnet_bias_initializer_kwargs: Optional[dict] = None
