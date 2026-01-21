@@ -1045,7 +1045,13 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
     )
 
 
-def test_router_queue_len_metric(metrics_start_shutdown):
+@pytest.fixture
+def disable_queue_len_throttle(monkeypatch):
+    """Disable throttling for router queue length gauge updates."""
+    monkeypatch.setenv("RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", "0")
+
+
+def test_router_queue_len_metric(disable_queue_len_throttle, metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
     signal = SignalActor.remote()
 
