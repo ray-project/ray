@@ -35,6 +35,7 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
+    ImageFileMetadataProvider,
 )
 from ray.data._internal.datasource.json_datasource import (
     JSON_FILE_EXTENSIONS,
@@ -95,6 +96,9 @@ from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _validate_shuffle_arg,
+)
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
@@ -1201,6 +1205,7 @@ def read_images(
         mode=mode,
         include_paths=include_paths,
         filesystem=filesystem,
+        meta_provider=ImageFileMetadataProvider(),
         open_stream_args=arrow_open_file_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -1359,6 +1364,7 @@ def read_json(
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1545,6 +1551,7 @@ def read_csv(
         arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1663,6 +1670,7 @@ def read_text(
         encoding=encoding,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1773,6 +1781,7 @@ def read_avro(
         paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1869,6 +1878,7 @@ def read_numpy(
         numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -2016,6 +2026,7 @@ def read_tfrecords(
         tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
@@ -2186,6 +2197,7 @@ def read_mcap(
         message_types=message_types,
         include_metadata=include_metadata,
         filesystem=filesystem,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -2281,6 +2293,7 @@ def read_webdataset(
         verbose_open=verbose_open,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         shuffle=shuffle,
         include_paths=include_paths,
@@ -2395,6 +2408,7 @@ def read_binary_files(
         include_paths=include_paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
