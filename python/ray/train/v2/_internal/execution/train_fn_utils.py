@@ -17,8 +17,8 @@ from ray.train.v2.api.context import (
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
-    ValidationTaskConfig,
 )
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class TrainFnUtils(ABC):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate: Union[bool, ValidationTaskConfig] = False,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -64,7 +64,7 @@ class TrainFnUtils(ABC):
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validate: [Alpha] If True, triggers validation with default kwargs from validation_config.
+            validation: [Alpha] If True, triggers validation with default kwargs from validation_config.
                 If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
                 defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
         """
@@ -153,7 +153,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate: Union[bool, ValidationTaskConfig] = False,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         return get_internal_train_context().report(
             metrics,
@@ -162,7 +162,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_mode,
             delete_local_checkpoint_after_upload,
             checkpoint_upload_fn,
-            validate,
+            validation,
         )
 
     def get_checkpoint(self):
@@ -225,7 +225,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate: Union[bool, ValidationTaskConfig] = False,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint

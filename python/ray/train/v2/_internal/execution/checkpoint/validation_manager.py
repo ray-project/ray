@@ -16,7 +16,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
-from ray.train.v2.api.report_config import ValidationConfig, ValidationTaskConfig
+from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
@@ -37,18 +37,18 @@ def run_validate_fn(
 ) -> Dict:
     """Run the user-defined validation function.
 
-    Merges fn_kwargs from validation_config.validation_task_config (defaults) with
+    Merges fn_kwargs from validation_config.task_config (defaults) with
     fn_kwargs from validation_task_config (per-report overrides).
     """
     # Merge kwargs: defaults from validation_config, overrides from validation_task_config
     if validation_task_config is True:
-        merged_kwargs = validation_config.validation_task_config.fn_kwargs
+        merged_kwargs = validation_config.task_config.fn_kwargs
     else:
         merged_kwargs = {
-            **validation_config.validation_task_config.fn_kwargs,
+            **validation_config.task_config.fn_kwargs,
             **validation_task_config.fn_kwargs,
         }
-    metrics_dict = validation_config.validate_fn(
+    metrics_dict = validation_config.fn(
         checkpoint,
         **merged_kwargs,
     )
@@ -86,7 +86,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
     ):
-        if training_report.validate:
+        if training_report.validation:
             self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
@@ -133,7 +133,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             training_report = self._training_report_queue.popleft()
             validate_task = run_validate_fn.remote(
                 self._validation_config,
-                training_report.validate,
+                training_report.validation,
                 training_report.checkpoint,
             )
             self._pending_validations[validate_task] = training_report.checkpoint

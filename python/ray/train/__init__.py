@@ -51,9 +51,6 @@ if is_v2_enabled():
     from ray.train.v2.api.report_config import (  # noqa: F811
         CheckpointConsistencyMode,
         CheckpointUploadMode,
-        ValidateFn,
-        ValidationConfig,
-        ValidationTaskConfig,
     )
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
@@ -63,6 +60,11 @@ if is_v2_enabled():
         get_context,
         get_dataset_shard,
         report,
+    )
+    from ray.train.v2.api.validation_config import (  # noqa: F811
+        ValidateFn,
+        ValidationConfig,
+        ValidationTaskConfig,
     )
 
 

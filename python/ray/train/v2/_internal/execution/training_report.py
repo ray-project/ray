@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-    from ray.train.v2.api.report_config import ValidationTaskConfig
+    from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 
 class _TrainingReport:
@@ -12,11 +12,11 @@ class _TrainingReport:
         self,
         checkpoint: Optional["Checkpoint"],
         metrics: Dict[str, Any],
-        validate: Union[bool, "ValidationTaskConfig"],
+        validation: Union[bool, "ValidationTaskConfig"],
     ):
         self.checkpoint = checkpoint
         self.metrics = metrics
-        self.validate = validate
+        self.validation = validation
 
     def __repr__(self) -> str:
-        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validate={self.validate})"
+        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validation={self.validation})"

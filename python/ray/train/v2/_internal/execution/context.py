@@ -25,8 +25,8 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
-    ValidationTaskConfig,
 )
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
     from ray.train import BackendConfig, Checkpoint, DataConfig
@@ -230,7 +230,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate: Union[bool, ValidationTaskConfig] = False,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -242,14 +242,14 @@ class TrainContext:
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validate: The validation configuration.
+            validation: The validation configuration.
 
         Returns:
             The training result object containing the persisted checkpoint.
         """
 
         if not checkpoint:
-            return _TrainingReport(checkpoint=None, metrics=metrics, validate=False)
+            return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
         # Persist the checkpoint to the remote storage path.
         try:
@@ -287,7 +287,7 @@ class TrainContext:
         return _TrainingReport(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
-            validate=validate,
+            validation=validation,
         )
 
     def _wait_then_report(
@@ -327,7 +327,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate: Union[bool, ValidationTaskConfig] = False,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -350,7 +350,7 @@ class TrainContext:
                     "or save tensors as part of the checkpoint files instead."
                 )
 
-        if validate and not self.has_validation_fn:
+        if validation and not self.has_validation_fn:
             raise ValueError(
                 "`validation_config` was not set on the trainer, but a validation was requested."
             )
@@ -377,7 +377,7 @@ class TrainContext:
                     checkpoint,
                     delete_local_checkpoint_after_upload,
                     checkpoint_upload_fn,
-                    validate,
+                    validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -385,7 +385,7 @@ class TrainContext:
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
-                    validate=validate,
+                    validation=validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -404,7 +404,7 @@ class TrainContext:
                             checkpoint,
                             delete_local_checkpoint_after_upload,
                             checkpoint_upload_fn,
-                            validate,
+                            validation,
                         )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:

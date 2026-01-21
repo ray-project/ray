@@ -149,7 +149,7 @@ def train_func(config: dict) -> None:
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validate=ValidationTaskConfig(fn_kwargs={
+                validation=ValidationTaskConfig(fn_kwargs={
                     "train_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
                 }),
@@ -162,7 +162,7 @@ def run_trainer() -> ray.train.Result:
     train_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validation_config=ValidationConfig(validate_fn=validate_fn),
+        validation_config=ValidationConfig(fn=validate_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
         scaling_config=ray.train.ScalingConfig(

@@ -6,7 +6,7 @@ from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.report_config import ValidationConfig
+from ray.train.v2.api.validation_config import ValidationConfig
 from ray.train.v2.jax.config import JaxConfig
 from ray.util import PublicAPI
 

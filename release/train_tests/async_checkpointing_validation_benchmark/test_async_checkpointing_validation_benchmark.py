@@ -215,7 +215,7 @@ def validate_and_report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validate=validation,
+            validation=validation,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -297,9 +297,7 @@ def run_training_with_validation(
         datasets["test"] = validation_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validation_config=ValidationConfig(validate_fn=validate_fn)
-        if validate_fn
-        else None,
+        validation_config=ValidationConfig(fn=validate_fn) if validate_fn else None,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,

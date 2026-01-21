@@ -69,8 +69,9 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
-from ray.train.v2.api.report_config import CheckpointConsistencyMode, ValidationConfig
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
+from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint

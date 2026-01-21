@@ -15,7 +15,7 @@ from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
 from ray.train.v2._internal.execution.worker_group.worker import Worker
-from ray.train.v2.api.report_config import ValidationConfig, ValidationTaskConfig
+from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 from ray.train.v2.tests.util import create_dummy_training_results
 
 
@@ -40,7 +40,7 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     task3 = create_autospec(ray.ObjectRef, instance=True)
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validate_fn=lambda x: None),
+        validation_config=ValidationConfig(fn=lambda x: None),
     )
     vm._pending_validations = {
         task1: checkpoint1,
@@ -63,7 +63,7 @@ def test_before_init_train_context():
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validate_fn=lambda x: None),
+        validation_config=ValidationConfig(fn=lambda x: None),
     )
     workers = [create_autospec(Worker, instance=True) for _ in range(4)]
     assert vm.before_init_train_context(workers) == {
@@ -80,8 +80,8 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
-            validate_fn=validate_fn,
-            validation_task_config=ValidationTaskConfig(fn_kwargs={"score": 100}),
+            fn=validate_fn,
+            task_config=ValidationTaskConfig(fn_kwargs={"score": 100}),
         ),
     )
     (
@@ -100,7 +100,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
             checkpoint=low_initial_high_final_training_result.checkpoint,
-            validate=ValidationTaskConfig(fn_kwargs={"score": 200}),
+            validation=ValidationTaskConfig(fn_kwargs={"score": 200}),
         ),
         metrics={},
     )
@@ -108,7 +108,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=high_initial_low_final_training_result.metrics,
             checkpoint=high_initial_low_final_training_result.checkpoint,
-            validate=True,
+            validation=True,
         ),
         metrics={},
     )
@@ -144,7 +144,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validate_fn=failing_validate_fn),
+        validation_config=ValidationConfig(fn=failing_validate_fn),
     )
     failing_training_result = create_dummy_training_results(
         num_results=1,
@@ -158,7 +158,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
         training_report=_TrainingReport(
             metrics=failing_training_result.metrics,
             checkpoint=failing_training_result.checkpoint,
-            validate=ValidationTaskConfig(),
+            validation=ValidationTaskConfig(),
         ),
         metrics={},
     )
@@ -184,7 +184,7 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validate_fn=infinite_waiting_validate_fn),
+        validation_config=ValidationConfig(fn=infinite_waiting_validate_fn),
     )
     timing_out_training_result = create_dummy_training_results(
         num_results=1,
@@ -198,7 +198,7 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
         training_report=_TrainingReport(
             metrics=timing_out_training_result.metrics,
             checkpoint=timing_out_training_result.checkpoint,
-            validate=True,
+            validation=True,
         ),
         metrics={},
     )
