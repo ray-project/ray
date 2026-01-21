@@ -297,6 +297,65 @@ def test_job_submission_with_runtime_env_as_object(
 
 
 @pytest.mark.asyncio
+async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
+    """
+    Test that authentication headers are passed to WebSocket connections.
+
+    This test verifies that headers provided to JobSubmissionClient are
+    explicitly passed to the ws_connect() method, not just to the ClientSession.
+    This is required because aiohttp's ClientSession does not automatically
+    include session headers in WebSocket upgrade requests.
+    """
+    import aiohttp
+    from unittest.mock import AsyncMock, MagicMock
+
+    dashboard_url = ray_start_regular.dashboard_url
+    test_headers = {"Authorization": "Bearer test-token"}
+    client = JobSubmissionClient(format_web_url(dashboard_url), headers=test_headers)
+
+    # Submit a simple job
+    job_id = client.submit_job(entrypoint="echo hello")
+
+    # Mock the aiohttp ClientSession and WebSocket
+    mock_ws = AsyncMock()
+    mock_ws.receive = AsyncMock()
+    mock_ws.receive.side_effect = [
+        # First call returns a text message
+        MagicMock(type=aiohttp.WSMsgType.TEXT, data="test log line\n"),
+        # Second call indicates WebSocket is closed
+        MagicMock(type=aiohttp.WSMsgType.CLOSED),
+    ]
+    mock_ws.close_code = 1000  # Normal closure
+
+    mock_session = AsyncMock()
+    mock_session.ws_connect = AsyncMock(return_value=mock_ws)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    # Patch ClientSession to use our mock
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        # Tail logs
+        log_lines = []
+        async for lines in client.tail_job_logs(job_id):
+            log_lines.append(lines)
+
+        # Verify ws_connect was called with headers
+        mock_session.ws_connect.assert_called_once()
+        call_args = mock_session.ws_connect.call_args
+
+        # Check that headers were passed to ws_connect
+        assert "headers" in call_args.kwargs, (
+            "Headers must be explicitly passed to ws_connect(). "
+            "aiohttp ClientSession does not automatically include "
+            "session headers in WebSocket upgrade requests."
+        )
+        assert call_args.kwargs["headers"] == test_headers, (
+            f"Expected headers {test_headers} to be passed to ws_connect, "
+            f"but got {call_args.kwargs.get('headers')}"
+        )
+
+
+@pytest.mark.asyncio
 async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
     """
     Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
