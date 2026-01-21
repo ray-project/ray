@@ -233,27 +233,23 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
 @pytest.mark.parametrize(
     "test_config",
     [
-        (0, {"TPU-v4-16-head": 1, "my-tpu": 1}),
-        (1, {"my-tpu": 1}),
+        (0, "v4-16", {"TPU-v4-16-head": 1, "my-tpu": 1}),
+        (1, "v4-16", {"my-tpu": 1}),
+        (0, "tpu7x-16", {"TPU-v7x-16-head": 1, "my-tpu": 1}),
     ],
 )
 def test_tpu_pod_detect_and_configure_worker(test_config):
-    worker_id, expected_value = test_config
+    worker_id, pod_type, expected_value = test_config
     final_resources = {}
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         with patch(
-            "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "get_current_node_tpu_pod_type",
-            return_value="v4-16",
+            "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_worker_id",
+            return_value=worker_id,
         ):
-            with patch(
-                "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                ".get_current_node_tpu_worker_id",
-                return_value=worker_id,
-            ):
+            with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": pod_type}):
                 final_resources = (
                     TPUAcceleratorManager.get_current_node_additional_resources()
                 )

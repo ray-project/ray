@@ -474,6 +474,9 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
+            if accelerator_type.lower().startswith("tpu"):
+                return "v" + accelerator_type.lower()[3:]
+
             return accelerator_type
         logging.debug("Failed to get a valid accelerator type.")
         return None
@@ -581,10 +584,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         def tpu_pod_type_to_ray_accelerator_type(
             tpu_pod_type: str,
         ) -> Optional[str]:
-            tpu_generation = tpu_pod_type.split("-")[0]
-            if tpu_generation.lower().startswith("tpu"):
-                tpu_generation = "v" + tpu_generation[3:]
-            return "TPU-" + tpu_generation.upper()
+            return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
 
         ray_accelerator_type = None
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
