@@ -652,7 +652,9 @@ message PlacementGroupTableData {
   bytes placement_group_id = 1;
   // The name of the placement group.
   string name = 2;
-  // The array of the bundle in Placement Group.
+  // The currently active bundles for this Placement Group.
+  // If a fallback strategy is applied, this field is updated to contain the bundles
+  // from that strategy rather than the original request.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;

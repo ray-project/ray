@@ -696,6 +696,8 @@ message PlacementGroupSpec {
   // The name of the placement group.
   string name = 2;
   // The array of the bundle in Placement Group.
+  // This represents the primary resource requirements for the placement group, but
+  // not necessarily the active bundles which may differ if a fallback option is applied.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
