@@ -5,8 +5,9 @@
 
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS main-build
-ARG PYTHON_VERSION
-ARG PYTHON_DEPSET
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
 
 RUN <<EOF
 #!/bin/bash

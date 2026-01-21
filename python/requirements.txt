@@ -48,7 +48,7 @@ uvicorn
 prometheus_client>=0.7.1
 pandas
 tensorboardX
-aiohttp>=3.7
+aiohttp>=3.13.3
 starlette
 typer
 fsspec
