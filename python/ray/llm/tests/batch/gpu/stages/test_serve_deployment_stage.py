@@ -3,9 +3,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.exceptions import RayActorError
 from ray.llm._internal.batch.stages.serve_deployment_stage import (
     ServeDeploymentStageUDF,
 )
+from ray.serve._private.common import DeploymentID
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionRequest
 
 
@@ -171,6 +174,286 @@ async def test_serve_deployment_missing_dtype(
     ):
         async for _ in udf(batch):
             pass
+
+
+# ============================================================================
+# Error handling tests for should_continue_on_error
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_default_raises_on_error(mock_serve_deployment_handle):
+    """Default behavior (should_continue_on_error=False) raises on inference error."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            raise ValueError("prompt too long")
+            yield  # Make it a generator
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=False,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="prompt too long"):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_continue_on_error_yields_error_row(
+    mock_serve_deployment_handle,
+):
+    """With should_continue_on_error=True, errors yield rows with __inference_error__."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            raise ValueError("prompt too long")
+            yield  # Make it a generator
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test prompt", "temperature": 0.7},
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert "__inference_error__" in results[0]
+    assert "ValueError" in results[0]["__inference_error__"]
+    assert "prompt too long" in results[0]["__inference_error__"]
+    # Error rows include request_kwargs snippet for debuggability
+    assert "request_kwargs" in results[0]
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_mixed_success_and_error(mock_serve_deployment_handle):
+    """Mixed batch: some rows succeed, some fail."""
+    call_count = 0
+
+    def mock_remote_call(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        current_call = call_count
+
+        async def mock_async_iterator():
+            # Second call fails
+            if current_call == 2:
+                raise ValueError("prompt too long")
+            yield {"generated_text": f"Response {current_call}"}
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "first", "temperature": 0.7},
+            },
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "second", "temperature": 0.7},
+            },
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "third", "temperature": 0.7},
+            },
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 3
+
+    errors = [r for r in results if r.get("__inference_error__") is not None]
+    successes = [r for r in results if r.get("__inference_error__") is None]
+
+    assert len(errors) == 1
+    assert len(successes) == 2
+    assert "ValueError" in errors[0]["__inference_error__"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fatal_error",
+    [
+        RayActorError(error_msg="Actor died"),
+        BackPressureError(num_queued_requests=100, max_queued_requests=50),
+        DeploymentUnavailableError(
+            deployment_id=DeploymentID(name="test", app_name="test_app")
+        ),
+    ],
+)
+async def test_serve_udf_fatal_errors_always_propagate(
+    mock_serve_deployment_handle, fatal_error
+):
+    """Fatal errors (RayActorError, BackPressureError, etc.) always propagate."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            raise fatal_error
+            yield  # Make it a generator
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,  # Even with this True, fatal errors propagate
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(type(fatal_error)):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_unknown_errors_propagate(mock_serve_deployment_handle):
+    """Unknown errors propagate even with should_continue_on_error=True."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            raise RuntimeError("unexpected system error")
+            yield
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="unexpected system error"):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_success_with_continue_on_error_includes_none_error(
+    mock_serve_deployment_handle,
+):
+    """Successful rows with should_continue_on_error=True have __inference_error__=None."""
+    mock_response = {"generated_text": "Hello!"}
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            yield mock_response
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert results[0]["__inference_error__"] is None
+    assert results[0]["generated_text"] == "Hello!"
 
 
 if __name__ == "__main__":
