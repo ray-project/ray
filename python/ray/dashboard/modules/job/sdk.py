@@ -500,7 +500,7 @@ class JobSubmissionClient(SubmissionClient):
             ws = await session.ws_connect(
                 f"{self._address}/api/jobs/{job_id}/logs/tail",
                 headers=self._headers,
-                ssl=self._ssl_context
+                ssl=self._ssl_context,
             )
 
             while True:
