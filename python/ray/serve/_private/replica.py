@@ -1770,7 +1770,8 @@ class UserCallableWrapper:
         num_cpus = self._ray_actor_options.get("num_cpus")
         if num_cpus is None:
             return None
-        return max(1, int(math.ceil(num_cpus)))
+        # Mirror ThreadPoolExecutor default behavior while respecting num_cpus.
+        return min(32, max(1, int(math.ceil(num_cpus))) + 4)
 
     def _configure_user_code_threadpool(self) -> None:
         max_workers = self._get_user_code_threadpool_max_workers()

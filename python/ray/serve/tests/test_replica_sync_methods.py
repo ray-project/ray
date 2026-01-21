@@ -132,7 +132,7 @@ def test_thread_limit_set_to_max_ongoing_requests(serve_instance):
 )
 @pytest.mark.parametrize(
     ("num_cpus", "expected_workers"),
-    [(0, 1), (0.1, 1), (2, 2), (2.2, 3)],
+    [(0, 5), (0.1, 5), (2, 6), (2.2, 7), (30, 32)],
 )
 def test_asyncio_default_executor_limited_by_num_cpus(
     serve_instance, num_cpus, expected_workers
