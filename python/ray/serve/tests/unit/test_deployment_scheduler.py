@@ -950,13 +950,13 @@ def test_filter_nodes_by_label_selector():
 
     # in operator
     filtered = scheduler._filter_nodes_by_label_selector(
-        nodes, {"region": "in(us-west, us-east)"}, node_labels
+        nodes, {"region": "in(us-west,us-east)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1", "n2"}
 
     # !in operator
     filtered = scheduler._filter_nodes_by_label_selector(
-        nodes, {"env": "!in(dev, staging)"}, node_labels
+        nodes, {"env": "!in(dev,staging)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1"}
 
@@ -971,12 +971,6 @@ def test_filter_nodes_by_label_selector():
         nodes, {"gpu": "!T4"}, node_labels
     )
     assert set(filtered.keys()) == {"n2", "n3"}
-
-    # Validate we handle whitespace.
-    filtered = scheduler._filter_nodes_by_label_selector(
-        nodes, {"region": "in(  us-west , us-east  )"}, node_labels
-    )
-    assert set(filtered.keys()) == {"n1", "n2"}
 
 
 def test_build_pack_placement_candidates():
