@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -366,6 +367,153 @@ def test_standard_scaler():
     )
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
+
+
+def test_standard_scaler_arrow_transform():
+    """Test the StandardScaler _transform_arrow method directly."""
+    # Create test data
+    col_a = ["red", "green", "blue", "red"]
+    col_b = [1.0, 3.0, 5.0, 7.0]  # mean=4, std=2.236
+    col_c = [10.0, 10.0, 10.0, 10.0]  # constant column, std=0
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+
+    scaler = StandardScaler(["B", "C"])
+    scaler.fit(ray.data.from_pandas(in_df))
+
+    # Create Arrow table for transformation
+    table = pa.Table.from_pandas(in_df)
+
+    # Transform using Arrow
+    result_table = scaler._transform_arrow(table)
+
+    # Verify result is an Arrow table
+    assert isinstance(result_table, pa.Table)
+
+    # Convert to pandas for easier comparison
+    result_df = result_table.to_pandas()
+
+    # Expected encoding:
+    # B: (x - mean(B)) / std(B)
+    # C: std(C)=0 -> std becomes 1 -> (x - mean(C)) / 1 = 0 for all
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_col_b = [(x - b_mean) / b_std for x in col_b]
+
+    c_mean = scaler.stats_["mean(C)"]
+    c_std = scaler.stats_["std(C)"] or 0.0
+    if c_std == 0:
+        c_std = 1
+    expected_col_c = [(x - c_mean) / c_std for x in col_c]
+
+    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
+    assert np.allclose(
+        result_df["B"].tolist(), expected_col_b
+    ), f"Column B mismatch: {result_df['B'].tolist()}"
+    assert np.allclose(
+        result_df["C"].tolist(), expected_col_c
+    ), f"Column C mismatch: {result_df['C'].tolist()}"
+
+
+def test_standard_scaler_arrow_transform_append_mode():
+    """Test the StandardScaler _transform_arrow method in append mode."""
+    col_a = ["red", "green", "blue"]
+    col_b = [1.0, 3.0, 5.0]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+
+    scaler = StandardScaler(["B"], output_columns=["B_scaled"])
+    scaler.fit(ray.data.from_pandas(in_df))
+
+    table = pa.Table.from_pandas(in_df)
+    result_table = scaler._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Original columns should be unchanged
+    assert result_df["A"].tolist() == col_a
+    assert result_df["B"].tolist() == col_b
+
+    # New column should have scaled values: (x - 3) / 2
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_b_scaled = [(x - b_mean) / b_std for x in col_b]
+    assert np.allclose(result_df["B_scaled"].tolist(), expected_b_scaled)
+
+
+def test_standard_scaler_arrow_transform_null_stats():
+    """Test the StandardScaler _transform_arrow method with null mean/std."""
+    # Use an all-null column to produce null mean/std during fit.
+    in_df = pd.DataFrame.from_dict({"A": [None, None, None]})
+
+    scaler = StandardScaler(["A"])
+    scaler.fit(ray.data.from_pandas(in_df))
+
+    table = pa.Table.from_pandas(in_df)
+    result_table = scaler._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # All values should be null when mean/std is None
+    assert result_df["A"].isna().all(), "All values should be null when stats are None"
+
+
+def test_standard_scaler_arrow_transform_overlapping_columns():
+    """Test StandardScaler _transform_arrow with overlapping input/output columns.
+
+    This tests the case where output_columns[i] == columns[j] for i < j.
+    The Arrow implementation must read all input columns before writing any output
+    to avoid corrupting data that will be read later.
+    """
+    # columns=['A', 'B'], output_columns=['B', 'C']
+    # Without the fix, B would be overwritten before being read as input
+    col_a = [2.0, 4.0, 6.0]  # mean=4, std=2 -> scaled: [-1, 0, 1]
+    col_b = [10.0, 20.0, 30.0]  # mean=20, std=10 -> scaled: [-1, 0, 1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+
+    scaler = StandardScaler(["A", "B"], output_columns=["B", "C"])
+    scaler.fit(ray.data.from_pandas(in_df))
+
+    # Test Arrow transform
+    table = pa.Table.from_pandas(in_df)
+    result_table = scaler._transform_arrow(table)
+    result_df = result_table.to_pandas()
+
+    # Test pandas transform for comparison
+    pandas_result = scaler._transform_pandas(in_df.copy())
+
+    # Column A should be unchanged (not in output_columns with same index)
+    assert result_df["A"].tolist() == col_a, "Column A should be unchanged"
+
+    # Column B should contain scaled A: (A - 4) / 2 = [-1, 0, 1]
+    a_mean = scaler.stats_["mean(A)"]
+    a_std = scaler.stats_["std(A)"] or 0.0
+    if a_std == 0:
+        a_std = 1
+    expected_b = [(x - a_mean) / a_std for x in col_a]
+    assert np.allclose(result_df["B"].tolist(), expected_b), (
+        f"Column B should contain scaled A. Expected {expected_b}, "
+        f"got {result_df['B'].tolist()}"
+    )
+
+    # Column C should contain scaled B: (B - 20) / 10 = [-1, 0, 1]
+    b_mean = scaler.stats_["mean(B)"]
+    b_std = scaler.stats_["std(B)"] or 0.0
+    if b_std == 0:
+        b_std = 1
+    expected_c = [(x - b_mean) / b_std for x in col_b]
+    assert np.allclose(result_df["C"].tolist(), expected_c), (
+        f"Column C should contain scaled B. Expected {expected_c}, "
+        f"got {result_df['C'].tolist()}"
+    )
+
+    # Arrow and pandas results should match
+    pd.testing.assert_frame_equal(
+        result_df,
+        pandas_result,
+        check_like=True,
+        obj="Arrow vs Pandas transform results should match",
+    )
 
 
 class TestScalerSerialization:

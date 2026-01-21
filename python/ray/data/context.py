@@ -139,9 +139,6 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
-# Progress bar log interval in seconds
-DEFAULT_PROGRESS_BAR_LOG_INTERVAL = env_integer("RAY_DATA_PROGRESS_LOG_INTERVAL", 5)
-
 # Globally enable or disable experimental rich progress bars. This is a new
 # interface to replace the old tqdm progress bar implementation.
 DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
@@ -403,8 +400,6 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
-        progress_bar_log_interval: The interval in seconds for logging progress bar
-            updates in non-interactive terminals.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
@@ -581,7 +576,6 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
-    progress_bar_log_interval: int = DEFAULT_PROGRESS_BAR_LOG_INTERVAL
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
