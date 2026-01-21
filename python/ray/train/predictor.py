@@ -1,6 +1,6 @@
 import abc
 import warnings
-from typing import Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,6 @@ from ray.air.util.data_batch_conversion import (
     _convert_batch_type_to_numpy,
     _convert_batch_type_to_pandas,
 )
-from ray.data import Preprocessor
 from ray.train import Checkpoint
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -21,6 +20,9 @@ try:
     pa_table = pyarrow.Table
 except ImportError:
     pa_table = None
+
+if TYPE_CHECKING:
+    from ray.data import Preprocessor
 
 # Reverse mapping from data batch type to batch format.
 TYPE_TO_ENUM: Dict[Type[DataBatchType], BatchFormat] = {
@@ -75,7 +77,7 @@ class Predictor(abc.ABC):
        tensor data to avoid extra copies from Pandas conversions.
     """
 
-    def __init__(self, preprocessor: Optional[Preprocessor] = None):
+    def __init__(self, preprocessor: Optional["Preprocessor"] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         warnings.warn(
             f"{self.__class__.__name__} is deprecated and will be removed after April 2026.",
@@ -122,11 +124,11 @@ class Predictor(abc.ABC):
 
         return PandasUDFPredictor()
 
-    def get_preprocessor(self) -> Optional[Preprocessor]:
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Get the preprocessor to use prior to executing predictions."""
         return self._preprocessor
 
-    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
+    def set_preprocessor(self, preprocessor: Optional["Preprocessor"]) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._preprocessor = preprocessor
 
