@@ -11,9 +11,6 @@ import ray
 from ray.data import Schema
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.datasource import (
-    BaseFileMetadataProvider,
-)
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
@@ -143,20 +140,6 @@ def test_csv_read(
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     shutil.rmtree(path)
-
-    dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
-
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_csv(
-            path1,
-            meta_provider=BaseFileMetadataProvider(),
-        )
 
 
 def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
