@@ -319,30 +319,63 @@
   python: "3.10"
   working_dir: nightly_tests
 
-  cluster:
-    cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
-
   variations:
-    - __suffix__: s3_parquet
+    - __suffix__: s3_parquet_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_parquet --simulated-training-time 0.01
 
-    - __suffix__: s3_url_image
+    - __suffix__: s3_url_image_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_url_image --simulated-training-time 0.01
 
-    - __suffix__: s3_read_images
+    - __suffix__: s3_read_images_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_read_images --simulated-training-time 0.01
+
+    - __suffix__: s3_parquet_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_gpu_compute_microbenchmark.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_microbenchmark.py
+          --data-loader s3_parquet --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
+
+    - __suffix__: s3_url_image_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_gpu_compute_microbenchmark.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_microbenchmark.py
+          --data-loader s3_url_image --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
+
+    - __suffix__: s3_read_images_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_gpu_compute_microbenchmark.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_microbenchmark.py
+          --data-loader s3_read_images --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
 
 #################
 # Iteration tests

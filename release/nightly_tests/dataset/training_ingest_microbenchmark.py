@@ -78,6 +78,12 @@ class BenchmarkConfig:
     # Data split to use
     split: str = "train"
 
+    # Device for tensor placement ("cpu" or "cuda")
+    device: str = "cpu"
+
+    # Pin memory for faster GPU transfer
+    pin_memory: bool = False
+
     @property
     def supported_data_loaders(self) -> List[str]:
         """Return list of supported data loaders."""
@@ -108,6 +114,8 @@ class BenchmarkConfig:
         logger.info(f"Number of image columns: {self.num_image_columns_list}")
         logger.info(f"Number of batches: {self.num_batches}")
         logger.info(f"Simulated training time: {self.simulated_training_time}")
+        logger.info(f"Device: {self.device}")
+        logger.info(f"Pin memory: {self.pin_memory}")
         logger.info("=" * 80)
 
 
@@ -560,6 +568,8 @@ def benchmark_iteration(
     prefetch_batches: int,
     num_batches: int = 100,
     simulated_training_time: float = None,
+    device: str = "auto",
+    pin_memory: bool = False,
 ) -> Dict[str, float]:
     """Benchmark iterating through batches.
 
@@ -570,17 +580,20 @@ def benchmark_iteration(
         num_batches: Number of batches to iterate through for timing
         simulated_training_time: Time in seconds to sleep per batch to simulate training.
             If None, no sleep is performed.
+        device: Device for tensor placement ("cpu" or "cuda")
+        pin_memory: Pin memory for faster GPU transfer
 
     Returns:
         Dictionary with timing metrics
     """
     start_time = time.time()
 
-    # Create iterator
     iterator = dataset.iter_torch_batches(
         batch_size=batch_size,
         prefetch_batches=prefetch_batches,
         drop_last=True,
+        device=device,
+        pin_memory=pin_memory,
     )
 
     # Iterate through batches
@@ -657,14 +670,17 @@ def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
             num_image_columns=num_image_columns,
         )
 
-        # Run benchmark
+        # Run benchmark (request GPU if device is cuda)
+        num_gpus = 1 if config.device == "cuda" else 0
         metrics = ray.get(
-            benchmark_iteration.remote(
+            benchmark_iteration.options(num_gpus=num_gpus).remote(
                 dataset=ds,
                 batch_size=batch_size,
                 prefetch_batches=prefetch_batches,
                 num_batches=config.num_batches,
                 simulated_training_time=config.simulated_training_time,
+                device=config.device,
+                pin_memory=config.pin_memory,
             )
         )
 
@@ -770,6 +786,32 @@ def main():
         default=default_config.split,
         help=f"Data split to use. Default: {default_config.split}",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=default_config.device,
+        help=f"Device for tensor placement. Default: {default_config.device}",
+    )
+    parser.add_argument(
+        "--pin-memory",
+        action="store_true",
+        default=default_config.pin_memory,
+        help="Pin memory for faster GPU transfer.",
+    )
+    parser.add_argument(
+        "--batch-sizes",
+        type=int,
+        nargs="+",
+        default=default_config.batch_sizes,
+        help=f"Batch sizes to test. Default: {default_config.batch_sizes}",
+    )
+    parser.add_argument(
+        "--prefetch-batches",
+        type=int,
+        nargs="+",
+        default=default_config.prefetch_batches_list,
+        help=f"Prefetch batch counts to test. Default: {default_config.prefetch_batches_list}",
+    )
     args = parser.parse_args()
 
     # Build configuration from CLI args
@@ -778,6 +820,10 @@ def main():
         num_batches=args.num_batches,
         simulated_training_time=args.simulated_training_time,
         split=args.split,
+        device=args.device,
+        pin_memory=args.pin_memory,
+        batch_sizes=args.batch_sizes,
+        prefetch_batches_list=args.prefetch_batches,
     )
 
     # Log benchmark configuration
@@ -798,6 +844,8 @@ def main():
             "prefetch_batches_list": config.prefetch_batches_list,
             "num_image_columns_list": config.num_image_columns_list,
             "num_batches": config.num_batches,
+            "device": config.device,
+            "pin_memory": config.pin_memory,
         }
 
 
