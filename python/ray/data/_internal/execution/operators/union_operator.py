@@ -139,6 +139,13 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         Pulls one block from the current input, then advances to the next.
         If the current input's buffer is empty but not done, we return
         without advancing to the next input so the scheduling won't be blocked.
+
+        This ensures deterministic ordering of output blocks:
+        - We iterate through inputs in a fixed order (0, 1, 2, ..., 0, 1, ...).
+        - We only advance to the next input after consuming exactly one block
+          from the current input (or if the current input is exhausted).
+        - If an input is not ready (empty but not done), we return
+          rather than skipping it, preserving the round-robin sequence.
         """
         num_inputs = len(self._input_buffers)
 
