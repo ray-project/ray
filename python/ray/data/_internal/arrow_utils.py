@@ -28,24 +28,21 @@ def _combine_as_list_array(
             raise ValueError(
                 "Either column_values or both offsets and values must be provided."
             )
+    else:
+        lens = [len(v) for v in column_values]
         offsets_type = pa.int64() if is_large else pa.int32()
-        offsets = pc.cast(offsets, offsets_type)
-        array_cls = pa.LargeListArray if is_large else pa.ListArray
-        return array_cls.from_arrays(offsets, values, mask=null_mask)
-
-    lens = [len(v) for v in column_values]
-    offsets_type = pa.int64() if is_large else pa.int32()
-    offsets = pa.array(np.concatenate([[0], np.cumsum(lens)]), type=offsets_type)
-
-    combined = pa.concat_arrays(
-        itertools.chain(
-            *[
-                v.chunks if isinstance(v, pa.ChunkedArray) else [v]
-                for v in column_values
-            ]
+        offsets = pa.array(np.concatenate([[0], np.cumsum(lens)]), type=offsets_type)
+        values = pa.concat_arrays(
+            itertools.chain(
+                *[
+                    v.chunks if isinstance(v, pa.ChunkedArray) else [v]
+                    for v in column_values
+                ]
+            )
         )
-    )
 
+    offsets_type = pa.int64() if is_large else pa.int32()
+    offsets = pc.cast(offsets, offsets_type)
     array_cls = pa.LargeListArray if is_large else pa.ListArray
-    list_type = pa.large_list(combined.type) if is_large else pa.list_(combined.type)
-    return array_cls.from_arrays(offsets, combined, list_type, mask=null_mask)
+    list_type = pa.large_list(values.type) if is_large else pa.list_(values.type)
+    return array_cls.from_arrays(offsets, values, list_type, mask=null_mask)
