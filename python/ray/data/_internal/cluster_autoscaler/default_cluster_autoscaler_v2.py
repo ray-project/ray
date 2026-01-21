@@ -3,7 +3,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
 from .base_autoscaling_coordinator import AutoscalingCoordinator
@@ -54,6 +54,14 @@ class _NodeResourceSpec:
         mem = math.floor(mem)
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
+    @classmethod
+    def from_bundle(self, bundle: Dict[str, Any]) -> "_NodeResourceSpec":
+        return _NodeResourceSpec.of(
+            cpu=bundle.get("CPU", 0),
+            gpu=bundle.get("GPU", 0),
+            mem=bundle.get("memory", 0),
+        )
+
     def to_bundle(self):
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
@@ -67,10 +75,9 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
         for node_group_config in cluster_config.node_group_configs:
             if not node_group_config.resources or node_group_config.max_count == 0:
                 continue
-            node_resource_spec = _NodeResourceSpec.of(
-                cpu=node_group_config.resources.get("CPU", 0),
-                gpu=node_group_config.resources.get("GPU", 0),
-                mem=node_group_config.resources.get("memory", 0),
+
+            node_resource_spec = _NodeResourceSpec.from_bundle(
+                node_group_config.resources
             )
             nodes_resource_spec_count[node_resource_spec] = 0
 
@@ -82,9 +89,7 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
     ]
 
     for r in node_resources:
-        node_resource_spec = _NodeResourceSpec.of(
-            cpu=r.get("CPU", 0), gpu=r.get("GPU", 0), mem=r.get("memory", 0)
-        )
+        node_resource_spec = _NodeResourceSpec.from_bundle(r)
         nodes_resource_spec_count[node_resource_spec] += 1
 
     return nodes_resource_spec_count
@@ -229,15 +234,16 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             active_bundles, pending_bundles, self._resource_limits
         )
 
-        if pending_bundles:
-            self._log_resource_request(util, pending_bundles)
+        if resource_request != active_bundles:
+            self._log_resource_request(util, active_bundles, resource_request)
 
         self._send_resource_request(resource_request)
 
     def _log_resource_request(
         self,
         current_utilization: ExecutionResources,
-        pending_bundles: List[Dict[str, float]],
+        active_bundles: List[Dict[str, float]],
+        resource_request: List[Dict[str, float]],
     ) -> None:
         message = (
             "Scaling up cluster. Current utilization: "
@@ -246,18 +252,15 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             "Requesting resources:"
         )
 
-        node_resurce_spec_counts = Counter(
-            [
-                _NodeResourceSpec.of(
-                    cpu=bundle.get("CPU", 0),
-                    gpu=bundle.get("GPU", 0),
-                    mem=bundle.get("memory", 0),
-                )
-                for bundle in pending_bundles
-            ]
+        current_node_counts = Counter(
+            [_NodeResourceSpec.from_bundle(bundle) for bundle in active_bundles]
         )
-        for node_resurce_spec, count in node_resurce_spec_counts.items():
-            message += f" [{node_resurce_spec}: +{count}]"
+        requested_node_counts = Counter(
+            [_NodeResourceSpec.from_bundle(bundle) for bundle in resource_request]
+        )
+        for node_spec, requested_count in requested_node_counts.items():
+            current_count = current_node_counts.get(node_spec, 0)
+            message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
         logger.info(message)
 

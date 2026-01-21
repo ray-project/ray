@@ -546,7 +546,7 @@ class TestClusterAutoscaling:
         expected_message = (
             "Scaling up cluster. Current utilization: "
             "CPU=1.00, GPU=1.00, object_store_memory=1.00. "
-            "Requesting resources: [{CPU: 1, GPU: 0, memory: 8.0GiB}: +1]"
+            "Requesting resources: [{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )
         log_messages = [record.message for record in caplog.records]
         assert expected_message in log_messages, (
