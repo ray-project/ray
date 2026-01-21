@@ -2575,7 +2575,10 @@ def healthcheck(address, component, skip_version_check):
 )
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
-    """Show the cpp library path and generate the bazel project template."""
+    """Show the cpp library path and generate the bazel project template.
+
+    This command MUST be run from the ray project root directory.
+    """
     if sys.platform == "win32":
         raise click.ClickException("Ray C++ API is not supported on Windows currently.")
 
@@ -2584,7 +2587,15 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
         )
+
     bazel_version_filename = ".bazelversion"
+
+    if not os.path.exists(bazel_version_filename):
+        raise ValueError(
+            "This command can only be run from the ray project's root directory. "
+            "It expects a .bazelversion file to be present."
+        )
+
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
     cpp_template_dir = os.path.join(cpp_dir, "example")
@@ -2620,9 +2631,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("To build and run this template, run")
         cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
+        # This assumes that your current working directory has a .bazelversion file.
         shutil.copyfile(
             bazel_version_filename,
-            os.path.join(cpp_template_dir, bazel_version_filename),
+            os.path.join(out_dir, bazel_version_filename),
         )
 
 
