@@ -64,7 +64,7 @@ message ActorLifecycleEvent {
     // Port of the actor worker. Available when state is ALIVE.
     int32 port = 8;
     // Reason for restarting. Only set when state is RESTARTING.
-    RestartReason restarting_reason = 9;
+    RestartReason restart_reason = 9;
   }
 
   // The ID of the actor that was created.
