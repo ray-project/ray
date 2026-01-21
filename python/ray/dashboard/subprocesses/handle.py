@@ -207,10 +207,14 @@ class SubprocessModuleHandle:
                             "force killing..."
                         )
                         self.process.kill()
-                        self.process.join(timeout=2.0)
+                        self.process.join(
+                            timeout=dashboard_consts.SUBPROCESS_MODULE_JOIN_TIMEOUT
+                        )
                 else:
                     # Process already dead, just wait for it
-                    self.process.join(timeout=1.0)
+                    self.process.join(
+                        timeout=dashboard_consts.SUBPROCESS_MODULE_JOIN_TIMEOUT
+                    )
 
                 logger.debug(f"Process {self.process.pid} terminated successfully")
             except Exception as e:
