@@ -31,8 +31,6 @@ RayNodeDefinitionEvent::RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
       AbslTimeNanosToProtoTimestamp(absl::ToInt64Nanoseconds(
           absl::FromUnixMillis(data.start_time_ms()) - absl::UnixEpoch())));
   data_.mutable_labels()->insert(data.labels().begin(), data.labels().end());
-
-  // Populate additional fields from GcsNodeInfo
   data_.set_hostname(data.node_manager_hostname());
   data_.set_node_name(data.node_name());
   data_.set_instance_id(data.instance_id());
