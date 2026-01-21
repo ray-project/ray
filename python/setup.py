@@ -239,6 +239,8 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             *pyarrow_deps,
             "fsspec",
+            "av",  # For LeRobot video decoding (PyAV backend)
+            "huggingface_hub",  # For LeRobot dataset downloading
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
