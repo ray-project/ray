@@ -20,6 +20,16 @@ set -euo pipefail
 BUILD=1 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ./ci/ci.sh init
 rm -rf python/ray/thirdparty_files
 
+# Re-activate conda environment (ci.sh runs in a subprocess so PATH changes are lost)
+# For Python 3.14+, a separate conda env is created and symlinked to /opt/miniforge/bin
+# We can't use `conda activate` because the conda command itself breaks after symlinking
+# (it tries to use the new Python which doesn't have conda installed)
+if [[ -d /opt/miniforge/envs/py${PYTHON_VERSION} ]]; then
+  export PATH="/opt/miniforge/envs/py${PYTHON_VERSION}/bin:/opt/miniforge/bin:$PATH"
+else
+  export PATH="/opt/miniforge/bin:$PATH"
+fi
+
 # install test requirements
 python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
 
