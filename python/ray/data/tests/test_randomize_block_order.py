@@ -16,10 +16,7 @@ def test_randomize_blocks_operator(ray_start_regular_shared):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = RandomizeBlocks(
-        read_op,
-        seed=0,
-    )
+    op = RandomizeBlocks(input_op=read_op, seed=0)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 

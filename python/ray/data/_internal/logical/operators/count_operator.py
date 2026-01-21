@@ -1,6 +1,10 @@
+from dataclasses import dataclass
+from typing import Optional
+
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 
+@dataclass(frozen=True, repr=False)
 class Count(LogicalOperator):
     """Logical operator that represents counting the number of rows in inputs.
 
@@ -11,8 +15,11 @@ class Count(LogicalOperator):
 
     COLUMN_NAME = "__num_rows"
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-    ):
-        super().__init__("Count", [input_op])
+    input_op: Optional[LogicalOperator] = None
+
+    def __post_init__(self) -> None:
+        if not self.input_dependencies and self.input_op is not None:
+            object.__setattr__(self, "input_dependencies", (self.input_op,))
+        if self.name is None:
+            object.__setattr__(self, "name", "Count")
+        super().__post_init__()

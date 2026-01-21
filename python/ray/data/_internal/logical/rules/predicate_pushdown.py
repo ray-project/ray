@@ -1,4 +1,4 @@
-import copy
+from dataclasses import replace
 from typing import List
 
 from ray.data._internal.logical.interfaces import (
@@ -59,11 +59,11 @@ class PredicatePushdown(Rule):
             return op
 
         # Combine predicates
-        combined_predicate = op._predicate_expr & input_op._predicate_expr
+        combined_predicate = op.predicate_expr & input_op.predicate_expr
 
         # Create new filter on the input of the lower filter
         return Filter(
-            input_op.input_dependencies[0],
+            input_op=input_op.input_dependencies[0],
             predicate_expr=combined_predicate,
         )
 
@@ -93,7 +93,7 @@ class PredicatePushdown(Rule):
         from ray.data.expressions import AliasExpr
 
         collector = _ColumnReferenceCollector()
-        collector.visit(filter_op._predicate_expr)
+        collector.visit(filter_op.predicate_expr)
         predicate_columns = set(collector.get_column_refs() or [])
 
         output_columns = set()
@@ -180,7 +180,7 @@ class PredicatePushdown(Rule):
             return op
         filter_op: Filter = op
         input_op = filter_op.input_dependencies[0]
-        predicate_expr = filter_op._predicate_expr
+        predicate_expr = filter_op.predicate_expr
 
         # Case 1: Check if operator supports predicate pushdown (e.g., Read)
         if (
@@ -243,7 +243,7 @@ class PredicatePushdown(Rule):
 
                 # Push filter through and recursively try to push further
                 new_filter = Filter(
-                    input_op.input_dependencies[0],
+                    input_op=input_op.input_dependencies[0],
                     predicate_expr=predicate_expr,
                 )
                 pushed_filter = cls._try_push_down_predicate(new_filter)
@@ -256,7 +256,9 @@ class PredicatePushdown(Rule):
                 # Apply filter to each branch and recursively push down
                 new_inputs = []
                 for branch_op in input_op.input_dependencies:
-                    branch_filter = Filter(branch_op, predicate_expr=predicate_expr)
+                    branch_filter = Filter(
+                        input_op=branch_op, predicate_expr=predicate_expr
+                    )
                     pushed_branch = cls._try_push_down_predicate(branch_filter)
                     new_inputs.append(pushed_branch)
 
@@ -283,7 +285,7 @@ class PredicatePushdown(Rule):
             return filter_op
 
         push_side = conditional_op.which_side_to_push_predicate(
-            filter_op._predicate_expr
+            filter_op.predicate_expr
         )
 
         if push_side is None:
@@ -296,8 +298,8 @@ class PredicatePushdown(Rule):
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
-            new_inputs[branch_idx],
-            predicate_expr=filter_op._predicate_expr,
+            input_op=new_inputs[branch_idx],
+            predicate_expr=filter_op.predicate_expr,
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -317,8 +319,4 @@ class PredicatePushdown(Rule):
         Returns:
             A shallow copy of the operator with updated input dependencies
         """
-        new_op = copy.copy(op)
-        new_op._input_dependencies = new_inputs
-        new_op._output_dependencies = []
-        new_op._wire_output_deps(new_inputs)
-        return new_op
+        return replace(op, input_dependencies=tuple(new_inputs))

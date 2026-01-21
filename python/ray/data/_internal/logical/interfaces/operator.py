@@ -42,6 +42,10 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["Operator"]) -> None:
+        self._input_dependencies = value
+
     @property
     def output_dependencies(self) -> List["Operator"]:
         """List of operators that consume outputs from this operator."""

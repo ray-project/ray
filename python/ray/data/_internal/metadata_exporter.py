@@ -157,8 +157,15 @@ class Topology:
             )
 
             # Add sub-stages if they exist
-            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
-                for j, sub_name in enumerate(op._sub_progress_bar_names):
+            sub_stage_names = None
+            if hasattr(op, "get_sub_progress_bar_names"):
+                sub_stage_names = op.get_sub_progress_bar_names()
+            elif hasattr(op, "sub_progress_bar_names"):
+                sub_stage_names = op.sub_progress_bar_names
+            elif hasattr(op, "_sub_progress_bar_names"):
+                sub_stage_names = op._sub_progress_bar_names
+            if sub_stage_names:
+                for j, sub_name in enumerate(sub_stage_names):
                     sub_stage_id = f"{op_id}_sub_{j}"
                     operator.sub_stages.append(SubStage(name=sub_name, id=sub_stage_id))
 
