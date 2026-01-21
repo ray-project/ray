@@ -267,13 +267,9 @@ class VLLMEngine(LLMEngine):
 
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
-        args = argparse.Namespace(
-            **(vllm_frontend_args.__dict__ | vllm_engine_args.__dict__)
+        args = _dict_to_namespace(
+            vllm_frontend_args.__dict__ | vllm_engine_args.__dict__
         )
-        # Рекурсивно преобразуем вложенные dict в Namespace
-        for key, value in vars(args).items():
-            if isinstance(value, dict):
-                setattr(args, key, _dict_to_namespace(value))
 
         if "vllm_config" in inspect.signature(init_app_state).parameters:
             await init_app_state(
