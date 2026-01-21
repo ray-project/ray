@@ -324,9 +324,9 @@ def build_vllm_engine_processor(
     # This should be a lightweight operation.
     # Use EXCLUDE_SAFETENSORS for streaming formats or trust_remote_code models,
     # since custom model architectures require Python config files to be downloaded.
-    if config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
-        download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
-    elif config.engine_kwargs.get("trust_remote_code", False):
+    if config.engine_kwargs.get(
+        "load_format", None
+    ) in STREAMING_LOAD_FORMATS or config.engine_kwargs.get("trust_remote_code", False):
         download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
     else:
         download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
