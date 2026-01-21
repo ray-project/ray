@@ -40,6 +40,16 @@ from dataset_benchmark_util import IMAGENET_WNID_TO_ID
 
 logger = logging.getLogger(__name__)
 
+# S3 configuration for image datasets
+# (shared by S3UrlImageDataLoader and S3ReadImagesDataLoader)
+S3_IMAGE_AWS_REGION = "us-west-2"
+S3_IMAGE_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
+S3_IMAGE_SPLIT_DIRS = {
+    "train": f"{S3_IMAGE_ROOT}/train",
+    "val": f"{S3_IMAGE_ROOT}/val",
+    "test": f"{S3_IMAGE_ROOT}/test",
+}
+
 
 @dataclass
 class BenchmarkConfig:
@@ -320,11 +330,6 @@ class S3UrlImageDataLoader(BaseDataLoader):
     Caches the file listing and base dataset to avoid repeated slow listings.
     """
 
-    # S3 configuration (shared with S3ReadImagesDataLoader)
-    AWS_REGION = "us-west-2"
-    S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
-    SPLIT_DIRS = BaseDataLoader.make_split_dirs(S3_ROOT)
-
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with file listing cache."""
         super().__init__(data_dir, label_to_id_map)
@@ -334,9 +339,9 @@ class S3UrlImageDataLoader(BaseDataLoader):
     @classmethod
     def get_data_dir(cls, split: str = "train") -> str:
         """Get the data directory for the specified split."""
-        if split not in cls.SPLIT_DIRS:
+        if split not in S3_IMAGE_SPLIT_DIRS:
             raise ValueError(f"Unknown split: {split}")
-        return cls.SPLIT_DIRS[split]
+        return S3_IMAGE_SPLIT_DIRS[split]
 
     def _list_files(self) -> List[Dict[str, str]]:
         """List JPEG files from S3 with class labels extracted from path.
@@ -360,7 +365,7 @@ class S3UrlImageDataLoader(BaseDataLoader):
         prefix = parts[1] if len(parts) > 1 else ""
 
         # List all files using boto3
-        s3_client = boto3.client("s3", region_name=self.AWS_REGION)
+        s3_client = boto3.client("s3", region_name=S3_IMAGE_AWS_REGION)
         paginator = s3_client.get_paginator("list_objects_v2")
 
         # Extract class labels from path structure: .../class_name/image.jpg
@@ -412,7 +417,7 @@ class S3UrlImageDataLoader(BaseDataLoader):
         def download_and_process_batch(
             batch: Dict[str, np.ndarray]
         ) -> Dict[str, np.ndarray]:
-            s3_client = boto3.client("s3", region_name=S3UrlImageDataLoader.AWS_REGION)
+            s3_client = boto3.client("s3", region_name=S3_IMAGE_AWS_REGION)
 
             processed_images = []
             labels = []
@@ -453,11 +458,6 @@ class S3ReadImagesDataLoader(BaseDataLoader):
     Caches the base dataset (before map) to avoid repeated file listings.
     """
 
-    # S3 configuration (shared with S3UrlImageDataLoader)
-    AWS_REGION = S3UrlImageDataLoader.AWS_REGION
-    S3_ROOT = S3UrlImageDataLoader.S3_ROOT
-    SPLIT_DIRS = S3UrlImageDataLoader.SPLIT_DIRS
-
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with base dataset cache."""
         super().__init__(data_dir, label_to_id_map)
@@ -466,9 +466,9 @@ class S3ReadImagesDataLoader(BaseDataLoader):
     @classmethod
     def get_data_dir(cls, split: str = "train") -> str:
         """Get the data directory for the specified split."""
-        if split not in cls.SPLIT_DIRS:
+        if split not in S3_IMAGE_SPLIT_DIRS:
             raise ValueError(f"Unknown split: {split}")
-        return cls.SPLIT_DIRS[split]
+        return S3_IMAGE_SPLIT_DIRS[split]
 
     @staticmethod
     def _get_s3fs_with_boto_creds():
@@ -481,7 +481,7 @@ class S3ReadImagesDataLoader(BaseDataLoader):
             access_key=credentials.access_key,
             secret_key=credentials.secret_key,
             session_token=credentials.token,
-            region=S3ReadImagesDataLoader.AWS_REGION,
+            region=S3_IMAGE_AWS_REGION,
         )
         return s3fs
 

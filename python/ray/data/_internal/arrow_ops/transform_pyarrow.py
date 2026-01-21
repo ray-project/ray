@@ -765,9 +765,16 @@ def concat(
     )
 
     # Ensure that the columns are in the same order as the schema, reconstruct the table.
-    return pyarrow.Table.from_arrays(
-        [concatenated_cols[col_name] for col_name in schema.names], schema=schema
-    )
+    # Build the final schema from the actual column types, since tensor type unification
+    # may produce types with different internal structure (e.g., different ndim) than
+    # what was in the original unified schema.
+    ordered_cols = [concatenated_cols[col_name] for col_name in schema.names]
+    final_fields = [
+        pa.field(col_name, col.type)
+        for col_name, col in zip(schema.names, ordered_cols)
+    ]
+    final_schema = pa.schema(final_fields, metadata=schema.metadata)
+    return pyarrow.Table.from_arrays(ordered_cols, schema=final_schema)
 
 
 def concat_and_sort(
