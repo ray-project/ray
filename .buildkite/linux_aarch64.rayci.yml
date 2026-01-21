@@ -22,7 +22,6 @@ steps:
     tags:
       - release_wheels
       - java
-      - oss
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
@@ -43,7 +42,6 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
 
   - name: raycpubaseextra-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
@@ -57,7 +55,6 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase-aarch64
 
   - name: raycudabase-aarch64
@@ -87,7 +84,6 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
 
   - name: raycudabaseextra-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
@@ -114,8 +110,21 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase-aarch64
+
+  # NOTE(andrew-anyscale): dashboard is architecture agnostic, but wanda pulls
+  # images for the architecture of the machine running the build. In the future,
+  # we can remove the arch suffix and pull from the x86_64 image to avoid
+  # duplicating this step.
+  - name: ray-dashboard-build-aarch64
+    label: "wanda: dashboard (aarch64)"
+    wanda: ci/docker/ray-dashboard.wanda.yaml
+    env:
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags: release_wheels
+    instance_type: builder-arm64
 
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{matrix}} (aarch64)"
@@ -133,23 +142,94 @@ steps:
     tags: release_wheels
     instance_type: builder-arm64
 
-  - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
+  - name: ray-wheel-build-aarch64
+    label: "wanda: wheel py{{matrix}} (aarch64)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
     tags:
-      - linux_wheels
       - release_wheels
-      - oss
-    instance_type: medium-arm64
+      - linux_wheels
+    depends_on:
+      - ray-core-build-aarch64
+      - ray-java-build-aarch64
+      - ray-dashboard-build-aarch64
+    instance_type: builder-arm64
+
+  - label: ":s3: upload: wheel py{{matrix}} (aarch64)"
+    key: linux_wheels_upload_aarch64
+    instance_type: small  # x86_64 instance since crane is currently only x86_64
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
+      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+        --wanda-image-name=ray-wheel-py{{matrix}}-aarch64
+      - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
+      - ray-wheel-build-aarch64
+      - forge
+    tags:
+      - release_wheels
+      - skip-on-premerge
+      - oss
+
+  - name: ray-cpp-core-build-aarch64
+    label: "wanda: cpp core (aarch64)"
+    wanda: ci/docker/ray-cpp-core.wanda.yaml
+    env:
+      PYTHON_VERSION: "3.10"  # Used for upstream images; output is Python-agnostic
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags:
+      - release_wheels
+      - oss
+    instance_type: builder-arm64
+
+  - name: ray-cpp-wheel-build-aarch64
+    label: "wanda: cpp wheel (aarch64)"
+    wanda: ci/docker/ray-cpp-wheel.wanda.yaml
+    env:
+      PYTHON_VERSION: "3.10"  # Used for upstream images; wheel is Python-agnostic
+      ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "260103.868e54c"
+    tags:
+      - release_wheels
+      - linux_wheels
+      - oss
+    depends_on:
+      - ray-core-build-aarch64
+      - ray-cpp-core-build-aarch64
+      - ray-java-build-aarch64
+      - ray-dashboard-build-aarch64
+    instance_type: builder-arm64
+
+  - label: ":s3: upload: cpp wheel (aarch64)"
+    key: linux_cpp_wheels_upload_aarch64
+    instance_type: small  # x86_64 instance since crane is currently only x86_64
+    commands:
+      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+        --wanda-image-name=ray-cpp-wheel-aarch64
+      - ./ci/build/copy_build_artifacts.sh wheel
+    depends_on:
+      - ray-cpp-wheel-build-aarch64
+      - forge
+    tags:
+      - release_wheels
+      - skip-on-premerge
+      - oss
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (aarch64)"
     key: ray_extra_images_aarch64
