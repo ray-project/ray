@@ -145,7 +145,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self,
         resource_manager: "ResourceManager",
         execution_id: str,
-        resource_limits: ExecutionResources = ExecutionResources.for_limits(),
+        resource_limits: ExecutionResources = ExecutionResources.inf(),
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
