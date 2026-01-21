@@ -659,8 +659,8 @@ class HTTPOptions(BaseModel):
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on.
-        - "EveryNode": start one HTTP server per node. This is the default.
+          on. This is the default.
+        - "EveryNode": start one HTTP server per node.
         - "NoServer": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
@@ -670,7 +670,7 @@ class HTTPOptions(BaseModel):
     host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.EveryNode
+    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""

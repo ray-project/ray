@@ -15,15 +15,12 @@ def is_token_auth_enabled() -> bool:
     """Check if token authentication is enabled.
 
     Returns:
-        bool: True if AUTH_MODE is set to "token" or "k8s", False otherwise
+        bool: True if AUTH_MODE is set to "token".
     """
     if not _RAYLET_AVAILABLE:
         return False
 
-    return get_authentication_mode() in {
-        AuthenticationMode.TOKEN,
-        AuthenticationMode.K8S,
-    }
+    return get_authentication_mode() == AuthenticationMode.TOKEN
 
 
 def validate_request_token(auth_header: str) -> bool:
@@ -50,13 +47,12 @@ def get_authentication_mode_name(mode: AuthenticationMode) -> str:
         mode: AuthenticationMode enum value from ray._raylet
 
     Returns:
-        String name: "disabled", "token", or "k8s"
+        String name: "disabled", "token"
     """
     from ray._raylet import AuthenticationMode
 
     _MODE_NAMES = {
         AuthenticationMode.DISABLED: "disabled",
         AuthenticationMode.TOKEN: "token",
-        AuthenticationMode.K8S: "k8s",
     }
     return _MODE_NAMES.get(mode, "unknown")
