@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
+    format_op_state_summary,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -54,11 +55,6 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 
 logger = logging.getLogger(__name__)
-
-# Force a progress update after this many events processed. Avoids the
-# progress seeming to stall for very large scale workloads.
-PROGRESS_BAR_UPDATE_INTERVAL = 50
-PROGRESS_MANAGER_UPDATE_INTERVAL = 20
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
@@ -209,6 +205,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
+            self._data_context,
             execution_id=self._dataset_id,
         )
         self._actor_autoscaler = create_actor_autoscaler(
@@ -491,7 +488,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
@@ -708,8 +705,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
+        summary_str = format_op_state_summary(state, resource_manager, verbose=True)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
+            f"{i}: {op.name} - {summary_str}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
