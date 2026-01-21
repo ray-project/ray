@@ -261,7 +261,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             target_bundle.output_split_idx = target_output_index
 
             self._num_output[target_output_index] += target_bundle.num_rows()
-            self._output_queue.append(target_bundle)
+            self._output_queue.add(target_bundle)
             self._metrics.on_output_queued(target_bundle)
 
             if self._locality_hints:
