@@ -278,6 +278,7 @@ class TestClusterAutoscaling:
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=1,
             resource_utilization_calculator=StubUtilizationGauge(low_utilization),
