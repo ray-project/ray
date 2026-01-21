@@ -162,7 +162,13 @@ install_node() {
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSfL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      # Install Node.js 14.x with updated GPG key method
+      sudo apt-get update
+      sudo apt-get install -y ca-certificates curl gnupg
+      sudo mkdir -p /etc/apt/keyrings
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_14.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+      sudo apt-get update
       sudo apt-get install -y nodejs
       return
     fi
