@@ -1,8 +1,8 @@
+import logging
 import math
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
@@ -15,7 +15,7 @@ from .resource_utilization_gauge import (
     RollingLogicalUtilizationGauge,
 )
 from .util import cap_resource_request_to_limits
-from ray._private.ray_constants import env_float, env_integer
+from ray._private.ray_constants import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
@@ -23,7 +23,7 @@ from ray.data._internal.execution.util import memory_string
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class _NodeResourceSpec:
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
     @classmethod
-    def from_bundle(self, bundle: Dict[str, Any]) -> "_NodeResourceSpec":
+    def from_bundle(cls, bundle: Dict[str, Any]) -> "_NodeResourceSpec":
         return _NodeResourceSpec.of(
             cpu=bundle.get("CPU", 0),
             gpu=bundle.get("GPU", 0),
@@ -139,6 +139,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     AUTOSCALING_REQUEST_EXPIRE_TIME_S: int = env_integer(
         "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S",
         180,
+    )
+    # Whether to disable INFO-level logs.
+    RAY_DATA_DISABLE_AUTOSCALER_LOGGING = env_bool(
+        "RAY_DATA_DISABLE_AUTOSCALER_LOGGING", False
     )
 
     def __init__(
@@ -246,10 +250,11 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         resource_request: List[Dict[str, float]],
     ) -> None:
         message = (
-            "Scaling up cluster. Current utilization: "
-            f"CPU={current_utilization.cpu:.2f}, GPU={current_utilization.gpu:.2f}, "
-            f"object_store_memory={current_utilization.object_store_memory:.2f}. "
-            "Requesting resources:"
+            "The utilization of one or more logical resource is higher than the "
+            f"specified threshold of {self._cluster_scaling_up_util_threshold:.0%}: "
+            f"CPU={current_utilization.cpu:.0%}, GPU={current_utilization.gpu:.0%}, "
+            f"object_store_memory={current_utilization.object_store_memory:.0%}. "
+            "Requesting one node of each shape:"
         )
 
         current_node_counts = Counter(
@@ -262,7 +267,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
-        logger.info(message)
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING:
+            level = logging.DEBUG
+        else:
+            level = logging.INFO
+
+        logger.log(level, message)
 
     def _send_resource_request(self, resource_request):
         # Make autoscaler resource request.

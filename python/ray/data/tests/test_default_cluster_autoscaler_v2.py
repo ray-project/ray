@@ -544,9 +544,10 @@ class TestClusterAutoscaling:
             autoscaler.try_trigger_scaling()
 
         expected_message = (
-            "Scaling up cluster. Current utilization: "
-            "CPU=1.00, GPU=1.00, object_store_memory=1.00. "
-            "Requesting resources: [{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
+            "The utilization of one or more logical resource is higher than the "
+            "specified threshold of 75%: CPU=100%, GPU=100%, object_store_memory=100%. "
+            "Requesting one node of each shape: "
+            "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )
         log_messages = [record.message for record in caplog.records]
         assert expected_message in log_messages, (
