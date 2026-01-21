@@ -164,7 +164,7 @@ install_node() {
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
       # Install Node.js 14.x with updated GPG key method
       local DISTRO_CODENAME
-      DISTRO_CODENAME=$(lsb_release -sc)
+      DISTRO_CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
       sudo apt-get update
       sudo apt-get install -y ca-certificates curl gnupg
       sudo mkdir -p /etc/apt/keyrings
