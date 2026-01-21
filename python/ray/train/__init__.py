@@ -51,6 +51,7 @@ if is_v2_enabled():
     from ray.train.v2.api.report_config import (  # noqa: F811
         CheckpointConsistencyMode,
         CheckpointUploadMode,
+        ValidateFn,
         ValidationConfig,
         ValidationTaskConfig,
     )
@@ -111,6 +112,7 @@ if is_v2_enabled():
             "UserCallback",
             "WorkerGroupError",
             "ValidationConfig",
+            "ValidateFn",
             "ValidationTaskConfig",
             "get_all_reported_checkpoints",
         ]
@@ -123,6 +125,7 @@ if is_v2_enabled():
     UserCallback.__module__ = "ray.train"
     WorkerGroupError.__module__ = "ray.train"
     ValidationConfig.__module__ = "ray.train"
+    ValidateFn.__module__ = "ray.train"
     ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
 

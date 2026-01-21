@@ -148,6 +148,7 @@ Ray Train Utilities
     ~train.CheckpointUploadMode
     ~train.CheckpointConsistencyMode
     ~train.TrainContext
+    ~train.ValidateFn
     ~train.ValidationTaskConfig
 
 **Functions**

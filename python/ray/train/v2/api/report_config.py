@@ -41,6 +41,7 @@ class CheckpointConsistencyMode(Enum):
     VALIDATED = "VALIDATED"
 
 
+@PublicAPI(stability="alpha")
 class ValidateFn(Protocol):
     """Protocol for a function that validates a checkpoint."""
 
