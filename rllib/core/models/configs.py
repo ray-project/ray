@@ -1063,12 +1063,29 @@ class ActorCriticEncoderConfig(ModelConfig):
 class MultiStreamEncoderConfig(ModelConfig):
 
     base_encoder_configs: Dict[str, ModelConfig] = None
-    hidden_dim: int = None
+
+    hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256, 256)
+    hidden_layer_use_bias: bool = True
+    hidden_layer_activation: str = "relu"
+    # hidden_layer_use_layernorm: bool = False
+    hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_weights_initializer_config: Optional[Dict] = None
+    hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_bias_initializer_config: Optional[Dict] = None
+
+    # Optional last output layer with - possibly - different activation and use_bias
+    # settings.
+    output_layer_dim: Optional[int] = None
+    output_layer_use_bias: bool = True
     output_layer_activation: str = "linear"
+    output_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    output_layer_weights_initializer_config: Optional[Dict] = None
+    output_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    output_layer_bias_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
-        return (self.hidden_dim,)
+        return (self.hidden_layer_dims,)
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
