@@ -312,8 +312,8 @@ install_pip_packages() {
     fi
   fi
 
-  # TODO(ray-ci): pin the dependencies.
-  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt"
+  CC=gcc retry_pip_install pip install -r "${WORKSPACE_DIR}/python/requirements.txt" \
+    -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -361,9 +361,9 @@ install_pip_packages() {
   fi
 
   # Generate the pip command with collected requirements files
-  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+  pip_cmd="pip install -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" && "${OSTYPE}" != "msys" ]]; then
+  if [[ "${OSTYPE}" != "msys" ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
@@ -383,7 +383,7 @@ install_pip_packages() {
 
   # Install delayed packages
   if [[ "${#delayed_packages[@]}" -gt 0 ]]; then
-    pip install -U -c "${WORKSPACE_DIR}/python/requirements.txt" "${delayed_packages[@]}"
+    pip install -c "${WORKSPACE_DIR}/python/requirements.txt" "${delayed_packages[@]}"
   fi
 
   # Additional Tune dependency for Horovod.
