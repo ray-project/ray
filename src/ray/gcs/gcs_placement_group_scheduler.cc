@@ -102,8 +102,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
               std::make_shared<const BundleSpecification>(bundle_proto));
         }
 
-        auto fallback_result =
-            TrySchedule(placement_group, fallback_bundles, option.strategy());
+        auto fallback_result = TrySchedule(
+            placement_group, fallback_bundles, placement_group->GetStrategy());
 
         if (fallback_result.status.IsSuccess()) {
           RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()

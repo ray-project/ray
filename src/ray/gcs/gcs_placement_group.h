@@ -82,7 +82,6 @@ class GcsPlacementGroup {
     // Construct scheduling strategy list. Index 0 contains the primary request.
     auto *primary_option = placement_group_table_data_.add_scheduling_strategy();
     primary_option->mutable_bundles()->CopyFrom(placement_group_spec.bundles());
-    primary_option->set_strategy(placement_group_spec.strategy());
 
     // Index 1..N: fallback strategies.
     placement_group_table_data_.mutable_scheduling_strategy()->MergeFrom(
