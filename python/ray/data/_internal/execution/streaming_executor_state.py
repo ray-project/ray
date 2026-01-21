@@ -9,7 +9,6 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-from uuid import UUID
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -203,9 +202,6 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
-        # Progress Manager
-        self.progress_manager_uuid: Optional[UUID] = None
-        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -255,8 +251,6 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
-        if ref.num_rows() is not None:
-            self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -266,46 +260,6 @@ class OpState:
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
-
-    def summary_str_raw(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        # Active tasks
-        active = self.op.num_active_tasks()
-        desc = f"Tasks: {active}"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            backpressure_types = []
-            if self.op._in_task_submission_backpressure:
-                # The op is backpressured from submitting new tasks.
-                policy = self.op._task_submission_backpressure_policy or ""
-                backpressure_types.append(f"tasks({policy})")
-            if self.op._in_task_output_backpressure:
-                # The op is backpressured from producing new outputs.
-                policy = self.op._task_output_backpressure_policy or ""
-                backpressure_types.append(f"outputs({policy})")
-            desc += f" [backpressured:{','.join(backpressure_types)}]"
-
-        # Actors info
-        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
-
-        # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
-
-        # Any additional operator specific information.
-        suffix = self.op.progress_str()
-        if suffix:
-            desc += f"; {suffix}"
-
-        return desc
-
-    def summary_str(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -742,3 +696,40 @@ def dedupe_schemas_with_validation(
         ),
         diverged,
     )
+
+
+def format_op_state_summary(
+    op_state: OpState, resource_manager: ResourceManager, verbose: bool = False
+) -> str:
+    """Get a formatted summary of the OpState for progress reporting."""
+    # Active tasks
+    active = op_state.op.num_active_tasks()
+    desc = f"Tasks: {active}"
+    if (
+        op_state.op._in_task_submission_backpressure
+        or op_state.op._in_task_output_backpressure
+    ):
+        backpressure_types = []
+        if op_state.op._in_task_submission_backpressure:
+            # The op is backpressured from submitting new tasks.
+            policy = op_state.op._task_submission_backpressure_policy or ""
+            backpressure_types.append(f"tasks({policy})")
+        if op_state.op._in_task_output_backpressure:
+            # The op is backpressured from producing new outputs.
+            policy = op_state.op._task_output_backpressure_policy or ""
+            backpressure_types.append(f"outputs({policy})")
+        desc += f" [backpressured:{','.join(backpressure_types)}]"
+
+    # Actors info
+    desc += f"; {_actor_info_summary_str(op_state.op.get_actor_info())}"
+
+    # Queued blocks
+    desc += f"; Queued blocks: {op_state.total_enqueued_input_blocks()} ({memory_string(op_state.total_enqueued_input_blocks_bytes())})"
+    desc += f"; Resources: {resource_manager.get_op_usage_str(op_state.op, verbose=verbose)}"
+
+    # Any additional operator specific information.
+    suffix = op_state.op.progress_str()
+    if suffix:
+        desc += f"; {suffix}"
+
+    return desc

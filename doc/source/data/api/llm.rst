@@ -35,3 +35,18 @@ Processor configs
     ~HttpRequestProcessorConfig
     ~vLLMEngineProcessorConfig
     ~SGLangEngineProcessorConfig
+
+.. _stage-configs-ref:
+
+Stage configs
+-------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary_noinheritance.rst
+    :toctree: doc/
+
+    ~ChatTemplateStageConfig
+    ~TokenizerStageConfig
+    ~DetokenizeStageConfig
+    ~PrepareMultimodalStageConfig
