@@ -19,7 +19,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
 ## Tutorial index
 
 ### 1. Getting started
-- [**Introduction to Ray Train**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/getting-started/01_02_03_intro_to_ray_train.html)  
+- [**Introduction to Ray Train**](https://docs.ray.io/en/latest/train/tutorials/content/getting-started/01_02_03_intro_to_ray_train.html)  
   Your starting point. Learn the basics of distributed training with PyTorch and Ray Train:
   - Why and when to use Ray Train vs. raw Distributed Data Parallel (DDP).  
   - Wrapping models/data loaders with [`prepare_model`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.prepare_model.html) / [`prepare_data_loader`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.prepare_data_loader.html).  
@@ -31,29 +31,29 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
 
 ### 2. Workload patterns (independent, work in any order)
 
-- [**Vision workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04a_vision_pattern.html)  
+- [**Vision workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04a_vision_pattern.html)  
   Real-world computer vision with Food-101, preprocessing with Ray Data, fault-tolerant ResNet training, and scalable inference tasks.  
 
-- [**Tabular workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04b_tabular_workload_pattern.html)  
+- [**Tabular workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04b_tabular_workload_pattern.html)  
   Tabular ML with CoverType dataset, XGBoost + Ray Train, checkpoint-aware training, feature importance, and distributed inference.  
 
-- [**Time series workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04c_time_series_workload_pattern.html)  
+- [**Time series workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04c_time_series_workload_pattern.html)  
   New York City taxi demand forecasting with a Transformer model, scaling across GPUs, epoch-level fault tolerance, and remote inference from checkpoints.  
 
-- [**Generative computer vision workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04d1_generative_cv_pattern.html)  
+- [**Generative computer vision workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04d1_generative_cv_pattern.html)  
   A mini diffusion pipeline (Food-101-Lite), showcasing Ray Data preprocessing, PyTorch Lightning integration, checkpointing, and image generation.  
 
-- [**Policy learning workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04d2_policy_learning_pattern.html)  
+- [**Policy learning workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04d2_policy_learning_pattern.html)  
   Diffusion-policy pipeline on Gymnasium's Pendulum-v1 dataset, scaling across GPUs, checkpoint-per-epoch, and direct policy rollout in-notebook.  
 
-- [**Recommendation system workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04e_rec_sys_workload_pattern.html)  
+- [**Recommendation system workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04e_rec_sys_workload_pattern.html)  
   Matrix-factorization recommendation system with MovieLens 100K, streaming batches with [`iter_torch_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.DataIterator.iter_torch_batches.html), custom training loop with checkpointing, and modular separation of training/eval/inference.
 
 ---
 
-### 3. Hyperparameter tuning
+### 3. Hyperparameter tuning (bonus)
 
-- [**Hyperparameter tuning with Ray Tune**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/hyperparameter-tuning/05a_ray_tune_pytorch_example.html)  
+- [**Hyperparameter tuning with Ray Tune**](https://docs.ray.io/en/latest/train/tutorials/content/hyperparameter-tuning/05a_ray_tune_pytorch_example.html)  
   Introduces **Ray Tune** for PyTorch hyperparameter optimization:  
   - Define search spaces.  
   - Run parallel trials with various schedulers.  
@@ -80,6 +80,4 @@ workload-patterns/04c_time_series_workload_pattern.ipynb
 workload-patterns/04d1_generative_cv_pattern.ipynb
 workload-patterns/04d2_policy_learning_pattern.ipynb
 workload-patterns/04e_rec_sys_workload_pattern.ipynb
-hyperparameter-tuning/05a_ray_tune_pytorch_example.ipynb
 ```
-
