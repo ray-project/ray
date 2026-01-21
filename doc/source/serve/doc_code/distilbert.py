@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import requests
     import ray
 
-    ray.init(runtime_env={"pip": ["transformers==4.27.1", "accelerate==0.17.1"]})
+    ray.init(runtime_env={"pip": ["transformers==4.51.3", "accelerate>=0.26.0"]})
     serve.run(entrypoint)
 
     prompt = (
