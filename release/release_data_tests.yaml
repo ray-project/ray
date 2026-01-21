@@ -323,26 +323,26 @@
     cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
 
   variations:
-    - __suffix__: images_with_read_parquet
+    - __suffix__: s3_parquet
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
-          --data-format images_with_read_parquet --simulated-training-time 0.01
+          --data-loader s3_parquet --simulated-training-time 0.01
 
-    - __suffix__: images_with_map_batches
+    - __suffix__: s3_url_image
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
-          --data-format images_with_map_batches --simulated-training-time 0.01
+          --data-loader s3_url_image --simulated-training-time 0.01
 
-    - __suffix__: images_with_read_images
+    - __suffix__: s3_read_images
       run:
         timeout: 4800
         script: >
           python dataset/training_ingest_microbenchmark.py
-          --data-format images_with_read_images --simulated-training-time 0.01
+          --data-loader s3_read_images --simulated-training-time 0.01
 
 #################
 # Iteration tests

@@ -10,10 +10,10 @@ This script benchmarks different approaches for loading and preprocessing images
   - prefetch_batches: Number of batches to prefetch
   - num_image_columns: Number of image columns per row
 
-Supported data formats:
-- images_with_read_parquet: Uses ray.data.read_parquet() with embedded image bytes
-- images_with_map_batches: Lists JPEG files via boto3, downloads with map_batches
-- images_with_read_images: Uses ray.data.read_images() with Partitioning
+Supported data loaders:
+- s3_parquet: Uses ray.data.read_parquet() with embedded image bytes
+- s3_url_image: Lists JPEG files via boto3, downloads with map_batches
+- s3_read_images: Uses ray.data.read_images() with Partitioning
 """
 
 import argparse
@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 class BenchmarkConfig:
     """Configuration for the training ingest benchmark."""
 
-    # Data format options
-    data_format: str = "images_with_read_parquet"
+    # Data loader options
+    data_loader: str = "s3_parquet"
 
     # Transform types to benchmark
     transform_types: List[str] = field(
@@ -79,20 +79,20 @@ class BenchmarkConfig:
     split: str = "train"
 
     @property
-    def supported_formats(self) -> List[str]:
-        """Return list of supported data formats."""
+    def supported_data_loaders(self) -> List[str]:
+        """Return list of supported data loaders."""
         return [
-            "images_with_read_parquet",
-            "images_with_map_batches",
-            "images_with_read_images",
+            "s3_parquet",
+            "s3_url_image",
+            "s3_read_images",
         ]
 
     def validate(self):
         """Validate configuration values."""
-        if self.data_format not in self.supported_formats:
+        if self.data_loader not in self.supported_data_loaders:
             raise ValueError(
-                f"Unknown data format: {self.data_format}. "
-                f"Supported: {self.supported_formats}"
+                f"Unknown data loader: {self.data_loader}. "
+                f"Supported: {self.supported_data_loaders}"
             )
 
     def log_config(self):
@@ -100,7 +100,7 @@ class BenchmarkConfig:
         logger.info("=" * 80)
         logger.info("BENCHMARK CONFIGURATION")
         logger.info("=" * 80)
-        logger.info(f"Data format: {self.data_format}")
+        logger.info(f"Data loader: {self.data_loader}")
         logger.info(f"Split: {self.split}")
         logger.info(f"Transform types: {self.transform_types}")
         logger.info(f"Batch sizes: {self.batch_sizes}")
@@ -245,8 +245,8 @@ class BaseDataLoader(ABC):
         raise NotImplementedError
 
 
-class ParquetS3Loader(BaseDataLoader):
-    """Data loader for parquet format with embedded image bytes.
+class S3ParquetDataLoader(BaseDataLoader):
+    """Data loader that reads parquet files from S3 using read_parquet.
 
     Caches the base dataset (before map) to avoid repeated file listings.
     """
@@ -305,14 +305,14 @@ class ParquetS3Loader(BaseDataLoader):
         return self.get_base_dataset().limit(limit).map(process_row)
 
 
-class MapBatchesS3Loader(BaseDataLoader):
-    """Data loader for JPEG files stored in S3.
+class S3UrlImageDataLoader(BaseDataLoader):
+    """Data loader that reads images from S3 URLs using map_batches.
 
     Uses boto3 for S3 file listing.
     Caches the file listing and base dataset to avoid repeated slow listings.
     """
 
-    # S3 configuration (shared with ReadImagesS3Loader)
+    # S3 configuration (shared with S3ReadImagesDataLoader)
     AWS_REGION = "us-west-2"
     S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
     SPLIT_DIRS = BaseDataLoader.make_split_dirs(S3_ROOT)
@@ -404,7 +404,7 @@ class MapBatchesS3Loader(BaseDataLoader):
         def download_and_process_batch(
             batch: Dict[str, np.ndarray]
         ) -> Dict[str, np.ndarray]:
-            s3_client = boto3.client("s3", region_name=MapBatchesS3Loader.AWS_REGION)
+            s3_client = boto3.client("s3", region_name=S3UrlImageDataLoader.AWS_REGION)
 
             processed_images = []
             labels = []
@@ -438,17 +438,17 @@ class MapBatchesS3Loader(BaseDataLoader):
         )
 
 
-class ReadImagesS3Loader(BaseDataLoader):
-    """Data loader using ray.data.read_images() with Partitioning.
+class S3ReadImagesDataLoader(BaseDataLoader):
+    """Data loader that reads images from S3 using read_images.
 
     Uses the same approach as multi_node_train_benchmark.py for reading images.
     Caches the base dataset (before map) to avoid repeated file listings.
     """
 
-    # S3 configuration (shared with MapBatchesS3Loader)
-    AWS_REGION = MapBatchesS3Loader.AWS_REGION
-    S3_ROOT = MapBatchesS3Loader.S3_ROOT
-    SPLIT_DIRS = MapBatchesS3Loader.SPLIT_DIRS
+    # S3 configuration (shared with S3UrlImageDataLoader)
+    AWS_REGION = S3UrlImageDataLoader.AWS_REGION
+    S3_ROOT = S3UrlImageDataLoader.S3_ROOT
+    SPLIT_DIRS = S3UrlImageDataLoader.SPLIT_DIRS
 
     def __init__(self, data_dir: str, label_to_id_map: Dict[str, int] = None):
         """Initialize the data loader with base dataset cache."""
@@ -473,7 +473,7 @@ class ReadImagesS3Loader(BaseDataLoader):
             access_key=credentials.access_key,
             secret_key=credentials.secret_key,
             session_token=credentials.token,
-            region=ReadImagesS3Loader.AWS_REGION,
+            region=S3ReadImagesDataLoader.AWS_REGION,
         )
         return s3fs
 
@@ -530,28 +530,27 @@ class ReadImagesS3Loader(BaseDataLoader):
         return self.get_base_dataset().limit(limit).map(process_row)
 
 
-def get_data_loader(data_format: str, split: str = "train") -> BaseDataLoader:
+def create_data_loader(data_loader: str, split: str = "train") -> BaseDataLoader:
     """Factory function to create the appropriate data loader.
 
     Args:
-        data_format: One of "images_with_read_parquet", "images_with_map_batches",
-            or "images_with_read_images"
+        data_loader: One of "s3_parquet", "s3_url_image", or "s3_read_images"
         split: Data split to use ("train", "val", or "test")
 
     Returns:
         Configured data loader instance
     """
-    if data_format == "images_with_read_parquet":
-        data_dir = ParquetS3Loader.get_data_dir(split)
-        return ParquetS3Loader(data_dir)
-    elif data_format == "images_with_map_batches":
-        data_dir = MapBatchesS3Loader.get_data_dir(split)
-        return MapBatchesS3Loader(data_dir)
-    elif data_format == "images_with_read_images":
-        data_dir = ReadImagesS3Loader.get_data_dir(split)
-        return ReadImagesS3Loader(data_dir)
+    if data_loader == "s3_parquet":
+        data_dir = S3ParquetDataLoader.get_data_dir(split)
+        return S3ParquetDataLoader(data_dir)
+    elif data_loader == "s3_url_image":
+        data_dir = S3UrlImageDataLoader.get_data_dir(split)
+        return S3UrlImageDataLoader(data_dir)
+    elif data_loader == "s3_read_images":
+        data_dir = S3ReadImagesDataLoader.get_data_dir(split)
+        return S3ReadImagesDataLoader(data_dir)
     else:
-        raise ValueError(f"Unknown data format: {data_format}")
+        raise ValueError(f"Unknown data loader: {data_loader}")
 
 
 @ray.remote
@@ -624,7 +623,7 @@ def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
     results = []
 
     # Create data loader for the specified format
-    data_loader = get_data_loader(config.data_format, config.split)
+    data_loader = create_data_loader(config.data_loader, config.split)
     logger.info(
         f"Using {data_loader.__class__.__name__} with "
         f"{len(data_loader.label_to_id_map)} classes"
@@ -758,11 +757,11 @@ def main():
         help="Time in seconds to sleep per batch to simulate training.",
     )
     parser.add_argument(
-        "--data-format",
+        "--data-loader",
         type=str,
-        choices=default_config.supported_formats,
-        default=default_config.data_format,
-        help=f"Data format. Default: {default_config.data_format}",
+        choices=default_config.supported_data_loaders,
+        default=default_config.data_loader,
+        help=f"Data loader. Default: {default_config.data_loader}",
     )
     parser.add_argument(
         "--split",
@@ -775,7 +774,7 @@ def main():
 
     # Build configuration from CLI args
     config = BenchmarkConfig(
-        data_format=args.data_format,
+        data_loader=args.data_loader,
         num_batches=args.num_batches,
         simulated_training_time=args.simulated_training_time,
         split=args.split,
@@ -793,7 +792,7 @@ def main():
     if results:
         return {
             "results": results,
-            "data_format": config.data_format,
+            "data_loader": config.data_loader,
             "transform_types": config.transform_types,
             "batch_sizes": config.batch_sizes,
             "prefetch_batches_list": config.prefetch_batches_list,
