@@ -192,11 +192,41 @@ class DashboardHead:
         ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
 
         # Verify modules are loaded as expected.
-        if modules_to_load is not None and all_names != modules_to_load:
-            assert False, (
-                f"Actual loaded modules {all_names}, doesn't match the requested modules "
-                f"to load, {modules_to_load}."
-            )
+        if modules_to_load is not None:
+            # Filter out subprocess modules that are disabled via environment variables
+            # since they won't be loaded even if requested in modules_to_load
+            from ray.dashboard.subprocesses.module import SubprocessModule
+
+            if not self.minimal:
+                # Get all subprocess module classes to find the correct subclass
+                # for each module name, so we can call is_enabled on the subclass
+                # (which may override the method) rather than the base class
+                subprocess_module_classes = {
+                    cls.__name__: cls
+                    for cls in dashboard_utils.get_all_modules(SubprocessModule)
+                }
+                available_subprocess_modules = set(subprocess_module_classes.keys())
+                expected_modules = set()
+                for module_name in modules_to_load:
+                    # If it's a subprocess module, check if it's enabled using the subclass
+                    if module_name in available_subprocess_modules:
+                        # Use the subclass's is_enabled method, not the base class's
+                        # This ensures consistency with _load_subprocess_module_handles
+                        module_cls = subprocess_module_classes[module_name]
+                        if module_cls.is_enabled(module_name):
+                            expected_modules.add(module_name)
+                    else:
+                        # For non-subprocess modules (DashboardHeadModule), always include
+                        expected_modules.add(module_name)
+            else:
+                # In minimal mode, no subprocess modules are loaded
+                expected_modules = modules_to_load
+
+            if all_names != expected_modules:
+                assert False, (
+                    f"Actual loaded modules {all_names}, doesn't match the requested modules "
+                    f"to load (excluding disabled modules), {expected_modules}."
+                )
 
         self._modules_loaded = True
         return dashboard_head_modules, subprocess_module_handles
@@ -281,6 +311,11 @@ class DashboardHead:
             logging_rotate_backup_count=self.logging_rotate_backup_count,
             socket_dir=str(Path(self.session_dir) / "sockets"),
         )
+
+        # Filter out modules that are disabled via environment variables
+        subprocess_cls_list = [
+            cls for cls in subprocess_cls_list if cls.is_enabled(cls.__name__)
+        ]
 
         # Select modules to load.
         if modules_to_load is not None:

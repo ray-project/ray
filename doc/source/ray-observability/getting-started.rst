@@ -66,6 +66,46 @@ When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-clust
   See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` for how to integrate Prometheus and Grafana with Ray Dashboard.
 
 
+Ray Dashboard Subprocess Modules
+---------------------------------
+
+The Ray Dashboard includes several subprocess modules that run in separate processes. You can control which modules are enabled using environment variables.
+
+Environment Variables
+~~~~~~~~~~~~~~~~~~~~~
+
+``RAY_DASHBOARD_DISABLED_MODULES``
+    Comma-separated list of dashboard subprocess modules to disable.
+    All modules except the specified ones will be loaded (blacklist approach).
+    Example: ``RAY_DASHBOARD_DISABLED_MODULES="ServeHead,TrainHead"``
+
+If ``RAY_DASHBOARD_DISABLED_MODULES`` is set, all modules except those listed will be enabled.
+If it isn't set, all modules will be enabled by default.
+
+Available Modules
+~~~~~~~~~~~~~~~~~
+
+- ``DataHead``: Data-related APIs
+- ``EventHead``: Ray Event APIs
+- ``JobHead``: Job submission and management APIs
+- ``MetricsHead``: Metrics-related APIs
+- ``NodeHead``: Node information APIs
+- ``ReportHead``: Reporting APIs
+- ``ServeHead``: Ray Serve APIs
+- ``StateHead``: Ray state APIs
+- ``TrainHead``: Ray Train APIs
+- ``UsageStatsHead``: Usage statistics APIs
+
+Example Usage
+~~~~~~~~~~~~~
+
+To disable specific modules:
+::
+
+    export RAY_DASHBOARD_DISABLED_MODULES="ServeHead,TrainHead"
+    ray start --head
+
+
 Navigate the views
 ------------------
 
