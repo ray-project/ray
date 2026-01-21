@@ -58,7 +58,7 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
 
 
 def test_start_shutdown(ray_start_stop):
-    subprocess.check_output(["serve", "start", "--http-host", "0.0.0.0"])
+    subprocess.check_output(["serve", "start"])
     # deploy a simple app
     import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
 
@@ -253,7 +253,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    serve.start(http_options={"host": "0.0.0.0"})
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -274,7 +274,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
-    serve.start(http_options={"host": "0.0.0.0"})
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,

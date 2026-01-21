@@ -15,6 +15,7 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
+from .util import cap_resource_request_to_limits
 from ray._private.ray_constants import env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
@@ -27,7 +28,6 @@ logger = getLogger(__name__)
 
 @dataclass(frozen=True)
 class _NodeResourceSpec:
-
     cpu: int
     gpu: int
     mem: int
@@ -137,6 +137,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def __init__(
         self,
         resource_manager: "ResourceManager",
+        resource_limits: ExecutionResources,
         execution_id: str,
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
@@ -155,6 +156,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
 
+        self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -211,7 +213,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._send_resource_request([])
             return
 
-        resource_request = []
+        # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
+        # to ensure existing nodes' resources are never crowded out by scale-up requests.
+        active_bundles = []
+        pending_bundles = []
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
@@ -225,11 +230,23 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
-            num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))
-            resource_request.extend([bundle] * num_to_request)
+            # Bundles for existing nodes -> active (must include)
+            active_bundles.extend([bundle] * count)
+            # Bundles for scale-up delta -> pending (best-effort)
+            delta_count = int(math.ceil(self._cluster_scaling_up_delta))
+            pending_bundles.extend([bundle] * delta_count)
             if logger.isEnabledFor(logging.DEBUG):
+                num_to_request = count + delta_count
                 debug_msg += f" [{bundle}: {count} -> {num_to_request}]"
         logger.debug(debug_msg)
+
+        # Cap the resource request to respect user-configured limits.
+        # Active bundles (existing nodes) are always included; pending bundles
+        # (scale-up requests) are best-effort.
+        resource_request = cap_resource_request_to_limits(
+            active_bundles, pending_bundles, self._resource_limits
+        )
+
         self._send_resource_request(resource_request)
 
     def _send_resource_request(self, resource_request):
@@ -255,6 +272,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             logger.warning(msg, exc_info=True)
 
     def get_total_resources(self) -> ExecutionResources:
+        """Get total resources available from the autoscaling coordinator."""
         resources = self._autoscaling_coordinator.get_allocated_resources(
             requester_id=self._requester_id
         )
