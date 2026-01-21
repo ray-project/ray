@@ -150,21 +150,25 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             _get_node_resource_spec_and_count
         ),
     ):
+        assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
+        assert cluster_scaling_up_delta > 0
+        assert cluster_util_avg_window_s > 0
+        assert min_gap_between_autoscaling_requests_s >= 0
+
         if resource_utilization_calculator is None:
-            assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
             resource_utilization_calculator = RollingLogicalUtilizationGauge(
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
+
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator()
 
         self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
-        assert cluster_scaling_up_delta > 0
         self._cluster_scaling_up_delta = cluster_scaling_up_delta
-        assert cluster_util_avg_window_s > 0
         self._cluster_util_check_interval_s = cluster_util_check_interval_s
-        assert min_gap_between_autoscaling_requests_s >= 0
         self._min_gap_between_autoscaling_requests_s = (
             min_gap_between_autoscaling_requests_s
         )
@@ -173,10 +177,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         self._requester_id = f"data-{execution_id}"
-        if autoscaling_coordinator is None:
-            autoscaling_coordinator = DefaultAutoscalingCoordinator()
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
+
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
