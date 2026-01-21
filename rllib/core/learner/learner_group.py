@@ -734,7 +734,7 @@ class LearnerGroup(Checkpointable):
     @Deprecated(
         old="LearnerGroup.load_module_state()",
         help="To restore RLModule or MultiRLModule state "
-        "use Algorithm.restore_from_path(path=..., component=...). "
+        "use LearnerGroup.restore_from_path(path=..., component=...). "
         "See docs for more details: "
         "https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules",
         error=False,
