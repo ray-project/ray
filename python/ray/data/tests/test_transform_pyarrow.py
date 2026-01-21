@@ -3322,6 +3322,14 @@ def test_concat_many_tensor_blocks_with_varying_ndim():
         all_arrays.extend(tensor_col.chunk(i).to_numpy())
     assert len(all_arrays) == 50
 
+    # Verify that the shapes of the tensors are correct after concatenation.
+    num_2d = sum(1 for arr in all_arrays if arr.ndim == 2 and arr.shape == (32, 32))
+    num_3d = sum(1 for arr in all_arrays if arr.ndim == 3 and arr.shape == (32, 32, 3))
+
+    assert num_2d == 25, f"Expected 25 2D tensors, but found {num_2d}"
+    assert num_3d == 25, f"Expected 25 3D tensors, but found {num_3d}"
+    assert num_2d + num_3d == len(all_arrays), "Found tensors with unexpected dimensions"
+
 
 if __name__ == "__main__":
     import sys

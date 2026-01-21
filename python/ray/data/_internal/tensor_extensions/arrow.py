@@ -1429,7 +1429,7 @@ def unify_tensor_arrays(
     # This is important because ArrowVariableShapedTensorType.__eq__ ignores
     # ndim, but PyArrow's chunked_array validation requires exact type match.
     # Using a dict with id() as key to track unique type instances.
-    distinct_types_by_id: Dict[int, Any] = {}
+    distinct_types_by_id: Dict[int, pa.ExtensionType] = {}
 
     for arr in arrs:
         if isinstance(arr.type, supported_tensor_types):
