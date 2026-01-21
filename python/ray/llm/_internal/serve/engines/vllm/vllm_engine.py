@@ -62,8 +62,8 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
-def _dict_to_namespace(obj):
-    """Рекурсивно преобразует словари в argparse.Namespace"""
+def _dict_to_namespace(obj: Any) -> Any:
+    """Recursively converts dictionaries to argparse.Namespace."""
     if isinstance(obj, dict):
         return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
     elif isinstance(obj, list):
