@@ -20,10 +20,12 @@ from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.report_config import CheckpointConsistencyMode
+from ray.train.v2.api.report_config import (
+    CheckpointConsistencyMode,
+    ValidationTaskConfig,
+)
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 logger = logging.getLogger(__name__)
@@ -42,8 +44,7 @@ class _CheckpointManagerState(BaseModel):
     checkpoint_results: List[_TrainingResultState]
     latest_checkpoint_result: Optional[_TrainingResultState]
     pending_training_results: List[_TrainingResultState]
-    # modoru: cloudpickling?
-    pending_validation_specs: List[_ValidationSpec]
+    pending_validation_specs: List[ValidationTaskConfig]
 
 
 def _get_training_result_from_state(
@@ -88,7 +89,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from pending checkpoint to (training result, validation spec)
+        # Map from pending checkpoint to (training result, validation task config)
         self._pending_training_results = {}
 
         # Map from checkpoint to report index. Used to order checkpoints.
@@ -137,10 +138,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        if training_report.validation_spec:
+        if training_report.validate:
             self._pending_training_results[checkpoint_result.checkpoint] = (
                 checkpoint_result,
-                training_report.validation_spec,
+                training_report.validate,
             )
 
         self._save_state_and_delete_old_checkpoints()

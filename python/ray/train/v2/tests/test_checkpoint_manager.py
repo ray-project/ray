@@ -93,7 +93,9 @@ async def test_save_load_state_equivalence(
         checkpoint_config=checkpoint_config,
     )
     training_reports = create_dummy_training_reports(
-        num_results=3, storage_context=storage_context
+        num_results=2, storage_context=storage_context
+    ) + create_dummy_training_reports(
+        num_results=1, storage_context=storage_context, include_validate=True
     )
 
     # Register the training results into checkpoint manager
@@ -173,7 +175,10 @@ async def test_pending_checkpoint_management(tmp_path):
         low_initial_high_final_training_report,
         high_initial_low_final_training_report,
         final_training_report,
-    ) = create_dummy_training_reports(num_results=3, storage_context=storage_context)
+    ) = create_dummy_training_reports(
+        num_results=3, storage_context=storage_context, include_validate=True
+    )
+    final_training_report.validate = False
     scoreless_training_report = create_dummy_training_reports(
         num_results=1, storage_context=storage_context, include_metrics=False
     )[0]
@@ -212,23 +217,32 @@ async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path
         checkpoint_config=CheckpointConfig(),
     )
     training_reports = create_dummy_training_reports(
-        num_results=2, storage_context=storage_context
+        num_results=2, storage_context=storage_context, include_validate=True
     )
     checkpoint_manager.register_checkpoint(training_reports[0])
     checkpoint_manager.register_checkpoint(training_reports[1])
-    assert checkpoint_manager._checkpoint_results[0].metrics == {"score": 0}
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
+    ]
     checkpoint_manager.update_checkpoints_with_metrics(
         {
             training_reports[1].checkpoint: {},
         }
     )
-    assert checkpoint_manager._checkpoint_results[0].metrics == {"score": 0}
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
+    ]
     checkpoint_manager.update_checkpoints_with_metrics(
         {
             training_reports[0].checkpoint: {},
         }
     )
-    assert checkpoint_manager._checkpoint_results[0].metrics == {"score": 0}
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
+    ]
 
 
 async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
@@ -248,13 +262,19 @@ async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
     )
     checkpoint_manager.register_checkpoint(training_reports[0])
     checkpoint_manager.register_checkpoint(training_reports[1])
-    assert len(checkpoint_manager._pending_training_results) == 2
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
+    ]
     checkpoint_manager.update_checkpoints_with_metrics(
         {
             training_reports[0].checkpoint: {"score": 100},
         }
     )
-    assert len(checkpoint_manager._pending_training_results) == 1
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
+    ]
 
 
 def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
@@ -269,9 +289,10 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
     training_reports = create_dummy_training_reports(
         num_results=1, storage_context=storage_context
     )
-    checkpoint_manager._pending_training_results[
-        training_reports[0].checkpoint
-    ] = training_reports[0]
+    checkpoint_manager._pending_training_results[training_reports[0].checkpoint] = (
+        _TrainingResult(training_reports[0].checkpoint, training_reports[0].metrics),
+        training_reports[0].validate,
+    )
     with pytest.raises(ValueError):
         checkpoint_manager.update_checkpoints_with_metrics(
             {training_reports[0].checkpoint: {"score": 100}}
