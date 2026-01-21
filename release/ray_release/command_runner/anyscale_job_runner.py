@@ -449,3 +449,9 @@ class AnyscaleJobRunner(CommandRunner):
         return self._fetch_json(
             _join_cloud_storage_paths(self.path_in_bucket, self.output_json),
         )
+
+    def job_url(self) -> Optional[str]:
+        return self.job_manager.job_url()
+
+    def job_id(self) -> Optional[str]:
+        return self.job_manager.job_id()
