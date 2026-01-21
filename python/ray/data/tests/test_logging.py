@@ -7,7 +7,11 @@ import pytest
 import yaml
 
 import ray
-from ray.data._internal.logging import configure_logging, get_log_directory
+from ray.data._internal.logging import (
+    SessionFileHandler,
+    configure_logging,
+    get_log_directory,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -91,6 +95,24 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_level == logging.getLevelName(logging.INFO)
     assert re.match(r"test_logging.py:\d+", logged_filepath)
     assert logged_msg == "ham"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-specific encoding defaults.")
+def test_file_handler_uses_utf8_on_windows(
+    configure_logging, reset_logging, shutdown_only
+):
+    ray.init()
+    logger = logging.getLogger("ray.data")
+
+    logger.info("ham")
+
+    file_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, SessionFileHandler)
+    )
+    assert file_handler._handler is not None
+    assert file_handler._handler.encoding.lower() == "utf-8"
 
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
