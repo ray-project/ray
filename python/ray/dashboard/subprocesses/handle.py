@@ -196,7 +196,9 @@ class SubprocessModuleHandle:
                     )
 
                     # Wait for process to exit (with timeout)
-                    self.process.join(timeout=5.0)
+                    self.process.join(
+                        timeout=dashboard_consts.SUBPROCESS_MODULE_GRACEFUL_SHUTDOWN_TIMEOUT
+                    )
 
                     # Force kill if still alive
                     if self.process.is_alive():
