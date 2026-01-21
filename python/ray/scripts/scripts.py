@@ -2584,9 +2584,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
         )
+    bazel_version_filename = ".bazelversion"
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
-    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    cpp_template_dir = os.path.join(cpp_dir, "example")
     include_dir = os.path.join(cpp_dir, "include")
     lib_dir = os.path.join(cpp_dir, "lib")
     if not os.path.isdir(cpp_dir):
@@ -2601,7 +2602,7 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         if os.path.exists(out_dir):
             shutil.rmtree(out_dir)
 
-        shutil.copytree(cpp_templete_dir, out_dir)
+        shutil.copytree(cpp_template_dir, out_dir)
         for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
             # Renames the bazel related files by removing the leading underscore.
             dest_name = os.path.join(out_dir, filename[1:])
@@ -2618,6 +2619,11 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
         cli_logger.print("To build and run this template, run")
         cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
+
+        shutil.copyfile(
+            bazel_version_filename,
+            os.path.join(cpp_template_dir, bazel_version_filename),
+        )
 
 
 @cli.command(hidden=True)
