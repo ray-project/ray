@@ -355,7 +355,7 @@
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_parquet --simulated-training-time 0.01
-          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
     - __suffix__: s3_url_image_gpu
       cluster:
@@ -365,7 +365,7 @@
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_url_image --simulated-training-time 0.01
-          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
     - __suffix__: s3_read_images_gpu
       cluster:
@@ -375,7 +375,7 @@
         script: >
           python dataset/training_ingest_microbenchmark.py
           --data-loader s3_read_images --simulated-training-time 0.01
-          --device cuda --pin-memory --batch-size 16 32 --prefetch-batches 1 4
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
 #################
 # Iteration tests

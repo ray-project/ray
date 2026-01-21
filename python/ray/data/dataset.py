@@ -5617,6 +5617,7 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            pin_memory=pin_memory,
         )
 
     @ConsumptionAPI
