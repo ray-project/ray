@@ -783,7 +783,7 @@ class LearnerGroup(Checkpointable):
             raise ValueError(
                 f"`modules_to_load` can only be specified if a "
                 f"multi_rl_module_ckpt_dir is provided. "
-                f"Got {modules_to_load=} and f{multi_rl_module_ckpt_dir=}."
+                f"Got {modules_to_load=} and {multi_rl_module_ckpt_dir=}."
             )
 
         # MultiRLModule checkpoint is provided.
@@ -792,7 +792,7 @@ class LearnerGroup(Checkpointable):
             if modules_to_load is None:
                 self.restore_from_path(
                     path=multi_rl_module_ckpt_dir,
-                    component=(COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE),
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 ),
             # Restore individual module IDs.
             else:
