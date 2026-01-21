@@ -109,16 +109,18 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             # in multi-deployment scenarios (e.g., PD disaggregation with DP)
             deployment_name = self._deployment_id.name if self._deployment_id else None
             app_name = self._deployment_id.app_name if self._deployment_id else None
-            actor_name_components = [LLM_PREFIX_TREE_ACTOR_NAME_PREFIX]
+            actor_name = LLM_PREFIX_TREE_ACTOR_NAME_PREFIX
+            actor_namespace_components = [SERVE_NAMESPACE]
+
             if app_name:
-                actor_name_components.append(app_name)
+                actor_namespace_components.append(app_name)
             if deployment_name:
-                actor_name_components.append(deployment_name)
-            actor_name = "_".join(actor_name_components)
+                actor_namespace_components.append(deployment_name)
+            actor_namespace = "::".join(actor_namespace_components)
 
             self._tree_actor = PrefixTreeActor.options(
                 name=actor_name,
-                namespace=SERVE_NAMESPACE,
+                namespace=actor_namespace,
                 get_if_exists=True,
                 lifetime="detached",
             ).remote()
