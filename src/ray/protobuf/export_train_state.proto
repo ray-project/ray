@@ -82,7 +82,7 @@ message ExportTrainRunEventData {
   map<string, string> framework_versions = 14;
 
   // Run settings
-  RunSettings run_setting = 15;
+  RunSettings run_settings = 15;
 
   // Settings for a Train run, primarily consisting of configs set before a train run starts.
   message RunSettings {
@@ -133,7 +133,7 @@ message ExportTrainRunEventData {
     // Whether to use GPUs for the Train run.
     bool use_gpu = 2;
     // The resources per worker for a Train run.
-    google.protobuf.Struct resources_per_worker = 3;
+    optional google.protobuf.Struct resources_per_worker = 3;
     // The placement strategy for the Train run.
     string placement_strategy = 4;
     // The accelerator type for the Train run.
