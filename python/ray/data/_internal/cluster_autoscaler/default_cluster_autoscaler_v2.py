@@ -107,11 +107,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD",
         0.75,
     )
-    # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = env_float(
-        "RAY_DATA_CLUSTER_UTIL_CHECK_INTERVAL_S",
-        0.25,
-    )
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
         "RAY_DATA_CLUSTER_UTIL_AVG_WINDOW_S",
