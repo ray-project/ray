@@ -7,8 +7,8 @@ jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 # Ray Train workloads
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/ray_train_workloads"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/train/tutorials/content" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 This tutorial series provides hands-on learning for **Ray Train** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  

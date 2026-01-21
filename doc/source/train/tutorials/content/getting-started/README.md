@@ -4,7 +4,7 @@ Modify 01_02_03_intro_to_ray_train.ipynb instead, then regenerate this file with
 jupyter nbconvert "01_02_03_intro_to_ray_train.ipynb" --to markdown --output "README.md"
 -->
 
-# Introduction to Ray Train  
+# Introduction to Ray Train workloads
 This notebook shows how to run **distributed data-parallel training with PyTorch** on an Anyscale cluster using **Ray Train**. You train a **ResNet-18 model on MNIST** across multiple GPUs, with built-in support for **checkpointing, metrics reporting, and distributed orchestration**.  
 
 ## Learning objectives
