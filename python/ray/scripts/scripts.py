@@ -2577,7 +2577,8 @@ def healthcheck(address, component, skip_version_check):
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template.
 
-    This command MUST be run from the ray project root directory.
+    This command MUST be run from the ray project root directory if
+    --generate-bazel-project-template-to is set.
     """
     if sys.platform == "win32":
         raise click.ClickException("Ray C++ API is not supported on Windows currently.")
@@ -2586,14 +2587,6 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
-        )
-
-    bazel_version_filename = ".bazelversion"
-
-    if not os.path.exists(bazel_version_filename):
-        raise ValueError(
-            "This command can only be run from the ray project's root directory. "
-            "It expects a .bazelversion file to be present."
         )
 
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
@@ -2607,6 +2600,15 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+
+        bazel_version_filename = ".bazelversion"
+
+        if not os.path.exists(bazel_version_filename):
+            raise ValueError(
+                "This command can only be run from the ray project's root directory. "
+                "It expects a .bazelversion file to be present."
+            )
+
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
