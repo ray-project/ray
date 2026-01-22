@@ -537,8 +537,8 @@ def run_release_test_anyscale(
 
         # Obtain the cluster info again as it is set after the
         # command was run in case of anyscale jobs
-        result.job_url = runner.job_manager.job_url
-        result.job_id = runner.job_manager.job_id
+        result.job_url = runner.job_url()
+        result.job_id = runner.job_id()
         result.last_logs = runner.get_last_logs()
 
     except Exception as e:
