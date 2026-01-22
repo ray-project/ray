@@ -307,11 +307,13 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         )
 
         # Get activation functions.
-        self.hidden_activation = get_activation_fn(
-            config.hidden_layer_activation, framework="torch"
+        self.hidden_activation = (
+            get_activation_fn(config.hidden_layer_activation, framework="torch")
+            or nn.Identity
         )
-        self.output_activation = get_activation_fn(
-            config.output_layer_activation, framework="torch"
+        self.output_activation = (
+            get_activation_fn(config.output_layer_activation, framework="torch")
+            or nn.Identity
         )
         # Calculate total embed dim.
         total_embed_dim = sum(
@@ -342,18 +344,19 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
             hidden_weights_initializer = get_initializer_fn(
                 config.hidden_layer_weights_initializer, framework="torch"
             )
-            hidden_weights_initializer(
-                input_layer.weight,
-                **config.hidden_layer_weights_initializer_config or {}
-            )
+            for layer in [input_layer] + fusion_layers:
+                hidden_weights_initializer(
+                    layer.weight, **config.hidden_layer_weights_initializer_config or {}
+                )
         # Initialize hidden layer bias if necessary.
         if config.hidden_layer_bias_initializer:
             hidden_bias_initializer = get_initializer_fn(
                 config.hidden_layer_bias_initializer, framework="torch"
             )
-            hidden_bias_initializer(
-                input_layer.bias, **config.hidden_layer_bias_initializer_config or {}
-            )
+            for layer in [input_layer] + fusion_layers:
+                hidden_bias_initializer(
+                    layer.bias, **config.hidden_layer_bias_initializer_config or {}
+                )
         # Initialize output layer weights if necessary.
         if config.output_layer_weights_initializer:
             output_weights_initializer = get_initializer_fn(
