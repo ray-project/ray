@@ -115,17 +115,6 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
-    def get_temp_dir(self) -> str:
-        """Get the temp directory for the current node.
-
-        Returns:
-            The temp directory for the current node.
-        """
-        assert (
-            ray.is_initialized()
-        ), "Temp directory is not available because Ray has not been initialized."
-        return self.worker.current_temp_dir
-
     def get_session_name(self) -> str:
         """Get the session name for the Ray cluster this process is connected to.
 

@@ -66,6 +66,8 @@ class LabelConstraint {
   absl::flat_hash_set<std::string> values_;
 };
 
+bool operator==(const LabelConstraint &lhs, const LabelConstraint &rhs);
+
 // Label Selector data type. Defines a list of label constraints
 // required for scheduling on a node.
 class LabelSelector {
@@ -87,7 +89,8 @@ class LabelSelector {
   explicit LabelSelector(const rpc::LabelSelector &proto) {
     constraints_.reserve(proto.label_constraints_size());
     for (const auto &proto_constraint : proto.label_constraints()) {
-      constraints_.emplace_back(proto_constraint);
+      // Use AddConstraint to ensure duplicates are filtered out during deserialization.
+      AddConstraint(LabelConstraint(proto_constraint));
     }
   }
 
@@ -100,6 +103,12 @@ class LabelSelector {
   void AddConstraint(const std::string &key, const std::string &value);
 
   void AddConstraint(LabelConstraint constraint) {
+    // Avoid adding duplicate constraints.
+    if (std::find(constraints_.begin(), constraints_.end(), constraint) !=
+        constraints_.end()) {
+      return;
+    }
+
     constraints_.push_back(std::move(constraint));
   }
 
