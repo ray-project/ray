@@ -1979,6 +1979,7 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
@@ -2073,6 +2074,7 @@ cdef execute_task_with_cancellation_handler(
                      dynamic_returns,
                      streaming_generator_returns,
                      is_retryable_error,
+                     actor_repr_name,
                      application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
