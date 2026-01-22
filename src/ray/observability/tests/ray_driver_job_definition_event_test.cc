@@ -42,8 +42,7 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerialize) {
   job_info->set_entrypoint_memory(1024 * 1024 * 1024);  // 1GB
   (*job_info->mutable_entrypoint_resources())["custom_resource"] = 3.0;
 
-  auto event =
-      std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
+  auto event = std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
   auto serialized_event = std::move(*event).Serialize();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
@@ -55,15 +54,12 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerialize) {
 
   const auto &job_def = serialized_event.driver_job_definition_event();
 
-  // Test existing fields
   ASSERT_EQ(job_def.job_id(), "test_job_id_123");
   ASSERT_EQ(job_def.driver_pid(), 12345);
   ASSERT_EQ(job_def.driver_node_id(), "test_node_id");
   ASSERT_EQ(job_def.entrypoint(), "python script.py");
   ASSERT_EQ(job_def.config().metadata().at("user"), "test_user");
   ASSERT_EQ(job_def.config().serialized_runtime_env(), "{\"pip\": [\"requests\"]}");
-
-  // Test new fields
   ASSERT_EQ(job_def.type(), "SUBMISSION");
   ASSERT_EQ(job_def.submission_id(), "sub_456");
   ASSERT_EQ(job_def.driver_agent_http_address(), "http://127.0.0.1:8265");
@@ -85,8 +81,7 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerializeDriverJob) {
   // No job_submission_id in metadata
   (*job_data.mutable_config()->mutable_metadata())["custom_key"] = "custom_value";
 
-  auto event =
-      std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
+  auto event = std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
   auto serialized_event = std::move(*event).Serialize();
 
   const auto &job_def = serialized_event.driver_job_definition_event();
@@ -104,13 +99,12 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerializeWithoutJobInfo) {
   job_data.mutable_driver_address()->set_node_id("minimal_node");
   job_data.set_entrypoint("python minimal.py");
 
-  auto event =
-      std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
+  auto event = std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
   auto serialized_event = std::move(*event).Serialize();
 
   const auto &job_def = serialized_event.driver_job_definition_event();
 
-  // New fields should use proto3 defaults when not set
+  // Uses proto3 defaults when not set
   ASSERT_EQ(job_def.driver_agent_http_address(), "");
   ASSERT_DOUBLE_EQ(job_def.entrypoint_num_cpus(), 0.0);
   ASSERT_DOUBLE_EQ(job_def.entrypoint_num_gpus(), 0.0);
