@@ -209,9 +209,9 @@ class SACCatalog(Catalog):
 
         # Compute the required dimension for the action space.
         if isinstance(self.action_space, gym.spaces.Box):
-            self._build_qf_encoder_continuous(framework=framework)
+            return self._build_qf_encoder_continuous(framework=framework)
         elif isinstance(self.action_space, gym.spaces.Discrete):
-            self._build_qf_encoder_discrete(framework=framework)
+            return self._build_qf_encoder_discrete(framework=framework)
         else:
             self._raise_unsupported_action_space_error()
 
