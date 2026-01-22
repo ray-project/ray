@@ -105,19 +105,18 @@ void TaskReceiver::HandleTaskExecutionResult(
             concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
       }
 
-      RAY_CHECK_OK(actor_creation_task_done_());
       if (status.IsCreationTaskError()) {
         RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
                          << task_spec.TaskId()
                          << ", actor_id: " << task_spec.ActorCreationId()
                          << ", status: " << status;
       } else {
-        if (!actor_repr_name_.empty()) {
-          reply->set_actor_repr_name(actor_repr_name_);
+        if (!result.actor_repr_name.empty()) {
+          reply->set_actor_repr_name(result.actor_repr_name);
         }
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId()
-                      << ", actor_repr_name: " << actor_repr_name_;
+                      << ", actor_repr_name: " << result.actor_repr_name;
       }
     }
   }

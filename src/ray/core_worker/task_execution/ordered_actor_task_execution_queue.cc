@@ -76,8 +76,8 @@ void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
                   << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
-  const auto &task_spec = task.TaskSpec();
-  auto task_id = task_spec.TaskId();
+  TaskSpecification task_spec = task.TaskSpec();
+  TaskID task_id = task_spec.TaskId();
   RAY_LOG(DEBUG).WithField(task_id) << "Enqueuing in order actor task, seq_no=" << seq_no
                                     << ", next_seq_no_=" << next_seq_no_;
 

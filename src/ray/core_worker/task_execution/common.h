@@ -42,6 +42,7 @@ class TaskToExecute {
   void Cancel(const Status &status);
   ray::TaskID TaskID() const;
   uint64_t AttemptNumber() const;
+  bool IsRetry() const;
   const std::string &ConcurrencyGroupName() const;
   ray::FunctionDescriptor FunctionDescriptor() const;
   bool DependenciesResolved() const;

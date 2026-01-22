@@ -40,6 +40,8 @@ ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
 
 uint64_t TaskToExecute::AttemptNumber() const { return task_spec_.AttemptNumber(); }
 
+bool TaskToExecute::IsRetry() const { return task_spec_.IsRetry(); }
+
 const std::string &TaskToExecute::ConcurrencyGroupName() const {
   return task_spec_.ConcurrencyGroupName();
 }

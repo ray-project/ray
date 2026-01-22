@@ -88,8 +88,7 @@ void UnorderedActorTaskExecutionQueue::Add(int64_t seq_no,
   // task concurrently is that it's not safe to assume user's
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
-  const auto &task_spec = task.TaskSpec();
-  auto task_id = task_spec.TaskId();
+  TaskID task_id = task.TaskID();
   bool run_task = true;
   std::optional<TaskToExecute> task_to_cancel;
   {
