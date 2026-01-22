@@ -123,6 +123,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datatype import DataType
+from ray.data.expressions import Expr, StarExpr, col
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -149,7 +150,17 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, col
+
+class MapBatchesRowCountWarning(UserWarning):
+    """Warning issued when map_batches is called without explicitly specifying
+    udf_modifying_row_count."""
+
+    pass
+
+
+# Ensure this warning is only shown once per session
+warnings.filterwarnings("once", category=MapBatchesRowCountWarning)
+
 
 logger = logging.getLogger(__name__)
 
@@ -708,6 +719,16 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
+        if not udf_modifying_row_count:
+            warnings.warn(
+                "By default, `map_batches` assumes the provided function doesn't "
+                "modify the number of rows, enabling optimizations like limit pushdown. "
+                "If your function filters rows or generates additional rows, set "
+                "`udf_modifying_row_count=True` to disable these optimizations and "
+                "ensure correct results.",
+                category=MapBatchesRowCountWarning,
+                stacklevel=2,
+            )
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "default"):
             raise ValueError(
