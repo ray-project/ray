@@ -3280,12 +3280,12 @@ class TestUnifyTensorArrays:
             arrays.append(ArrowTensorArray.from_numpy(data))
 
         # Each array has its own type instance
-        assert len(set(id(arr.type) for arr in arrays)) == 5
+        assert len({id(arr.type) for arr in arrays}) == 5
 
         unified = unify_tensor_arrays(arrays)
 
         # All unified arrays share the same type instance
-        assert len(set(id(arr.type) for arr in unified)) == 1
+        assert len({id(arr.type) for arr in unified}) == 1
         # Type is still fixed-shape (not variable-shaped)
         fixed_types = get_arrow_extension_fixed_shape_tensor_types()
         assert isinstance(unified[0].type, fixed_types)
@@ -3302,12 +3302,12 @@ class TestUnifyTensorArrays:
             data = [np.ones((3 + i, 4 + i), dtype=np.float32) for _ in range(2)]
             arrays.append(ArrowVariableShapedTensorArray.from_numpy(data))
 
-        assert len(set(id(arr.type) for arr in arrays)) == 5
+        assert len({id(arr.type) for arr in arrays}) == 5
         assert all(arr.type.ndim == 2 for arr in arrays)
 
         unified = unify_tensor_arrays(arrays)
 
-        assert len(set(id(arr.type) for arr in unified)) == 1
+        assert len({id(arr.type) for arr in unified}) == 1
         assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
         assert unified[0].type.ndim == 2
 
@@ -3323,7 +3323,7 @@ class TestUnifyTensorArrays:
 
         unified = unify_tensor_arrays(arrays)
 
-        assert len(set(id(arr.type) for arr in unified)) == 1
+        assert len({id(arr.type) for arr in unified}) == 1
         assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
 
     def test_different_ndims_unify_with_padding(self):
@@ -3341,7 +3341,7 @@ class TestUnifyTensorArrays:
         unified = unify_tensor_arrays(arrays)
 
         # All share same type instance
-        assert len(set(id(arr.type) for arr in unified)) == 1
+        assert len({id(arr.type) for arr in unified}) == 1
         assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
         assert unified[0].type.ndim == 3  # Unified to max ndim
 
@@ -3383,7 +3383,7 @@ class TestUnifyTensorArrays:
         unified = unify_tensor_arrays(arrays)
 
         # All share same type instance
-        assert len(set(id(arr.type) for arr in unified)) == 1
+        assert len({id(arr.type) for arr in unified}) == 1
         # Should be variable-shaped since shapes differ
         assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
 
