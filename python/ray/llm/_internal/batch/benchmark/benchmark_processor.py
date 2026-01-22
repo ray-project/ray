@@ -52,8 +52,7 @@ VLLM_SAMPLING_PARAMS = {
 
 # Default vLLM engine kwargs
 VLLM_ENGINE_KWARGS = {
-    "enforce_eager": True,
-    "max_model_len": 512,
+    "max_num_batched_tokens": 4096,
 }
 
 # Default pooling parameters for classification
@@ -231,10 +230,7 @@ def build_classify_processor(
 ):
     """Build vLLM engine processor for classification benchmark."""
 
-    engine_kwargs = {
-        "enforce_eager": True,
-        "max_model_len": max_model_len,
-    }
+    engine_kwargs = VLLM_ENGINE_KWARGS.copy()
     if distributed_executor_backend is not None:
         engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
 

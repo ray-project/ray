@@ -93,11 +93,7 @@ class ShareGPTDataset(BenchmarkDataset):
             self._data = self._load_dataset_data()
 
     def sample(self, num_requests: int) -> List[Dict]:
-        """Sample prompts from the loaded dataset.
-
-        If num_requests exceeds the number of available samples, the samples
-        are replicated to meet the requested count.
-        """
+        """Sample prompts from the loaded dataset."""
         if self._data is None:
             self.load_data()
 
