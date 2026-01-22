@@ -298,9 +298,5 @@ void TaskReceiver::Stop() {
   }
 }
 
-void TaskReceiver::SetActorReprName(const std::string &repr_name) {
-  actor_repr_name_ = repr_name;
-}
-
 }  // namespace core
 }  // namespace ray
