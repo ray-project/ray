@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
@@ -44,7 +44,7 @@ class _CheckpointManagerState(BaseModel):
     checkpoint_results: List[_TrainingResultState]
     latest_checkpoint_result: Optional[_TrainingResultState]
     pending_training_results: List[_TrainingResultState]
-    pending_validation_specs: List[ValidationTaskConfig]
+    pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
 
 
 def _get_training_result_from_state(
@@ -177,6 +177,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._pending_training_results.pop(checkpoint)
         self._save_state_and_delete_old_checkpoints()
         self._notify()
+
+    def get_pending_training_results(
+        self,
+    ) -> Dict[Checkpoint, Union[_TrainingResult, ValidationTaskConfig]]:
+        """Get the pending training results which includes their validation specs."""
+        return self._pending_training_results
 
     def _notify(self):
         """Notify condition so all listeners know state has changed."""
