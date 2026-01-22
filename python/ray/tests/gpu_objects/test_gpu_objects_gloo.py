@@ -1078,7 +1078,9 @@ def test_rdt_memory_summary(ray_start_regular):
     assert len(rdt_entries) == 2
 
     rdt_sizes = sorted([e.object_size for e in rdt_entries])
-    assert rdt_sizes == [4000, 8000]
+    # Subtracting the tensor sizes because the "dummy object" size that's sent via plasma is
+    # included in the memory summary output. Since it should be the same for both, it's cancelled out.
+    assert rdt_sizes[1] - rdt_sizes[0] == 4000
 
 
 if __name__ == "__main__":

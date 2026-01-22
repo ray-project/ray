@@ -443,6 +443,12 @@ def memory_summary(
     ]
     summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
 
+    # Check if any objects in this memory table are RDT objects
+    has_rdt_objects = any(
+        any(entry.get("is_rdt", False) for entry in group["entries"])
+        for group in memory_table["group"].values()
+    )
+
     object_ref_labels = [
         "IP Address",
         "PID",
@@ -452,16 +458,29 @@ def memory_summary(
         "Attempt",
         "Size",
         "Reference Type",
-        "RDT",
-        "Device",
-        "Object Ref",
     ]
     object_ref_string = "{:<13} | {:<7} | {:<7} | {:<9} \
-| {:<9} | {:<7} | {:<8} | {:<14} | {:<4} | {:<8} | {:<10}\n"
+| {:<9} | {:<7} | {:<8} | {:<14}"
+
+    if has_rdt_objects:
+        object_ref_labels.extend(["RDT", "Device"])
+        object_ref_string += " | {:<4} | {:<8}"
+    else:
+        object_ref_string += " "
+
+    object_ref_labels.append("Object Ref")
+    object_ref_string += " | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
         object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<7}  {:<8}  \
-{:<18}  {:<4}  {:<8}  {:<56}\n"
+{:<18}"
+
+        if has_rdt_objects:
+            object_ref_string += "  {:<4}  {:<8}"
+        else:
+            object_ref_string += " "
+
+        object_ref_string += "  {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\
@@ -522,10 +541,14 @@ entries per group...\n\n\n"
                 entry["attempt_number"],
                 entry["object_size"],
                 entry["reference_type"],
-                "Yes" if entry["is_rdt"] else "No",
-                entry["device"],
-                entry["object_ref"],
             ]
+
+            if has_rdt_objects:
+                object_ref_values.extend(
+                    ["Yes" if entry["is_rdt"] else "No", entry["device"]]
+                )
+
+            object_ref_values.append(entry["object_ref"])
             for i in range(len(object_ref_values)):
                 if not isinstance(object_ref_values[i], list):
                     object_ref_values[i] = [object_ref_values[i]]

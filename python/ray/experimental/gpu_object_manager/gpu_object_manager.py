@@ -788,7 +788,7 @@ class GPUObjectManager:
 
                 result.append(
                     {
-                        "object_id": bytes.fromhex(obj_id_hex),
+                        "object_id": obj_id_hex,
                         "device": device,
                         "object_size": object_size,
                     }

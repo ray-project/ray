@@ -211,7 +211,9 @@ void ReferenceCounter::AddObjectRefStats(
     if (rdt_it != rdt_objects.end()) {
       ref_proto->set_is_rdt(true);
       ref_proto->set_device(rdt_it->second.first);
-      ref_proto->set_object_size(rdt_it->second.second);
+      // We don't replace the object size with the tensor size since it could be part of a
+      // larger object like some form of container (dictionary, list, etc.)
+      ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
     }
   }
   // Also include any unreferenced objects that are pinned in memory.
@@ -233,7 +235,7 @@ void ReferenceCounter::AddObjectRefStats(
       if (rdt_it != rdt_objects.end()) {
         ref_proto->set_is_rdt(true);
         ref_proto->set_device(rdt_it->second.first);
-        ref_proto->set_object_size(rdt_it->second.second);
+        ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
       }
     }
   }

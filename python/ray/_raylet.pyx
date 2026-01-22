@@ -2168,11 +2168,13 @@ cdef c_vector[CRDTObjectInfo] get_rdt_object_infos_callback() nogil:
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker._gpu_object_manager
         if gpu_object_manager is not None:
-            for rdt_info in gpu_object_manager.get_rdt_object_infos():
-                info.object_id = rdt_info["object_id"]
+            rdt_infos = gpu_object_manager.get_rdt_object_infos()
+            result.reserve(len(rdt_infos))
+            for rdt_info in rdt_infos:
+                info.object_id = bytes.fromhex(rdt_info["object_id"])
                 info.device = rdt_info["device"].encode("utf-8")
                 info.object_size = rdt_info["object_size"]
-                result.push_back(info)
+                result.push_back(move(info))
     return result
 
 
