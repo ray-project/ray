@@ -6945,7 +6945,6 @@ class Schema:
                     and all(d is not None for d in dtype._shape)
                 ):
                     pa_tensor_type_class = FixedShapeTensorType
-                    print(f"Hi: {_convert_to_pa_type(dtype._dtype)} {dtype._shape} ")
                     t = pa.fixed_shape_tensor(
                         _convert_to_pa_type(dtype._dtype), dtype._shape
                     )
