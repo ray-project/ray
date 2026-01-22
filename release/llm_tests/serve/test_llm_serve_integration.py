@@ -269,17 +269,7 @@ class TestRemoteCode:
 
 
 def test_nested_engine_kwargs_structured_outputs():
-    """Regression test for nested dict in engine_kwargs.
-
-    See: https://github.com/ray-project/ray/pull/60380
-
-    When engine_kwargs contains nested dicts (e.g., structured_outputs_config),
-    they must be converted to argparse.Namespace so vLLM's init_app_state() can
-    access nested attributes via dot notation.
-
-    Without the fix, this test fails with:
-        AttributeError: 'dict' object has no attribute 'backend'
-    """
+    """Regression test for https://github.com/ray-project/ray/pull/60380"""
     llm_config = LLMConfig(
         model_loading_config=dict(
             model_id="Qwen/Qwen2.5-0.5B-Instruct",
@@ -290,7 +280,6 @@ def test_nested_engine_kwargs_structured_outputs():
         engine_kwargs=dict(
             enforce_eager=True,
             max_model_len=512,
-            # Nested dict that caused AttributeError before the fix
             structured_outputs_config={
                 "backend": "xgrammar",
             },
