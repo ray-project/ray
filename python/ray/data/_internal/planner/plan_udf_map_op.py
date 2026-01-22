@@ -589,12 +589,15 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
-                    # Check for empty non-Mapping blocks to skip UDF
                     is_empty_block = (
                         not isinstance(batch, collections.abc.Mapping)
                         and BlockAccessor.for_block(batch).num_rows() == 0
                     )
                     if is_empty_block:
+                        # For empty input blocks, we directly output them without
+                        # calling the UDF.
+                        # TODO(hchen): This workaround is because some all-to-all
+                        # operators output empty blocks with no schema.
                         res = [batch]
                         input_num_rows = 0
                     else:
@@ -607,14 +610,12 @@ def _generate_transform_fn_for_map_batches(
                         if not isinstance(res, GeneratorType):
                             res = [res]
                 except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
                     err_msg = str(e)
-                    if any(
-                        msg in err_msg
-                        for msg in [
-                            "assignment destination is read-only",
-                            "buffer source array is read-only",
-                        ]
-                    ):
+                    if any(msg in err_msg for msg in read_only_msgs):
                         raise ValueError(
                             f"Batch mapper function {fn.__name__} tried to mutate a "
                             "zero-copy read-only batch. To be able to mutate the "
