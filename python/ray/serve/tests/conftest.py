@@ -376,6 +376,10 @@ def serve_instance_with_labeled_nodes(ray_cluster):
     )
 
     cluster.wait_for_nodes()
+
+    if ray.is_initialized():
+        ray.shutdown()
+
     ray.init(address=cluster.address)
 
     node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
