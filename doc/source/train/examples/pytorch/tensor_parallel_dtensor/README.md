@@ -1,4 +1,4 @@
-# Get started with Tensor Parallelism (DTensor) and Ray Train
+# Get started with 2D Parallelism (Tensor + Data Parallelism) using FSDP2 and Ray Train
 
 **Time to complete:** 20 min
 
