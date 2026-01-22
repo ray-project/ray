@@ -253,9 +253,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=FutureWarning)
                     if SettingWithCopyWarning is not None:
-                        warnings.simplefilter(
-                            "ignore", category=SettingWithCopyWarning
-                        )
+                        warnings.simplefilter("ignore", category=SettingWithCopyWarning)
                     df[col_name] = TensorArray(col)
             except Exception as e:
                 raise ValueError(
