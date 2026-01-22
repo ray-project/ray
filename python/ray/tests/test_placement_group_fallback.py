@@ -189,6 +189,44 @@ def test_multiple_placement_groups_and_fallbacks(ray_start_cluster):
     placement_group_assert_no_leak(pgs)
 
 
+def test_placement_group_fallback_validation(ray_start_cluster):
+    """
+    Verifies that PG validates resource shape with both primary and fallback bundles.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, num_gpus=0)
+    ray.init(address=cluster.address)
+
+    pg = placement_group(
+        name="validation_pg",
+        bundles=[{"GPU": 1}],
+        strategy="PACK",
+        fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+    )
+
+    # Task requires CPU, primary option has only GPU.
+    # The client-side validation logic should check the fallback strategy
+    # and allow this task to proceed.
+    @ray.remote(num_cpus=1)
+    def run_on_cpu():
+        return "success"
+
+    try:
+        # If client-side validation fails, this raises ValueError immediately.
+        ref = run_on_cpu.options(placement_group=pg).remote()
+        assert ray.get(ref) == "success"
+    except ValueError as e:
+        pytest.fail(f"Validation failed for fallback-compatible task: {e}")
+
+    # Verify bundle_specs contains active bundles.
+    ray.get(pg.ready())
+    assert pg.bundle_specs[0].get("CPU") == 1
+    assert pg.bundle_specs[0].get("GPU") is None
+
+    remove_placement_group(pg)
+    placement_group_assert_no_leak([pg])
+
+
 if __name__ == "__main__":
     import sys
 

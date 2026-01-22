@@ -103,7 +103,11 @@ class PlacementGroup:
 
     @property
     def bundle_specs(self) -> List[Dict]:
-        """List[Dict]: Return bundles belonging to this placement group."""
+        """List[Dict]: Return bundles belonging to this placement group.
+
+        This returns the currently active bundles. If the placement group is
+        using a fallback strategy, this returns the fallback bundles.
+        """
         self._fill_bundle_cache_if_needed()
         return self.bundle_cache
 
@@ -112,9 +116,23 @@ class PlacementGroup:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
+    @property
+    def _all_bundle_specs(self) -> List[Dict]:
+        """Return all possible bundles, including the primary and fallback options.
+
+        This is used for validation to ensure we don't reject tasks that
+        are valid under a fallback strategy configuration.
+        """
+        self._fill_bundle_cache_if_needed()
+
+        return self._all_bundle_cache or self.bundle_cache
+
     def _fill_bundle_cache_if_needed(self) -> None:
-        if not self.bundle_cache:
-            self.bundle_cache = _get_bundle_cache(self.id)
+        if not self.bundle_cache or not self._all_bundle_cache:
+            cache_data = _get_bundle_cache(self.id)
+
+            self.bundle_cache = cache_data["active"]
+            self._all_bundle_cache = cache_data["all"]
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -134,13 +152,24 @@ def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -
 
 
 @client_mode_wrap
-def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
+def _get_bundle_cache(pg_id: PlacementGroupID) -> Dict[str, List[Dict]]:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(
-        ray._private.state.state.placement_group_table(pg_id)["bundles"].values()
-    )
+    table = ray._private.state.state.placement_group_table(pg_id)
+
+    # The bundles actively being used for scheduling.
+    active_bundles = list(table["bundles"].values())
+
+    # The list of bundles from all scheduling options.
+    if "scheduling_strategy" in table and table["scheduling_strategy"]:
+        all_bundles = []
+        for strategy in table["scheduling_strategy"]:
+            all_bundles.extend(strategy.get("bundles", []))
+    else:
+        all_bundles = active_bundles
+
+    return {"active": active_bundles, "all": all_bundles}
 
 
 @PublicAPI
@@ -541,7 +570,7 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-    bundles = placement_group.bundle_specs
+    bundles = placement_group._all_bundle_specs
     resources_valid = _valid_resource_shape(resources, bundles)
     placement_resources_valid = _valid_resource_shape(placement_resources, bundles)
 
