@@ -182,6 +182,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                     &result.streaming_generator_returns,
                                     reply->mutable_borrowed_refs(),
                                     &result.is_retryable_error,
+                                    &result.actor_repr_name,
                                     &result.application_error);
 
         HandleTaskExecutionResult(status, t, result, send_reply_callback, reply);

@@ -58,6 +58,7 @@ class TaskToExecute {
 };
 
 struct TaskExecutionResult {
+  std::string actor_repr_name;
   std::string application_error;
   bool is_retryable_error = false;
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
