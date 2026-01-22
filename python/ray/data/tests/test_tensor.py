@@ -896,7 +896,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ds.write_parquet(str(tmp_path))
 
     ds = ray.data.read_parquet(
-        str(tmp_path), tensor_column_schema={tensor_col_name: (np.int64(), inner_shape)}
+        str(tmp_path),
+        tensor_column_schema={tensor_col_name: (np.dtype(np.int64), inner_shape)},
     )
 
     if tensor_format == TensorFormat.V1:
