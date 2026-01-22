@@ -1311,7 +1311,10 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         #
         # TODO avoid python loop
         expanded_shapes_array = pa.array(
-            [_pad_shape_with_singleton_axes(s, ndim) for s in shapes_array.to_pylist()]
+            [
+                _pad_shape_with_singleton_axes(tuple(s), ndim)
+                for s in shapes_array.to_pylist()
+            ]
         )
 
         storage = pa.StructArray.from_arrays(
@@ -1327,7 +1330,7 @@ def _pad_shape_with_singleton_axes(
 ) -> Tuple[int, ...]:
     assert ndim >= len(shape)
 
-    return (1,) * (ndim - len(shape)) + tuple(shape)
+    return (1,) * (ndim - len(shape)) + shape
 
 
 def _ravel_tensors(
