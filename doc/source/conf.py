@@ -238,11 +238,11 @@ exclude_patterns = [
     "ray-overview/examples/**/content/**README.md",
     "ray-core/examples/**/content/**README.md",
     "train/examples/**/content/**README.md",
-    "train/tutorials/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "train/tutorials/content/**/README.md",
     "train/tutorials/content/workload-patterns/README.ipynb",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
