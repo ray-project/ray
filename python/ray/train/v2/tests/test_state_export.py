@@ -121,6 +121,77 @@ def test_export_train_run_attempt(enable_export_api_write):
     assert data[0]["event_data"]["status"] == "RUNNING"
 
 
+def test_export_train_run_non_json_serializable_train_loop_config(
+    enable_export_api_write,
+):
+    """Test that non-JSON-serializable train_loop_config values are exported safely."""
+    state_actor = get_or_create_state_actor()
+
+    class Toy:
+        pass
+
+    run = create_mock_train_run(RunStatus.RUNNING)
+    run.run_settings.train_loop_config = {"toy": Toy()}
+
+    ray.get(state_actor.create_or_update_train_run.remote(run))
+
+    data = _get_exported_data()
+    assert len(data) == 1
+    assert data[0]["source_type"] == "EXPORT_TRAIN_RUN"
+
+    run_settings = data[0]["event_data"]["run_settings"]
+    # Export converts train_loop_config into a JSON string; for non-serializable configs,
+    # it stores a sentinel message instead of raising.
+    assert json.loads(run_settings["train_loop_config"]) == {
+        "message": "Non-JSON serializable train_loop_config"
+    }
+
+
+def test_export_oneof_datasets_to_split(enable_export_api_write):
+    """Test that proto oneof fields are exported with only the active variant set.
+
+    In ExportTrainRunEventData.RunSettings.DataConfig, `datasets_to_split` is a oneof:
+    - `all`
+    - `datasets` (StringList)
+    """
+    state_actor = get_or_create_state_actor()
+
+    run_all = create_mock_train_run(RunStatus.RUNNING, id="with_all")
+    run_all.run_settings.data_config.datasets_to_split = "all"
+
+    run_ds = create_mock_train_run(RunStatus.RUNNING, id="with_datasets")
+    run_ds.run_settings.data_config.datasets_to_split = ["dataset_1", "dataset_2"]
+
+    ray.get(
+        [
+            state_actor.create_or_update_train_run.remote(run_all),
+            state_actor.create_or_update_train_run.remote(run_ds),
+        ]
+    )
+
+    runs = _get_exported_data()
+    assert len(runs) == 2
+
+    runs_by_id = {run["event_data"]["id"]: run for run in runs}
+    assert set(runs_by_id.keys()) == {"with_all", "with_datasets"}
+
+    # Verify train data config when splitting all datasets
+    all_settings = runs_by_id["with_all"]["event_data"]["run_settings"]
+    assert "data_config" in all_settings
+    assert "all" in all_settings["data_config"]
+    assert "datasets" not in all_settings["data_config"]
+
+    # Verify train data config when splitting specific datasets
+    ds_settings = runs_by_id["with_datasets"]["event_data"]["run_settings"]
+    assert "data_config" in ds_settings
+    assert "datasets" in ds_settings["data_config"]
+    assert (
+        ds_settings["data_config"]["datasets"]["values"]
+        == run_ds.run_settings.data_config.datasets_to_split
+    )
+    assert "all" not in ds_settings["data_config"]
+
+
 def test_export_multiple_source_types(enable_export_api_write):
     """Test that multiple source types (Run and RunAttempt) can be written to the same file."""
     state_actor = get_or_create_state_actor()
@@ -168,13 +239,29 @@ def test_export_multiple_source_types(enable_export_api_write):
 
 
 def test_export_optional_fields(enable_export_api_write):
-    """Test that optional fields are correctly exported when present and absent."""
+    """Test that optional fields are correctly exported when present and absent.
+
+    This covers both top-level optional fields on TrainRun/TrainRunAttempt and
+    optional nested fields inside TrainRun.run_settings (e.g., scaling/data/runtime
+    configs).
+    """
     state_actor = get_or_create_state_actor()
 
     # Create run with optional fields
     run_with_optional = create_mock_train_run(RunStatus.FINISHED)
     run_with_optional.status_detail = "Finished with details"
     run_with_optional.end_time_ns = 1000000000000000000
+    run_with_optional.run_settings.train_loop_config = {"epochs": 1}
+    run_with_optional.run_settings.scaling_config.resources_per_worker = {"CPU": 1}
+    run_with_optional.run_settings.scaling_config.accelerator_type = "A100"
+    run_with_optional.run_settings.scaling_config.topology = "v4-8"
+    run_with_optional.run_settings.scaling_config.bundle_label_selector = {"k": "v"}
+    run_with_optional.run_settings.data_config.datasets_to_split = ["dataset_1"]
+    run_with_optional.run_settings.data_config.execution_options = {"foo": "bar"}
+    run_with_optional.run_settings.runtime_config.checkpoint_config.num_to_keep = 2
+    run_with_optional.run_settings.runtime_config.checkpoint_config.checkpoint_score_attribute = (
+        "score"
+    )
 
     # Create attempt with optional fields
     attempt_with_optional = create_mock_train_run_attempt(
@@ -198,25 +285,79 @@ def test_export_optional_fields(enable_export_api_write):
     data = _get_exported_data()
     assert len(data) == 4
 
-    # Verify run without optional fields
+    # Verify train run without optional fields
     run_data = data[0]
     assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
     assert "status_detail" not in run_data["event_data"]
     assert "end_time_ns" not in run_data["event_data"]
+    assert "run_settings" in run_data["event_data"]
+    run_settings = run_data["event_data"]["run_settings"]
+    # Optional protobuf scalar fields use their defaults
+    assert run_settings["train_loop_config"] == ""
+    assert "checkpoint_config" in run_settings["runtime_config"]
+    assert "num_to_keep" not in run_settings["runtime_config"]["checkpoint_config"]
+    assert (
+        "checkpoint_score_attribute"
+        not in run_settings["runtime_config"]["checkpoint_config"]
+    )
+    assert "scaling_config" in run_settings
+    assert "resources_per_worker" not in run_settings["scaling_config"]
+    assert "accelerator_type" not in run_settings["scaling_config"]
+    assert "topology" not in run_settings["scaling_config"]
+    assert "data_config" in run_settings
+    assert "execution_options" not in run_settings["data_config"]
 
-    # Verify attempt without optional fields
+    # Verify train run attempt without optional fields
     attempt_data = data[1]
     assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
     assert "status_detail" not in attempt_data["event_data"]
     assert "end_time_ns" not in attempt_data["event_data"]
 
-    # Verify run with optional fields
+    # Verify train run with optional fields
     run_data = data[2]
     assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
     assert run_data["event_data"]["status_detail"] == "Finished with details"
     assert "end_time_ns" in run_data["event_data"]
 
-    # Verify attempt with optional fields
+    run_settings = run_data["event_data"]["run_settings"]
+    assert (
+        json.loads(run_settings["train_loop_config"])
+        == run_with_optional.run_settings.train_loop_config
+    )
+    assert (
+        run_settings["scaling_config"]["resources_per_worker"]
+        == run_with_optional.run_settings.scaling_config.resources_per_worker
+    )
+    assert (
+        run_settings["scaling_config"]["accelerator_type"]
+        == run_with_optional.run_settings.scaling_config.accelerator_type
+    )
+    assert (
+        run_settings["scaling_config"]["topology"]
+        == run_with_optional.run_settings.scaling_config.topology
+    )
+    assert run_settings["scaling_config"]["bundle_label_selector"] == [
+        {"values": {"k": "v"}}
+    ]
+    assert (
+        run_settings["data_config"]["datasets"]["values"]
+        == run_with_optional.run_settings.data_config.datasets_to_split
+    )
+    assert (
+        run_settings["data_config"]["execution_options"]
+        == run_with_optional.run_settings.data_config.execution_options
+    )
+    assert run_settings["runtime_config"]["checkpoint_config"]["num_to_keep"] == str(
+        run_with_optional.run_settings.runtime_config.checkpoint_config.num_to_keep
+    )
+    assert (
+        run_settings["runtime_config"]["checkpoint_config"][
+            "checkpoint_score_attribute"
+        ]
+        == run_with_optional.run_settings.runtime_config.checkpoint_config.checkpoint_score_attribute
+    )
+
+    # Verify train run attempt with optional fields
     attempt_data = data[3]
     assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
     assert attempt_data["event_data"]["status_detail"] == "Attempt details"

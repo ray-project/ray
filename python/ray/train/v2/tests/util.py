@@ -193,10 +193,9 @@ def create_mock_train_run(
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
         run_settings=RunSettings(
-            train_loop_config={},
+            train_loop_config=None,
             backend_config=BackendConfigSchema(framework=None, config={}),
             scaling_config=ScalingConfigSchema(
-                trainer_resources=None,
                 num_workers=1,
                 use_gpu=False,
                 resources_per_worker=None,
@@ -209,7 +208,7 @@ def create_mock_train_run(
             datasets=["dataset_1"],
             data_config=DataConfigSchema(
                 datasets_to_split="all",
-                execution_options={},
+                execution_options=None,
                 enable_shard_locality=True,
             ),
             runtime_config=RuntimeConfig(
