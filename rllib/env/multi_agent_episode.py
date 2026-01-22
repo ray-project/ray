@@ -156,8 +156,8 @@ class MultiAgentEpisode:
                 of the episode. This is only larger zero, if an already ongoing episode
                 chunk is being created, for example by slicing an ongoing episode or
                 by calling the `cut()` method on an ongoing episode.
-            agent_t_started: A dict mapping AgentIDs to the respective agent's (local)
-                timestep at which its SingleAgentEpisode chunk started.
+            agent_t_started: A dict mapping AgentIDs to the agent's timestep
+                (not global env timestep) at which its SingleAgentEpisode chunk started.
             len_lookback_buffer: The size of the lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
                 etc..). If larger 0, will interpret the first `len_lookback_buffer`
@@ -1586,7 +1586,7 @@ class MultiAgentEpisode:
             if start < len(mapping):
                 for i in range(start, len(mapping)):
                     if mapping[i] != self.SKIP_ENV_TS_TAG:
-                        agent_t_started[aid] = sa_episode.t_started + mapping[i]
+                        agent_t_started[aid] = mapping[i]
                         break
         terminateds["__all__"] = all(
             terminateds.get(aid) for aid in self.agent_episodes
@@ -2417,7 +2417,9 @@ class MultiAgentEpisode:
                 _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
             )
-            if agent_value is None or agent_value == []:
+            if agent_value is None or (
+                isinstance(agent_value, list) and agent_value == []
+            ):
                 continue
             ret[agent_id] = agent_value
         return ret
