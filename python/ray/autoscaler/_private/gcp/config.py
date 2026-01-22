@@ -549,12 +549,12 @@ def _configure_key_pair(config, compute):
             )
             public_key, private_key = generate_rsa_key_pair()
 
-            for _ in range(MAX_POLLS):
+            for attempt in range(MAX_POLLS):
                 try:
                     _create_project_ssh_key_pair(project, public_key, ssh_user, compute)
                     break
                 except errors.HttpError as e:
-                    if e.resp.status != 412:
+                    if e.resp.status != 412 or attempt == MAX_POLLS - 1:
                         raise
                     logger.warning(
                         "GCP project metadata update conflict for %s (%s); retrying",
