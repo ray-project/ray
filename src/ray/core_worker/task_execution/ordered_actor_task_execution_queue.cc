@@ -79,8 +79,9 @@ void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
 
   // Make a copy of the task spec because `task` is moved below.
   TaskSpecification task_spec = task.TaskSpec();
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId()) << "Enqueuing in order actor task, seq_no=" << seq_no
-                                    << ", next_seq_no_=" << next_seq_no_;
+  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+      << "Enqueuing in order actor task, seq_no=" << seq_no
+      << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
   const bool is_retry = task_spec.IsRetry();
