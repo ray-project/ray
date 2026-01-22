@@ -193,7 +193,7 @@ def create_mock_train_run(
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
         run_settings=RunSettings(
-            train_loop_config=None,
+            train_loop_config={},
             backend_config=BackendConfigSchema(framework=None, config={}),
             scaling_config=ScalingConfigSchema(
                 trainer_resources=None,

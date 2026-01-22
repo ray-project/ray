@@ -314,7 +314,7 @@ class RunSettings(BaseModel):
     and runtime configuration.
     """
 
-    train_loop_config: Dict[str, Any] = Field(
+    train_loop_config: Optional[Dict[str, Any]] = Field(
         description="The user defined train loop config for a Train run."
     )
     backend_config: BackendConfig = Field(

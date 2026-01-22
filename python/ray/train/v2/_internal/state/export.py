@@ -217,22 +217,25 @@ def to_proto_runtime_config(
 
 def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettings:
     """Convert RunSettings to protobuf format."""
-    try:
-        loop_config_json = json.dumps(run_settings.train_loop_config)
-    except (TypeError, ValueError):
-        loop_config_json = json.dumps(
-            {"message": "Non-JSON serializable train_loop_config"}
-        )
-        logger.debug("train_loop_config is not JSON serializable")
 
-    return ProtoTrainRun.RunSettings(
-        train_loop_config=loop_config_json,
+    proto = ProtoTrainRun.RunSettings(
         backend_config=to_proto_backend_config(run_settings.backend_config),
         scaling_config=to_proto_scaling_config(run_settings.scaling_config),
         datasets=run_settings.datasets,
         data_config=to_proto_data_config(run_settings.data_config),
         runtime_config=to_proto_runtime_config(run_settings.runtime_config),
     )
+
+    if run_settings.train_loop_config is not None:
+        try:
+            proto.train_loop_config = json.dumps(run_settings.train_loop_config)
+        except (TypeError, ValueError):
+            proto.train_loop_config = json.dumps(
+                {"message": "Non-JSON serializable train_loop_config"}
+            )
+            logger.debug("train_loop_config is not JSON serializable")
+
+    return proto
 
 
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:

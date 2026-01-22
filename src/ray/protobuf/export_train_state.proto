@@ -88,7 +88,7 @@ message ExportTrainRunEventData {
   message RunSettings {
     // The user defined train loop config for a Train run.
     // NOTE: This is expected to represent a JSON-serializable dict from Python.
-    string train_loop_config = 1;
+    optional string train_loop_config = 1;
     // The backend config for a Train run, varies with the framework (e.g. TorchConfig)
     BackendConfig backend_config = 2;
     // The scaling config for this Train run.
