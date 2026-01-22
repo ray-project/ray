@@ -24,7 +24,7 @@ namespace core {
 class ActorTaskExecutionQueueInterface {
  public:
   virtual ~ActorTaskExecutionQueueInterface() = default;
-  virtual void Add(int64_t seq_no,
+  virtual void EnqueueTask(int64_t seq_no,
                    int64_t client_processed_up_to,
                    TaskToExecute task) = 0;
   virtual void Stop() = 0;
