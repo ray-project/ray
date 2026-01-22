@@ -2853,29 +2853,29 @@ Status CoreWorker::ExecuteTask(
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
-if (!options_.is_local_mode) {
-  task_counter_.MovePendingToRunning(func_name, is_retry);
+  if (!options_.is_local_mode) {
+    task_counter_.MovePendingToRunning(func_name, is_retry);
 
-  {
-    absl::MutexLock lock(&mutex_);
-    const auto update =
-        (task_spec.IsActorTask() && !actor_repr_name_.empty())
-            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
-            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    {
+      absl::MutexLock lock(&mutex_);
+      const auto update =
+          (task_spec.IsActorTask() && !actor_repr_name_.empty())
+              ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+              : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    }
+
+    RAY_UNUSED(
+        task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                          task_spec.JobId(),
+                                                          task_spec.AttemptNumber(),
+                                                          task_spec,
+                                                          rpc::TaskStatus::RUNNING,
+                                                          /*include_task_info=*/false,
+                                                          update));
   }
 
-  RAY_UNUSED(
-      task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                        task_spec.JobId(),
-                                                        task_spec.AttemptNumber(),
-                                                        task_spec,
-                                                        rpc::TaskStatus::RUNNING,
-                                                        /*include_task_info=*/false,
-                                                        update));
-}
-
-worker_context_->SetCurrentTask(task_spec);
-SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
+  worker_context_->SetCurrentTask(task_spec);
+  SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
 }
 {
   absl::MutexLock lock(&mutex_);
