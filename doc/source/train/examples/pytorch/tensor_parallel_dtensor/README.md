@@ -56,7 +56,22 @@ We can combine two complementary parallelization strategies:
 - **Tensor Parallelism (TP)**: Shards model weights across GPUs within a TP group. All GPUs in a TP group process the same input data but hold different parts of the model.
 - **Data Parallelism (DP)**: Replicates the model across DP groups. Each DP group processes different data and synchronizes gradients.
 
-With `tp_size=2` and `dp_size=2` on 4 GPUs, the device mesh looks like:
+This tutorial uses **FSDP2** for data parallelism instead of the older `DistributedDataParallel` (DDP). While DDP replicates the entire model on each GPU, FSDP2 shards model parameters across the data parallel dimension, significantly reducing memory usage.
+
+Additionally, FSDP2 is built on the same Distributed Tensor primitives as tensor parallelism, which makes them naturally composable for 2D parallelism.
+
+The following figure shows the dataflow of a forward pass using tensor parallelism and FSDP2. Assume we split a parameter tensor row-wise in a tensor-parallel layer. The input tensor (activations) must be partitioned column-wise. After multiplying the local shards, we run an all-reduce to produce the layer output.
+
+When combining FSDP2 with tensor parallelism, the parameter shard created for tensor parallelism is sharded again along the data-parallel dimension. The shards are first concatenated across the data-parallel dimension via all-gather communication. Then we multiply the local shards and run an all-reduce.
+
+![2D Parallelism: Tensor Parallelism + FSDP2](images/tensor_parallel.png)
+
+Similarly, during the backward pass we need an all-reduce (and an all-gather when combined with FSDP2). Note that optimizer parameter updates (e.g., Adam) do not require communication.
+
+You can define a `DeviceMesh` to map multiple GPU devices to multiple dimensions for partitioning. With `tp_size=2` and `dp_size=2` on 4 GPUs, the device mesh looks like:
+
+**When to use Tensor Parallelism vs FSDP:** Tensor parallelism is efficient when leveraging high-speed intra-node GPU communication like NVLink. However, cross-node communication is significantly slower, making TP difficult to scale beyond a single node. The typical approach is to use TP within a single node and combine it with FSDP2 to scale training across multiple nodes.
+
 
 ```
 Device Mesh (2x2):
@@ -73,6 +88,8 @@ Device Mesh (2x2):
 
 - **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
 - **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
+
+
 
 ## 1. Package and environment setup
 
