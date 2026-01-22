@@ -459,26 +459,22 @@ def memory_summary(
         "Size",
         "Reference Type",
     ]
-    object_ref_string = "{:<13} | {:<7} | {:<7} | {:<9} \
-| {:<9} | {:<7} | {:<8} | {:<14}"
+    object_ref_string = "{:<13} | {:<8} | {:<7} | {:<9} \
+| {:<9} | {:<8} | {:<8} | {:<14}"
 
     if has_rdt_objects:
         object_ref_labels.extend(["RDT", "Device"])
         object_ref_string += " | {:<4} | {:<8}"
-    else:
-        object_ref_string += " "
 
     object_ref_labels.append("Object Ref")
     object_ref_string += " | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<7}  {:<8}  \
+        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<8}  {:<6}  \
 {:<18}"
 
         if has_rdt_objects:
             object_ref_string += "  {:<4}  {:<8}"
-        else:
-            object_ref_string += " "
 
         object_ref_string += "  {:<56}\n"
 
