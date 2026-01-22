@@ -61,12 +61,13 @@ class EmaStats(StatsBase):
         Returns:
             The nanmean of the values.
         """
+
+        if torch and isinstance(values[0], torch.Tensor):
+            stacked = torch.stack(list(values))
+            return torch.nanmean(stacked)
+
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Mean of empty slice", RuntimeWarning)
-
-            if torch and isinstance(values[0], torch.Tensor):
-                stacked = torch.stack(list(values))
-                return torch.nanmean(stacked)
             return np.nanmean(values)
 
     def __len__(self) -> int:
