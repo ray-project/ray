@@ -27,7 +27,6 @@ import unittest
 import uuid
 from distutils.util import strtobool
 
-import cloudpickle
 import numpy as np
 import pandas as pd
 from ludwig.api import LudwigModel
@@ -37,6 +36,8 @@ from ludwig.data.dataset_synthesizer import DATETIME_FORMATS, build_synthetic_da
 from ludwig.experiment import experiment_cli
 from ludwig.features.feature_utils import compute_feature_hash
 from ludwig.utils.data_utils import read_csv, replace_file_extension
+
+import cloudpickle
 
 ENCODERS = [
     "embed",
