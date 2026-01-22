@@ -344,7 +344,13 @@ if __name__ == "__main__":
     result = cpu_threadpool_handle.remote(None).result()
     print(f"CPUWithThreadpool result: {result}")
     assert result == "ok"
-    
+
+    print("\nTesting CustomThreadPool deployment...")
+    custom_threadpool_handle = serve.run(CustomThreadPool.bind())
+    result = custom_threadpool_handle.remote(None).result()
+    print(f"CustomThreadPool result: {result}")
+    assert result == "ok"
+
     print("\nTesting BlockingStream deployment...")
     # Test BlockingStream - just verify it can be created and called
     blocking_stream_handle = serve.run(BlockingStream.bind())
@@ -402,7 +408,7 @@ if __name__ == "__main__":
         print("✅ ThreadedHTTP test passed")
     except Exception as e:
         print(f"⚠️  ThreadedHTTP test failed (expected): {type(e).__name__}: {e}")
-    
+
     print("\nTesting OffloadIO deployment...")
     try:
         offload_io_handle = serve.run(OffloadIO.bind())
