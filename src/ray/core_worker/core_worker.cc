@@ -2859,10 +2859,9 @@ Status CoreWorker::ExecuteTask(
     worker::TaskStatusEvent::TaskStateUpdate update;
     {
       absl::MutexLock lock(&mutex_);
-      update =
-          (task_spec.IsActorTask() && !actor_repr_name_.empty())
-              ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
-              : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+      update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+                   ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+                   : worker::TaskStatusEvent::TaskStateUpdate(pid_);
     }
 
     RAY_UNUSED(
@@ -2877,7 +2876,6 @@ Status CoreWorker::ExecuteTask(
 
   worker_context_->SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
-}
 {
   absl::MutexLock lock(&mutex_);
   running_tasks_.emplace(task_spec.TaskId(), task_spec);
