@@ -21,7 +21,7 @@ from ray.serve._private.test_utils import (
     check_ray_stopped,
     start_telemetry_app,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import (  # noqa
     external_redis,
@@ -148,6 +148,7 @@ def _shared_serve_instance():
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
+        proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
         grpc_options={
             "port": 9000,
