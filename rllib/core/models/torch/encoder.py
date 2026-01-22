@@ -377,8 +377,6 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         # Fusion net as ModuleList.
         self.net = nn.ModuleList([input_layer] + fusion_layers + [output_layer])
 
-        print("Initialized TorchMultiStreamEncoder")
-
     @override(Model)
     def _forward(self, inputs, **kwargs):
         # Run the inputs through the base encoders.
