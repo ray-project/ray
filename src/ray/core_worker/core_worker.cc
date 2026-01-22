@@ -2876,175 +2876,176 @@ Status CoreWorker::ExecuteTask(
 
   worker_context_->SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
-{
-  absl::MutexLock lock(&mutex_);
-  running_tasks_.emplace(task_spec.TaskId(), task_spec);
-  if (resource_ids.has_value()) {
-    resource_ids_ = std::move(*resource_ids);
-  }
-}
-
-RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
-
-for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-  return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
-}
-// For dynamic tasks, pass the return IDs that were dynamically generated on
-// the first execution.
-if (!task_spec.ReturnsDynamic()) {
-  dynamic_return_objects = nullptr;
-} else if (task_spec.AttemptNumber() > 0) {
-  for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
-    // Increase the put index so that when the generator creates a new obj
-    // the object id won't conflict.
-    worker_context_->GetNextPutIndex();
-    dynamic_return_objects->emplace_back(dynamic_return_id, std::shared_ptr<RayObject>());
-    RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
-                   << " should return dynamic object " << dynamic_return_id;
-
-    AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
-    reference_counter_->AddBorrowedObject(
-        dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
-  }
-}
-
-TaskType task_type = TaskType::NORMAL_TASK;
-if (task_spec.IsActorCreationTask()) {
-  task_type = TaskType::ACTOR_CREATION_TASK;
-  SetActorId(task_spec.ActorCreationId());
-  task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
   {
-    auto self_actor_handle =
-        std::make_unique<ActorHandle>(task_spec.GetSerializedActorHandle());
-    // Register the handle to the current actor itself.
-    actor_manager_->RegisterActorHandle(std::move(self_actor_handle),
-                                        ObjectID::Nil(),
-                                        CurrentCallSite(),
-                                        rpc_address_,
-                                        /*add_local_ref=*/false,
-                                        /*is_self=*/true);
+    absl::MutexLock lock(&mutex_);
+    running_tasks_.emplace(task_spec.TaskId(), task_spec);
+    if (resource_ids.has_value()) {
+      resource_ids_ = std::move(*resource_ids);
+    }
   }
-  RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
-} else if (task_spec.IsActorTask()) {
-  task_type = TaskType::ACTOR_TASK;
-}
 
-std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
+  RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
-std::vector<ConcurrencyGroup> defined_concurrency_groups = {};
-std::string name_of_concurrency_group_to_execute;
-if (task_spec.IsActorCreationTask()) {
-  defined_concurrency_groups = task_spec.ConcurrencyGroups();
-} else if (task_spec.IsActorTask()) {
-  name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
-}
-
-Status status = options_.task_execution_callback(
-    task_spec.CallerAddress(),
-    task_type,
-    task_spec.GetName(),
-    func,
-    task_spec.GetRequiredResources().GetResourceUnorderedMap(),
-    args,
-    arg_refs,
-    task_spec.GetDebuggerBreakpoint(),
-    task_spec.GetSerializedRetryExceptionAllowlist(),
-    return_objects,
-    dynamic_return_objects,
-    streaming_generator_returns,
-    creation_task_exception_pb_bytes,
-    is_retryable_error,
-    actor_repr_name,
-    application_error,
-    defined_concurrency_groups,
-    name_of_concurrency_group_to_execute,
-    /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-    /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
-    /*retry_exception=*/task_spec.ShouldRetryExceptions(),
-    /*generator_backpressure_num_objects=*/
-    task_spec.GeneratorBackpressureNumObjects(),
-    /*tensor_transport=*/task_spec.TensorTransport());
-
-// Get the reference counts for any IDs that we borrowed during this task,
-// remove the local reference for these IDs, and return the ref count info to
-// the caller. This will notify the caller of any IDs that we (or a nested
-// task) are still borrowing. It will also notify the caller of any new IDs
-// that were contained in a borrowed ID that we (or a nested task) are now
-// borrowing.
-std::vector<ObjectID> deleted;
-if (!borrowed_ids.empty()) {
-  reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
-}
-if (dynamic_return_objects != nullptr) {
-  for (const auto &dynamic_return : *dynamic_return_objects) {
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return.first}, borrowed_refs, &deleted);
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
   }
-}
-memory_store_->Delete(deleted);
+  // For dynamic tasks, pass the return IDs that were dynamically generated on
+  // the first execution.
+  if (!task_spec.ReturnsDynamic()) {
+    dynamic_return_objects = nullptr;
+  } else if (task_spec.AttemptNumber() > 0) {
+    for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      // Increase the put index so that when the generator creates a new obj
+      // the object id won't conflict.
+      worker_context_->GetNextPutIndex();
+      dynamic_return_objects->emplace_back(dynamic_return_id,
+                                           std::shared_ptr<RayObject>());
+      RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
+                     << " should return dynamic object " << dynamic_return_id;
 
-if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
+      AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
+      reference_counter_->AddBorrowedObject(
+          dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
+    }
+  }
+
+  TaskType task_type = TaskType::NORMAL_TASK;
+  if (task_spec.IsActorCreationTask()) {
+    task_type = TaskType::ACTOR_CREATION_TASK;
+    SetActorId(task_spec.ActorCreationId());
+    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
+    {
+      auto self_actor_handle =
+          std::make_unique<ActorHandle>(task_spec.GetSerializedActorHandle());
+      // Register the handle to the current actor itself.
+      actor_manager_->RegisterActorHandle(std::move(self_actor_handle),
+                                          ObjectID::Nil(),
+                                          CurrentCallSite(),
+                                          rpc_address_,
+                                          /*add_local_ref=*/false,
+                                          /*is_self=*/true);
+    }
+    RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
+  } else if (task_spec.IsActorTask()) {
+    task_type = TaskType::ACTOR_TASK;
+  }
+
+  std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
+
+  std::vector<ConcurrencyGroup> defined_concurrency_groups = {};
+  std::string name_of_concurrency_group_to_execute;
+  if (task_spec.IsActorCreationTask()) {
+    defined_concurrency_groups = task_spec.ConcurrencyGroups();
+  } else if (task_spec.IsActorTask()) {
+    name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
+  }
+
+  Status status = options_.task_execution_callback(
+      task_spec.CallerAddress(),
+      task_type,
+      task_spec.GetName(),
+      func,
+      task_spec.GetRequiredResources().GetResourceUnorderedMap(),
+      args,
+      arg_refs,
+      task_spec.GetDebuggerBreakpoint(),
+      task_spec.GetSerializedRetryExceptionAllowlist(),
+      return_objects,
+      dynamic_return_objects,
+      streaming_generator_returns,
+      creation_task_exception_pb_bytes,
+      is_retryable_error,
+      actor_repr_name,
+      application_error,
+      defined_concurrency_groups,
+      name_of_concurrency_group_to_execute,
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
+      /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
+      /*retry_exception=*/task_spec.ShouldRetryExceptions(),
+      /*generator_backpressure_num_objects=*/
+      task_spec.GeneratorBackpressureNumObjects(),
+      /*tensor_transport=*/task_spec.TensorTransport());
+
+  // Get the reference counts for any IDs that we borrowed during this task,
+  // remove the local reference for these IDs, and return the ref count info to
+  // the caller. This will notify the caller of any IDs that we (or a nested
+  // task) are still borrowing. It will also notify the caller of any new IDs
+  // that were contained in a borrowed ID that we (or a nested task) are now
+  // borrowing.
+  std::vector<ObjectID> deleted;
+  if (!borrowed_ids.empty()) {
+    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
+  }
+  if (dynamic_return_objects != nullptr) {
+    for (const auto &dynamic_return : *dynamic_return_objects) {
+      reference_counter_->PopAndClearLocalBorrowers(
+          {dynamic_return.first}, borrowed_refs, &deleted);
+    }
+  }
+  memory_store_->Delete(deleted);
+
+  if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
+    RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+        << "There were " << reference_counter_->NumObjectIDsInScope()
+        << " ObjectIDs left in scope after executing task. "
+           "This is either caused by keeping references to ObjectIDs in Python "
+           "between "
+           "tasks (e.g., in global variables) or indicates a problem with Ray's "
+           "reference counting, and may cause problems in the object store.";
+  }
+
+  if (!options_.is_local_mode) {
+    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, /*task_name=*/"");
+    worker_context_->ResetCurrentTask();
+  }
+  {
+    absl::MutexLock lock(&mutex_);
+    size_t erased = running_tasks_.erase(task_spec.TaskId());
+    RAY_CHECK(erased == 1);
+    // Clean up cancellation state for this task
+    canceled_tasks_.erase(task_spec.TaskId());
+    if (task_spec.IsNormalTask()) {
+      resource_ids_.clear();
+    }
+
+    // XXX.
+    if (!actor_repr_name->empty()) {
+      actor_repr_name_ = *actor_repr_name;
+    }
+  }
+
+  if (!options_.is_local_mode) {
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
+  }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "There were " << reference_counter_->NumObjectIDsInScope()
-      << " ObjectIDs left in scope after executing task. "
-         "This is either caused by keeping references to ObjectIDs in Python "
-         "between "
-         "tasks (e.g., in global variables) or indicates a problem with Ray's "
-         "reference counting, and may cause problems in the object store.";
-}
+      << "Finished executing task, status=" << status;
 
-if (!options_.is_local_mode) {
-  SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, /*task_name=*/"");
-  worker_context_->ResetCurrentTask();
-}
-{
-  absl::MutexLock lock(&mutex_);
-  size_t erased = running_tasks_.erase(task_spec.TaskId());
-  RAY_CHECK(erased == 1);
-  // Clean up cancellation state for this task
-  canceled_tasks_.erase(task_spec.TaskId());
-  if (task_spec.IsNormalTask()) {
-    resource_ids_.clear();
+  if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
+    RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
+        << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
   }
 
-  // XXX.
-  if (!actor_repr_name->empty()) {
-    actor_repr_name_ = actor_repr_name;
+  std::ostringstream stream;
+  if (status.IsCreationTaskError()) {
+    Exit(rpc::WorkerExitType::USER_ERROR,
+         absl::StrCat(
+             "Worker exits because there was an exception in the initialization method "
+             "(e.g., __init__). Fix the exceptions from the initialization to resolve "
+             "the issue. ",
+             status.message()),
+         creation_task_exception_pb_bytes);
+  } else if (status.IsIntentionalSystemExit()) {
+    Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+         absl::StrCat("Worker exits by an user request. ", status.message()),
+         creation_task_exception_pb_bytes);
+  } else if (status.IsUnexpectedSystemExit()) {
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR,
+         absl::StrCat("Worker exits unexpectedly. ", status.message()),
+         creation_task_exception_pb_bytes);
+  } else {
+    RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
   }
-}
-
-if (!options_.is_local_mode) {
-  task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
-}
-RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-    << "Finished executing task, status=" << status;
-
-if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
-  RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
-      << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
-}
-
-std::ostringstream stream;
-if (status.IsCreationTaskError()) {
-  Exit(rpc::WorkerExitType::USER_ERROR,
-       absl::StrCat(
-           "Worker exits because there was an exception in the initialization method "
-           "(e.g., __init__). Fix the exceptions from the initialization to resolve "
-           "the issue. ",
-           status.message()),
-       creation_task_exception_pb_bytes);
-} else if (status.IsIntentionalSystemExit()) {
-  Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
-       absl::StrCat("Worker exits by an user request. ", status.message()),
-       creation_task_exception_pb_bytes);
-} else if (status.IsUnexpectedSystemExit()) {
-  Exit(rpc::WorkerExitType::SYSTEM_ERROR,
-       absl::StrCat("Worker exits unexpectedly. ", status.message()),
-       creation_task_exception_pb_bytes);
-} else {
-  RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
-}
-return status;
+  return status;
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
