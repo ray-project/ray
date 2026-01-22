@@ -174,8 +174,20 @@ def from_items(
 
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5])
-        >>> ds
-        MaterializedDataset(num_blocks=..., num_rows=5, schema={item: int64})
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (5, 1)
+        ╭───────╮
+        │ item  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 2     │
+        │ 3     │
+        │ 4     │
+        │ 5     │
+        ╰───────╯
+        (Showing 5 of 5 rows)
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -260,8 +272,14 @@ def range(
 
         >>> import ray
         >>> ds = ray.data.range(10000)
-        >>> ds
-        Dataset(num_rows=10000, schema={id: int64})
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (10000, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
 
@@ -314,11 +332,14 @@ def range_tensor(
 
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds
-        Dataset(
-           num_rows=1000,
-           schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)}
-        )
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (1000, 1)
+        ╭──────────────────────────────────────────╮
+        │ data                                     │
+        │ ---                                      │
+        │ ArrowTensorTypeV2(shape=(2, 2), dtype=i… │
+        ╰──────────────────────────────────────────╯
+        (Dataset isn't materialized)
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
@@ -1497,7 +1518,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1979,7 +2000,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1989,7 +2010,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2508,6 +2529,7 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    sql_params: Optional[Any] = None,
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
@@ -2585,6 +2607,8 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        sql_params: Parameters to bind to the SQL query. Use the placeholder style
+            required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
         shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
             For other databases, common alternatives include "hash" and "SHA".
@@ -2611,6 +2635,7 @@ def read_sql(
     """
     datasource = SQLDatasource(
         sql=sql,
+        sql_params=sql_params,
         shard_keys=shard_keys,
         shard_hash_fn=shard_hash_fn,
         connection_factory=connection_factory,
@@ -3074,13 +3099,36 @@ def from_pandas(
         >>> import pandas as pd
         >>> import ray
         >>> df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-        >>> ray.data.from_pandas(df)
-        MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas(df)  # doctest: +ELLIPSIS
+        shape: (3, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 3 of 3 rows)
 
        Create a Ray Dataset from a list of Pandas DataFrames.
 
-        >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas([df, df])  # doctest: +ELLIPSIS
+        shape: (6, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
@@ -3128,13 +3176,36 @@ def from_pandas_refs(
         >>> import pandas as pd
         >>> import ray
         >>> df_ref = ray.put(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
-        >>> ray.data.from_pandas_refs(df_ref)
-        MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas_refs(df_ref)  # doctest: +ELLIPSIS
+        shape: (3, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 3 of 3 rows)
 
         Create a Ray Dataset from a list of Pandas Dataframes references.
 
-        >>> ray.data.from_pandas_refs([df_ref, df_ref])
-        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas_refs([df_ref, df_ref])  # doctest: +ELLIPSIS
+        shape: (6, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A Ray object reference to a pandas dataframe, or a list of
@@ -3200,13 +3271,30 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
         >>> import numpy as np
         >>> import ray
         >>> arr = np.array([1])
-        >>> ray.data.from_numpy(arr)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
+        >>> ray.data.from_numpy(arr)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy arrays.
 
-        >>> ray.data.from_numpy([arr, arr])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
+        >>> ray.data.from_numpy([arr, arr])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
@@ -3233,13 +3321,30 @@ def from_numpy_refs(
         >>> import numpy as np
         >>> import ray
         >>> arr_ref = ray.put(np.array([1]))
-        >>> ray.data.from_numpy_refs(arr_ref)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
+        >>> ray.data.from_numpy_refs(arr_ref)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy array references.
 
-        >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
+        >>> ray.data.from_numpy_refs([arr_ref, arr_ref])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -3296,13 +3401,30 @@ def from_arrow(
         >>> import pyarrow as pa
         >>> import ray
         >>> table = pa.table({"x": [1]})
-        >>> ray.data.from_arrow(table)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
+        >>> ray.data.from_arrow(table)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow tables.
 
-        >>> ray.data.from_arrow([table, table])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
+        >>> ray.data.from_arrow([table, table])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
 
     Args:
@@ -3369,13 +3491,30 @@ def from_arrow_refs(
         >>> import pyarrow as pa
         >>> import ray
         >>> table_ref = ray.put(pa.table({"x": [1]}))
-        >>> ray.data.from_arrow_refs(table_ref)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
+        >>> ray.data.from_arrow_refs(table_ref)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow table references
 
-        >>> ray.data.from_arrow_refs([table_ref, table_ref])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
+        >>> ray.data.from_arrow_refs([table_ref, table_ref])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
 
     Args:
@@ -4089,7 +4228,7 @@ def read_unity_catalog(
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/external-access/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 

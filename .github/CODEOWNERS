@@ -7,8 +7,7 @@
 
 # ==== Documentation ====
 
-# Authors responsible for copy-editing of the documentation.
-# NOTE: Add @ray-project/ray-docs to all following docs subdirs.
+# Authors responsible for documentation infrastructure and layout.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @pcmoritz
 
@@ -26,8 +25,8 @@
 # C++ worker
 /cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
-/doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
-/doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
+/doc/source/cluster/ @ray-project/ray-core
+/doc/source/ray-core/ @ray-project/ray-core
 
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @jjyao
@@ -51,21 +50,17 @@
 /python/ray/dashboard/modules/data/ @ray-project/ray-data
 /python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
-# Ray workflows.
-/python/ray/workflow/ @ray-project/ray-core
-/doc/source/workflows/ @ray-project/ray-core @ray-project/ray-docs
-
 # RLlib.
 /rllib/ @ray-project/ray-rllib
-/doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
+/doc/source/rllib/ @ray-project/ray-rllib
 
 # Ray Tune
 /python/ray/tune/ @ray-project/ray-tune
-/doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
+/doc/source/tune/ @ray-project/ray-tune
 
 # Ray Train
 /python/ray/train/ @ray-project/ray-train
-/doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
+/doc/source/train/ @ray-project/ray-train
 
 # Ray AIR
 /python/ray/air/ @ray-project/ray-train
@@ -75,7 +70,7 @@
 /java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /python/ray/dashboard/modules/serve/ @ray-project/ray-serve
-/doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
+/doc/source/serve/ @ray-project/ray-serve
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
@@ -83,7 +78,7 @@
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
-/doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
+/doc/source/serve/llm/ @ray-project/ray-llm
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng

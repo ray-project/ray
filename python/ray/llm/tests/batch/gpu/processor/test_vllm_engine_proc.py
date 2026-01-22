@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
+from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
@@ -52,7 +53,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "engine_kwargs": {
             "max_model_len": 8192,
             "distributed_executor_backend": "mp",
-            "task": vLLMTaskType.GENERATE,
+            "task_type": vLLMTaskType.GENERATE,
         },
         "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 111,
@@ -79,7 +80,7 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
     config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
-            task=vLLMTaskType.EMBED,
+            task_type=vLLMTaskType.EMBED,
         ),
         task_type=vLLMTaskType.GENERATE,
         concurrency=4,
@@ -93,7 +94,10 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
     stage = processor.get_stage_by_name("vLLMEngineStage")
 
     assert stage.fn_constructor_kwargs["task_type"] == vLLMTaskType.GENERATE
-    assert stage.fn_constructor_kwargs["engine_kwargs"]["task"] == vLLMTaskType.GENERATE
+    assert (
+        stage.fn_constructor_kwargs["engine_kwargs"]["task_type"]
+        == vLLMTaskType.GENERATE
+    )
 
 
 def test_vllm_engine_processor_invalid_task(model_opt_125m):
@@ -103,7 +107,7 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
         vLLMEngineProcessorConfig(
             model_source=model_opt_125m,
             engine_kwargs=dict(
-                task=vLLMTaskType.EMBED,
+                task_type=vLLMTaskType.EMBED,
             ),
             task_type="invalid_task",
             concurrency=4,
@@ -244,6 +248,54 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
     assert all("resp" in out for out in outs)
 
 
+def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
+    tokenizer = AutoTokenizer.from_pretrained(model_opt_125m, trust_remote_code=True)
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    def preprocess(row):
+        prompt_text = f"Calculate {row['id']} ** 3"
+
+        return dict(
+            tokenized_prompt=tokenizer(prompt_text)["input_ids"],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=preprocess,
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
 def test_embedding_model(gpu_type, model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
@@ -285,6 +337,44 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
     assert all("prompt" in out for out in outs)
+
+
+def test_classification_model(gpu_type):
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="HuggingFaceTB/fineweb-edu-classifier",
+        task_type="classify",
+        engine_kwargs=dict(
+            max_model_len=512,  # Model only supports up to 512 tokens
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            prompt="This is a great educational content.",
+            pooling_params=dict(
+                truncate_prompt_tokens=-1,
+            ),
+        ),
+        postprocess=lambda row: {
+            "probs": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("probs" in out for out in outs)
 
 
 @pytest.mark.parametrize("use_nested_config", [True, False])
