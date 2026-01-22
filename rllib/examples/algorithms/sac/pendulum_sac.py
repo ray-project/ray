@@ -57,6 +57,5 @@ config = (
     )
 )
 
-args.no_tune = False
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args)
