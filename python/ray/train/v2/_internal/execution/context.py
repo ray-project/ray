@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._common.retry import retry
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset
 from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
@@ -29,6 +28,7 @@ from ray.train.v2.api.report_config import (
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -66,7 +66,7 @@ class TrainRunContext:
     backend_config: "BackendConfig"
 
     # The datasets used in the current training run.
-    datasets: Dict[str, Dataset]
+    datasets: Dict[str, "Dataset"]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
@@ -171,7 +171,7 @@ class TrainContext:
             )
         )
 
-    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
