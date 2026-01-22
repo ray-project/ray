@@ -567,20 +567,23 @@ def _generate_transform_fn_for_map_batches(
             def transform_fn(
                 batches: Iterable[DataBatch], ctx: TaskContext
             ) -> Iterable[DataBatch]:
-                input_num_rows = 0
-                output_num_rows = 0
+                # Track per-batch input row counts to detect mismatches
+                input_row_counts: List[int] = []
+                output_idx = 0
 
                 def counting_batches():
-                    nonlocal input_num_rows
                     for batch in batches:
-                        input_num_rows += _get_batch_num_rows(batch)
+                        input_row_counts.append(_get_batch_num_rows(batch))
                         yield batch
 
                 for out_batch in base_transform_fn(counting_batches(), ctx):
-                    output_num_rows += _get_batch_num_rows(out_batch)
+                    output_num_rows = _get_batch_num_rows(out_batch)
+                    if output_idx < len(input_row_counts):
+                        input_num_rows = input_row_counts[output_idx]
+                        if input_num_rows != output_num_rows:
+                            _warn_row_count_mismatch(input_num_rows, output_num_rows)
+                    output_idx += 1
                     yield out_batch
-
-                _warn_row_count_mismatch(input_num_rows, output_num_rows)
 
     else:
 
