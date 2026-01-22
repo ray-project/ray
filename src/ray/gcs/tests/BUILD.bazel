@@ -42,6 +42,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     tags = [
         "no_tsan",
         "no_windows",
