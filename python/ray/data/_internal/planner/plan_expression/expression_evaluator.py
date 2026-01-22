@@ -47,6 +47,7 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     BinaryOperation.SUB: operator.sub,
     BinaryOperation.MUL: operator.mul,
     BinaryOperation.DIV: operator.truediv,
+    BinaryOperation.MOD: operator.mod,
     BinaryOperation.FLOORDIV: operator.floordiv,
     BinaryOperation.GT: operator.gt,
     BinaryOperation.LT: operator.lt,
@@ -131,6 +132,11 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     BinaryOperation.SUB: pc.subtract,
     BinaryOperation.MUL: pc.multiply,
     BinaryOperation.DIV: pc.divide,
+    BinaryOperation.MOD: lambda left, right: (
+        # Modulo op is essentially:
+        #   r = N - floor(N/M) * M
+        pc.subtract(left, pc.multiply(pc.floor(pc.divide(left, right)), right))
+    ),
     BinaryOperation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
     BinaryOperation.GT: pc.greater,
     BinaryOperation.LT: pc.less,
@@ -658,6 +664,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         """
         args = [self.visit(arg) for arg in expr.args]
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
+
         result = expr.fn(*args, **kwargs)
 
         if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):

@@ -23,6 +23,7 @@
 [Tt][Ll][Ss]
 [Vv]ision LMs
 admin
+agentic
 Alibaba
 Alpaca
 Anyscale
@@ -50,6 +51,7 @@ dev to prod
 [d|D]isable
 DLinear
 Dockerfile
+docstrings
 DPO
 EKS
 ETDataset
@@ -58,6 +60,7 @@ Flink
 g[Rr][Pp][Cc]
 GGUF
 GKE
+GPT
 GPTQ
 GPU(s)?
 hostfile
@@ -85,7 +88,7 @@ NVIDIA
 NVLink
 OOM
 open-source
-PACK
+[Pp][Aa][Cc][Kk]
 pipelining
 Podman
 preemptible
@@ -106,12 +109,14 @@ SFT
 ShareGPT
 SLA
 SLAs
+SSE
 streamable
 Softmax
 streamable
 subprocess
 teardown
 tiktoken
+tokenization
 uncaptured
 URI(s)?
 UUID

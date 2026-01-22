@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import copy
+import errno
 import importlib
 import inspect
 import logging
@@ -40,6 +41,21 @@ except ImportError:
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
+
+
+def asyncio_grpc_exception_handler(loop, context):
+    """Exception handler to filter out false positive BlockingIOErrors from gRPC."""
+    exc = context.get("exception")
+    msg = context.get("message")
+    if (
+        exc
+        and isinstance(exc, BlockingIOError)
+        and exc.errno == errno.EAGAIN
+        and "PollerCompletionQueue._handle_events" in msg
+    ):
+        return
+
+    loop.default_exception_handler(context)
 
 
 def validate_ssl_config(
@@ -172,6 +188,34 @@ def format_actor_name(actor_name, *modifiers):
         name += "-{}".format(modifier)
 
     return name
+
+
+CLASS_WRAPPER_METADATA_ATTRS = (
+    "__name__",
+    "__qualname__",
+    "__module__",
+    "__doc__",
+    "__annotations__",
+)
+
+
+def copy_class_metadata(wrapper_cls, target_cls) -> None:
+    """Copy common class-level metadata onto a wrapper class."""
+    for attr in CLASS_WRAPPER_METADATA_ATTRS:
+        if attr == "__annotations__":
+            target_annotations = getattr(target_cls, "__annotations__", None)
+            if target_annotations:
+                merged_annotations = dict(
+                    wrapper_cls.__dict__.get("__annotations__", {})
+                )
+                for key, value in target_annotations.items():
+                    merged_annotations.setdefault(key, value)
+                wrapper_cls.__annotations__ = merged_annotations
+            continue
+
+        if hasattr(target_cls, attr):
+            setattr(wrapper_cls, attr, getattr(target_cls, attr))
+    wrapper_cls.__wrapped__ = target_cls
 
 
 def ensure_serialization_context():
@@ -591,6 +635,10 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
+async def await_deployment_response(deployment_response):
+    return await deployment_response
+
+
 async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
@@ -601,8 +649,17 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     if isinstance(obj, DeploymentResponseGenerator):
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
-        # Launch async task to convert DeploymentResponse to an object ref
-        return asyncio.create_task(obj._to_object_ref())
+        if request_metadata._by_reference and obj.by_reference:
+            # If sending requests by reference, launch async task to
+            # convert DeploymentResponse to an object ref
+            return asyncio.create_task(obj._to_object_ref())
+        else:
+            # Otherwise, resolve DeploymentResponse directly to result
+            return asyncio.create_task(await_deployment_response(obj))
+    elif not request_metadata._by_reference and isinstance(obj, ray.ObjectRef):
+        # If the router is sending requests by value (i.e. using gRPC),
+        # resolve all Ray objects to mirror Ray behavior
+        return asyncio.wrap_future(obj.future())
 
 
 def wait_for_interrupt() -> None:

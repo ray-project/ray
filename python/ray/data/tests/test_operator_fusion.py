@@ -745,9 +745,10 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
 @pytest.mark.parametrize(
     "order,target_num_rows,batch_size,should_fuse",
     [
-        # map_batches -> streaming_repartition: fuse when batch_size == target_num_rows
+        # map_batches -> streaming_repartition: fuse when batch_size is a multiple of target_num_rows
         ("map_then_sr", 20, 20, True),
         ("map_then_sr", 20, 10, False),
+        ("map_then_sr", 20, 40, True),
         ("map_then_sr", 20, None, False),
         # streaming_repartition -> map_batches: not fused
         ("sr_then_map", 20, 20, False),
@@ -816,6 +817,90 @@ def test_streaming_repartition_no_further_fuse(
         in stats1
     ), stats1
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
+
+
+def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, capsys):
+    """Test that fused filter operators doesn't fuse further with upstream maps
+    that specify batch_size (since it filter can change the # of rows.)
+
+    Case 1: map_batches -> filter -> map_batchess
+            Result: (map -> filter) -> map
+            The fused (map -> filter) doesn't fuse with upstream maps.
+    """
+    n = 100
+    target_rows = 20
+
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.filter(lambda x: True)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+
+    ds1.explain()
+    captured = capsys.readouterr().out.strip()
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
+
+
+def test_combine_repartition_aggregate(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100)
+    # Apply repartition with shuffle
+    ds = ds.repartition(5, shuffle=True)
+    # Apply groupby aggregate (creates Aggregate operator)
+    ds = ds.groupby("id").count()
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (Repartition) was dropped and Aggregate connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Aggregate[Aggregate]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_streaming_repartition_to_shuffle_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    # Apply StreamingRepartition (local repartition)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    # Apply shuffle Repartition (global repartition)
+    ds = ds.repartition(num_blocks=3, shuffle=True)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (StreamingRepartition) was dropped and Repartition connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Repartition[Repartition]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
+    data = [{"a": i, "b": 100 - i} for i in range(50)]
+    ds = ray.data.from_items(data)
+    # Apply first sort on column 'a'
+    ds = ds.sort("a")
+    # Apply second sort on column 'b'
+    ds = ds.sort("b")
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (first Sort) was dropped and only the second Sort remains
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Sort[Sort]\n"
+        "+- FromItems[FromItems]"
+    )
+    assert expected_optimized_plan in captured
 
 
 if __name__ == "__main__":

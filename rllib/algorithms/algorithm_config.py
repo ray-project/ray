@@ -56,6 +56,8 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
+from ray.rllib.utils.metrics.stats import StatsBase
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -394,7 +396,7 @@ class AlgorithmConfig(_Config):
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
         #  dict. We should generally move to a world, in which there exists an
-        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  AlgorithmConfig that a) has a user provided model config object and b)
         #  is given a chance to compile a final model config (dict or object) that is
         #  then passed into the RLModule/Catalog. This design would then match our
         #  "compilation" pattern, where we compile automatically those settings that
@@ -492,6 +494,7 @@ class AlgorithmConfig(_Config):
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
+        self.prelearner_use_recorded_module_states = False
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
@@ -567,6 +570,7 @@ class AlgorithmConfig(_Config):
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
         self.log_gradients = False
+        self.stats_cls_lookup = DEFAULT_STATS_CLS_LOOKUP
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -3121,6 +3125,7 @@ class AlgorithmConfig(_Config):
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
+        prelearner_use_recorded_module_states: Optional[bool] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
         actions_in_input_normalized: Optional[bool] = NotProvided,
@@ -3293,6 +3298,12 @@ class AlgorithmConfig(_Config):
                 Values too small force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
+            prelearner_use_recorded_module_states: Whether the `PreLearner` should
+                keep recorded module states from the offline data and use these states
+                as initial module states when training on sequences. This could be
+                useful when the offline data was recorded with a policy that uses
+                stateful modules (e.g., RNNs or Transformers) and the recorded module
+                states are accurate. The default is `False`.
             dataset_num_iters_per_learner: Number of updates to run in each learner
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
@@ -3405,6 +3416,10 @@ class AlgorithmConfig(_Config):
             self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
+        if prelearner_use_recorded_module_states is not NotProvided:
+            self.prelearner_use_recorded_module_states = (
+                prelearner_use_recorded_module_states
+            )
         if dataset_num_iters_per_learner is not NotProvided:
             self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
@@ -3662,6 +3677,7 @@ class AlgorithmConfig(_Config):
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
         log_gradients: Optional[bool] = NotProvided,
+        custom_stats_cls_lookup: Optional[Dict[str, Type[StatsBase]]] = NotProvided,
     ) -> Self:
         """Sets the config's reporting settings.
 
@@ -3703,8 +3719,15 @@ class AlgorithmConfig(_Config):
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
-                of the gradients dictionariy for each optimizer is logged to results.
+                of the gradients dictionary for each optimizer is logged to results.
                 The default is `False`.
+            custom_stats_cls_lookup: A dictionary mapping stat names to their corresponding Stats classes.
+                The Stats classes should be subclasses of :py:class:`~ray.rllib.utils.metrics.stats.StatsBase`.
+                The keys of the dictionary are the stat names, and the values are the corresponding Stats classes.
+                This allows you to use your own Stats classes for logging metrics.
+                You can replace existing values to override some behaviour of RLlib.
+                You can add key-value-pairs to the dictionary to add new stats classes that will be available
+                when logging values with the MetricsLogger throughout RLlib.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3725,6 +3748,8 @@ class AlgorithmConfig(_Config):
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
         if log_gradients is not NotProvided:
             self.log_gradients = log_gradients
+        if custom_stats_cls_lookup is not NotProvided:
+            self.stats_cls_lookup = custom_stats_cls_lookup
 
         return self
 
@@ -4226,6 +4251,7 @@ class AlgorithmConfig(_Config):
         If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
         the workers) adds up to exactly the `total_train_batch_size`.
+        Fractions < 1 calculated this way are rounded up to a rollout_fragment_length of 1.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
@@ -4250,10 +4276,10 @@ class AlgorithmConfig(_Config):
                     rollout_fragment_length
                 ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
-                    return int(rollout_fragment_length)
+                    return int(rollout_fragment_length) or 1
                 else:
                     return int(rollout_fragment_length) + 1
-            return int(rollout_fragment_length)
+            return int(rollout_fragment_length) or 1
         else:
             return self.rollout_fragment_length
 

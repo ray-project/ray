@@ -283,59 +283,21 @@ def base_http_options():
     )
 
 
-@pytest.fixture
-def mock_env_constants():
-    """Mock environment constants with default values."""
-    with patch.multiple(
-        "ray.serve._private.http_util",
-        RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S=300,
-        RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S=300,
-        RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH=None,
-    ):
-        yield
-
-
 class TestConfigureHttpOptionsWithDefaults:
     """Test suite for configure_http_options_with_defaults function."""
 
-    def test_basic_configuration_with_mock_env(
-        self, base_http_options, mock_env_constants
-    ):
-        """Test basic configuration with mocked environment constants."""
+    def test_basic_configuration(self, base_http_options):
+        """Test basic configuration preserves settings."""
         result = configure_http_options_with_defaults(base_http_options)
 
-        # Should apply default request timeout from mock (30)
+        # Request timeout should be preserved
         assert result.request_timeout_s == 30.0
-        # Keep alive timeout should remain original since mock sets it to 300
-        assert result.keep_alive_timeout_s == 300.0
+        # Keep alive timeout should be preserved (no env override)
+        assert result.keep_alive_timeout_s == 5.0
         # Should initialize middlewares list
         assert result.middlewares == []
         # Original should not be modified
         assert base_http_options.request_timeout_s == 30.0
-
-    def test_keep_alive_timeout_override_from_env(self, base_http_options):
-        """Test keep alive timeout override from environment variable."""
-        with patch(
-            "ray.serve._private.http_util.RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 10
-        ):
-            result = configure_http_options_with_defaults(base_http_options)
-            assert result.keep_alive_timeout_s == 10
-
-    def test_request_timeout_preserved_when_already_set(self):
-        """Test that existing request timeout is preserved when already set."""
-        http_options = HTTPOptions(
-            host="0.0.0.0",
-            port=8000,
-            request_timeout_s=120.0,
-            keep_alive_timeout_s=5.0,
-            middlewares=[],
-        )
-
-        with patch(
-            "ray.serve._private.http_util.RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 300
-        ):
-            result = configure_http_options_with_defaults(http_options)
-            assert result.request_timeout_s == 120.0
 
     @patch("ray.serve._private.http_util.call_function_from_import_path")
     @patch(
@@ -380,7 +342,7 @@ class TestConfigureHttpOptionsWithDefaults:
             # Assert that no callback middleware is added
             assert result.middlewares == []
 
-    def test_deep_copy_behavior(self, base_http_options, mock_env_constants):
+    def test_deep_copy_behavior(self, base_http_options):
         """Test that an original HTTPOptions object is not modified."""
         original_timeout = base_http_options.request_timeout_s
 

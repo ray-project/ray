@@ -115,7 +115,13 @@ const JobList = () => {
               }}
             />
             <Autocomplete
-              sx={{ height: 35, width: 150 }}
+              sx={{
+                height: 35,
+                width: 150,
+                "& .MuiSvgIcon-root": {
+                  color: "text.secondary",
+                },
+              }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "STOPPED", "FAILED"]}
               onInputChange={(event, value) =>
                 changeFilter("status", value.trim())

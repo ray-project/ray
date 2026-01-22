@@ -1,6 +1,18 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
+    name = "file_persistence_test",
+    size = "small",
+    srcs = ["file_persistence_test.cc"],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/util:file_persistence",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
     tags = ["team:core"],
@@ -136,18 +148,6 @@ ray_cc_test(
         "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "throttler_test",
-    size = "small",
-    srcs = ["throttler_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:throttler",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -68,13 +68,13 @@ class FileShuffleConfig:
 
     This configuration object controls how files are shuffled while reading file-based
     datasets. The random seed behavior is determined by the combination of ``seed``
-    and ``reseed_after_epoch``:
+    and ``reseed_after_execution``:
 
     - If ``seed`` is None, the random seed is always None (non-deterministic shuffling).
-    - If ``seed`` is not None and ``reseed_after_epoch`` is False, the random seed is
-      constantly ``seed`` across epochs.
-    - If ``seed`` is not None and ``reseed_after_epoch`` is True, the random seed is
-      different for each epoch.
+    - If ``seed`` is not None and ``reseed_after_execution`` is False, the random seed is
+      constantly ``seed`` across executions.
+    - If ``seed`` is not None and ``reseed_after_execution`` is True, the random seed is
+      different for each execution.
 
     .. note::
         Even if you provided a seed, you might still observe a non-deterministic row
@@ -85,38 +85,39 @@ class FileShuffleConfig:
     Args:
         seed: An optional integer seed for the file shuffler. If None, shuffling is
             non-deterministic. If provided, shuffling is deterministic based on this
-            seed and the ``reseed_after_epoch`` setting.
-        reseed_after_epoch: If True, the random seed considers both ``seed`` and
-            ``epoch_idx``, resulting in different shuffling orders across epochs.
+            seed and the ``reseed_after_execution`` setting.
+        reseed_after_execution: If True, the random seed considers both ``seed`` and
+            ``execution_idx``, resulting in different shuffling orders across executions.
             If False, the random seed is constantly ``seed``, resulting in the same
-            shuffling order across epochs. Only takes effect when ``seed`` is not None.
+            shuffling order across executions. Only takes effect when ``seed`` is not None.
             Defaults to True.
 
     Example:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
-        >>> # Fixed seed - same shuffle across epochs
-        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+        >>> # Fixed seed - same shuffle across executions
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_execution=False)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
         >>>
-        >>> # Seed with reseed_after_epoch - different shuffle per epoch
-        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=True)
+        >>> # Seed with reseed_after_execution - different shuffle per execution
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_execution=True)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
-    reseed_after_epoch: bool = True
+    reseed_after_execution: bool = True
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
         if self.seed is not None and not isinstance(self.seed, int):
             raise ValueError("Seed must be an integer or None.")
 
-    def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
+    def get_seed(self, execution_idx: int = 0) -> Optional[int]:
         if self.seed is None:
             return None
-        elif self.reseed_after_epoch:
-            return self.seed + epoch_idx
+        elif self.reseed_after_execution:
+            # Modulo ensures the result is in valid NumPy seed range [0, 2**32 - 1].
+            return hash((self.seed, execution_idx)) % (2**32)
         else:
             return self.seed
 
@@ -243,7 +244,7 @@ class FileBasedDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         import numpy as np
 
@@ -253,8 +254,9 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
+        execution_idx = data_context._execution_idx if data_context is not None else 0
         paths, file_sizes = _shuffle_file_metadata(
-            paths, file_sizes, self._shuffle, epoch_idx
+            paths, file_sizes, self._shuffle, execution_idx
         )
 
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
@@ -578,7 +580,7 @@ def _validate_shuffle_arg(
     ):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', or `FileShuffleConfig`."
+            "Valid values are None, 'files', `FileShuffleConfig`."
         )
 
 
@@ -589,7 +591,7 @@ def _shuffle_file_metadata(
     paths: List[str],
     file_metadata: List[FileMetadata],
     shuffler: Union[Literal["files"], FileShuffleConfig, None],
-    epoch_idx: int,
+    execution_idx: int,
 ) -> Tuple[List[str], List[FileMetadata]]:
     """Shuffle file paths and sizes together using the given shuffler."""
     if shuffler is None:
@@ -603,14 +605,13 @@ def _shuffle_file_metadata(
         return paths, file_metadata
 
     if shuffler == "files":
-        file_metadata_shuffler = np.random.default_rng()
+        seed = None
     else:
         assert isinstance(shuffler, FileShuffleConfig)
-        file_metadata_shuffler = np.random.default_rng(shuffler.get_seed(epoch_idx))
+        seed = shuffler.get_seed(execution_idx)
+
+    file_metadata_shuffler = np.random.default_rng(seed)
 
     files_metadata = list(zip(paths, file_metadata))
-    shuffled_files_metadata = [
-        files_metadata[i]
-        for i in file_metadata_shuffler.permutation(len(files_metadata))
-    ]
-    return list(map(list, zip(*shuffled_files_metadata)))
+    file_metadata_shuffler.shuffle(files_metadata)
+    return list(map(list, zip(*files_metadata)))

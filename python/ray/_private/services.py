@@ -16,8 +16,6 @@ import time
 from pathlib import Path
 from typing import IO, AnyStr, List, Optional
 
-from filelock import FileLock
-
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
@@ -28,10 +26,11 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
-from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._raylet import GcsClient, GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions, NodeID
 from ray.core.generated.common_pb2 import Language
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -365,6 +364,11 @@ def _find_address_from_flag(flag: str):
     return addresses
 
 
+def find_node_ids():
+    """Finds any local raylet processes and returns the node id."""
+    return _find_address_from_flag("--node_id")
+
+
 def find_gcs_addresses():
     """Finds any local GCS processes based on grepping ps."""
     return _find_address_from_flag("--gcs-address")
@@ -467,12 +471,78 @@ def wait_for_node(
     )
 
 
-def get_node_to_connect_for_driver(gcs_address, node_ip_address):
-    # Get node table from global state accessor.
-    global_state = ray._private.state.GlobalState()
-    gcs_options = _get_gcs_client_options(gcs_address)
-    global_state._initialize_global_state(gcs_options)
-    return global_state.get_node_to_connect_for_driver(node_ip_address)
+def get_node_to_connect_for_driver(
+    gcs_client: GcsClient,
+    node_ip_address: str = None,
+    node_name: str = None,
+    temp_dir: str = None,
+) -> GcsNodeInfo:
+    """
+    Get the node to connect to for the driver.
+    If node_ip_address, node_name, and/or temp_dir are provided, they will be used to filter the nodes to connect to.
+    If node_ip_address, node_name, and/or temp_dir are not provided, or if multiple node matches the filters,
+    the following logic will be applied to resolve the node to connect to:
+    1. If there are multiple nodes on the same host, this function will prioritize the head node if available.
+    2. If there is no head node, it will return an arbitrary node it finds.
+
+    Args:
+        gcs_client: The GCS client.
+        node_ip_address: The IP address of the node to connect to. If not provided,
+                         it will be resolved to a ray node on the same host.
+        node_name: The name of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
+        temp_dir: The temp directory of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
+
+    Returns:
+        The node info of the node to connect to.
+    """
+    node_to_connect_info = None
+    possible_node_ids = find_node_ids()
+    node_selectors = []
+    for id in possible_node_ids:
+        id_node_selector = GetAllNodeInfoRequest.NodeSelector(
+            node_id=NodeID.from_hex(id).binary()
+        )
+        node_selectors.append(id_node_selector)
+    try:
+        node_to_connect_infos = gcs_client.get_all_node_info(
+            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+            node_selectors=node_selectors,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+        ).values()
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to get node info for possible node ids: {possible_node_ids}"
+            f" when trying to resolve node to connect to. Error: {repr(e)}"
+        )
+    if not node_to_connect_infos:
+        raise RuntimeError(
+            f"No node info found matching node ids: {possible_node_ids}"
+            f" when trying to resolve node to connect to."
+        )
+
+    filtered_node_to_connect_infos = []
+    for node_info in node_to_connect_infos:
+        if (
+            node_ip_address is None or node_info.node_manager_address == node_ip_address
+        ) and (node_name is None or node_info.node_name == node_name):
+            filtered_node_to_connect_infos.append(node_info)
+
+    if not filtered_node_to_connect_infos:
+        attrs = [node_ip_address, node_name, temp_dir]
+        attrs_str = ", ".join(f"{attr}" for attr in attrs if attr is not None)
+        raise RuntimeError(
+            f"No node info found matching attributes: '{attrs_str}' when trying to resolve node to connect to."
+        )
+
+    # Prioritize head node if available
+    for node_info in filtered_node_to_connect_infos:
+        if node_info.is_head_node:
+            node_to_connect_info = node_info
+            break
+    if node_to_connect_info is None:
+        node_to_connect_info = next(iter(filtered_node_to_connect_infos))
+
+    return node_to_connect_info
 
 
 def get_node(gcs_address, node_id):
@@ -483,6 +553,51 @@ def get_node(gcs_address, node_id):
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node(node_id)
+
+
+def get_node_with_retry(
+    gcs_address: str,
+    node_id: str,
+    timeout_s: float = 30,
+    retry_interval_s: float = 1,
+) -> dict:
+    """Get node info from GCS with retry logic.
+
+    Keeps retrying until the node is found or timeout is reached.
+
+    Some Ray processes (e.g., ray_client_server) start in parallel
+    with the raylet. When they query GCS for node info, the raylet may not have
+    registered yet. This function retries until the node info is available.
+
+    Args:
+        gcs_address: The address of the GCS server (e.g., "ip:port").
+        node_id: The hex string ID of the node to find.
+        timeout_s: Total timeout in seconds. Default 30s.
+        retry_interval_s: Interval between retries in seconds. Default 1s.
+
+    Returns:
+        A dictionary containing node info.
+
+    Raises:
+        RuntimeError: If the node is not found within the timeout.
+    """
+    end_time = time.time() + timeout_s
+
+    while True:
+        try:
+            node_info = get_node(gcs_address, node_id)
+            if node_info is not None:
+                return node_info
+        except RuntimeError:
+            # This is expected if the node hasn't registered with GCS yet.
+            pass
+
+        if time.time() >= end_time:
+            raise RuntimeError(
+                f"Timed out waiting for node info for node_id={node_id}."
+            )
+
+        time.sleep(retry_interval_s)
 
 
 def get_webui_url_from_internal_kv():
@@ -628,7 +743,7 @@ def resolve_ip_for_localhost(host: str):
 # IP address when ray.init is not called because
 # it cannot find the IP address if it is specified by
 # ray start --node-ip-address. You should instead use
-# get_cached_node_ip_address.
+# get_node_to_connect_ip_address.
 def get_node_ip_address(address=None):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
@@ -640,103 +755,6 @@ def get_node_ip_address(address=None):
         return get_localhost_ip()
 
     return node_ip_address_from_perspective(address)
-
-
-def get_cached_node_ip_address(session_dir: str) -> str:
-    """Get a node address cached on this session.
-
-    If a ray instance is started by `ray start --node-ip-address`,
-    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
-    Otherwise, the file exists, but it is emptyl.
-
-    This API is process-safe, meaning the file access is protected by
-    a file lock.
-
-    Args:
-        session_dir: Path to the Ray session directory.
-
-    Returns:
-        node_ip_address cached on the current node. None if the node
-        the file doesn't exist, meaning ray instance hasn't been
-        started on a current node. If node_ip_address is not written
-        to a file, it means --node-ip-address is not given, and in this
-        case, we find the IP address ourselves.
-    """
-    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
-    cached_node_ip_address = {}
-
-    with FileLock(str(file_path.absolute()) + ".lock"):
-        if not file_path.exists():
-            return None
-
-        with file_path.open() as f:
-            cached_node_ip_address.update(json.load(f))
-
-        if "node_ip_address" in cached_node_ip_address:
-            return cached_node_ip_address["node_ip_address"]
-        else:
-            return ray.util.get_node_ip_address()
-
-
-def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> None:
-    """Write a node ip address of the current session to
-    RAY_NODE_IP_FILENAME.
-
-    If a ray instance is started by `ray start --node-ip-address`,
-    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
-
-    This API is process-safe, meaning the file access is protected by
-    a file lock.
-
-    The file contains a single string node_ip_address. If nothing
-    is written, it means --node-ip-address was not given, and Ray
-    resolves the IP address on its own. It assumes in a single node,
-    you can have only 1 IP address (which is the assumption ray
-    has in general).
-
-    node_ip_address is the ip address of the current node.
-
-    Args:
-        session_dir: The path to Ray session directory.
-        node_ip_address: The node IP address of the current node.
-            If None, it means the node ip address is not given
-            by --node-ip-address. In this case, we don't write
-            anything to a file.
-    """
-    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
-    cached_node_ip_address = {}
-
-    with FileLock(str(file_path.absolute()) + ".lock"):
-        if not file_path.exists():
-            with file_path.open(mode="w") as f:
-                json.dump({}, f)
-
-        with file_path.open() as f:
-            cached_node_ip_address.update(json.load(f))
-
-        cached_node_ip = cached_node_ip_address.get("node_ip_address")
-
-        if node_ip_address is not None:
-            if cached_node_ip:
-                if cached_node_ip == node_ip_address:
-                    # Nothing to do.
-                    return
-                else:
-                    logger.warning(
-                        "The node IP address of the current host recorded "
-                        f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
-                        "is different from the current IP address: "
-                        f"{node_ip_address}. Ray will use {node_ip_address} "
-                        "as the current node's IP address. "
-                        "Creating 2 instances in the same host with different "
-                        "IP address is not supported. "
-                        "Please create an enhnacement request to"
-                        "https://github.com/ray-project/ray/issues."
-                    )
-
-            cached_node_ip_address["node_ip_address"] = node_ip_address
-            with file_path.open(mode="w") as f:
-                json.dump(cached_node_ip_address, f)
 
 
 def get_node_instance_id():
@@ -868,7 +886,7 @@ def start_ray_process(
     # Jemalloc memory profiling.
     if os.environ.get("LD_PRELOAD") is None:
         jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
-        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF, "")
         jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
         jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
         jemalloc_env_vars = propagate_jemalloc_env_var(
@@ -1066,6 +1084,7 @@ def start_log_monitor(
     session_dir: str,
     logs_dir: str,
     gcs_address: str,
+    node_ip_address: str,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1078,14 +1097,13 @@ def start_log_monitor(
         session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
+        node_ip_address: The IP address of the node we are connected to.
         fate_share: Whether to share fate between log_monitor
             and this process.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging: Whether we should redirect logging to
-            the provided log directory.
         stdout_filepath: The file path to dump log monitor stdout.
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump log monitor stderr.
@@ -1103,6 +1121,7 @@ def start_log_monitor(
         f"--session-dir={session_dir}",
         f"--logs-dir={logs_dir}",
         f"--gcs-address={gcs_address}",
+        f"--node-ip-address={node_ip_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
@@ -1444,6 +1463,8 @@ def start_gcs_server(
     gcs_server_port: Optional[int] = None,
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
+    session_dir: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1462,11 +1483,13 @@ def start_gcs_server(
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
+        session_dir: Session directory path. Used to write the bound GCS port to a file.
+        node_id: The unique ID of this node.
 
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert gcs_server_port > 0
+    assert gcs_server_port >= 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1477,6 +1500,8 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
+        f"--session-dir={session_dir}",
+        f"--node-id={node_id}",
     ]
 
     if stdout_filepath:
@@ -1763,6 +1788,7 @@ def start_raylet(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--grpc-port={metrics_agent_port}",
@@ -1806,13 +1832,18 @@ def start_raylet(
         # that requires additional dependencies to be downloaded.
         dashboard_agent_command.append("--minimal")
 
+    if is_head_node:
+        dashboard_agent_command.append("--head")
+
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--session-dir={session_dir}",
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
@@ -2314,10 +2345,11 @@ def start_ray_client_server(
     ray_client_server_port: int,
     stdout_file: Optional[int] = None,
     stderr_file: Optional[int] = None,
-    redis_username: Optional[int] = None,
-    redis_password: Optional[int] = None,
+    redis_username: Optional[str] = None,
+    redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     runtime_env_agent_address: Optional[str] = None,
+    node_id: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):
@@ -2335,6 +2367,7 @@ def start_ray_client_server(
         redis_password: The password of the Redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
+        node_id: The hex ID of this node.
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
@@ -2371,6 +2404,8 @@ def start_ray_client_server(
         assert len(runtime_env_agent_address) > 0
     if runtime_env_agent_address:
         command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+    if node_id:
+        command.append(f"--node-id={node_id}")
 
     process_info = start_ray_process(
         command,
