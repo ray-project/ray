@@ -41,7 +41,7 @@ class CallbackManager:
                 if not self._validate_handler_result(result):
                     e = TypeError(
                         "`on_callback_hook_exception` must return "
-                        "(CallbackErrorAction, Optional[TrainingFailedError]), "
+                        "(CallbackErrorAction, TrainingFailedError), "
                         f"got {type(result)}"
                     )
                     return ControllerError(e)
@@ -50,17 +50,12 @@ class CallbackManager:
 
                 match action:
                     case CallbackErrorAction.SUPPRESS:
-                        if mapped_error is not None:
-                            logger.exception(
-                                f"Exception raised in callback hook '{hook_name}' from callback '{callback_name}'."
-                            )
+                        logger.exception(
+                            f"Exception raised in callback hook '{hook_name}' from "
+                            f"callback '{callback_name}'. Error: {mapped_error}"
+                        )
                         continue
                     case CallbackErrorAction.RAISE:
-                        if not mapped_error:
-                            e = ValueError(
-                                "CallbackErrorAction.RAISE expects a TrainingFailedError, got None."
-                            )
-                            return ControllerError(e)
                         return mapped_error
                     case _:
                         e = ValueError(f"Unknown CallbackErrorAction: {action}")
@@ -72,10 +67,8 @@ class CallbackManager:
         if not (isinstance(result, tuple) and len(result) == 2):
             return False
         action, mapped_error = result
-        if not isinstance(action, CallbackErrorAction):
+        if mapped_error is None or not isinstance(mapped_error, TrainingFailedError):
             return False
-        if mapped_error is not None and not isinstance(
-            mapped_error, TrainingFailedError
-        ):
+        if not isinstance(action, CallbackErrorAction):
             return False
         return True

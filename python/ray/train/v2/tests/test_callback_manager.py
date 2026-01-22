@@ -65,8 +65,8 @@ def test_invoke_with_real_controller_callback_error_returned():
     assert isinstance(result, ControllerError)
 
 
-def test_invoke_with_real_controller_callback_no_error_return():
-    """Test with a real ControllerCallback that doesn't return error."""
+def test_invoke_with_real_controller_callback_suppress_error():
+    """Test with a real ControllerCallback that suppresses an error."""
 
     class MockControllerCallback(ControllerCallback):
         def __init__(self):
@@ -79,7 +79,7 @@ def test_invoke_with_real_controller_callback_no_error_return():
 
         def on_callback_hook_exception(self, hook_name, error, **context):
             self.error_called = True
-            return (CallbackErrorAction.SUPPRESS, None)
+            return (CallbackErrorAction.SUPPRESS, ControllerError(error))
 
     callback = MockControllerCallback()
     manager = CallbackManager([callback])
@@ -88,6 +88,7 @@ def test_invoke_with_real_controller_callback_no_error_return():
 
     assert callback.called is True
     assert callback.error_called is True
+    # SUPPRESS logs the error but continues, so invoke returns None
     assert result is None
 
 
@@ -96,7 +97,10 @@ def test_invoke_with_kwargs_passed_to_on_callback_hook_exception():
     callback = MagicMock()
     callback.test_hook = MagicMock(side_effect=ValueError("Error"))
     callback.on_callback_hook_exception = MagicMock(
-        return_value=(CallbackErrorAction.SUPPRESS, None)
+        return_value=(
+            CallbackErrorAction.SUPPRESS,
+            ControllerError(ValueError("Error")),
+        )
     )
 
     manager = CallbackManager([callback])
@@ -109,7 +113,8 @@ def test_invoke_with_kwargs_passed_to_on_callback_hook_exception():
     assert isinstance(callback.on_callback_hook_exception.call_args.args[1], ValueError)
 
 
-def test_invoke_on_callback_hook_exception_can_return_none():
+def test_invoke_on_callback_hook_exception_rejects_invalid_return_type():
+    """Test that on_callback_hook_exception must return (CallbackErrorAction, TrainingFailedError)."""
     callback = MagicMock()
     callback.test_hook = MagicMock(side_effect=ValueError("Error"))
     callback.on_callback_hook_exception = MagicMock(return_value=None)
@@ -117,8 +122,8 @@ def test_invoke_on_callback_hook_exception_can_return_none():
     manager = CallbackManager([callback])
     result = manager.invoke("test_hook")
 
-    # Returning None is an invalid return type; CallbackManager should surface
-    # this as a controller-side failure rather than raising directly.
+    # Returning None (or any invalid type) is rejected; CallbackManager should
+    # surface this as a controller-side failure rather than raising directly.
     assert isinstance(result, ControllerError)
     assert isinstance(result.controller_failure, TypeError)
 

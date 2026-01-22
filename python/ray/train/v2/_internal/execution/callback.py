@@ -46,7 +46,7 @@ class CallbackErrorAction(Enum):
 
 
 CallbackHookExceptionHandlerResult: TypeAlias = tuple[
-    CallbackErrorAction, Optional[TrainingFailedError]
+    CallbackErrorAction, TrainingFailedError
 ]
 
 
@@ -181,7 +181,6 @@ class ControllerCallback(RayTrainCallback):
 
         Return:
             A tuple of (action, error), the below options are valid:
-            - (CallbackErrorAction.SUPPRESS, None) to continue.
             - (CallbackErrorAction.SUPPRESS, TrainingFailedError) to log the exception and continue train.
             - (CallbackErrorAction.RAISE, TrainingFailedError) to propagate the exception to the training control flow.
         """
