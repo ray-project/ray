@@ -76,9 +76,10 @@ void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
                   << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
+
+  // Make a copy of the task spec because `task` is moved below.
   TaskSpecification task_spec = task.TaskSpec();
-  TaskID task_id = task_spec.TaskId();
-  RAY_LOG(DEBUG).WithField(task_id) << "Enqueuing in order actor task, seq_no=" << seq_no
+  RAY_LOG(DEBUG).WithField(task_spec.TaskId()) << "Enqueuing in order actor task, seq_no=" << seq_no
                                     << ", next_seq_no_=" << next_seq_no_;
 
   const auto dependencies = task_spec.GetDependencies();
@@ -95,12 +96,12 @@ void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
   }
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_id, false);
+    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
   if (!dependencies.empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_id,
+        task_spec.TaskId(),
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
@@ -135,7 +136,7 @@ void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-        task_id,
+        task_spec.TaskId(),
         task_spec.JobId(),
         task_spec.AttemptNumber(),
         task_spec,
