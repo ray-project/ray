@@ -2,7 +2,7 @@
 
 **Time to complete:** 20 min
 
-This template shows how to train large language models using tensor parallelism with PyTorch's native DTensor API and Ray Train for distributed execution.
+This template shows how to train large language models using tensor parallelism with PyTorch's native [Distributed Tensor API](https://docs.pytorch.org/docs/stable/distributed.tensor.html) and Ray Train for distributed execution.
 
 **Tensor Parallelism (TP)** shards model weights across multiple GPUs, enabling training of models that are too large to fit on a single GPU. Combined with **Data Parallelism (DP)**, this creates a powerful **2D parallelism** strategy that scales efficiently to many GPUs.
 
@@ -10,7 +10,7 @@ This tutorial provides a step-by-step guide covering:
 
 - Understanding 2D parallelism (Tensor Parallelism + Data Parallelism)
 - Setting up a 2D PyTorch `DeviceMesh`
-- Applying DTensor tensor parallelism to transformer layers
+- Applying tensor parallelism with the Distributed Tensor API to transformer layers
 - Combining with FSDP2 for data parallelism
 - TP-aware data loading to ensure correct gradient computation
 - Distributed checkpointing with Ray Train
@@ -205,9 +205,9 @@ def create_dataloader(
     return DataLoader(tokenized, batch_size=batch_size, sampler=sampler, drop_last=True)
 ```
 
-## 3. Model parallelization with DTensor
+## 3. Model parallelization with the Distributed Tensor API
 
-PyTorch's DTensor provides native tensor parallelism through the `parallelize_module` API. For transformer models, you apply:
+PyTorch's Distributed Tensor API provides native tensor parallelism through the `parallelize_module` API. For transformer models, you apply:
 
 - **ColwiseParallel**: Splits output features across TP ranks (used for q, k, v projections and MLP up projections)
 - **RowwiseParallel**: Splits input features across TP ranks (used for output projections and MLP down projections)
@@ -238,7 +238,7 @@ def setup_model_with_tp(
     seed: int,
 ):
     """
-    Set up the model with tensor parallelism (DTensor) and data parallelism (FSDP2).
+    Set up the model with tensor parallelism (Distributed Tensor) and data parallelism (FSDP2).
     
     Returns:
         tuple: (model, tp_mesh, dp_mesh, tp_rank, dp_rank)
@@ -306,9 +306,9 @@ def setup_model_with_tp(
     }
 
     if world_rank == 0:
-        logger.info(f"Applying DTensor TP to {len(layers)} layers")
+        logger.info(f"Applying tensor parallelism to {len(layers)} layers")
 
-    # [4] Apply DTensor TP to transformer layers
+    # [4] Apply Distributed Tensor TP to transformer layers
     for layer in layers:
         parallelize_module(layer, tp_mesh, tp_mapping)
 
@@ -386,7 +386,7 @@ def train_func(config):
 
     This function:
     1. Sets up the 2D device mesh for TP + DP
-    2. Creates and shards the model with DTensor (TP) and FSDP2 (DP)
+    2. Creates and shards the model with Distributed Tensor (TP) and FSDP2 (DP)
     3. Runs the training loop with checkpointing
     """
     # Get Ray Train context
@@ -604,9 +604,9 @@ In this tutorial, you learned:
 
 - How 2D parallelism combines tensor parallelism and data parallelism
 - How to set up a 2D device mesh with PyTorch
-- How to apply DTensor tensor parallelism to transformer layers
+- How to apply tensor parallelism with the Distributed Tensor API to transformer layers
 - The importance of TP-aware data loading for correct gradient computation
-- How to combine DTensor with FSDP2 for 2D parallelism
+- How to combine the Distributed Tensor API with FSDP2 for 2D parallelism
 - How to save distributed checkpoints with Ray Train
 
 For production training of large models, consider:
