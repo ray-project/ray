@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import signal
 import socket
 import sys
 
@@ -168,6 +169,9 @@ if __name__ == "__main__":
     )
 
     gcs_client = GcsClient(address=args.gcs_address, cluster_id=args.cluster_id_hex)
+    print(
+        f"[Kunchd] Runtime Env Agent starting: node_id={args.node_id}, node_ip={args.node_ip_address}, port={args.runtime_env_agent_port}, temp_dir={args.temp_dir}, session_dir={args.session_dir}"
+    )
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,
         logging_params=logging_params,
@@ -176,6 +180,18 @@ if __name__ == "__main__":
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
+    print(f"[Kunchd] Runtime Env Agent created: pid={os.getpid()}")
+
+    # Register SIGTERM handler to log teardown
+    def sigterm_handler(signum, frame):
+        print(
+            f"[Kunchd] Runtime Env Agent teardown - received SIGTERM: pid={os.getpid()}, addr={args.node_ip_address}, port={args.runtime_env_agent_port}"
+        )
+        # Re-raise to let aiohttp handle graceful shutdown
+        sys.exit(0)
+
+    if sys.platform not in ["win32", "cygwin"]:
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
 
@@ -217,6 +233,14 @@ if __name__ == "__main__":
 
     app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
 
+    # Register shutdown hook to log teardown
+    async def on_shutdown(app):
+        print(
+            f"[Kunchd] Runtime Env Agent teardown - aiohttp shutdown: pid={os.getpid()}, addr={args.node_ip_address}, port={args.runtime_env_agent_port}"
+        )
+
+    app.on_shutdown.append(on_shutdown)
+
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
         "/delete_runtime_env_if_possible", delete_runtime_env_if_possible
@@ -228,6 +252,9 @@ if __name__ == "__main__":
     if sys.platform not in ["win32", "cygwin"]:
 
         def parent_dead_callback(msg):
+            print(
+                f"[Kunchd] Runtime Env Agent teardown - Raylet is dead! pid={os.getpid()}, addr={args.node_ip_address}, port={args.runtime_env_agent_port}"
+            )
             agent._logger.info(
                 "Raylet is dead! Exiting Runtime Env Agent. "
                 f"addr: {args.node_ip_address}, "
@@ -256,8 +283,23 @@ if __name__ == "__main__":
     )
 
     try:
+        print(
+            f"[Kunchd] Runtime Env Agent HTTP server starting: "
+            f"pid={os.getpid()}, "
+            f"addr={args.node_ip_address}, "
+            f"port={bound_port}"
+        )
         web.run_app(app, sock=sock, loop=loop)
+        # Normal exit path - web.run_app returns when it receives SIGTERM/SIGINT
+        print(
+            f"[Kunchd] Runtime Env Agent teardown - normal exit (SIGTERM/SIGINT): pid={os.getpid()}, addr={args.node_ip_address}, port={bound_port}"
+        )
     except SystemExit as e:
+        print(
+            f"[Kunchd] Runtime Env Agent teardown - SystemExit: "
+            f"pid={os.getpid()}, "
+            f"exit_code={e.code}"
+        )
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message
         # "task exception was never retrieved".

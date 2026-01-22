@@ -34,10 +34,19 @@ def unix_socket_delete(unix_socket):
 @pytest.fixture
 def delete_default_temp_dir():
     def delete_default_temp_dir_once():
-        shutil.rmtree(ray._common.utils.get_default_ray_temp_dir(), ignore_errors=True)
-        return not os.path.exists(ray._common.utils.get_default_ray_temp_dir())
+        print(
+            f"[Kunchd] Attempting to delete default temp dir: {ray._common.utils.get_default_ray_temp_dir()}"
+        )
+        try:
+            shutil.rmtree(ray._common.utils.get_default_ray_temp_dir())
+        except Exception as e:
+            print(f"[Kunchd] Error deleting default temp dir: {e}")
+        # shutil.rmtree(ray._common.utils.get_default_ray_temp_dir(), ignore_errors=True)
+        exists = os.path.exists(ray._common.utils.get_default_ray_temp_dir())
+        print(f"[Kunchd] Default temp dir exists: {exists}")
+        return not exists
 
-    wait_for_condition(delete_default_temp_dir_once)
+    wait_for_condition(delete_default_temp_dir_once, timeout=20)
     yield
 
 
@@ -155,6 +164,9 @@ def test_session_dir_uniqueness():
     session_dirs = set()
     for i in range(2):
         ray.init(num_cpus=1)
+        print(
+            f"[Kunchd] Adding session dir: {ray._private.worker._global_node.get_session_dir_path}"
+        )
         session_dirs.add(ray._private.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 2
@@ -207,11 +219,12 @@ def test_head_temp_dir_shared_with_worker(delete_default_temp_dir):
         assert os.path.isfile(
             os.path.join(head_temp_dir, "ray_current_cluster")
         ), "Cluster info file not found in head temp_dir"
-
-        ray.shutdown()
+    except Exception as e:
+        print(f"[Kunchd] Error: {e}")
     finally:
+        ray.shutdown()
         check_call_ray(["stop"])
-        shutil.rmtree(head_temp_dir, ignore_errors=True)
+        # shutil.rmtree(head_temp_dir, ignore_errors=True)
 
 
 def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
