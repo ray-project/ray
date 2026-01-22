@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import boto3
 import botocore.exceptions
@@ -27,8 +27,7 @@ job_status_to_return_code = {
 
 class KubeRayJobManager:
     def __init__(self):
-        self.cluster_startup_timeout = 600
-        self.job_id = None
+        self._cluster_startup_timeout = 600
         self._kuberay_service_token = None
 
     def run_and_wait(
@@ -39,7 +38,6 @@ class KubeRayJobManager:
         timeout: int,
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
-        pip: Optional[List[str]] = None,
         compute_config: Optional[Dict[str, Any]] = None,
         autoscaler_config: Optional[Dict[str, Any]] = None,
     ) -> Tuple[int, float]:
@@ -50,7 +48,6 @@ class KubeRayJobManager:
             cmd_to_run,
             env_vars,
             working_dir,
-            pip,
             compute_config,
             autoscaler_config,
         )
@@ -63,7 +60,6 @@ class KubeRayJobManager:
         cmd_to_run: str,
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
-        pip: Optional[List[str]] = None,
         compute_config: Optional[Dict[str, Any]] = None,
         autoscaler_config: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -76,7 +72,6 @@ class KubeRayJobManager:
             "compute_config": compute_config,
             "runtime_env": {
                 "env_vars": env_vars,
-                "pip": pip or [],
                 "working_dir": working_dir,
             },
             "autoscaler_config": autoscaler_config,
@@ -108,17 +103,16 @@ class KubeRayJobManager:
         """
         start_timestamp = time.time()
         next_status_timestamp = start_timestamp + JOB_STATUS_CHECK_INTERVAL
-        deadline_timestamp = start_timestamp + self.cluster_startup_timeout
+        deadline_timestamp = start_timestamp + self._cluster_startup_timeout
         job_running = False
 
         while True:
             now = time.time()
             if now >= deadline_timestamp:
-                self._terminate_job()
                 if not job_running:
                     raise JobStartupTimeout(
                         "Cluster did not start within "
-                        f"{self.cluster_startup_timeout} seconds."
+                        f"{self._cluster_startup_timeout} seconds."
                     )
                 raise CommandTimeout(f"Job timed out after {timeout_sec} seconds")
 
@@ -167,14 +161,6 @@ class KubeRayJobManager:
             raise Exception(f"Multiple jobs found for {self.job_name}")
         return response_json["jobs"][0]
 
-    def _get_job_id(self) -> str:
-        job = self._get_job()
-        if job.get("id"):
-            self.job_id = job["id"]
-            return self.job_id
-        else:
-            raise Exception(f"Job {self.job_name} does not have an ID")
-
     def _get_job_status(self) -> str:
         job = self._get_job()
         return job["status"]
@@ -207,11 +193,3 @@ class KubeRayJobManager:
         # Cache the token as instance variable
         self._kuberay_service_token = login_response.json()["token"]
         return self._kuberay_service_token
-
-    def fetch_results(self) -> None:
-        # TODO: implement this
-        pass
-
-    def _terminate_job(self) -> None:
-        # TODO: implement this
-        pass
