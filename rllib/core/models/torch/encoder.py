@@ -360,7 +360,8 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
                 config.output_layer_weights_initializer, framework="torch"
             )
             output_weights_initializer(
-                output_layer.weight, **config.output_weights_initializer_config or {}
+                output_layer.weight,
+                **config.output_layer_weights_initializer_config or {}
             )
         # Initialize output layer bias if necessary.
         if config.output_layer_bias_initializer:
@@ -368,10 +369,12 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
                 config.output_layer_bias_initializer, framework="torch"
             )
             output_bias_initializer(
-                output_layer.bias, **config.output_bias_initializer_config or {}
+                output_layer.bias, **config.output_layer_bias_initializer_config or {}
             )
         # Fusion net as ModuleList.
         self.net = nn.ModuleList([input_layer] + fusion_layers + [output_layer])
+
+        print("Initialized TorchMultiStreamEncoder")
 
     @override(Model)
     def _forward(self, inputs, **kwargs):
