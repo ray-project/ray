@@ -87,7 +87,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -6915,11 +6914,10 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data.extensions import (
-            ArrowTensorType,
-            FixedShapeTensorType,
-            TensorDtype,
+        from ray.data._internal.tensor_extensions.arrow import (
+            create_arrow_tensor_type,
         )
+        from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
             dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
@@ -6939,29 +6937,11 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-                if (
-                    self._context.use_arrow_native_fixed_shape_tensor_type
-                    and FixedShapeTensorType is not None
-                    and all(d is not None for d in dtype._shape)
-                ):
-                    pa_tensor_type_class = FixedShapeTensorType
-                    t = pa.fixed_shape_tensor(
-                        _convert_to_pa_type(dtype._dtype), dtype._shape
-                    )
-                    arrow_types.append(t)
-                else:
-                    if self._context.use_arrow_tensor_v2:
-                        pa_tensor_type_class = ArrowTensorTypeV2
-                    else:
-                        pa_tensor_type_class = ArrowTensorType
-
-                    # Manually convert our Pandas tensor extension type to Arrow.
-                    arrow_types.append(
-                        pa_tensor_type_class(
-                            shape=dtype._shape,
-                            dtype=_convert_to_pa_type(dtype._dtype),
-                        )
-                    )
+                pa_dtype = _convert_to_pa_type(dtype._dtype)
+                tensor_type = create_arrow_tensor_type(
+                    shape=dtype._shape, dtype=pa_dtype
+                )
+                arrow_types.append(tensor_type)
 
             else:
                 try:

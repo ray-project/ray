@@ -21,10 +21,6 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorType,
-    ArrowTensorTypeV2,
-)
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -37,6 +33,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     FixedShapeTensorArray,
+    create_arrow_tensor_type,
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -792,27 +789,23 @@ class ParquetDatasource(Datasource):
 
         if tensor_column_schema is not None:
             ctx = DataContext.get_current()
-            use_native_tensors = False
-            if ctx.use_arrow_native_fixed_shape_tensor_type:
-                if FixedShapeTensorArray is None:
-                    logger.warning(
-                        f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} to enable native tensor arrays"
-                    )
-                else:
-                    use_native_tensors = True
+            # Warn if native tensors requested but PyArrow version is too old
+            if (
+                ctx.use_arrow_native_fixed_shape_tensor_type
+                and FixedShapeTensorArray is None
+            ):
+                logger.warning(
+                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} to enable native tensor arrays"
+                )
 
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
                 pa_dtype: pa.DataType = pa.from_numpy_dtype(np_dtype)
-                # 1) Determine the tensor type
-                if use_native_tensors:
-                    field = pa.field(name, pa.fixed_shape_tensor(pa_dtype, shape))
-                elif ctx.use_arrow_tensor_v2:
-                    field = pa.field(name, ArrowTensorTypeV2(shape, pa_dtype))
-                else:
-                    field = pa.field(name, ArrowTensorType(shape, pa_dtype))
+                # Use factory to create tensor type (respects context defaults)
+                tensor_type = create_arrow_tensor_type(shape=shape, dtype=pa_dtype)
+                field = pa.field(name, tensor_type)
 
-                # 2) Determine where to add the schema
+                # Determine where to add the schema
                 if index_of_name != -1:
                     target_schema = target_schema.set(index_of_name, field)
                 else:

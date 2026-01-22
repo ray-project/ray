@@ -102,6 +102,14 @@ ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = env_integer(
 logger = logging.getLogger(__name__)
 
 
+class TensorFormat(Enum):
+    """Enum representing the different tensor type formats."""
+
+    V1 = "v1"
+    V2 = "v2"
+    NATIVE = "native"
+
+
 def _extension_array_concat_supported() -> bool:
     return get_pyarrow_version() >= MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED
 
@@ -738,6 +746,66 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     def _arrow_ext_deserialize_compute(cls, serialized, value_type):
         shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, value_type)
+
+
+@DeveloperAPI
+def create_arrow_tensor_type(
+    shape: Tuple[int, ...],
+    dtype: pa.DataType,
+    tensor_format: Optional[TensorFormat] = None,
+) -> pa.ExtensionType:
+    """
+    Factory method to create an Arrow tensor type.
+
+    Args:
+        shape: Shape of the tensor.
+        dtype: PyArrow data type of tensor elements.
+        tensor_format: The tensor format to use. If None, uses DataContext defaults:
+            1. NATIVE if ``use_arrow_native_fixed_shape_tensor_type`` is True
+               (requires PyArrow 12+)
+            2. V2 if ``use_arrow_tensor_v2`` is True
+            3. V1 as fallback
+
+            Explicit values:
+            - V1: ArrowTensorType (legacy, limited to <4GB)
+            - V2: ArrowTensorTypeV2 (supports >4GB tensors)
+            - NATIVE: PyArrow's native FixedShapeTensorType (requires PyArrow 12+)
+
+    Returns:
+        An Arrow ExtensionType for the tensor.
+
+    Raises:
+        ValueError: If NATIVE format is requested but PyArrow < 12.0.0.
+    """
+    if tensor_format is None:
+        # Use context defaults with priority: NATIVE > V2 > V1
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
+        if (
+            ctx.use_arrow_native_fixed_shape_tensor_type
+            and FixedShapeTensorType is not None
+            # Native tensor format requires fully-known shapes (no None dims)
+            and all(dim is not None for dim in shape)
+        ):
+            tensor_format = TensorFormat.NATIVE
+        elif ctx.use_arrow_tensor_v2:
+            tensor_format = TensorFormat.V2
+        else:
+            tensor_format = TensorFormat.V1
+
+    if tensor_format == TensorFormat.NATIVE:
+        if FixedShapeTensorType is None:
+            raise ValueError(
+                "Native tensor format requires PyArrow 12.0.0+. "
+                "Please upgrade PyArrow or use V1/V2 format."
+            )
+        # Note: pa.fixed_shape_tensor takes (dtype, shape), opposite of our classes
+        return pa.fixed_shape_tensor(dtype, shape)
+    elif tensor_format == TensorFormat.V2:
+        return ArrowTensorTypeV2(shape, dtype)
+    else:  # V1
+        return ArrowTensorType(shape, dtype)
 
 
 @PublicAPI(stability="beta")

@@ -29,6 +29,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
     FixedShapeTensorType,
+    TensorFormat,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
@@ -1161,7 +1162,7 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
-@pytest.mark.parametrize("new_tensor_format", ["arrow_native", "v1", "v2"])
+@pytest.mark.parametrize("new_tensor_format", list(TensorFormat))
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
@@ -1236,8 +1237,10 @@ def test_tensors_in_tables_parquet(
     #
 
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = new_tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = new_tensor_format == "v2"
+    ctx.use_arrow_native_fixed_shape_tensor_type = (
+        new_tensor_format == TensorFormat.NATIVE
+    )
+    ctx.use_arrow_tensor_v2 = new_tensor_format == TensorFormat.V2
 
     tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
@@ -1252,12 +1255,12 @@ def test_tensors_in_tables_parquet(
 
     _assert_equal(ds.take_all(), expected_tuples)
 
-    if new_tensor_format == "arrow_native":
+    if new_tensor_format == TensorFormat.NATIVE:
         if FixedShapeTensorType is None:
             expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
-    elif new_tensor_format == "v2":
+    elif new_tensor_format == TensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2
     else:  # v1
         expected_tensor_type = ArrowTensorType
