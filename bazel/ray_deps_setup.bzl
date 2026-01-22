@@ -226,8 +226,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "io_opentelemetry_cpp",
-        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.22.0.zip",
-        sha256 = "814e494d4fdc6361a81ae1d40a2a195bb1152b9081bc7feff14893f9ddf63fd7",
+        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.20.0.zip",
+        sha256 = "2562959b23c8216406d13c6726aa14dc9cbbf15d9efdc8b7ce0aa5c1abb0be1c",
     )
 
     auto_http_archive(
