@@ -44,6 +44,8 @@ def _extract_map_component(
             child_array = arr.items
 
     # Case 2: ListArray<Struct<Key, Value>>
+    # PyArrow represents maps as List<Struct> where the struct's
+    # first field (idx 0) is the key and second field (idx 1) is the value.
     elif isinstance(arr, (pyarrow.ListArray, pyarrow.LargeListArray)):
         flat_values = arr.values
         if (
@@ -58,11 +60,11 @@ def _extract_map_component(
         # We allow this to proceed only if the array is empty or all-nulls,
         # in which case we'll produce an empty or all-nulls output.
         if len(arr) > 0 and arr.null_count < len(arr):
-			raise TypeError(
-			    f"Expression is not a valid map type. .map.{component.value}() requires "
-			    f"pyarrow.MapArray or pyarrow.ListArray<Struct> with at least 2 fields "
-			    f"(key and value), but got: {arr.type}."
-			)
+            raise TypeError(
+                f"Expression is not a valid map type. .map.{component.value}() requires "
+                f"pyarrow.MapArray or pyarrow.ListArray<Struct> with at least 2 fields "
+                f"(key and value), but got: {arr.type}."
+            )
         return pyarrow.ListArray.from_arrays(
             offsets=[0] * (len(arr) + 1),
             values=pyarrow.array([], type=pyarrow.null()),
@@ -153,6 +155,7 @@ class _MapNamespace:
                     else arrow_type.item_type
                 )
             elif is_physical_map:
+                # List<Struct> map representation: idx 0 is key, idx 1 is value.
                 idx = 0 if component == MapComponent.KEYS else 1
                 inner_arrow_type = arrow_type.value_type.field(idx).type
 
