@@ -2872,10 +2872,11 @@ Status CoreWorker::ExecuteTask(
                                                           rpc::TaskStatus::RUNNING,
                                                           /*include_task_info=*/false,
                                                           update));
+
+    worker_context_->SetCurrentTask(task_spec);
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
 
-  worker_context_->SetCurrentTask(task_spec);
-  SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   {
     absl::MutexLock lock(&mutex_);
     running_tasks_.emplace(task_spec.TaskId(), task_spec);
