@@ -3,7 +3,6 @@ import copy
 import html
 import itertools
 import logging
-import sys
 import time
 import warnings
 from typing import (
@@ -150,19 +149,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
-
-
-class MapBatchesRowCountWarning(UserWarning):
-    """Warning issued when map_batches is called without explicitly specifying
-    udf_modifying_row_count."""
-
-    pass
-
-
-# By default, print the first occurrence of matching warnings for
-# each module where the warning is issued (regardless of line number)
-if not sys.warnoptions:
-    warnings.filterwarnings("once", category=MapBatchesRowCountWarning)
 
 
 logger = logging.getLogger(__name__)

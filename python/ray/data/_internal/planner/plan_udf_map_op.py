@@ -64,12 +64,18 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
-from ray.data.dataset import MapBatchesRowCountWarning
 from ray.data.exceptions import UserCodeException
 from ray.util.debug import log_once
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
+
+
+class _MapBatchesRowCountWarning(UserWarning):
+    """Warning issued when map_batches UDF modifies row count but
+    udf_modifying_row_count=False."""
+
+    pass
 
 
 # Controls default max-concurrency setting for async row-based UDFs
@@ -529,13 +535,52 @@ def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
     can_modify_num_rows: bool = True,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
+    def _get_batch_num_rows(batch: DataBatch) -> int:
+        """Get row count from a batch, converting to block if needed."""
+        if isinstance(batch, collections.abc.Mapping):
+            batch = BlockAccessor.batch_to_block(batch)
+        return BlockAccessor.for_block(batch).num_rows()
+
+    def _warn_row_count_mismatch(input_rows: int, output_rows: int) -> None:
+        """Warn once if row count changed but can_modify_num_rows=False."""
+        if input_rows != output_rows and log_once("map_batches_row_count_mismatch"):
+            warnings.warn(
+                f"The UDF passed to `map_batches` modified the number of "
+                f"rows (input: {input_rows}, output: {output_rows}), "
+                f"but `udf_modifying_row_count=False` (default). This may "
+                f"cause incorrect results with optimizations like limit "
+                f"pushdown. Set `udf_modifying_row_count=True` to fix this.",
+                category=_MapBatchesRowCountWarning,
+            )
 
     if _is_async_udf(fn):
-        transform_fn = _generate_transform_fn_for_async_map(
+        base_transform_fn = _generate_transform_fn_for_async_map(
             fn,
             _validate_batch_output,
             max_concurrency=DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
         )
+
+        if can_modify_num_rows:
+            transform_fn = base_transform_fn
+        else:
+
+            def transform_fn(
+                batches: Iterable[DataBatch], ctx: TaskContext
+            ) -> Iterable[DataBatch]:
+                input_num_rows = 0
+                output_num_rows = 0
+
+                def counting_batches():
+                    nonlocal input_num_rows
+                    for batch in batches:
+                        input_num_rows += _get_batch_num_rows(batch)
+                        yield batch
+
+                for out_batch in base_transform_fn(counting_batches(), ctx):
+                    output_num_rows += _get_batch_num_rows(out_batch)
+                    yield out_batch
+
+                _warn_row_count_mismatch(input_num_rows, output_num_rows)
 
     else:
 
@@ -544,28 +589,32 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
-                    input_block = BlockAccessor.batch_to_block(batch)
-                    input_num_rows = BlockAccessor.for_block(input_block).num_rows()
-                    if (
+                    # Check for empty non-Mapping blocks to skip UDF
+                    is_empty_block = (
                         not isinstance(batch, collections.abc.Mapping)
-                        and input_num_rows == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
+                        and BlockAccessor.for_block(batch).num_rows() == 0
+                    )
+                    if is_empty_block:
                         res = [batch]
+                        input_num_rows = 0
                     else:
+                        input_num_rows = (
+                            _get_batch_num_rows(batch)
+                            if not can_modify_num_rows
+                            else None
+                        )
                         res = fn(batch)
                         if not isinstance(res, GeneratorType):
                             res = [res]
                 except ValueError as e:
-                    read_only_msgs = [
-                        "assignment destination is read-only",
-                        "buffer source array is read-only",
-                    ]
                     err_msg = str(e)
-                    if any(msg in err_msg for msg in read_only_msgs):
+                    if any(
+                        msg in err_msg
+                        for msg in [
+                            "assignment destination is read-only",
+                            "buffer source array is read-only",
+                        ]
+                    ):
                         raise ValueError(
                             f"Batch mapper function {fn.__name__} tried to mutate a "
                             "zero-copy read-only batch. To be able to mutate the "
@@ -574,30 +623,17 @@ def _generate_transform_fn_for_map_batches(
                             "giving it to fn. To elide this copy, modify your mapper "
                             "function so it doesn't try to mutate its input."
                         ) from e
-                    else:
-                        raise e from None
+                    raise e from None
                 else:
                     output_num_rows = 0
                     for out_batch in res:
                         _validate_batch_output(out_batch)
-                        out_block = BlockAccessor.batch_to_block(out_batch)
-                        output_num_rows += BlockAccessor.for_block(out_block).num_rows()
+                        if not can_modify_num_rows:
+                            output_num_rows += _get_batch_num_rows(out_batch)
                         yield out_batch
 
-                    # Warn once if row count changed but can_modify_num_rows=False
-                    if (
-                        not can_modify_num_rows
-                        and input_num_rows != output_num_rows
-                        and log_once("map_batches_row_count_mismatch")
-                    ):
-                        warnings.warn(
-                            f"The UDF passed to `map_batches` modified the number of "
-                            f"rows (input: {input_num_rows}, output: {output_num_rows}), "
-                            f"but `udf_modifying_row_count=False` (default). This may "
-                            f"cause incorrect results with optimizations like limit "
-                            f"pushdown. Set `udf_modifying_row_count=True` to fix this.",
-                            category=MapBatchesRowCountWarning,
-                        )
+                    if not can_modify_num_rows:
+                        _warn_row_count_mismatch(input_num_rows, output_num_rows)
 
     return transform_fn
 
