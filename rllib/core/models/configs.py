@@ -1085,7 +1085,7 @@ class MultiStreamEncoderConfig(ModelConfig):
 
     @property
     def output_dims(self):
-        return (self.hidden_layer_dims,)
+        return (self.output_layer_dim,)
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
