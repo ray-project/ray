@@ -149,10 +149,6 @@ class TaskReceiver {
   /// order.
   bool allow_out_of_order_execution_ = false;
 
-  /// The repr name of the actor instance for an anonymous actor.
-  /// This is only available after the actor creation task.
-  std::string actor_repr_name_;
-
   /// The concurrency groups of this worker's actor, computed from actor creation task
   /// spec.
   std::vector<ConcurrencyGroup> concurrency_groups_;
