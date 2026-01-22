@@ -1,16 +1,39 @@
-"""Hyperparameter tuning script for APPO on CartPole using HyperOpt.
+"""Hyperparameter tuning script for APPO on CartPole using BasicVariantGenerator.
 
-This script uses Ray Tune's HyperOpt search algorithm to optimize APPO
-hyperparameters for CartPole-v1 (though is applicable to any RLlib algorithm).
-HyperOpt uses Tree-structured Parzen Estimators (TPE) for efficient Bayesian
-optimization of the hyperparameter search space.
+This script uses Ray Tune's BasicVariantGenerator to perform grid/random search
+over APPO hyperparameters for CartPole-v1 (though is applicable to any RLlib algorithm).
 
-The script runs 4 parallel trials by default, with HyperOpt suggesting new
-hyperparameter configurations based on results from completed trials.
-For each trial, it defaults to using a 1 GPU per learner, meaning that
+BasicVariantGenerator is Tune's default search algorithm that generates trial
+configurations from the search space without using historical trial results.
+It supports grid search (tune.grid_search), random sampling (tune.uniform, etc.),
+and combinations thereof.
+
+Alternative Search Algorithms
+-----------------------------
+Ray Tune supports many search algorithms that can leverage results from previous
+trials to guide the search more efficiently:
+
+- HyperOptSearch: Bayesian optimization using Tree-structured Parzen Estimators (TPE)
+- OptunaSearch: Bayesian optimization with pruning support via Optuna
+- BayesOptSearch: Gaussian process-based Bayesian optimization
+- AxSearch: Adaptive experimentation platform from Meta
+- BlendSearch/CFO: Cost-aware optimization algorithms from Microsoft FLAML
+- BOHB: Bayesian Optimization and HyperBand
+- Nevergrad: Derivative-free optimization
+- ZOOpt: Zeroth-order optimization
+
+See the full list and usage examples at:
+https://docs.ray.io/en/latest/tune/api/suggestion.html
+
+Note: When using these advanced search algorithms, wrap them with ConcurrencyLimiter
+to control parallelism (e.g., `ConcurrencyLimiter(HyperOptSearch(), max_concurrent=4)`).
+BasicVariantGenerator has built-in concurrency control via its `max_concurrent` parameter.
+
+The script runs 4 parallel trials by default.
+For each trial, it defaults to using 1 GPU per learner, meaning that
 you need to be running on a cluster with 4 GPUs available.
-Otherwise, we recommend users change the `num_gpus_per_learner` to zero
-or the `max_concurrent_trials` to one (if only single GPU is available).
+Otherwise, we recommend users change `num_gpus_per_learner` to zero
+or `max_concurrent_trials` to one (if only single GPU is available).
 
 Key hyperparameters being tuned:
 - lr: Learning rate
@@ -48,10 +71,11 @@ Run locally with only a single GPU
 
 Results to expect
 -----------------
-HyperOpt will explore the hyperparameter space and converge toward configurations
-that achieve reward of 475+ on CartPole within 2 million timesteps. The best
-trial's hyperparameters will be logged at the end of training.
+The tuner will explore the hyperparameter space via random sampling and find
+configurations that achieve reward of 475+ on CartPole within 2 million timesteps.
+The best trial's hyperparameters will be logged at the end of training.
 """
+import os
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
@@ -65,8 +89,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import CLIReporter
-from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.search import BasicVariantGenerator
 
 parser = add_rllib_example_script_args(
     default_reward=475.0,
@@ -74,7 +97,7 @@ parser = add_rllib_example_script_args(
 )
 parser.add_argument(
     "--storage-path",
-    default="~/ray_results",
+    default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"),
     help="The storage path for checkpoints and related tuning data.",
 )
 parser.set_defaults(
@@ -82,7 +105,7 @@ parser.set_defaults(
     num_envs_per_env_runner=6,
     num_learners=1,
     num_gpus_per_learner=1,
-    num_samples=16,  # Run 16 training trials
+    num_samples=12,  # Run 12 training trials
     max_concurrent_trials=4,  # Run 4 trials in parallel
 )
 args = parser.parse_args()
@@ -123,19 +146,11 @@ stop = {
 
 
 if __name__ == "__main__":
-    # HyperOptSearch for Bayesian hyperparameter optimization using TPE.
-    # Uses Tree-structured Parzen Estimators to intelligently explore the
-    # hyperparameter space based on results from previous trials.
-    # ConcurrencyLimiter ensures we don't exceed max_concurrent_trials.
-    hyperopt_search = HyperOptSearch(
-        metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
-        mode="max",
-    )
-
-    # Wrap search algorithm with ConcurrencyLimiter to control parallelism.
-    search_alg = ConcurrencyLimiter(
-        hyperopt_search, max_concurrent=args.max_concurrent_trials
-    )
+    # BasicVariantGenerator generates trial configurations from the search space
+    # without using historical trial results. It's Tune's default search algorithm
+    # and supports grid search, random sampling, and combinations.
+    # max_concurrent limits how many trials run in parallel.
+    search_alg = BasicVariantGenerator(max_concurrent=args.max_concurrent_trials)
 
     tuner = tune.Tuner(
         config.algo_class,
