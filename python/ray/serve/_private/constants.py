@@ -409,6 +409,12 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
+# Minimum interval between router queue length gauge updates per replica.
+# Throttling reduces metrics overhead on the hot path. Set to 0 to disable throttling.
+RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S = get_env_float_non_negative(
+    "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", 0.1
+)
+
 # Backoff seconds when choosing router failed, backoff time is calculated as
 # initial_backoff_s * backoff_multiplier ** attempt.
 # The default backoff time is [0, 0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].

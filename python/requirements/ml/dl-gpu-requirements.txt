@@ -19,5 +19,4 @@ cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
 
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# Downgrading to JAX 0.4.13 to be compatible with CUDA 12.1
-jaxlib==0.4.13+cuda12.cudnn89; python_version < '3.12' and sys_platform != 'darwin'
+jaxlib==0.4.22+cuda12.cudnn89; python_version < '3.12' and sys_platform != 'darwin'

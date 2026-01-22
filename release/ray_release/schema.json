@@ -27,7 +27,6 @@
 				"python": {
 					"type": "string",
 					"enum": [
-						"3.9",
 						"3.10",
 						"3.11",
 						"3.12",
@@ -95,7 +94,6 @@
 				}
 			},
 			"required": [
-				"byod",
 				"cluster_compute"
 			],
 			"title": "Cluster"
@@ -112,9 +110,6 @@
 				},
 				"python_depset": {
 					"type": "string"
-				},
-				"pip": {
-					"type": "array"
 				},
 				"runtime_env": {
 					"type": "array"

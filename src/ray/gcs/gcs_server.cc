@@ -24,7 +24,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_job_manager.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
@@ -855,6 +855,11 @@ void GcsServer::InstallEventListeners() {
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
       },
       io_context_provider_.GetDefaultIOContext());
+  gcs_node_manager_->AddNodeDrainingListener(
+      [this](const NodeID &node_id, bool is_draining, int64_t deadline_timestamp_ms) {
+        gcs_resource_manager_->SetNodeDraining(
+            node_id, is_draining, deadline_timestamp_ms);
+      });
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(

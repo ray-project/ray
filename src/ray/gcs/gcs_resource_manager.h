@@ -101,6 +101,15 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
+  /// Set the draining state of a node.
+  ///
+  /// \param node_id The ID of the node.
+  /// \param is_draining Whether the node is draining.
+  /// \param draining_deadline_timestamp_ms The deadline for the drain operation.
+  void SetNodeDraining(const NodeID &node_id,
+                       bool is_draining,
+                       int64_t draining_deadline_timestamp_ms);
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
