@@ -12,6 +12,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowTensorArray,
     TensorFormat,
+    create_arrow_tensor_type,
 )
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
@@ -58,14 +59,7 @@ def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_fo
     ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
 
     # Determine expected tensor type based on format
-    if tensor_format == TensorFormat.NATIVE:
-        if FixedShapeTensorType is None:
-            pytest.skip("FixedShapeTensorType requires PyArrow 12+")
-        expected_type = pa.fixed_shape_tensor(pa.int64(), (3, 5))
-    elif tensor_format == TensorFormat.V2:
-        expected_type = ArrowTensorTypeV2((3, 5), pa.int64())
-    else:
-        expected_type = ArrowTensorType((3, 5), pa.int64())
+    expected_type = create_arrow_tensor_type(shape=(3, 5), dtype=pa.int64())
 
     # Create directly.
     tensor_shape = (3, 5)
@@ -758,7 +752,6 @@ def test_tensors_in_tables_parquet_with_schema(
     tmp_path,
     restore_data_context,
     tensor_format,
-    tensor_type=ArrowTensorType,
 ):
     ctx = DataContext.get_current()
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
@@ -773,36 +766,11 @@ def test_tensors_in_tables_parquet_with_schema(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    schema = None
-    if tensor_format == TensorFormat.V1:
-        tensor_type_class = tensor_type
-    elif tensor_format == TensorFormat.V2:
-        tensor_type_class = ArrowTensorTypeV2
-    elif tensor_format == TensorFormat.NATIVE:
-        if FixedShapeTensorType is None:
-            tensor_type_class = ArrowTensorType
-        else:
-            schema = pa.schema(
-                [
-                    ("one", pa.int32()),
-                    (
-                        "two",
-                        pa.fixed_shape_tensor(
-                            pa.from_numpy_dtype(arr.dtype), inner_shape
-                        ),
-                    ),
-                ]
-            )
-    else:
-        raise ValueError(f"unexpected format: {tensor_format}")
-
-    if schema is None:
-        schema = pa.schema(
-            [
-                ("one", pa.int32()),
-                ("two", tensor_type_class(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-            ]
-        )
+    tensor_type = create_arrow_tensor_type(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
+    )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -1015,9 +983,14 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         "https://issues.apache.org/jira/browse/ARROW-5890#"
     )
 )
+@pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_tensors_in_tables_parquet_bytes_with_schema(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
+    ctx = DataContext.get_current()
+    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
+    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -1028,12 +1001,11 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
+    tensor_type = create_arrow_tensor_type(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
     )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
