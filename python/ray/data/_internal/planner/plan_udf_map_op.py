@@ -589,11 +589,10 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
-                    is_empty_block = (
+                    if (
                         not isinstance(batch, collections.abc.Mapping)
                         and BlockAccessor.for_block(batch).num_rows() == 0
-                    )
-                    if is_empty_block:
+                    ):
                         # For empty input blocks, we directly output them without
                         # calling the UDF.
                         # TODO(hchen): This workaround is because some all-to-all
@@ -624,7 +623,8 @@ def _generate_transform_fn_for_map_batches(
                             "giving it to fn. To elide this copy, modify your mapper "
                             "function so it doesn't try to mutate its input."
                         ) from e
-                    raise e from None
+                    else:
+                        raise e from None
                 else:
                     output_num_rows = 0
                     for out_batch in res:
