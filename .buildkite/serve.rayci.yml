@@ -236,7 +236,6 @@ steps:
     depends_on: servetracingbuild
 
   - label: ":ray-serve: serve: direct ingress tests"
-    parallelism: 2
     tags:
       - serve
       - python
@@ -251,7 +250,6 @@ steps:
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
-    parallelism: 2
     tags:
       - serve
       - python
