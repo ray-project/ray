@@ -66,6 +66,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.dataset import MapBatchesRowCountWarning
 from ray.data.exceptions import UserCodeException
+from ray.util.debug import log_once
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -583,8 +584,12 @@ def _generate_transform_fn_for_map_batches(
                         output_num_rows += BlockAccessor.for_block(out_block).num_rows()
                         yield out_batch
 
-                    # Warn if row count changed but can_modify_num_rows=False
-                    if not can_modify_num_rows and input_num_rows != output_num_rows:
+                    # Warn once if row count changed but can_modify_num_rows=False
+                    if (
+                        not can_modify_num_rows
+                        and input_num_rows != output_num_rows
+                        and log_once("map_batches_row_count_mismatch")
+                    ):
                         warnings.warn(
                             f"The UDF passed to `map_batches` modified the number of "
                             f"rows (input: {input_num_rows}, output: {output_num_rows}), "
