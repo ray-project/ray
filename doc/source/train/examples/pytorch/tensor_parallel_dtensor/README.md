@@ -64,14 +64,11 @@ The following figure shows the dataflow of a forward pass using tensor paralleli
 
 When combining FSDP2 with tensor parallelism, the parameter shard created for tensor parallelism is sharded again along the data-parallel dimension. The shards are first concatenated across the data-parallel dimension via all-gather communication. Then we multiply the local shards and run an all-reduce.
 
-![2D Parallelism: Tensor Parallelism + FSDP2](images/tensor_parallel.png)
+<img src="images/tensor_parallel.png" alt="2D Parallelism: Tensor Parallelism + FSDP2" width="50%">
 
 Similarly, during the backward pass we need an all-reduce (and an all-gather when combined with FSDP2). Note that optimizer parameter updates (e.g., Adam) do not require communication.
 
 You can define a `DeviceMesh` to map multiple GPU devices to multiple dimensions for partitioning. With `tp_size=2` and `dp_size=2` on 4 GPUs, the device mesh looks like:
-
-**When to use Tensor Parallelism vs FSDP:** Tensor parallelism is efficient when leveraging high-speed intra-node GPU communication like NVLink. However, cross-node communication is significantly slower, making TP difficult to scale beyond a single node. The typical approach is to use TP within a single node and combine it with FSDP2 to scale training across multiple nodes.
-
 
 ```
 Device Mesh (2x2):
@@ -89,7 +86,7 @@ Device Mesh (2x2):
 - **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
 - **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
 
-
+**When to use Tensor Parallelism vs FSDP:** Tensor parallelism is efficient when leveraging high-speed intra-node GPU communication like NVLink. However, cross-node communication is significantly slower, making TP difficult to scale beyond a single node. The typical approach is to use TP within a single node and combine it with FSDP2 to scale training across multiple nodes.
 
 ## 1. Package and environment setup
 
