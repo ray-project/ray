@@ -8,10 +8,10 @@ ray_cc_library(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager_interface",
+        "//src/ray/core_worker/actor_management:actor_creator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -69,8 +69,7 @@ ray_cc_library(
     srcs = ["actor_task_submitter.cc"],
     hdrs = ["actor_task_submitter.h"],
     visibility = [
-        ":__subpackages__",
-        "//src/ray/core_worker:__pkg__",
+        "//src/ray/core_worker:__subpackages__",
     ],
     deps = [
         ":actor_submit_queue",
@@ -81,8 +80,8 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
-        "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:reference_counter_interface",
+        "//src/ray/core_worker/actor_management:actor_creator",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
