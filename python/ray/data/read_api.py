@@ -50,7 +50,10 @@ from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -890,7 +893,7 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
@@ -4525,7 +4528,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:

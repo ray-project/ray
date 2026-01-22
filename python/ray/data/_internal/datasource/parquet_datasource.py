@@ -70,6 +70,11 @@ if TYPE_CHECKING:
     import pyarrow
     from pyarrow.dataset import ParquetFileFragment
 
+# Type aliases for tensor column schema
+ColumnName = str
+# Shape of the tensor
+Shape = Tuple[int, ...]
+TensorColumnSchema = Dict[ColumnName, Tuple[np.dtype, Shape]]
 
 logger = logging.getLogger(__name__)
 
@@ -314,9 +319,7 @@ class ParquetDatasource(Datasource):
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        tensor_column_schema: Optional[
-            Dict[str, Tuple[np.dtype, Tuple[int, ...]]]
-        ] = None,
+        tensor_column_schema: Optional[TensorColumnSchema] = None,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -744,7 +747,7 @@ class ParquetDatasource(Datasource):
         file_schema: "pyarrow.Schema",
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
-        tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]],
+        tensor_column_schema: Optional[TensorColumnSchema],
         _block_udf,
         include_paths: bool = False,
     ) -> "pyarrow.Schema":
