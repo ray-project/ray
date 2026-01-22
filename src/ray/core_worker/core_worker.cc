@@ -2852,8 +2852,8 @@ Status CoreWorker::ExecuteTask(
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-  // Modify the worker's per function counters.
   if (!options_.is_local_mode) {
+    // Modify the worker's per-function counters.
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
     worker::TaskStatusEvent::TaskStateUpdate update;
@@ -3009,7 +3009,8 @@ Status CoreWorker::ExecuteTask(
       resource_ids_.clear();
     }
 
-    // XXX.
+    // Cache the returned actor repr name as an instance variable.
+    // This is currently only used for exporting task events from the actor.
     if (!actor_repr_name->empty()) {
       actor_repr_name_ = *actor_repr_name;
     }
