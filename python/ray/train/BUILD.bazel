@@ -489,6 +489,7 @@ py_test(
     srcs = ["tests/test_iter_torch_batches_gpu.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2_gpu",
