@@ -333,9 +333,7 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
     )
 
 
-# Not adding arrow_native because we don't have control
-# over it's __str__ representation
-@pytest.mark.parametrize("tensor_format", ["arrow_native"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
 def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
@@ -345,60 +343,84 @@ def test_tensors_inferred_from_map(
         and get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
     ):
         ctx.use_arrow_native_fixed_shape_tensor_type = True
-        schema_name = "arrow.fixed_shape_tensor"
+        expected_type = FixedShapeTensorType
+        assert expected_type is not None
     elif tensor_format == "v2":
         ctx.use_arrow_tensor_v2 = True
-        schema_name = "ArrowTensorTypeV2"
+        expected_type = ArrowTensorTypeV2
     else:
         ctx.use_arrow_tensor_v2 = False
-        schema_name = "ArrowTensorType"
+        expected_type = ArrowTensorType
 
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
         lambda _: {"data": np.ones((4, 4))}
     )
     ds = ds.materialize()
-    assert schema_name in str(ds)
+    assert ds.count() == 10
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
-    assert schema_name in str(ds)
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test flat_map.
     ds = ray.data.range(10, override_num_blocks=10).flat_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
-    assert schema_name in str(ds)
+    assert ds.count() == 20
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        "   schema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=16,\n"
-        "   schema={a: TensorDtype(shape=(None, None), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 16
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    if ctx.use_arrow_native_fixed_shape_tensor_type:
+        # Because the dataset is using variable shaped tensors, native fixed shapes
+        # cannot be used.
+        expected_type = ArrowTensorTypeV2
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (None, None)
+    assert dtype.value_type == pa.float64()
 
 
 @pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])

@@ -1,5 +1,6 @@
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
+    FixedShapeTensorType,
     get_arrow_extension_tensor_types,
 )
 from ray.data.extensions.object_extension import (
@@ -42,4 +43,5 @@ __all__ = [
     "PythonObjectDtype",
     "_object_extension_type_allowed",
     "get_arrow_extension_tensor_types",
+    "FixedShapeTensorType",
 ]

@@ -16,7 +16,7 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
 
 def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:
     """Whether the provided Arrow Table column is an native Tensor array"""
-    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorType
+    from ray.data.extensions import FixedShapeTensorType
 
     return FixedShapeTensorType is not None and isinstance(t, FixedShapeTensorType)
 
