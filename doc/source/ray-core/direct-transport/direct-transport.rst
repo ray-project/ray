@@ -50,7 +50,7 @@ Walkthrough
 
 To get started, define an actor class and a task that returns a ``torch.Tensor``:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __normal_example_start__
    :end-before: __normal_example_end__
@@ -60,7 +60,7 @@ For CPU-based tensors, this can require an expensive step to copy and serialize 
 
 To enable RDT, use the ``tensor_transport`` option in the :func:`@ray.method <ray.method>` decorator.
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_example_start__
    :end-before: __gloo_example_end__
@@ -85,7 +85,7 @@ To create a collective group for use with RDT:
 
 Here is an example:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_group_start__
    :end-before: __gloo_group_end__
@@ -100,7 +100,7 @@ Passing objects to other actors
 Now that we have a collective group, we can create and pass RDT objects between the actors.
 Here is a full example:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_full_example_start__
    :end-before: __gloo_full_example_end__
@@ -111,7 +111,7 @@ In this example, because `MyActor.sum` does not have the :func:`@ray.method(tens
 
 RDT also supports passing tensors nested inside Python data structures, as well as actor tasks that return multiple tensors, like in this example:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_multiple_tensors_example_start__
    :end-before: __gloo_multiple_tensors_example_end__
@@ -123,7 +123,7 @@ RDT :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the actor that
 This avoids any copies and just provides a reference to the same ``torch.Tensor`` that was previously created.
 For example:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_intra_actor_start__
    :end-before: __gloo_intra_actor_end__
@@ -142,7 +142,7 @@ The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the
 
 Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_use_object_store`` in :func:`ray.get <ray.get>`.
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_get_start__
    :end-before: __gloo_get_end__
@@ -155,7 +155,7 @@ This means that if the actor that returns a tensor also keeps a reference to the
 
 Here is an example of what can go wrong:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_wait_tensor_freed_bad_start__
    :end-before: __gloo_wait_tensor_freed_bad_end__
@@ -170,7 +170,7 @@ Ray tracks tasks that depend on the tensor by keeping track of which tasks take 
 
 Here's a fixed version of the earlier example.
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_wait_tensor_freed_start__
    :end-before: __gloo_wait_tensor_freed_end__
@@ -183,7 +183,7 @@ The main changes are:
 When an RDT `ObjectRef` is passed back to the same actor that produced it, Ray passes back a *reference* to the tensor instead of a copy. Therefore, the same kind of bug can occur.
 To help catch such cases, Ray will print a warning if an RDT object is passed to the actor that produced it and a different actor, like so:
 
-.. literalinclude:: doc_code/direct_transport_gloo.py
+.. literalinclude:: ../doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_object_mutability_warning_start__
    :end-before: __gloo_object_mutability_warning_end__
@@ -194,7 +194,7 @@ Usage with NCCL (NVIDIA GPUs only)
 
 RDT requires just a few lines of code change to switch tensor transports. Here is the :ref:`Gloo example <direct-transport-gloo>`, modified to use NVIDIA GPUs and the `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__ library for collective GPU communication.
 
-.. literalinclude:: doc_code/direct_transport_nccl.py
+.. literalinclude:: ../doc_code/direct_transport_nccl.py
    :language: python
    :start-after: __nccl_full_example_start__
    :end-before: __nccl_full_example_end__
@@ -217,6 +217,7 @@ Note that you should also set these UCX environment variables to either let UCX 
 
 
 .. code-block:: bash
+
    # Example UCX configuration, adjust according to your environment
    $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
    $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
@@ -232,7 +233,7 @@ Otherwise, the usage is the same as in the :ref:`Gloo example <direct-transport-
 
 Here is an example showing how to use NIXL to transfer an RDT object between two actors:
 
-.. literalinclude:: doc_code/direct_transport_nixl.py
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
    :language: python
    :start-after: __nixl_full_example_start__
    :end-before: __nixl_full_example_end__
@@ -248,14 +249,14 @@ ray.put and ray.get with NIXL
 Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
 By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
 
-.. literalinclude:: doc_code/direct_transport_nixl.py
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
    :language: python
    :start-after: __nixl_get_start__
    :end-before: __nixl_get_end__
 
 You can also use NIXL to retrieve the result from references created by :func:`ray.put <ray.put>`.
 
-.. literalinclude:: doc_code/direct_transport_nixl.py
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
    :language: python
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
@@ -305,7 +306,7 @@ For collective-based tensor transports (Gloo and NCCL):
 
 Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
 
-.. literalinclude:: doc_code/direct_transport_nixl.py
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
    :language: python
    :start-after: __nixl_limitations_start__
    :end-before: __nixl_limitations_end__
