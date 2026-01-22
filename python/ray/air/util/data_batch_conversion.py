@@ -286,11 +286,16 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
     pd = _lazy_import_pandas()
+    # Pandas has moved/renamed this warning across versions, and pandas 3.x may not
+    # expose it at all. If we can't find it, just don't attempt to filter it.
+    SettingWithCopyWarning = None
     try:
         SettingWithCopyWarning = pd.core.common.SettingWithCopyWarning
-    except AttributeError:
-        # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
-        SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
+    except Exception:
+        try:
+            SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
+        except Exception:
+            SettingWithCopyWarning = None
 
     from ray.data._internal.tensor_extensions.pandas import (
         TensorArray,
@@ -313,7 +318,10 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                 # https://stackoverflow.com/a/74193599
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=FutureWarning)
-                    warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                    if SettingWithCopyWarning is not None:
+                        warnings.simplefilter(
+                            "ignore", category=SettingWithCopyWarning
+                        )
                     df[col_name] = TensorArray(col)
             except Exception as e:
                 raise ValueError(
@@ -329,11 +337,14 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     pd = _lazy_import_pandas()
+    SettingWithCopyWarning = None
     try:
         SettingWithCopyWarning = pd.core.common.SettingWithCopyWarning
-    except AttributeError:
-        # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
-        SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
+    except Exception:
+        try:
+            SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
+        except Exception:
+            SettingWithCopyWarning = None
     from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
     # Try to convert any tensor extension columns to ndarray columns.
@@ -348,6 +359,7 @@ def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
             # https://stackoverflow.com/a/74193599
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=FutureWarning)
-                warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                if SettingWithCopyWarning is not None:
+                    warnings.simplefilter("ignore", category=SettingWithCopyWarning)
                 df[col_name] = list(col.to_numpy())
     return df
