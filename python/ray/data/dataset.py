@@ -3,6 +3,7 @@ import copy
 import html
 import itertools
 import logging
+import sys
 import time
 import warnings
 from typing import (
@@ -158,8 +159,10 @@ class MapBatchesRowCountWarning(UserWarning):
     pass
 
 
-# Ensure this warning is only shown once per session
-warnings.filterwarnings("once", category=MapBatchesRowCountWarning)
+# By default, print the first occurrence of matching warnings for
+# each module where the warning is issued (regardless of line number)
+if not sys.warnoptions:
+    warnings.filterwarnings("once", category=MapBatchesRowCountWarning)
 
 
 logger = logging.getLogger(__name__)
@@ -719,16 +722,6 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
-        if not udf_modifying_row_count:
-            warnings.warn(
-                "By default, `map_batches` assumes the provided function doesn't "
-                "modify the number of rows, enabling optimizations like limit pushdown. "
-                "If your function filters rows or generates additional rows, set "
-                "`udf_modifying_row_count=True` to disable these optimizations and "
-                "ensure correct results.",
-                category=MapBatchesRowCountWarning,
-                stacklevel=2,
-            )
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "default"):
             raise ValueError(

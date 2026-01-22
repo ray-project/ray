@@ -3,6 +3,7 @@ import collections
 import inspect
 import logging
 import queue
+import warnings
 from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
@@ -63,6 +64,7 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
+from ray.data.dataset import MapBatchesRowCountWarning
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
@@ -300,7 +302,7 @@ def plan_udf_map_op(
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(fn),
+            _generate_transform_fn_for_map_batches(fn, op.can_modify_num_rows()),
             batch_size=op._batch_size,
             batch_format=op._batch_format,
             zero_copy_batch=op._zero_copy_batch,
@@ -524,6 +526,7 @@ def _validate_batch_output(batch: Block) -> None:
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    can_modify_num_rows: bool = True,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
 
     if _is_async_udf(fn):
@@ -540,9 +543,11 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
+                    input_block = BlockAccessor.batch_to_block(batch)
+                    input_num_rows = BlockAccessor.for_block(input_block).num_rows()
                     if (
                         not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
+                        and input_num_rows == 0
                     ):
                         # For empty input blocks, we directly output them without
                         # calling the UDF.
@@ -571,9 +576,23 @@ def _generate_transform_fn_for_map_batches(
                     else:
                         raise e from None
                 else:
+                    output_num_rows = 0
                     for out_batch in res:
                         _validate_batch_output(out_batch)
+                        out_block = BlockAccessor.batch_to_block(out_batch)
+                        output_num_rows += BlockAccessor.for_block(out_block).num_rows()
                         yield out_batch
+
+                    # Warn if row count changed but can_modify_num_rows=False
+                    if not can_modify_num_rows and input_num_rows != output_num_rows:
+                        warnings.warn(
+                            f"The UDF passed to `map_batches` modified the number of "
+                            f"rows (input: {input_num_rows}, output: {output_num_rows}), "
+                            f"but `udf_modifying_row_count=False` (default). This may "
+                            f"cause incorrect results with optimizations like limit "
+                            f"pushdown. Set `udf_modifying_row_count=True` to fix this.",
+                            category=MapBatchesRowCountWarning,
+                        )
 
     return transform_fn
 
