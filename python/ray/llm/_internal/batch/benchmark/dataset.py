@@ -93,21 +93,31 @@ class ShareGPTDataset(BenchmarkDataset):
             self._data = self._load_dataset_data()
 
     def sample(self, num_requests: int) -> List[Dict]:
-        """Sample prompts from the loaded dataset."""
+        """Sample prompts from the loaded dataset.
+
+        If num_requests exceeds the number of available samples, the samples
+        are replicated to meet the requested count.
+        """
         if self._data is None:
             self.load_data()
 
-        prompts = []
+        # Extract all valid prompts from the dataset
+        all_prompts = []
         for item in self._data:
-            if len(prompts) >= num_requests:
-                break
-
             prompt_data = self._extract_prompt(item)
             if prompt_data is not None:
-                prompts.append(prompt_data)
+                all_prompts.append(prompt_data)
 
-        if not prompts:
+        if not all_prompts:
             raise ValueError("ShareGPT dataset yielded no usable prompts")
+
+        # Replicate samples if num_requests exceeds available samples
+        if num_requests <= len(all_prompts):
+            return all_prompts[:num_requests]
+
+        full_copies = num_requests // len(all_prompts)
+        remainder = num_requests % len(all_prompts)
+        prompts = all_prompts * full_copies + all_prompts[:remainder]
         return prompts
 
     def _load_dataset(self):
