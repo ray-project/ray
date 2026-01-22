@@ -2856,9 +2856,10 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
+    worker::TaskStatusEvent::TaskStateUpdate update;
     {
       absl::MutexLock lock(&mutex_);
-      const auto update =
+      update =
           (task_spec.IsActorTask() && !actor_repr_name_.empty())
               ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
               : worker::TaskStatusEvent::TaskStateUpdate(pid_);
