@@ -307,6 +307,11 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         )
 
         # Create the final network.
+
+        output_bias_initializer = get_initializer_fn(
+            config.output_layer_bias_initializer, framework="torch"
+        )
+
         self.hidden_activation = get_activation_fn(
             config.hidden_layer_activation, framework="torch"
         )
@@ -318,15 +323,57 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
             cfg.output_dims[0] for cfg in config.base_encoder_configs.values()
         )
         # Create the final network layers.
-        input_layer = nn.Linear(total_embed_dim, config.hidden_layer_dims[0])
+        input_layer = nn.Linear(
+            total_embed_dim,
+            config.hidden_layer_dims[0],
+            bias=config.hidden_layer_use_bias,
+        )
         fusion_layers = [
-            nn.Linear(config.hidden_layer_dims[i - 1], config.hidden_layer_dims[i])
+            nn.Linear(
+                config.hidden_layer_dims[i - 1] + total_embed_dim,
+                config.hidden_layer_dims[i],
+                bias=config.hidden_layer_use_bias,
+            )
             for i in range(1, len(config.hidden_layer_dims))
         ]
         output_layer = nn.Linear(
-            config.hidden_layer_dims[-1], config.output_layer_dim[0]
+            config.hidden_layer_dims[-1] + total_embed_dim,
+            config.output_layer_dim,
+            bias=config.output_layer_use_bias,
         )
 
+        # Initialize hidden layer weights if necessary.
+        if config.hidden_layer_weights_initializer:
+            hidden_weights_initializer = get_initializer_fn(
+                config.hidden_layer_weights_initializer, framework="torch"
+            )
+            hidden_weights_initializer(
+                input_layer.weight,
+                **config.hidden_layer_weights_initializer_config or {}
+            )
+        # Initialize hidden layer bias if necessary.
+        if config.hidden_layer_bias_initializer:
+            hidden_bias_initializer = get_initializer_fn(
+                config.hidden_layer_bias_initializer, framework="torch"
+            )
+
+            hidden_bias_initializer(
+                input_layer.bias, **config.hidden_layer_bias_initializer_config or {}
+            )
+
+        #
+        if config.output_layer_weights_initializer:
+            output_weights_initializer = get_initializer_fn(
+                config.output_layer_weights_initializer, framework="torch"
+            )
+            output_weights_initializer(
+                output_layer.weight, **config.output_weights_initializer_config or {}
+            )
+        # Initialize output layer bias if necessary.
+        if config.output_layer_bias_initializer:
+            output_bias_initializer(
+                output_layer.bias, **config.output_bias_initializer_config or {}
+            )
         self.net = nn.ModuleList([input_layer] + fusion_layers + [output_layer])
         # self.net = nn.ModuleList(
         #     [

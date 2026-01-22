@@ -175,8 +175,32 @@ class SACCatalog(Catalog):
                 },
                 hidden_layer_dims=self._model_config_dict["fusionnet_hiddens"],
                 hidden_layer_activation=self._model_config_dict["fusionnet_activation"],
+                hidden_layer_weights_initializer=self._model_config_dict[
+                    "fusionnet_kernel_initializer"
+                ],
+                hidden_layer_weights_initializer_config=self._model_config_dict[
+                    "fusionnet_kernel_initializer_kwargs"
+                ],
+                hidden_layer_bias_initializer=self._model_config_dict[
+                    "fusionnet_bias_initializer"
+                ],
+                hidden_layer_bias_initializer_config=self._model_config_dict[
+                    "fusionnet_bias_initializer_kwargs"
+                ],
                 output_layer_dim=self.latent_dims[0],
                 output_layer_activation=self._model_config_dict["fusionnet_activation"],
+                output_layer_weights_initializer=self._model_config_dict[
+                    "fusionnet_kernel_initializer"
+                ],
+                output_layer_weights_initializer_config=self._model_config_dict[
+                    "fusionnet_kernel_initializer_kwargs"
+                ],
+                output_layer_bias_initializer=self._model_config_dict[
+                    "fusionnet_bias_initializer"
+                ],
+                output_layer_bias_initializer_config=self._model_config_dict[
+                    "fusionnet_bias_initializer_kwargs"
+                ],
             )
 
             return self.qf_encoder_config.build(framework=framework)
