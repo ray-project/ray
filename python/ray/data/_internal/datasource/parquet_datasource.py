@@ -43,6 +43,7 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datatype import DataType
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
@@ -803,7 +804,7 @@ class ParquetDatasource(Datasource):
 
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
-                pa_dtype: pa.DataType = pa.from_numpy_dtype(np_dtype)
+                pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()
                 # Use factory to create tensor type (respects context defaults)
                 tensor_type = create_arrow_tensor_type(shape=shape, dtype=pa_dtype)
                 field = pa.field(name, tensor_type)
