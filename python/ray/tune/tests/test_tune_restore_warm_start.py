@@ -1,5 +1,10 @@
 # coding: utf-8
 import os
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# Must be set before any TensorFlow imports (including transitive imports from Ax/BoTorch)
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import shutil
 import sys
 import tempfile
@@ -287,38 +292,21 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
-
-        # set generation strategy to sobol to ensure reproductibility
+        # Use random_seed for reproducibility and disable sequential optimization
+        # to avoid complex generation strategy setup which varies across Ax versions
+        client = AxClient(random_seed=4321, enforce_sequential_optimization=False)
+        # Support both old and new Ax API for create_experiment
         try:
-            # ax-platform>=0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_trials=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
+            from ax.service.utils.instantiation import ObjectiveProperties
+
+            client.create_experiment(
+                parameters=space,
+                objectives={"loss": ObjectiveProperties(minimize=True)},
             )
         except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_arms=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
+            client.create_experiment(
+                parameters=space, objective_name="loss", minimize=True
             )
-
-        client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(parameters=space, objective_name="loss", minimize=True)
 
         def cost(space):
             tune.report(

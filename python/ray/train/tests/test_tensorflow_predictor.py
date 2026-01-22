@@ -54,14 +54,14 @@ def build_model_multi_input() -> tf.keras.Model:
 
 
 def build_model_multi_output() -> tf.keras.Model:
-    input = tf.keras.layers.Input(shape=1)
+    input = tf.keras.layers.Input(shape=(1,))
     model = tf.keras.models.Model(inputs=input, outputs={"a": input, "b": input})
     return model
 
 
 def build_model_unsupported() -> tf.keras.Model:
     """Builds a model with unsupported output type."""
-    input = tf.keras.layers.Input(shape=1)
+    input = tf.keras.layers.Input(shape=(1,))
     model = tf.keras.models.Model(inputs=input, outputs=[input, input])
     return model
 
@@ -98,7 +98,8 @@ def test_init():
 
 def test_tensorflow_checkpoint():
     model = build_model()
-    model.build(input_shape=(1,))
+    model.build(input_shape=(None, 1))
+
     preprocessor = DummyPreprocessor()
 
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)

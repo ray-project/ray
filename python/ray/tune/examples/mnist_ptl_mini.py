@@ -65,6 +65,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
         self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
+        self.validation_step_outputs = []
 
     def forward(self, x):
         batch_size, channels, width, height = x.size()
@@ -94,13 +95,17 @@ class LightningMNISTClassifier(pl.LightningModule):
         logits = self.forward(x)
         loss = F.nll_loss(logits, y)
         acc = self.accuracy(logits, y)
-        return {"val_loss": loss, "val_accuracy": acc}
+        output = {"val_loss": loss, "val_accuracy": acc}
+        self.validation_step_outputs.append(output)
+        return output
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
+        outputs = self.validation_step_outputs
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
         self.log("ptl/val_loss", avg_loss)
         self.log("ptl/val_accuracy", avg_acc)
+        self.validation_step_outputs.clear()
 
 
 def train_mnist_tune(config, num_epochs=10, num_gpus=0):

@@ -1,7 +1,13 @@
 import logging
+import os
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
+
+# Use legacy Keras 2.x API with TensorFlow 2.16+
+# TODO(elliot-barn): Remove this once Train supports Keras 3
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import tensorflow as tf
 
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
@@ -125,8 +131,11 @@ class TensorflowPredictor(DLPredictor):
 
                 # List outputs are not supported by default TensorflowPredictor.
                 def build_model() -> tf.keras.Model:
-                    input = tf.keras.layers.Input(shape=1)
-                    model = tf.keras.models.Model(inputs=input, outputs=[input, input])
+                    input = tf.keras.layers.Input(shape=(1,))
+                    # Use Lambda to connect input to output (required for Keras 3)
+                    identity = tf.keras.layers.Lambda(lambda x: x)
+                    out = identity(input)
+                    model = tf.keras.models.Model(inputs=input, outputs=[out, out])
                     return model
 
                 # Use a custom predictor to format model output as a dict.

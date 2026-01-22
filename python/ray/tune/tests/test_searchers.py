@@ -93,9 +93,20 @@ class InvalidValuesTest(unittest.TestCase):
         converted_config = AxSearch.convert_search_space(config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
-        client.create_experiment(
-            parameters=converted_config, objective_name="_metric", minimize=False
-        )
+        # Support both old and new Ax API
+        try:
+            from ax.service.utils.instantiation import ObjectiveProperties
+
+            client.create_experiment(
+                parameters=converted_config,
+                objectives={"_metric": ObjectiveProperties(minimize=False)},
+            )
+        except TypeError:
+            client.create_experiment(
+                parameters=converted_config,
+                objective_name="_metric",
+                minimize=False,
+            )
         searcher = AxSearch(ax_client=client)
 
         out = tune.run(
@@ -564,18 +575,31 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         from ray.tune.search.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
+
+        # Support both old and new Ax API
+        def create_ax_experiment(client):
+            try:
+                from ax.service.utils.instantiation import ObjectiveProperties
+
+                client.create_experiment(
+                    parameters=converted_config,
+                    objectives={self.metric_name: ObjectiveProperties(minimize=False)},
+                )
+            except TypeError:
+                client.create_experiment(
+                    parameters=converted_config,
+                    objective_name=self.metric_name,
+                    minimize=False,
+                )
+
         client = AxClient()
-        client.create_experiment(
-            parameters=converted_config, objective_name=self.metric_name, minimize=False
-        )
+        create_ax_experiment(client)
         searcher = AxSearch(ax_client=client)
 
         self._save(searcher)
 
         client = AxClient()
-        client.create_experiment(
-            parameters=converted_config, objective_name=self.metric_name, minimize=False
-        )
+        create_ax_experiment(client)
         searcher = AxSearch(ax_client=client)
         self._restore(searcher)
 

@@ -42,7 +42,7 @@ def conv2d(
         filter_shape = [
             filter_size[0],
             filter_size[1],
-            int(x.get_shape()[3]),
+            int(x.shape[3]),
             num_filters,
         ]
 
@@ -79,7 +79,7 @@ def linear(
     initializer: Optional[Any] = None,
     bias_init: float = 0.0,
 ) -> TensorType:
-    w = tf1.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
+    w = tf1.get_variable(name + "/w", [x.shape[1], size], initializer=initializer)
     b = tf1.get_variable(
         name + "/b", [size], initializer=tf1.constant_initializer(bias_init)
     )
@@ -88,4 +88,4 @@ def linear(
 
 @DeveloperAPI
 def flatten(x: TensorType) -> TensorType:
-    return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
+    return tf.reshape(x, [-1, np.prod(x.shape.as_list()[1:])])

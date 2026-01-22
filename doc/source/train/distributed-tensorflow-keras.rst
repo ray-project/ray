@@ -262,7 +262,8 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
             history = model.fit(X, Y, batch_size=20)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
+                # TODO(elliot-barn): Update to "model.keras" once Ray Train supports Keras 3.
+                model.save(os.path.join(temp_checkpoint_dir, "model.h5"))
                 checkpoint_dict = os.path.join(temp_checkpoint_dir, "checkpoint.json")
                 with open(checkpoint_dict, "w") as f:
                     json.dump({"epoch": epoch}, f)
@@ -310,8 +311,9 @@ Load checkpoints
             checkpoint = train.get_checkpoint()
             if checkpoint:
                 with checkpoint.as_directory() as checkpoint_dir:
+                    # TODO(elliot-barn): Update to "model.keras" once Ray Train supports Keras 3.
                     model = tf.keras.models.load_model(
-                        os.path.join(checkpoint_dir, "model.keras")
+                        os.path.join(checkpoint_dir, "model.h5")
                     )
             else:
                 model = tf.keras.Sequential(
@@ -323,7 +325,8 @@ Load checkpoints
             history = model.fit(X, Y, batch_size=20)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
+                # TODO(elliot-barn): Update to "model.keras" once Ray Train supports Keras 3.
+                model.save(os.path.join(temp_checkpoint_dir, "model.h5"))
                 extra_json = os.path.join(temp_checkpoint_dir, "checkpoint.json")
                 with open(extra_json, "w") as f:
                     json.dump({"epoch": epoch}, f)

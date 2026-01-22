@@ -680,7 +680,8 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    # Results may come in different order with concurrent execution
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()

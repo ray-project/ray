@@ -241,13 +241,12 @@ class Encoder(Model, abc.ABC):
                 return self._forward(*args, **kwargs)
 
             def _forward(self, input_dict, **kwargs):
-                obs = input_dict[Columns.OBS]
+                encoder_out = (np.array(input_dict[Columns.OBS]) * self.factor).item()
+                state_out = (np.array(input_dict[Columns.STATE_IN]) * self.factor).item()
+
                 return {
-                    ENCODER_OUT: np.array(obs) * self.factor,
-                    Columns.STATE_OUT: (
-                        np.array(input_dict[Columns.STATE_IN])
-                        * self.factor
-                    ),
+                    ENCODER_OUT: encoder_out,
+                    Columns.STATE_OUT: state_out,
                 }
 
             def get_num_parameters(self):
