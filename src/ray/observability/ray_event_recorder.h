@@ -75,7 +75,7 @@ class RayEventRecorder : public RayEventRecorderInterface {
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
   // Flag to track if the recorder is enabled and accepting new events.
   // Set to false during shutdown to prevent event loss.
-  bool enabled_ ABSL_GUARDED_BY(mutex_) = false;
+  bool enabled_ ABSL_GUARDED_BY(mutex_) = true;
   // Node ID to be set on all events
   const NodeID node_id_;
 

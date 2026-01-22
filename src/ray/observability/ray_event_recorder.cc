@@ -46,7 +46,6 @@ void RayEventRecorder::StartExportingEvents() {
     return;
   }
   exporting_started_ = true;
-  enabled_ = true;
   periodical_runner_->RunFnPeriodically(
       [this]() { ExportEvents(); },
       RayConfig::instance().ray_events_report_interval_ms(),
