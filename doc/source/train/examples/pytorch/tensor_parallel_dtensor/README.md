@@ -9,7 +9,7 @@ This template shows how to train large language models using tensor parallelism 
 This tutorial provides a step-by-step guide covering:
 
 - Understanding 2D parallelism (Tensor Parallelism + Data Parallelism)
-- Setting up a 2D device mesh with PyTorch
+- Setting up a 2D PyTorch `DeviceMesh`
 - Applying DTensor tensor parallelism to transformer layers
 - Combining with FSDP2 for data parallelism
 - TP-aware data loading to ensure correct gradient computation
