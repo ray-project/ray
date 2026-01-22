@@ -18,6 +18,10 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import check_apps_running, check_telemetry
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.autoscaling_policy import (
+    apply_app_level_autoscaling_config,
+    apply_autoscaling_config,
+)
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
@@ -179,6 +183,7 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
     )
 
 
+@apply_autoscaling_config
 def custom_autoscaling_policy_deployment_level(ctx: AutoscalingContext):
     """Custom autoscaling policy for deployment-level testing."""
     if ctx.total_num_requests > 50:
@@ -187,6 +192,7 @@ def custom_autoscaling_policy_deployment_level(ctx: AutoscalingContext):
         return 2, {}
 
 
+@apply_app_level_autoscaling_config
 def custom_autoscaling_policy_app_level(ctxs: Dict[DeploymentID, AutoscalingContext]):
     """Custom autoscaling policy for application-level testing."""
     decisions: Dict[DeploymentID, int] = {}

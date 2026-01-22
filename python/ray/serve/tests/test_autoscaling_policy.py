@@ -1535,16 +1535,12 @@ def test_autoscaling_status_changes(serve_instance):
     print("Statuses are as expected.")
 
 
+@apply_autoscaling_config
 def custom_autoscaling_policy(ctx: AutoscalingContext):
     if ctx.total_num_requests > 50:
         return 3, {}
     else:
         return 2, {}
-
-
-@apply_autoscaling_config
-def decorated_custom_autoscaling_policy(ctx: AutoscalingContext):
-    return custom_autoscaling_policy(ctx)
 
 
 @pytest.mark.parametrize(
@@ -1553,17 +1549,10 @@ def decorated_custom_autoscaling_policy(ctx: AutoscalingContext):
         {
             "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy",
         },
-        {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.decorated_custom_autoscaling_policy",
-        },
         AutoscalingPolicy(
             policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
         ),
-        AutoscalingPolicy(
-            policy_function="ray.serve.tests.test_autoscaling_policy.decorated_custom_autoscaling_policy"
-        ),
         AutoscalingPolicy(policy_function=custom_autoscaling_policy),
-        AutoscalingPolicy(policy_function=decorated_custom_autoscaling_policy),
     ],
 )
 def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
@@ -1610,6 +1599,7 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
+@apply_app_level_autoscaling_config
 def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
     decisions: Dict[DeploymentID, int] = {}
     for deployment_id, ctx in ctxs.items():
@@ -1627,14 +1617,6 @@ def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingCont
             raise RuntimeWarning(f"Unknown deployment: {deployment_id}")
 
     return decisions, {}
-
-
-@apply_app_level_autoscaling_config
-def app_level_custom_autoscaling_policy_with_decorator(
-    ctxs: Dict[DeploymentID, AutoscalingContext]
-):
-    """Wraps the app-level custom autoscaling policy and applies the decorator"""
-    return app_level_custom_autoscaling_policy(ctxs)
 
 
 class TestAppLevelAutoscalingPolicy:
@@ -1690,19 +1672,10 @@ class TestAppLevelAutoscalingPolicy:
             {
                 "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
             },
-            {
-                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
-            },
             AutoscalingPolicy(
                 policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
             ),
-            AutoscalingPolicy(
-                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
-            ),
             AutoscalingPolicy(policy_function=app_level_custom_autoscaling_policy),
-            AutoscalingPolicy(
-                policy_function=app_level_custom_autoscaling_policy_with_decorator
-            ),
         ],
     )
     def test_application_autoscaling_policy(

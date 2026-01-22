@@ -2570,6 +2570,7 @@ class TestAutoscale:
             asm.record_request_metrics_for_replica(replica_report)
 
 
+@apply_app_level_autoscaling_config
 def simple_app_level_policy(contexts):
     """Simple policy that scales all deployments to 3 replicas."""
     decisions = {}
@@ -2578,6 +2579,7 @@ def simple_app_level_policy(contexts):
     return decisions, {}
 
 
+@apply_app_level_autoscaling_config
 def stateful_app_level_policy(contexts):
     """Stateful application level policy that increments a counter in policy_state.
     Used in tests to verify that application level autoscaling policy state
@@ -2615,6 +2617,7 @@ def app_level_policy_with_decorator(contexts):
     return decisions, {}
 
 
+@apply_app_level_autoscaling_config
 def partial_app_level_policy(contexts):
     """Policy that returns decisions for only a subset of deployments."""
     decisions = {}
@@ -2622,12 +2625,6 @@ def partial_app_level_policy(contexts):
         if deployment_id.name == "d1":
             decisions[deployment_id] = 4
     return decisions, {}
-
-
-@apply_app_level_autoscaling_config
-def partial_app_level_policy_with_decorator(contexts):
-    """Same as `partial_app_level_policy` but wrapped with default autoscaling params."""
-    return partial_app_level_policy(contexts)
 
 
 class TestApplicationLevelAutoscaling:
@@ -2649,6 +2646,13 @@ class TestApplicationLevelAutoscaling:
                     },
                 )
             ]
+
+        # Overriding the default delay values for deterministic behavior for unit tests
+        for d in deployments:
+            if d.autoscaling_config is None:
+                continue
+            d.autoscaling_config.setdefault("upscale_delay_s", 0.0)
+            d.autoscaling_config.setdefault("downscale_delay_s", 0.0)
 
         return ServeApplicationSchema(
             name=app_name,
@@ -2684,12 +2688,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos[deployment.name] = deployment_info(
                     deployment.name,
                     "/hi" if deployment.name == "d1" else None,
-                    autoscaling_config={
-                        "target_ongoing_requests": 1,
-                        "min_replicas": 1,
-                        "max_replicas": 5,
-                        "initial_replicas": 1,
-                    },
+                    autoscaling_config=deployment.autoscaling_config,
                 )
 
             mock_reconcile.return_value = (
@@ -2802,7 +2801,6 @@ class TestApplicationLevelAutoscaling:
         "policy_import_path",
         [
             "ray.serve.tests.unit.test_application_state:partial_app_level_policy",
-            "ray.serve.tests.unit.test_application_state:partial_app_level_policy_with_decorator",
         ],
     )
     def test_app_level_autoscaling_policy_can_return_partial_decisions(
