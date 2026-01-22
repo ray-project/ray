@@ -112,14 +112,12 @@ class GlueTest(unittest.TestCase):
                 project_id: str,
                 sdk=None,
                 smoke_test: bool = False,
-                log_streaming_limit: int = 100,
             ):
                 super(MockClusterManager, self).__init__(
                     test_name,
                     project_id,
                     this_sdk,
                     smoke_test=smoke_test,
-                    log_streaming_limit=log_streaming_limit,
                 )
                 self.return_dict = this_cluster_manager_return
                 this_instances["cluster_manager"] = self
@@ -261,18 +259,12 @@ class GlueTest(unittest.TestCase):
 
     def _run(self, result: Result, kuberay: bool = False, **kwargs):
         if kuberay:
-            run_release_test(
-                test=self.kuberay_test,
-                result=result,
-                log_streaming_limit=1000,
-                **kwargs
-            )
+            run_release_test(test=self.kuberay_test, result=result, **kwargs)
         else:
             run_release_test(
                 test=self.test,
                 anyscale_project=self.anyscale_project,
                 result=result,
-                log_streaming_limit=1000,
                 **kwargs
             )
 
@@ -427,7 +419,6 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.COMMAND_ALERT.value)
         self.assertEqual(result.status, "error")
-        self.assertEqual(self.instances["cluster_manager"].log_streaming_limit, 1000)
 
     def testReportFails(self):
         result = Result()
