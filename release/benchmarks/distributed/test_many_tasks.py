@@ -1,17 +1,18 @@
+import time
+
 import click
+import tqdm
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
 import ray
 import ray._common.test_utils
 import ray._private.test_utils as test_utils
-import time
-import tqdm
-
-from ray.util.state import summarize_tasks
-from many_nodes_tests.dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
     summarize_worker_startup_time,
 )
+from ray.util.state import summarize_tasks
 
 sleep_time = 300
 

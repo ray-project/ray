@@ -24,15 +24,15 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-
 namespace grpc {
 class Channel;
 }
 
 namespace ray {
+
+// Maps from resource name to its allocation.
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 // Forward declarations.
 class Status;
@@ -211,7 +211,15 @@ class RayletClientInterface {
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
 
+  virtual void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) = 0;
+
   virtual int64_t GetPinsInFlight() const = 0;
+
+  virtual void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
   virtual ~RayletClientInterface() = default;
 };

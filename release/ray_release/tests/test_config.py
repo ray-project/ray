@@ -1,7 +1,9 @@
-import sys
 import copy
+import sys
+
 import pytest
 import yaml
+
 from ray_release.config import (
     _substitute_variable,
     load_schema_file,
@@ -24,7 +26,7 @@ VALID_TEST = {
     "name": "validation_test",
     "group": "validation_group",
     "working_dir": "validation_dir",
-    "python": "3.9",
+    "python": "3.10",
     "frequency": "nightly",
     "team": "release",
     "cluster": {

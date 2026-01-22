@@ -86,7 +86,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "2. To cause the tasks with infeasible requests to raise an error instead "
           "of hanging, set the 'RAY_enable_infeasible_task_early_exit=true'. "
           "This feature will be turned on by default in a future release of Ray.";
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
@@ -478,6 +478,8 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   if (!maybe_node.has_value()) {
     if (gcs_node_manager_.IsNodeDead(node_id)) {
       // The node is dead so treat it as drained.
+      RAY_LOG(INFO).WithField(node_id)
+          << "Request to drain a dead node, treat it as drained";
       reply->set_is_accepted(true);
     } else {
       // Since gcs only stores limit number of dead nodes
@@ -508,6 +510,9 @@ void GcsAutoscalerStateManager::HandleDrainNode(
           gcs_node_manager_.SetNodeDraining(
               node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
         } else {
+          RAY_LOG(INFO).WithField(node_id) << "Node drain rejected by raylet. The node "
+                                              "will not be drained. Rejection reason: "
+                                           << raylet_reply.rejection_reason_message();
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
         }
         send_reply_callback(status, nullptr, nullptr);

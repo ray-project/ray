@@ -10,7 +10,6 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
@@ -32,13 +31,6 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(
-    gcs_actor_scheduling_enabled(),
-    reason="This test relies on gcs server randomly choosing raylets "
-    + "for actors without required resources, which is only supported by "
-    + "raylet-based actor scheduler. The same test logic for gcs-based "
-    + "actor scheduler can be found at `test_actor_distribution_balance`.",
-)
 def test_actor_load_balancing(ray_start_cluster):
     """Check that actor scheduling is load balanced across worker nodes."""
     cluster = ray_start_cluster
@@ -933,8 +925,6 @@ def test_actor_resource_demand(shutdown_only):
         == 2
     )
 
-    global_state_accessor.disconnect()
-
 
 def test_kill_pending_actor_with_no_restart_true():
     cluster = ray.init()
@@ -964,7 +954,6 @@ def test_kill_pending_actor_with_no_restart_true():
     # Actor is dead, so the infeasible task queue length is 0.
     wait_for_condition(condition1, timeout=10)
 
-    global_state_accessor.disconnect()
     ray.shutdown()
 
 
@@ -1072,7 +1061,6 @@ def test_kill_pending_actor_with_no_restart_false():
 
     wait_for_condition(condition2, timeout=10)
 
-    global_state_accessor.disconnect()
     ray.shutdown()
 
 

@@ -1,4 +1,4 @@
-// Copyright  The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 
@@ -27,6 +27,7 @@ class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GCSFunctionManager &function_manager,
+                      rpc::RayletClientPool &raylet_client_pool,
                       rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
             /*scheduler=*/
@@ -37,6 +38,7 @@ class MockGcsActorManager : public GcsActorManager {
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
+            raylet_client_pool,
             worker_client_pool,
             /*ray_event_recorder=*/fake_ray_event_recorder_,
             /*session_name=*/"",

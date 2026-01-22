@@ -4,7 +4,6 @@ from typing import List, Optional, Set, Tuple
 
 import click
 import yaml
-from ray_release.test import Test, TestState
 
 from ci.ray_ci.builder_container import BuilderContainer
 from ci.ray_ci.configs import (
@@ -18,6 +17,8 @@ from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
+from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
 ==========
@@ -233,7 +234,8 @@ def main(
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
-        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
+        wheel_python_version = python_version or DEFAULT_PYTHON_VERSION
+        BuilderContainer(wheel_python_version, DEFAULT_BUILD_TYPE, architecture).run()
     bisect_run_test_target = bisect_run_test_target or os.environ.get(
         "RAYCI_BISECT_TEST_TARGET"
     )

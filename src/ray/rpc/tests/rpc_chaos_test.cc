@@ -20,7 +20,8 @@
 namespace ray::rpc::testing {
 
 TEST(RpcChaosTest, MethodRpcFailure) {
-  RayConfig::instance().testing_rpc_failure() = "method1=0:25:25,method2=1:100:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"method1":{"num_failures":0,"req_failure_prob":25,"resp_failure_prob":25,"in_flight_failure_prob":25},"method2":{"num_failures":1,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   ASSERT_EQ(GetRpcFailure("unknown"), RpcFailure::None);
   ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::None);
@@ -31,29 +32,40 @@ TEST(RpcChaosTest, MethodRpcFailure) {
 
 TEST(RpcChaosTest, MethodRpcFailureEdgeCase) {
   RayConfig::instance().testing_rpc_failure() =
-      "method1=1000:100:0,method2=1000:0:100,method3=1000:0:0";
+      R"({"method1":{"num_failures":1000,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0},"method2":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":100,"in_flight_failure_prob":0},"method3":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":100},"method4":{"num_failures":1000,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 1000; i++) {
     ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
     ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
-    ASSERT_EQ(GetRpcFailure("method3"), RpcFailure::None);
+    ASSERT_EQ(GetRpcFailure("method3"), RpcFailure::InFlight);
+    ASSERT_EQ(GetRpcFailure("method4"), RpcFailure::None);
   }
 }
 
 TEST(RpcChaosTest, WildcardRpcFailure) {
-  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::Request);
   }
 
-  RayConfig::instance().testing_rpc_failure() = "*=-1:0:100";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":100,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::Response);
   }
 
-  RayConfig::instance().testing_rpc_failure() = "*=-1:0:0";
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":100}})";
+  Init();
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(GetRpcFailure("method"), RpcFailure::InFlight);
+  }
+
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"req_failure_prob":0,"resp_failure_prob":0,"in_flight_failure_prob":0}})";
   Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method"), RpcFailure::None);
@@ -62,10 +74,22 @@ TEST(RpcChaosTest, WildcardRpcFailure) {
 
 TEST(RpcChaosTest, LowerBoundWithWildcard) {
   // Test lower bound failures with wildcard configuration
-  // Format: *=num_failures:req_prob:resp_prob:lower_bound_req:lower_bound_resp
-  // Config: unlimited failures, 100% req prob after lower bound, 0% resp prob,
-  //         3 guaranteed req failures, 5 guaranteed resp failures
-  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0:3:5";
+  // Config: unlimited failures,
+  //         100% req prob after lower bound, 0% resp prob, 0% resp in-flight prob,
+  //         3 guaranteed req failures, 5 guaranteed resp failures, 2 guaranteed resp
+  //         in-flight failures
+  RayConfig::instance().testing_rpc_failure() =
+      R"({
+        "*": {
+          "num_failures": -1,
+          "req_failure_prob": 100,
+          "resp_failure_prob": 0,
+          "in_flight_failure_prob": 0,
+          "num_lower_bound_req_failures": 3,
+          "num_lower_bound_resp_failures": 5,
+          "num_lower_bound_in_flight_failures": 2
+        }
+      })";
   Init();
 
   // First 3 calls should be guaranteed Request failures (lower bound)
@@ -79,6 +103,10 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
   ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
   ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+
+  // Next 2 calls should be guaranteed Response in flight failures (lower bound)
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::InFlight);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::InFlight);
 
   // After lower bounds exhausted, should revert to probabilistic (100% request failures)
   for (int i = 0; i < 100; i++) {
@@ -98,10 +126,21 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
   ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
 
+  // Next 2 calls should be guaranteed Response in-flight failures
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::InFlight);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::InFlight);
+
   // After lower bounds exhausted, revert to probabilistic (100% request failures)
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
   }
+}
+
+TEST(RpcChaosTest, TestInvalidJson) {
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"invalid_key":1}})";
+  ASSERT_DEATH(Init(),
+               "Unknown key specified in testing_rpc_failure config: invalid_key");
 }
 
 }  // namespace ray::rpc::testing

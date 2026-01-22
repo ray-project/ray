@@ -91,6 +91,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:thread",
@@ -108,25 +109,6 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:lease_dependency_manager",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "local_lease_manager_test",
-    size = "small",
-    srcs = ["local_lease_manager_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":util",
-        "//:ray_mock",
-        "//src/ray/common:id",
-        "//src/ray/common:lease",
-        "//src/ray/common:task_common",
-        "//src/ray/common:test_utils",
-        "//src/ray/observability:fake_metric",
-        "//src/ray/raylet:local_lease_manager",
-        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -159,6 +141,7 @@ ray_cc_test(
         "//src/ray/common:task_common",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/observability:fake_metric",
@@ -170,6 +153,18 @@ ray_cc_test(
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/rpc:utils",
         "//src/ray/util:macros",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "throttler_test",
+    size = "small",
+    srcs = ["throttler_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/raylet:throttler",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )

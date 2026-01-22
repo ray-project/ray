@@ -37,9 +37,6 @@ class CSVDatasource(FileBasedDatasource):
         self.parse_options = arrow_csv_args.pop("parse_options", csv.ParseOptions())
         self.arrow_csv_args = arrow_csv_args
 
-    def supports_predicate_pushdown(self) -> bool:
-        return True
-
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         from pyarrow import csv
@@ -72,6 +69,7 @@ class CSVDatasource(FileBasedDatasource):
                         schema = table.schema
                     if filter_expr is not None:
                         table = table.filter(filter_expr)
+
                     yield table
                 except StopIteration:
                     return

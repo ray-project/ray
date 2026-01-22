@@ -208,8 +208,8 @@ class GcsPlacementGroup {
   /// The last recorded metric state.
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;
 
-  ray::stats::Histogram scheduler_placement_time_s_histogram_{
-      ray::GetSchedulerPlacementTimeSHistogramMetric()};
+  ray::stats::Histogram scheduler_placement_time_ms_histogram_{
+      ray::GetSchedulerPlacementTimeMsHistogramMetric()};
 };
 
 }  // namespace gcs

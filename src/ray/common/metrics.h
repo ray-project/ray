@@ -73,16 +73,63 @@ inline ray::stats::Gauge GetObjectStoreMemoryGaugeMetric() {
   };
 }
 
-inline ray::stats::Histogram GetSchedulerPlacementTimeSHistogramMetric() {
+inline ray::stats::Histogram GetSchedulerPlacementTimeMsHistogramMetric() {
   return ray::stats::Histogram{
-      /*name=*/"scheduler_placement_time_s",
+      /*name=*/"scheduler_placement_time_ms",
       /*description=*/
-      "The time it takes for a worklod (task, actor, placement group) to "
+      "The time it takes for a workload (task, actor, placement group) to "
       "be placed. This is the time from when the tasks dependencies are "
       "resolved to when it actually reserves resources on a node to run.",
-      /*unit=*/"s",
-      /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
       /*tag_keys=*/{"WorkloadType"},
+  };
+}
+
+inline ray::stats::Gauge GetIoContextEventLoopLagMsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"io_context_event_loop_lag_ms",
+      /*description=*/"The latency of a task from post to execution",
+      /*unit=*/"ms",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Count GetOperationCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"operation_count",
+      /*description=*/"operation count",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationRunTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_run_time_ms",
+      /*description=*/"operation execution time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationQueueTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_queue_time_ms",
+      /*description=*/"operation queuing time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Gauge GetOperationActiveCountGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"operation_active_count",
+      /*description=*/"active operation number",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
   };
 }
 

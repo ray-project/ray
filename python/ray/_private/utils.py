@@ -16,12 +16,10 @@ from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
-    Any,
     Dict,
     List,
     Mapping,
     Optional,
-    Sequence,
     Tuple,
     Union,
 )
@@ -35,6 +33,9 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
+from ray._raylet import GcsClient
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -1018,42 +1019,6 @@ def validate_namespace(namespace: str):
         )
 
 
-def init_grpc_channel(
-    address: str,
-    options: Optional[Sequence[Tuple[str, Any]]] = None,
-    asynchronous: bool = False,
-):
-    import grpc
-    from grpc import aio as aiogrpc
-
-    from ray._private.tls_utils import load_certs_from_env
-
-    grpc_module = aiogrpc if asynchronous else grpc
-
-    options = options or []
-    options_dict = dict(options)
-    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
-        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
-    )
-    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
-        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
-    )
-    options = options_dict.items()
-
-    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
-        credentials = grpc.ssl_channel_credentials(
-            certificate_chain=server_cert_chain,
-            private_key=private_key,
-            root_certificates=ca_cert,
-        )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
-    else:
-        channel = grpc_module.insecure_channel(address, options=options)
-
-    return channel
-
-
 def get_dashboard_dependency_error() -> Optional[ImportError]:
     """Returns the exception error if Ray Dashboard dependencies are not installed.
     None if they are installed.
@@ -1150,6 +1115,53 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
+
+
+def get_all_node_info_until_retrieved(
+    gcs_client: GcsClient,
+    node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
+    state_filter: Optional[int] = None,
+    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
+    timeout_per_retry: Optional[int | float] = None,
+) -> List[GcsNodeInfo]:
+    """
+    Get all node info from GCS with retry until the node info is found.
+
+    Raises:
+        Exception: If the node info is not found after the retries,
+                   Or the RPC error getting the node info from GCS.
+
+    Args:
+        gcs_client: The GCS client.
+        node_selectors: The attributes to filter the node info.
+        state_filter: The state to filter the node info.
+        num_retries: The number of retries.
+        timeout_per_retry: The timeout per request to get the node info.
+
+    Returns:
+        The list of node info matching the selectors and state filter.
+    """
+    node_infos = []
+    for _ in range(num_retries):
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                timeout=timeout_per_retry,
+                node_selectors=node_selectors,
+                state_filter=state_filter,
+            ).values()
+        except Exception as e:
+            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
+            node_infos = []
+
+        if node_infos:
+            break
+        time.sleep(2)
+
+    if not node_infos:
+        raise Exception(
+            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        )
+    return node_infos
 
 
 def parse_resources_json(

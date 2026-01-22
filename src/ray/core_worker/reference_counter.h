@@ -30,6 +30,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/reference_counter_interface.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/rpc/utils.h"
@@ -43,16 +44,21 @@ namespace core {
 class ReferenceCounter : public ReferenceCounterInterface,
                          public LocalityDataProviderInterface {
  public:
-  ReferenceCounter(rpc::Address rpc_address,
-                   pubsub::PublisherInterface *object_info_publisher,
-                   pubsub::SubscriberInterface *object_info_subscriber,
-                   std::function<bool(const NodeID &node_id)> is_node_dead,
-                   bool lineage_pinning_enabled = false)
+  ReferenceCounter(
+      rpc::Address rpc_address,
+      pubsub::PublisherInterface *object_info_publisher,
+      pubsub::SubscriberInterface *object_info_subscriber,
+      std::function<bool(const NodeID &node_id)> is_node_dead,
+      ray::observability::MetricInterface &owned_object_by_state_counter,
+      ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
+      bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        is_node_dead_(std::move(is_node_dead)) {}
+        is_node_dead_(std::move(is_node_dead)),
+        owned_object_count_by_state_(owned_object_by_state_counter),
+        owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
   ~ReferenceCounter() override = default;
 
@@ -93,10 +99,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
-      bool is_reconstructable,
+      LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override
+      const std::optional<std::string> &tensor_transport = std::nullopt) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
@@ -165,6 +171,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   size_t NumObjectsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void RecordMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -236,9 +244,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const rpc::Address &borrower_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool IsObjectReconstructable(const ObjectID &object_id,
-                               bool *lineage_evicted) const override;
-
+  LineageReconstructionEligibility GetLineageReconstructionEligibility(
+      const ObjectID &object_id) const override;
   int64_t EvictLineage(int64_t min_bytes_to_evict) override;
 
   void UpdateObjectPendingCreation(const ObjectID &object_id,
@@ -248,8 +255,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void ReleaseAllLocalReferences() override;
 
-  std::optional<rpc::TensorTransport> GetTensorTransport(
-      const ObjectID &object_id) const override;
+  std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
 
  private:
   /// Contains information related to nested object refs only.
@@ -307,16 +313,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     Reference(rpc::Address owner_address,
               std::string call_site,
               int64_t object_size,
-              bool is_reconstructable,
+              LineageReconstructionEligibility lineage_eligibility,
               std::optional<NodeID> pinned_at_node_id,
-              rpc::TensorTransport tensor_transport)
+              std::optional<std::string> tensor_transport)
         : call_site_(std::move(call_site)),
           object_size_(object_size),
           owner_address_(std::move(owner_address)),
           pinned_at_node_id_(std::move(pinned_at_node_id)),
-          tensor_transport_(tensor_transport),
+          tensor_transport_(std::move(tensor_transport)),
           owned_by_us_(true),
-          is_reconstructable_(is_reconstructable),
+          lineage_eligibility_(lineage_eligibility),
           pending_creation_(!pinned_at_node_id_.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
@@ -350,7 +356,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
+      if (lineage_pinning_enabled && owned_by_us_ &&
+          lineage_eligibility_ != LineageReconstructionEligibility::ELIGIBLE) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -430,19 +437,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
     ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
+    std::optional<std::string> tensor_transport_;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us_ = false;
 
-    // Whether this object can be reconstructed via lineage. If false, then the
-    // object's value will be pinned as long as it is referenced by any other
-    // object's lineage. This should be set to false if the object was created
-    // by ray.put(), a task that cannot be retried, or its lineage was evicted.
-    bool is_reconstructable_ = false;
-    /// Whether the lineage of this object was evicted due to memory pressure.
-    bool lineage_evicted = false;
+    /// Whether the object is eligible for lineage reconstruction, determined before
+    /// task resubmission. See https://github.com/ray-project/ray/pull/59625.
+    LineageReconstructionEligibility lineage_eligibility_ =
+        LineageReconstructionEligibility::ELIGIBLE;
+
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
@@ -508,16 +513,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
-  bool AddOwnedObjectInternal(
-      const ObjectID &object_id,
-      const std::vector<ObjectID> &contained_ids,
-      const rpc::Address &owner_address,
-      const std::string &call_site,
-      const int64_t object_size,
-      bool is_reconstructable,
-      bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_node_id,
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+  bool AddOwnedObjectInternal(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site,
+                              const int64_t object_size,
+                              LineageReconstructionEligibility lineage_eligibility,
+                              bool add_local_ref,
+                              const std::optional<NodeID> &pinned_at_node_id,
+                              const std::optional<std::string> &tensor_transport)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
@@ -529,10 +533,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Unsets the raylet address
   /// that the object was pinned at or spilled at, if the address was set.
-  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// This should be called whenever the object is out of scope or manually freed.
-  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -682,6 +688,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                            bool pending_creation)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Update the owned object counters when a reference state changes.
+  /// \param object_id The object ID of the reference.
+  /// \param ref The reference whose state is changing.
+  /// \param decrement If true, decrement the counters for the current state.
+  /// If false, increment the counters for the current state.
+  void UpdateOwnedObjectCounters(const ObjectID &object_id,
+                                 const Reference &ref,
+                                 bool decrement) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
@@ -774,6 +789,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  /// Track counts of owned objects by state.
+  /// These are atomic to allow lock-free reads via public getters.
+  std::atomic<size_t> owned_objects_pending_creation_{0};
+  std::atomic<size_t> owned_objects_in_memory_{0};
+  std::atomic<size_t> owned_objects_spilled_{0};
+  std::atomic<size_t> owned_objects_in_plasma_{0};
+
+  /// Track sizes of owned objects by state.
+  /// These are atomic to allow lock-free reads via public getters.
+  std::atomic<int64_t> owned_objects_size_in_memory_{0};
+  std::atomic<int64_t> owned_objects_size_spilled_{0};
+  std::atomic<int64_t> owned_objects_size_in_plasma_{0};
+
+  ray::observability::MetricInterface &owned_object_count_by_state_;
+  ray::observability::MetricInterface &owned_object_sizes_by_state_;
 };
 
 }  // namespace core

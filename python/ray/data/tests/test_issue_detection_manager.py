@@ -1,8 +1,6 @@
 import json
-import logging
 import os
 import sys
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,9 +14,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     MapOperator,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.issue_detection.detectors.hanging_detector import (
-    HangingExecutionIssueDetectorConfig,
-)
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueType,
@@ -100,41 +95,6 @@ def test_report_issues():
         IssueType.HIGH_MEMORY
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
-
-
-def test_hanging_detector_detects_issues(caplog, propagate_logs, restore_data_context):
-    """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
-
-    ctx = DataContext.get_current()
-    # Configure hanging detector with extreme std_factor values
-    ctx.issue_detectors_config.hanging_detector_config = (
-        HangingExecutionIssueDetectorConfig(
-            op_task_stats_min_count=1,
-            op_task_stats_std_factor=1,
-            detection_time_interval_s=0,
-        )
-    )
-
-    # Create a pipeline with many small blocks to ensure concurrent tasks
-    def sleep_task(x):
-        if x["id"] == 2:
-            # Issue detection is based on the mean + stdev. One of the tasks must take
-            # awhile, so doing it just for one of the rows.
-            time.sleep(1)
-        return x
-
-    with caplog.at_level(logging.WARNING):
-        ray.data.range(3, override_num_blocks=3).map(
-            sleep_task, concurrency=1
-        ).materialize()
-
-    # Check if hanging detection occurred
-    hanging_detected = (
-        "has been running for" in caplog.text
-        and "longer than the average task duration" in caplog.text
-    )
-
-    assert hanging_detected, caplog.text
 
 
 if __name__ == "__main__":

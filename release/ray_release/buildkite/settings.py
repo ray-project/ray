@@ -1,7 +1,7 @@
 import enum
 import os
 import subprocess
-from typing import Optional, Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger

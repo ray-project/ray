@@ -1,6 +1,9 @@
 from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
+    DPServer as _DPServer,
+)
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer as _PDProxyServer,
 )
@@ -80,3 +83,51 @@ class PDProxyServer(_PDProxyServer):
     """
 
     pass
+
+
+@PublicAPI(stability="alpha")
+class DPServer(_DPServer):
+    """Data Parallel LLM Server.
+
+    This class is used to serve data parallel attention (DP Attention)
+    deployment paradigm, where the attention layers are replicated and
+    the MoE layers are sharded. DP Attention is typically used for models
+    like DeepSeek-V3.
+
+    To build a Deployment object you should use `build_dp_deployment` function.
+    We also expose a lower level API for more control over the deployment class
+    through `serve.deployment` function.
+
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_dp_deployment
+
+            # Configure the model
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                engine_kwargs=dict(
+                    data_parallel_size=2,
+                    tensor_parallel_size=1,
+                ),
+                experimental_configs=dict(
+                    dp_size_per_node=2,
+                ),
+                accelerator_type="A10G",
+            )
+
+            # Build the deployment
+            dp_app = build_dp_deployment(llm_config)
+
+            # Deploy the application
+            model_handle = serve.run(dp_app)
+    """
+
+    pass
+
+
+__all__ = ["LLMServer", "PDProxyServer", "DPServer"]

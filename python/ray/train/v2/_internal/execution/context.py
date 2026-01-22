@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import ray
 from ray._common.retry import retry
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset
 from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
@@ -23,9 +22,13 @@ from ray.train.v2._internal.util import (
     invoke_context_managers,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import (
+    CheckpointConsistencyMode,
+    CheckpointUploadMode,
+)
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -63,7 +66,7 @@ class TrainRunContext:
     backend_config: "BackendConfig"
 
     # The datasets used in the current training run.
-    datasets: Dict[str, Dataset]
+    datasets: Dict[str, "Dataset"]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
@@ -156,14 +159,18 @@ class TrainContext:
         with self.report_order_condition:
             return self.checkpoint
 
-    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+    def get_all_reported_checkpoints(
+        self,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    ) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
-                self.current_report_index
+                self.report_call_index,
+                consistency_mode,
             )
         )
 
-    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -251,6 +258,12 @@ class TrainContext:
                 persisted_checkpoint = checkpoint_upload_fn(
                     checkpoint, checkpoint_dir_name
                 )
+                if persisted_checkpoint is None or not isinstance(
+                    persisted_checkpoint, ray.train.Checkpoint
+                ):
+                    raise ValueError(
+                        "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
+                    )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
                     checkpoint, checkpoint_dir_name
