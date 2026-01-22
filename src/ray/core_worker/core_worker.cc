@@ -2853,7 +2853,6 @@ Status CoreWorker::ExecuteTask(
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
-}
 if (!options_.is_local_mode) {
   task_counter_.MovePendingToRunning(func_name, is_retry);
 
