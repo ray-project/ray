@@ -211,9 +211,12 @@ void ReferenceCounter::AddObjectRefStats(
     if (rdt_it != rdt_objects.end()) {
       ref_proto->set_is_rdt(true);
       ref_proto->set_device(rdt_it->second.first);
-      // We don't replace the object size with the tensor size since it could be part of a
-      // larger object like some form of container (dictionary, list, etc.)
-      ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+      // Only add tensor size if base object size is known (> 0).
+      // For borrowed references that haven't been resolved yet, object_size is -1.
+      // In that case, keep it as -1 so it displays as "?" in the memory summary.
+      if (ref_proto->object_size() > 0) {
+        ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+      }
     }
   }
   // Also include any unreferenced objects that are pinned in memory.
@@ -235,7 +238,10 @@ void ReferenceCounter::AddObjectRefStats(
       if (rdt_it != rdt_objects.end()) {
         ref_proto->set_is_rdt(true);
         ref_proto->set_device(rdt_it->second.first);
-        ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+        // Only add tensor size if base object size is known (> 0).
+        if (ref_proto->object_size() > 0) {
+          ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+        }
       }
     }
   }
