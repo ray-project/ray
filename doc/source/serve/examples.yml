@@ -149,13 +149,31 @@ examples:
     skill_level: advanced
     link: tutorials/java
     related_technology: integrations
+  - title: Model Multiplexing with Forecasting Models
+    skill_level: intermediate
+    use_cases:
+      - time series forecasting
+    link: tutorials/model_multiplexing_forecast/content/README
+    related_technology: deployment patterns
+  - title: Model Composition for Recommendation Systems
+    skill_level: intermediate
+    use_cases:
+      - recommendation systems
+    link: tutorials/model_composition_recsys/content/README
+    related_technology: deployment patterns
   - title: Asynchronous Inference using Ray Serve
     skill_level: advanced
     use_cases:
       - generative ai
-    link: tutorials/asynchronous-inference/content/README
+    link: tutorials/asynchronous-inference/content/asynchronous-inference
     related_technology: integrations
+  - title: Video Analysis Inference Pipeline
+    skill_level: advanced
+    use_cases:
+      - computer vision
+    link: tutorials/video-analysis/README
+    related_technology: ml applications
   - title: Integrate with MLflow Model Registry
     skill_level: intermediate
-    link: mlflow-serving-intig
+    link: model-registries
     related_technology: integrations

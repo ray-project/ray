@@ -21,7 +21,7 @@ import ray
 import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._common.network_utils import build_address, get_localhost_ip, parse_address
+from ray._common.network_utils import build_address, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
@@ -75,7 +75,7 @@ def _check_ray_version(gcs_client):
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
         raise RuntimeError(
             "Ray version mismatch: cluster has Ray version "
-            f'{cluster_metadata["ray_version"]} '
+            f"{cluster_metadata['ray_version']} "
             f"but local Ray version is {ray.__version__}"
         )
 
@@ -492,10 +492,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=get_localhost_ip(),
-    help="the host to bind the dashboard server to. Use localhost "
-    "(127.0.0.1/::1) for local access, the node IP for remote access, or "
-    "0.0.0.0/:: for all interfaces (not recommended). Defaults to localhost.",
+    default=ray_constants.DEFAULT_DASHBOARD_IP,
+    help="the host to bind the dashboard server to, either localhost "
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is 127.0.0.1",
 )
 @click.option(
     "--dashboard-port",
@@ -957,9 +957,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
+                    (
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else ""
+                    ),
                     bootstrap_address,
                 )
 
@@ -970,11 +972,13 @@ def start(
                 cli_logger.print(
                     "ray{}init({})",
                     cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
-                    )
-                    if include_node_ip_address
-                    else "",
+                    (
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else ""
+                    ),
                 )
 
             if dashboard_url:
@@ -1081,7 +1085,7 @@ def start(
                 cf.bold("--address"),
                 cf.bold(address),
             )
-            raise Exception("Cannot canonicalize address " f"`--address={address}`.")
+            raise Exception(f"Cannot canonicalize address `--address={address}`.")
 
         ray_params.gcs_address = bootstrap_address
 
@@ -1607,6 +1611,12 @@ def monitor(cluster_config_file, lines, cluster_name):
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
+@click.option(
+    "--node-ip",
+    required=False,
+    type=str,
+    help="IP address of the node to attach to. If not specified, attaches to head node.",
+)
 @add_click_logging_options
 @PublicAPI
 def attach(
@@ -1618,6 +1628,7 @@ def attach(
     no_config_cache,
     new,
     port_forward,
+    node_ip,
 ):
     """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
@@ -1630,6 +1641,7 @@ def attach(
         no_config_cache=no_config_cache,
         new=new,
         port_forward=port_forward,
+        node_ip=node_ip,
     )
 
 
@@ -2563,7 +2575,11 @@ def healthcheck(address, component, skip_version_check):
 )
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
-    """Show the cpp library path and generate the bazel project template."""
+    """Show the cpp library path and generate the bazel project template.
+
+    This command MUST be run from the ray project root directory if
+    --generate-bazel-project-template-to is set.
+    """
     if sys.platform == "win32":
         raise click.ClickException("Ray C++ API is not supported on Windows currently.")
 
@@ -2572,9 +2588,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
         )
+
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
-    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    cpp_template_dir = os.path.join(cpp_dir, "example")
     include_dir = os.path.join(cpp_dir, "include")
     lib_dir = os.path.join(cpp_dir, "lib")
     if not os.path.isdir(cpp_dir):
@@ -2583,13 +2600,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+
+        bazel_version_filename = ".bazelversion"
+
+        if not os.path.exists(bazel_version_filename):
+            raise ValueError(
+                "This command can only be run from the ray project's root directory. "
+                "It expects a .bazelversion file to be present."
+            )
+
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
         if os.path.exists(out_dir):
             shutil.rmtree(out_dir)
 
-        shutil.copytree(cpp_templete_dir, out_dir)
+        shutil.copytree(cpp_template_dir, out_dir)
         for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
             # Renames the bazel related files by removing the leading underscore.
             dest_name = os.path.join(out_dir, filename[1:])
@@ -2600,10 +2626,17 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
+        # This assumes that your current working directory has a .bazelversion file.
+        shutil.copyfile(
+            bazel_version_filename,
+            os.path.join(out_dir, bazel_version_filename),
+        )
+
         cli_logger.print(
             "Project template generated to {}",
             cf.bold(f"{os.path.abspath(out_dir)}"),
         )
+
         cli_logger.print("To build and run this template, run")
         cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
