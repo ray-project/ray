@@ -88,7 +88,16 @@ Device Mesh (2x2):
 - **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
 - **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
 
-**When to use Tensor Parallelism vs FSDP:** Tensor parallelism is efficient when leveraging high-speed intra-node GPU communication like NVLink. However, cross-node communication is significantly slower, making TP difficult to scale beyond a single node. The typical approach is to use TP within a single node and combine it with FSDP2 to scale training across multiple nodes.
+**When to use Tensor Parallelism vs FSDP:** The communication overhead of each parallelism strategy is determined by communication volume and network bandwidth.
+
+- **TP communication volume**: layers × hidden × seq_len × batch_size × 2 (dtype) × 2 (attention + FFN)
+- **FSDP communication volume**: M × 2 bytes (bfloat16) for M parameters
+
+Based on these formulas, TP's overhead grows with batch size and sequence length, while FSDP's overhead remains constant for a given model. Additionally, TP's communication is on the critical path, whereas FSDP's communication can overlap with computation.
+
+TP's communication is also more frequent (after each layer), making it more sensitive to network latency. This is particularly impactful in multi-node settings where inter-node latency is higher.
+
+Considering these factors, a typical configuration is to use **TP for intra-node parallelism** (leveraging high-speed NVLink) and **FSDP for inter-node parallelism** (where communication can be overlapped with computation).
 
 ## 1. Package and environment setup
 
