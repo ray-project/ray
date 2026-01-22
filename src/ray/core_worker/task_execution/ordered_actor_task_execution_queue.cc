@@ -63,8 +63,8 @@ void OrderedActorTaskExecutionQueue::Stop() {
 }
 
 void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
-                                         int64_t client_processed_up_to,
-                                         TaskToExecute task) {
+                                                 int64_t client_processed_up_to,
+                                                 TaskToExecute task) {
   // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
   // in order.
   RAY_CHECK(seq_no != -1);

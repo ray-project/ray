@@ -237,7 +237,8 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   ts_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       ObjectID::FromRandom().Binary());
-  queue.EnqueueTask(1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
+  queue.EnqueueTask(
+      1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
   io_service.poll();
   running_started.get_future().wait();
 

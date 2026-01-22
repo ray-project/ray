@@ -78,8 +78,8 @@ void UnorderedActorTaskExecutionQueue::Stop() {
 }
 
 void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
-                                           int64_t client_processed_up_to,
-                                           TaskToExecute task) {
+                                                   int64_t client_processed_up_to,
+                                                   TaskToExecute task) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
