@@ -2853,17 +2853,18 @@ Status CoreWorker::ExecuteTask(
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
-  {
-    absl::MutexLock lock(&mutex_);
-    *actor_repr_name = actor_repr_name_;
   }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
-    const auto update =
-        (task_spec.IsActorTask() && !actor_repr_name->empty())
-            ? worker::TaskStatusEvent::TaskStateUpdate(*actor_repr_name, pid_)
-            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    {
+      absl::MutexLock lock(&mutex_);
+      const auto update =
+          (task_spec.IsActorTask() && !actor_repr_name_.empty())
+              ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+              : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    }
+
     RAY_UNUSED(
         task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
                                                           task_spec.JobId(),
@@ -2872,6 +2873,7 @@ Status CoreWorker::ExecuteTask(
                                                           rpc::TaskStatus::RUNNING,
                                                           /*include_task_info=*/false,
                                                           update));
+  }
 
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -2955,6 +2957,7 @@ Status CoreWorker::ExecuteTask(
       streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      actor_repr_name,
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
@@ -3005,6 +3008,11 @@ Status CoreWorker::ExecuteTask(
     canceled_tasks_.erase(task_spec.TaskId());
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
+    }
+
+    // XXX.
+    if (!actor_repr_name->empty()) {
+      actor_repr_name_ = actor_repr_name;
     }
   }
 
@@ -4527,11 +4535,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  absl::MutexLock lock(&mutex_);
-  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {

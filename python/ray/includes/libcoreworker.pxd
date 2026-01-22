@@ -213,7 +213,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()
-        void SetActorReprName(const c_string &repr_name)
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
