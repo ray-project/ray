@@ -75,7 +75,6 @@ The tuner will explore the hyperparameter space via random sampling and find
 configurations that achieve reward of 475+ on CartPole within 2 million timesteps.
 The best trial's hyperparameters will be logged at the end of training.
 """
-import os
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
@@ -97,7 +96,8 @@ parser = add_rllib_example_script_args(
 )
 parser.add_argument(
     "--storage-path",
-    default=os.environ.get("ANYSCALE_ARTIFACT_STORAGE"),
+    default="~/ray_results",
+    type=str,
     help="The storage path for checkpoints and related tuning data.",
 )
 parser.set_defaults(
