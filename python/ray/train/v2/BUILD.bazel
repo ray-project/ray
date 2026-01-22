@@ -171,6 +171,7 @@ py_test(
     srcs = ["tests/test_data_integration.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
@@ -203,6 +204,7 @@ py_test(
     srcs = ["tests/test_data_resource_cleanup.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
@@ -735,6 +737,7 @@ py_test(
     srcs = ["tests/test_data_config.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
