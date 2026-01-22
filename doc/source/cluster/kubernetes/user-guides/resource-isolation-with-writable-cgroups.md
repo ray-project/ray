@@ -1,9 +1,9 @@
 (resource-isolation-with-writable-cgroups)=
 
-# Resource Isolation with Kubernetes Writable Cgroups
+# Resource Isolation with Writable Cgroups on Google Kubernetes Engine (GKE)
 
 This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups).
-Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroupsv2 to reserve dedicated CPU and memory
+Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroups v2 to reserve dedicated CPU and memory
 resources for critical system processes.
 
 Historically, enabling resource isolation required privileged containers capable of writing to the `/sys/fs/cgroup` file system.
@@ -117,7 +117,7 @@ cgroup.stat             cpu.stat.local          memory.max           memory.swap
 You can inspect specific files to confirm the reserved CPU and memory for system and user processes.
 The RayCluster created in an earlier step creates containers requesting a total of 2 CPUs.
 Based on Ray's default calculation of system resources (`min(3.0, max(1.0, 0.05 * num_cores_on_the_system))`),
-we should expect 1 CPU for system processes. However, since CPU is a compressible resource, cgroupsv2 expresses
+we should expect 1 CPU for system processes. However, since CPU is a compressible resource, cgroups v2 expresses
 CPU resources using weights rather than core units, with a total weight of 10000. If Ray has
 2 CPUs and reserves 1 CPU for system processes, expect a CPU weight of 5000 for the system processes.
 
