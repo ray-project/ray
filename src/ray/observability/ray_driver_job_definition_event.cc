@@ -67,8 +67,7 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
 
     if (!job_info.entrypoint_resources().empty()) {
       data_.mutable_entrypoint_resources()->insert(
-          job_info.entrypoint_resources().begin(),
-          job_info.entrypoint_resources().end());
+          job_info.entrypoint_resources().begin(), job_info.entrypoint_resources().end());
     }
   }
 }
