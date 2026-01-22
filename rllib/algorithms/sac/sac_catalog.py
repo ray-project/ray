@@ -1,7 +1,6 @@
 from typing import Callable
 
 import gymnasium as gym
-import numpy as np
 
 # TODO (simon): Store this function somewhere more central as many
 # algorithms will use it.
@@ -117,6 +116,81 @@ class SACCatalog(Catalog):
         )
 
     @OverrideToImplementCustomLogic
+    def _build_qf_encoder_continuous(self, framework: str) -> Encoder:
+        """Builds the Q-function encoder for continuous action spaces.
+
+        In contrast to PPO, SAC needs a different encoder for Pi and
+        Q-function as the Q-function in the continuous case has to
+        encode actions, too. Therefore the Q-function uses its own
+        encoder config.
+        Note, the Pi network uses the base encoder from the `Catalog`.
+        """
+        # Configure the action encoder for the Q-function.
+        self.qf_action_encoder_config = MLPEncoderConfig(
+            input_dims=(self.action_space.shape[0],),
+            hidden_layer_dims=self._model_config_dict["fcnet_hiddens"][:-1],
+            hidden_layer_activation=self._model_config_dict["fcnet_activation"],
+            output_layer_dim=self.latent_dims[0],
+            output_layer_activation=self._model_config_dict["fcnet_activation"],
+        )
+
+        # Configure the Q-function encoder as a multi-stream encoder. Note that
+        # the observation encoder is the same as for the policy (pi) network.
+        self.qf_encoder_config = MultiStreamEncoderConfig(
+            base_encoder_configs={
+                Columns.OBS: self._encoder_config,
+                Columns.ACTIONS: self.qf_action_encoder_config,
+            },
+            hidden_layer_dims=self._model_config_dict["fusionnet_hiddens"],
+            hidden_layer_activation=self._model_config_dict["fusionnet_activation"],
+            hidden_layer_weights_initializer=self._model_config_dict[
+                "fusionnet_kernel_initializer"
+            ],
+            hidden_layer_weights_initializer_config=self._model_config_dict[
+                "fusionnet_kernel_initializer_kwargs"
+            ],
+            hidden_layer_bias_initializer=self._model_config_dict[
+                "fusionnet_bias_initializer"
+            ],
+            hidden_layer_bias_initializer_config=self._model_config_dict[
+                "fusionnet_bias_initializer_kwargs"
+            ],
+            output_layer_dim=self.latent_dims[0],
+            output_layer_activation=self._model_config_dict["fusionnet_activation"],
+            output_layer_weights_initializer=self._model_config_dict[
+                "fusionnet_kernel_initializer"
+            ],
+            output_layer_weights_initializer_config=self._model_config_dict[
+                "fusionnet_kernel_initializer_kwargs"
+            ],
+            output_layer_bias_initializer=self._model_config_dict[
+                "fusionnet_bias_initializer"
+            ],
+            output_layer_bias_initializer_config=self._model_config_dict[
+                "fusionnet_bias_initializer_kwargs"
+            ],
+        )
+
+        return self.qf_encoder_config.build(framework=framework)
+
+    @OverrideToImplementCustomLogic
+    def _build_qf_encoder_discrete(self, framework: str) -> Encoder:
+        """Builds the Q-function encoder for discrete action spaces.
+
+        In contrast to the continuous case , we don't need to encode the action
+        because the Q-function will output a value for each action. Therefore,
+        we can use the same encoder as for the policy (pi) network (base encoder).
+
+        Args:
+            framework: The framework to use.
+        Returns:
+            The encoder for the Q-network.
+        """
+        # For discrete action spaces, we don't need to encode the action
+        # because the Q-function will output a value for each action.
+        return self.catalog.build_encoder(framework=framework)
+
+    @OverrideToImplementCustomLogic
     def build_qf_encoder(self, framework: str) -> Encoder:
         """Builds the Q-function encoder.
 
@@ -135,75 +209,11 @@ class SACCatalog(Catalog):
 
         # Compute the required dimension for the action space.
         if isinstance(self.action_space, gym.spaces.Box):
-            required_action_dim = self.action_space.shape[0]
+            self._build_qf_encoder_continuous(framework=framework)
         elif isinstance(self.action_space, gym.spaces.Discrete):
-            # for discrete action spaces, we don't need to encode the action
-            # because the Q-function will output a value for each action
-            required_action_dim = 0
+            self._build_qf_encoder_discrete(framework=framework)
         else:
             self._raise_unsupported_action_space_error()
-
-        input_space = gym.spaces.Box(
-            -np.inf,
-            np.inf,
-            (required_action_dim,),
-            dtype=np.float32,
-        )
-
-        if required_action_dim == 0:
-            return self.catalog.build_encoder(framework=framework)
-        else:
-            self.qf_action_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][
-                :-1
-            ]
-            self.qf_action_encoder_activation = self._model_config_dict[
-                "fcnet_activation"
-            ]
-
-            self.qf_action_encoder_config = MLPEncoderConfig(
-                input_dims=input_space.shape,
-                hidden_layer_dims=self.qf_action_encoder_hiddens,
-                hidden_layer_activation=self.qf_action_encoder_activation,
-                output_layer_dim=self.latent_dims[0],
-                output_layer_activation=self.qf_action_encoder_activation,
-            )
-
-            self.qf_encoder_config = MultiStreamEncoderConfig(
-                base_encoder_configs={
-                    Columns.OBS: self._encoder_config,
-                    Columns.ACTIONS: self.qf_action_encoder_config,
-                },
-                hidden_layer_dims=self._model_config_dict["fusionnet_hiddens"],
-                hidden_layer_activation=self._model_config_dict["fusionnet_activation"],
-                hidden_layer_weights_initializer=self._model_config_dict[
-                    "fusionnet_kernel_initializer"
-                ],
-                hidden_layer_weights_initializer_config=self._model_config_dict[
-                    "fusionnet_kernel_initializer_kwargs"
-                ],
-                hidden_layer_bias_initializer=self._model_config_dict[
-                    "fusionnet_bias_initializer"
-                ],
-                hidden_layer_bias_initializer_config=self._model_config_dict[
-                    "fusionnet_bias_initializer_kwargs"
-                ],
-                output_layer_dim=self.latent_dims[0],
-                output_layer_activation=self._model_config_dict["fusionnet_activation"],
-                output_layer_weights_initializer=self._model_config_dict[
-                    "fusionnet_kernel_initializer"
-                ],
-                output_layer_weights_initializer_config=self._model_config_dict[
-                    "fusionnet_kernel_initializer_kwargs"
-                ],
-                output_layer_bias_initializer=self._model_config_dict[
-                    "fusionnet_bias_initializer"
-                ],
-                output_layer_bias_initializer_config=self._model_config_dict[
-                    "fusionnet_bias_initializer_kwargs"
-                ],
-            )
-
-            return self.qf_encoder_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
