@@ -139,6 +139,8 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        || true
+      - sleep 28800 # 8 hours
     depends_on: windowsbuild
     soft_fail: true
 

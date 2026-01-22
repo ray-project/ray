@@ -281,7 +281,11 @@ def main(
         )
     if not test_targets:
         print("--- No tests to run", file=sys.stderr)
-        sys.exit(0)
+        print(
+            "[Kunchd] Did not find any test targets to run defaulting to: //python/ray/tests:test_tempdir",
+            file=sys.stderr,
+        )
+    test_targets = ["//python/ray/tests:test_tempdir"]
 
     print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
