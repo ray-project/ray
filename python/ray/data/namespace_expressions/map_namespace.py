@@ -58,10 +58,11 @@ def _extract_map_component(
         # We allow this to proceed only if the array is empty or all-nulls,
         # in which case we'll produce an empty or all-nulls output.
         if len(arr) > 0 and arr.null_count < len(arr):
-            raise TypeError(
-                f"Expression is not a map type. .map.{component.value}() can only be "
-                f"called on MapArray or List<Struct<key, value>> types, but got {arr.type}."
-            )
+			raise TypeError(
+			    f"Expression is not a valid map type. .map.{component.value}() requires "
+			    f"pyarrow.MapArray or pyarrow.ListArray<Struct> with at least 2 fields "
+			    f"(key and value), but got: {arr.type}."
+			)
         return pyarrow.ListArray.from_arrays(
             offsets=[0] * (len(arr) + 1),
             values=pyarrow.array([], type=pyarrow.null()),
