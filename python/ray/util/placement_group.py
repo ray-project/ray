@@ -55,6 +55,7 @@ class PlacementGroup:
     ):
         self.id = id
         self.bundle_cache = bundle_cache
+        self._all_bundle_cache = None
 
     @property
     def is_empty(self):
