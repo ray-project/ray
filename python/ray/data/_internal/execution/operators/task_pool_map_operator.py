@@ -1,5 +1,8 @@
 import warnings
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -34,6 +37,7 @@ class TaskPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -59,6 +63,8 @@ class TaskPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted.
         """
         super().__init__(
             map_transformer,
@@ -72,6 +78,7 @@ class TaskPoolMapOperator(MapOperator):
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
+            on_start,
         )
 
         if max_concurrency is not None and max_concurrency <= 0:
@@ -91,6 +98,8 @@ class TaskPoolMapOperator(MapOperator):
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
     def _add_bundled_input(self, bundle: RefBundle):
+        # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
+        self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
@@ -158,6 +167,37 @@ class TaskPoolMapOperator(MapOperator):
 
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
+
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns min/max resource requirements for this operator.
+
+        - Min: resources needed for one task (minimum to make progress)
+        - Max: resources for max_concurrency tasks (if set), else infinite
+        """
+        per_task = self.per_task_resource_allocation()
+        obj_store_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+
+        min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
+
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_concurrency = (
+            self._max_concurrency if self._max_concurrency is not None else float("inf")
+        )
+        max_resource_usage = ExecutionResources(
+            cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
+            gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,
+            memory=0 if per_task.memory == 0 else per_task.memory * max_concurrency,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def all_inputs_done(self):
         super().all_inputs_done()

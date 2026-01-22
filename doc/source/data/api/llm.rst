@@ -12,7 +12,7 @@ LLM processor builder
     :nosignatures:
     :toctree: doc/
 
-    ~build_llm_processor
+    ~build_processor
 
 Processor
 ---------
@@ -35,3 +35,18 @@ Processor configs
     ~HttpRequestProcessorConfig
     ~vLLMEngineProcessorConfig
     ~SGLangEngineProcessorConfig
+
+.. _stage-configs-ref:
+
+Stage configs
+-------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary_noinheritance.rst
+    :toctree: doc/
+
+    ~ChatTemplateStageConfig
+    ~TokenizerStageConfig
+    ~DetokenizeStageConfig
+    ~PrepareMultimodalStageConfig

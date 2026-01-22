@@ -53,8 +53,10 @@ class LightGBMTrainer(DataParallelTrainer):
             # to set up the data parallel training worker group on your Ray cluster.
             params = {
                 "objective": "regression",
-                # Adding the line below is the only change needed
+                # Adding the lines below are the only changes needed
                 # for your `lgb.train` call!
+                "tree_learner": "data_parallel",
+                "pre_partition": True,
                 **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(

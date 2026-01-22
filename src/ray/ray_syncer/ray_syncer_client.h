@@ -22,7 +22,8 @@
 
 namespace ray::syncer {
 
-using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;
+using ClientBidiReactor =
+    grpc::ClientBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch>;
 
 /// Reactor for gRPC client side. It defines the client's specific behavior for a
 /// streaming call.
@@ -34,7 +35,9 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
       instrumented_io_context &io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
+      size_t max_batch_size,
+      uint64_t max_batch_delay_ms);
 
   ~RayClientBidiReactor() override = default;
 
