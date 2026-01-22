@@ -49,9 +49,9 @@ This tutorial provides a step-by-step guide covering:
 
 </style>
 
-## Understanding 2D Parallelism
+## Understanding 2D Parallelism (Tensor Parallelism + Data Parallelism)
 
-2D parallelism combines two complementary strategies:
+We can combine two complementary parallelization strategies:
 
 - **Tensor Parallelism (TP)**: Shards model weights across GPUs within a TP group. All GPUs in a TP group process the same input data but hold different parts of the model.
 - **Data Parallelism (DP)**: Replicates the model across DP groups. Each DP group processes different data and synchronizes gradients.
