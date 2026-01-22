@@ -64,7 +64,9 @@ The following figure shows the dataflow of a forward pass using tensor paralleli
 
 When combining FSDP2 with tensor parallelism, the parameter shard created for tensor parallelism is sharded again along the data-parallel dimension. The shards are first concatenated across the data-parallel dimension via all-gather communication. Then we multiply the local shards and run an all-reduce.
 
+<p align="center">
 <img src="images/tensor_parallel.png" alt="2D Parallelism: Tensor Parallelism + FSDP2" width="50%">
+</p>
 
 Similarly, during the backward pass we need an all-reduce (and an all-gather when combined with FSDP2). Note that optimizer parameter updates (e.g., Adam) do not require communication.
 
