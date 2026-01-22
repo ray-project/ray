@@ -101,9 +101,11 @@ bool ClusterResourceManager::UpdateNode(
   // Last update time to the local node resources view.
   local_view.last_resource_update_time = absl::Now();
 
-  local_view.is_draining = resource_view_sync_message.is_draining();
-  local_view.draining_deadline_timestamp_ms =
-      resource_view_sync_message.draining_deadline_timestamp_ms();
+  if (!local_view.is_draining) {
+    local_view.is_draining = resource_view_sync_message.is_draining();
+    local_view.draining_deadline_timestamp_ms =
+        resource_view_sync_message.draining_deadline_timestamp_ms();
+  }
 
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
@@ -113,6 +115,26 @@ bool ClusterResourceManager::UpdateNode(
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   received_node_resources_.erase(node_id);
   return nodes_.erase(node_id) != 0;
+}
+
+bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
+                                             bool is_draining,
+                                             int64_t draining_deadline_timestamp_ms) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  auto *local_view = it->second.GetMutableLocalView();
+  local_view->is_draining = is_draining;
+  local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  auto rnr_it = received_node_resources_.find(node_id);
+  if (rnr_it != received_node_resources_.end()) {
+    rnr_it->second.is_draining = is_draining;
+    rnr_it->second.draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  }
+
+  return true;
 }
 
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,

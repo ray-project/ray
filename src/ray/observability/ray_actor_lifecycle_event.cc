@@ -31,6 +31,7 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(
   state_transition.set_state(state);
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
+  state_transition.set_repr_name(data.repr_name());
 
   // Set state specific fields
   if (state == rpc::events::ActorLifecycleEvent::ALIVE) {

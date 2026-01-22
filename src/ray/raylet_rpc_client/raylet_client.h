@@ -21,7 +21,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
@@ -166,9 +165,12 @@ class RayletClient : public RayletClientInterface {
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+  void GetWorkerPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
+  /// Get agents pids from raylet, include dashboard and runtime env agent
+  void GetAgentPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
+                    int64_t timeout_ms);
   void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
