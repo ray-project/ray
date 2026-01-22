@@ -27,6 +27,8 @@ import "src/ray/protobuf/public/events_actor_definition_event.proto";
 import "src/ray/protobuf/public/events_actor_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_node_definition_event.proto";
 import "src/ray/protobuf/public/events_node_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_placement_group_definition_event.proto";
+import "src/ray/protobuf/public/events_placement_group_lifecycle_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -58,6 +60,8 @@ message RayEvent {
     NODE_LIFECYCLE_EVENT = 8;
     ACTOR_DEFINITION_EVENT = 9;
     ACTOR_LIFECYCLE_EVENT = 10;
+    PLACEMENT_GROUP_DEFINITION_EVENT = 11;
+    PLACEMENT_GROUP_LIFECYCLE_EVENT = 12;
   }
 
   // The severities of events that can be generated.
@@ -106,4 +110,7 @@ message RayEvent {
 
   // ID of the node where this event is emitted from
   bytes node_id = 18;
+
+  PlacementGroupDefinitionEvent placement_group_definition_event = 19;
+  PlacementGroupLifecycleEvent placement_group_lifecycle_event = 20;
 }
