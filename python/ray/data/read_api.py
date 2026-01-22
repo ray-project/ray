@@ -3601,7 +3601,7 @@ def from_huggingface(
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            value in most of cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
