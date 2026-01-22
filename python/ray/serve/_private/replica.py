@@ -1195,6 +1195,19 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
         )
 
+        # Record ingress metrics for direct ingress HTTP requests
+        if request_metadata.is_direct_ingress and status_code is not None:
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.HTTP,
+                method=request_metadata._http_method,
+                route=self._route_prefix,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=latency_ms,
+                was_error=status_code.startswith(("4", "5")),
+                status_code=status_code,
+            )
+
     def _unpack_proxy_args(
         self,
         request_metadata: RequestMetadata,
