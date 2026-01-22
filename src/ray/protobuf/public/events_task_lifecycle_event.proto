@@ -35,17 +35,17 @@ message TaskLifecycleEvent {
 
   message TaskLogInfo {
     // stdout log file absolute path.
-    optional string stdout_file = 1;
+    string stdout_file = 1;
     // stderr log file absolute path.
-    optional string stderr_file = 2;
+    string stderr_file = 2;
     // Start offset of stdout when task starts.
-    optional int64 stdout_start = 3;
+    int64 stdout_start = 3;
     // End offset of stdout when task finishes.
-    optional int64 stdout_end = 4;
+    int64 stdout_end = 4;
     // Start offset of stderr when task starts.
-    optional int64 stderr_start = 5;
+    int64 stderr_start = 5;
     // End offset of stderr when task finishes.
-    optional int64 stderr_end = 6;
+    int64 stderr_end = 6;
   }
 
   repeated StateTransition state_transitions = 3;
@@ -62,5 +62,5 @@ message TaskLifecycleEvent {
   // Actor task repr name, if applicable.
   optional string actor_repr_name = 10;
   // Task log file information.
-  optional TaskLogInfo task_log_info = 11;
+  TaskLogInfo task_log_info = 11;
 }
