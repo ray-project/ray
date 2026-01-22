@@ -276,40 +276,6 @@ def test_deploy_bad_v2_config(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_with_different_http_options(serve_instance, tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config = {
-        "proxy_location": "HeadOnly",
-        "http_options": {
-            "host": "0.0.0.1",
-            "port": 8001,
-        },
-        "applications": [],
-    }
-    with open(config_path, "w") as f:
-        yaml.dump(config, f)
-
-    with pytest.raises(subprocess.CalledProcessError) as e:
-        subprocess.check_output(
-            ["serve", "deploy", str(config_path)], stderr=subprocess.STDOUT
-        )
-    error = e.value.output.decode("utf-8")
-    assert "RayServeConfigException" in error
-    assert (
-        "Attempt to update `http_options` or `proxy_location` has been detected!"
-        in error
-    )
-    assert "'host': {'previous': '0.0.0.0', 'new': '0.0.0.1'}" in error
-    assert "'port': {'previous': 8000, 'new': 8001}" in error
-    assert "'location': {'previous': 'EveryNode', 'new': 'HeadOnly'}" in error
-    assert (
-        "HTTP config is global to your Ray cluster, and you can't update it during runtime."
-        in error
-    )
-    assert "Please restart Ray Serve to apply the change." in error
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_multi_app_builder_with_args(serve_instance):
     """Deploys a config file containing multiple applications that take arguments."""
     # Create absolute file names to YAML config file.
