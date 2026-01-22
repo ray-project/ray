@@ -78,11 +78,12 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ", bundles size = " << bundles.size();
 
   const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
-  bool is_whole_pg_reschedule = (bundles.size() == placement_group->GetBundles().size());
+  bool is_scheduling_all_bundles =
+      (bundles.size() == placement_group->GetBundles().size());
 
-  if (is_whole_pg_reschedule && !scheduling_strategies.empty()) {
-    RAY_LOG(INFO) << "Whole Placement Group " << placement_group->GetPlacementGroupID()
-                  << " is being rescheduled. Resetting to Primary Strategy.";
+  if (is_scheduling_all_bundles && !scheduling_strategies.empty()) {
+    RAY_LOG(INFO) << "Scheduling whole Placement Group "
+                  << placement_group->GetPlacementGroupID() << " using primary strategy.";
 
     const auto &primary_option = scheduling_strategies.Get(0);
     placement_group->UpdateActiveBundles(primary_option);
@@ -95,34 +96,31 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const rpc::PlacementGroupSchedulingOption *applied_fallback_option = nullptr;
   std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
 
-  if (!scheduling_result.status.IsSuccess()) {
-    bool is_scheduling_whole_pg =
-        (bundles.size() == placement_group->GetBundles().size());
-    if (scheduling_strategies.size() > 1 && is_scheduling_whole_pg) {
-      RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
-                     << placement_group->GetPlacementGroupID() << ". Attempting "
-                     << (scheduling_strategies.size() - 1) << " fallback options.";
+  if (!scheduling_result.status.IsSuccess() && scheduling_strategies.size() > 1 &&
+      is_scheduling_all_bundles) {
+    RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
+                   << placement_group->GetPlacementGroupID() << ". Attempting "
+                   << (scheduling_strategies.size() - 1) << " fallback options.";
 
-      for (int i = 1; i < scheduling_strategies.size(); i++) {
-        const auto &option = scheduling_strategies.Get(i);
+    for (int i = 1; i < scheduling_strategies.size(); i++) {
+      const auto &option = scheduling_strategies.Get(i);
 
-        fallback_bundles.clear();
-        for (const auto &bundle_proto : option.bundles()) {
-          fallback_bundles.push_back(
-              std::make_shared<const BundleSpecification>(bundle_proto));
-        }
+      fallback_bundles.clear();
+      for (const auto &bundle_proto : option.bundles()) {
+        fallback_bundles.push_back(
+            std::make_shared<const BundleSpecification>(bundle_proto));
+      }
 
-        auto fallback_result = TrySchedule(
-            placement_group, fallback_bundles, placement_group->GetStrategy());
+      auto fallback_result =
+          TrySchedule(placement_group, fallback_bundles, placement_group->GetStrategy());
 
-        if (fallback_result.status.IsSuccess()) {
-          RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
-                        << " primary scheduling failed, but fallback strategy succeeded.";
-          scheduling_result = fallback_result;
-          bundles = fallback_bundles;
-          applied_fallback_option = &option;
-          break;
-        }
+      if (fallback_result.status.IsSuccess()) {
+        RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
+                      << " primary scheduling failed, but fallback strategy succeeded.";
+        scheduling_result = fallback_result;
+        bundles = fallback_bundles;
+        applied_fallback_option = &option;
+        break;
       }
     }
   }
