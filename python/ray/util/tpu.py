@@ -37,7 +37,9 @@ def get_tpu_version_from_type(accelerator_type: str) -> str:
     accel_type_lower = accelerator_type.lower()
 
     if accel_type_lower.startswith("tpu-"):
-        version = accel_type_lower[4:]
+        version = accel_type_lower.replace("tpu-", "")
+    elif accel_type_lower.startswith("tpu"):
+        version = accel_type_lower.replace("tpu", "v")
     else:
         version = accel_type_lower
 

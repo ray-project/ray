@@ -135,10 +135,6 @@ else:
         "universal API for building distributed applications.",
         BUILD_TYPE,
     )
-    RAY_EXTRA_CPP = True
-    # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or not BUILD_CPP:
-        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -247,7 +243,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
+            "aiohttp >= 3.13.3",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -315,8 +311,7 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
@@ -354,10 +349,9 @@ if setup_spec.type == SetupType.RAY:
             chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
         )
     )
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["all-cpp"] = list(
-            set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
-        )
+    setup_spec.extras["all-cpp"] = list(
+        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+    )
 
     # "llm" is not included in all, by design. vllm's dependency set is very
     # large and specific, will likely run into dependency conflicts with other
@@ -773,43 +767,19 @@ if __name__ == "__main__":
             return True
 
     class RayCppBdistWheel(bdist_wheel):
-        """Custom bdist_wheel that produces Python-agnostic wheels for ray-cpp.
+        """Build a Python-agnostic wheel for ray-cpp.
 
-        PROBLEM
-        -------
-        The ray-cpp wheel contains only C++ files (headers, libraries, executables)
-        with NO Python-specific code. It should work with any Python 3.x version.
-        However, by default, setuptools/bdist_wheel generates wheels tagged with
-        the specific Python interpreter used to build, e.g.:
-
-            ray_cpp-3.0.0-cp310-cp310-manylinux2014_x86_64.whl
-                          ^^^^^-^^^^^
-                          Python 3.10 specific!
-
-        This class forces the wheel tag to be:
-
-            ray_cpp-3.0.0-py3-none-manylinux2014_x86_64.whl
-                          ^^^-^^^^
-                          Works with ANY Python 3!
-
-        Tag meanings:
-        - "py3" = compatible with any Python 3.x
-        - "none" = no Python ABI dependency (no compiled .so using Python.h)
-        - "manylinux2014_x86_64" = platform tag (still needed for C++ binaries)
-
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
         """
 
         def finalize_options(self):
             super().finalize_options()
-            # Mark as non-pure to ensure we get a platform tag (e.g., manylinux2014).
-            # Pure wheels get "any" as the platform tag, which is wrong for ray-cpp
-            # since it contains platform-specific C++ binaries.
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
             self.root_is_pure = False
 
         def get_tag(self):
-            # Get the platform tag from parent (e.g., "manylinux2014_x86_64")
             _, _, platform_tag = super().get_tag()
-            # Force Python-agnostic tags: ("py3", "none", platform_tag)
             return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.

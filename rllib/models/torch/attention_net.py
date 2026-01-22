@@ -211,7 +211,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # Add the needed batch rank (tf Models' Input requires this).
         observations = input_dict[SampleBatch.OBS]
         # Add the time dim to observations.
-        B = len(seq_lens)
+        B = seq_lens.shape[0]
         T = observations.shape[0] // B
         observations = torch.reshape(
             observations, [-1, T] + list(observations.shape[1:])

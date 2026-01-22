@@ -1,9 +1,19 @@
-from .bundle_queue import BundleQueue
-from .fifo_bundle_queue import FIFOBundleQueue
+from __future__ import annotations
+
+from .base import (
+    BaseBundleQueue,
+    QueueWithRemoval,
+)
+from .hash_link import HashLinkedQueue
 
 
-def create_bundle_queue() -> BundleQueue:
-    return FIFOBundleQueue()
+def create_bundle_queue() -> QueueWithRemoval:
+    return HashLinkedQueue()
 
 
-__all__ = ["BundleQueue", "create_bundle_queue"]
+__all__ = [
+    "BaseBundleQueue",
+    "create_bundle_queue",
+    "QueueWithRemoval",
+    "HashLinkedQueue",
+]

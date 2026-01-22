@@ -71,12 +71,29 @@ py_library(
 )
 
 # --------------------------------------------------------------------
-# Algorithms learning regression tests.
+# Algorithms learning tests (rllib/examples/algorithm/[algo-name]).
 #
 # Tag: learning_tests
 #
-# This will test python/yaml config files
-# inside rllib/examples/algorithms/[algo-name] for actual learning success.
+# These tests check that the algorithm achieves above random performance within a relatively short period of time,
+#   not that the algorithm reaches the optimal policy.
+#
+# For single to multi-learner tests, the expected output should change,
+#   either reducing the maximum iterations or samples, or increasing the max return
+#   to ensure that the multi-learner is achieving something that the single shouldn’t be able to normally achieve.
+#
+# Compute Config
+#   - local (CPU) = 7 CPUs, 0 GPU: 4 Env Runners, 0 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
+#   - single (CPU) = 8 CPUs, 0 GPU: 4 Env Runner, 1 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
+#   - single (GPU) = 8 CPUs, 1 GPU: 4 Env Runner, 1 Learner on GPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
+#   - multi (GPU) = 15 CPUs, 2 GPUs: 8 Env Runners, 2 Learners on GPU, 2 Aggregator Actors per Learner on CPU (4 total CPUs), 1 CPU main process
+#
+# Legend
+#   - SA = Single Agent Environment
+#   - MA = Multi Agent Environment
+#   - D = Discrete actions
+#   - C = Continuous actions
+#   - LSTM = recurrent policy through lstms
 # --------------------------------------------------------------------
 
 # APPO
@@ -639,206 +656,50 @@ py_test(
     ],
 )
 
-# IMPALA
-# CartPole
+# | IMPALA (2 total tests)         |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | 200     | ✅          | ❌              | ❌           | ❌         |
+# | (MA/D) TicTacToe               | -2.0    | ❌          | ❌              | ❌           | ✅         |
+
 py_test(
-    name = "learning_tests_cartpole_impala",
+    name = "learning_tests_impala_cartpole_local",
     size = "large",
     srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_impala_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/impala/cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
-
-# MultiAgentCartPole
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=6",
-    ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-gpus-per-learner=1",
-        "--num-cpus=6",
-    ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-learners=2",
+        "--num-aggregator-actors-per-learner=2",
         "--num-cpus=7",
+        "--num-env-runners=4",
+        "--num-learners=0",
+        "--stop-reward=200",
     ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
+    name = "learning_tests_impala_tictactoe_multi_gpu",
     size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/tictactoe_impala.py"],
     args = [
         "--as-test",
-        "--num-agents=2",
-        "--num-learners=2",
+        "--num-aggregator-actors-per-learner=2",
+        "--num-cpus=16",
+        "--num-env-runners=8",
         "--num-gpus-per-learner=1",
-        "--num-cpus=7",
-    ],
-    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
-
-# StatelessCartPole
-py_test(
-    name = "learning_tests_stateless_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_stateless_cartpole_impala_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
         "--num-learners=2",
-        "--num-gpus-per-learner=1",
+        "--stop-reward=-2.0",
     ],
-    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
+    main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "multi_gpu",
-        "team:rllib",
-    ],
-)
-
-# MultiAgentStatelessCartPole
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_impala",
-    size = "large",
-    srcs = ["examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -4655,6 +4516,26 @@ py_test(
         "team:rllib",
     ],
     deps = [":conftest"],
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_attention_torch",
+    size = "medium",
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_attention.py"],
+    args = [
+        "--stop-iters=1",
+        "--framework=torch",
+        "--prev-n-actions=2",
+        "--use-onnx-for-inference",
+        "--num-episodes-during-inference=2",
+    ],
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_attention.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
 )
 
 #@OldAPIStack

@@ -1,10 +1,10 @@
-import logging
 import math
 import time
 from typing import TYPE_CHECKING, Dict
 
 import ray
 from .base_cluster_autoscaler import ClusterAutoscaler
+from .util import cap_resource_request_to_limits
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -14,21 +14,19 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-logger = logging.getLogger(__name__)
-
-
 class DefaultClusterAutoscaler(ClusterAutoscaler):
-
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
 
     def __init__(
         self,
         topology: "Topology",
+        resource_limits: ExecutionResources,
         *,
         execution_id: str,
     ):
         self._topology = topology
+        self._resource_limits = resource_limits
         self._execution_id = execution_id
 
         # Last time when a request was sent to Ray's autoscaler.
@@ -43,9 +41,8 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         autoscaler were to grant this resource request, it would allow us to dispatch
         one task for every ready operator.
 
-        Note that this resource request does not take the global resource limits or the
-        liveness policy into account; it only tries to make the existing resource usage
-        + one more task per ready operator feasible in the cluster.
+        The resource request is capped to not exceed user-configured resource limits
+        set via ExecutionOptions.resource_limits.
         """
         # Limit the frequency of autoscaling requests.
         now = time.time()
@@ -68,7 +65,10 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
 
         # Get resource usage for all ops + additional resources needed to launch one
         # more task for each ready op.
-        resource_request = []
+        # We separate active bundles (running tasks) from pending bundles (future work)
+        # to ensure running tasks' resources are never crowded out by pending work.
+        active_bundles = []
+        pending_bundles = []
 
         def to_bundle(resource: ExecutionResources) -> Dict:
             req = {}
@@ -76,18 +76,28 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
                 req["CPU"] = math.ceil(resource.cpu)
             if resource.gpu:
                 req["GPU"] = math.ceil(resource.gpu)
+            if resource.memory:
+                req["memory"] = math.ceil(resource.memory)
             return req
 
         for op, state in self._topology.items():
             per_task_resource = op.incremental_resource_usage()
             task_bundle = to_bundle(per_task_resource)
-            resource_request.extend([task_bundle] * op.num_active_tasks())
+            # Bundles for running tasks -> active (must include)
+            active_bundles.extend([task_bundle] * op.num_active_tasks())
             # Only include incremental resource usage for ops that are ready for
             # dispatch.
             if state.has_pending_bundles():
                 # TODO(Clark): Scale up more aggressively by adding incremental resource
                 # usage for more than one bundle in the queue for this op?
-                resource_request.append(task_bundle)
+                # Bundle for pending work -> pending (best-effort)
+                pending_bundles.append(task_bundle)
+
+        # Cap the resource request to respect user-configured limits.
+        # Active bundles are always included; pending bundles are best-effort.
+        resource_request = cap_resource_request_to_limits(
+            active_bundles, pending_bundles, self._resource_limits
+        )
 
         self._send_resource_request(resource_request)
 
@@ -102,4 +112,5 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         actor.request_resources.remote({}, self._execution_id)
 
     def get_total_resources(self) -> ExecutionResources:
+        """Get total resources available in the cluster."""
         return ExecutionResources.from_resource_dict(ray.cluster_resources())

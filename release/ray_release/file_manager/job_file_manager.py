@@ -25,7 +25,6 @@ class JobFileManager:
         import anyscale
 
         self.cluster_manager = cluster_manager
-        self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client(S3_CLOUD_STORAGE)
         self.cloud_storage_provider = os.environ.get(
             "ANYSCALE_CLOUD_STORAGE_PROVIDER", S3_CLOUD_STORAGE

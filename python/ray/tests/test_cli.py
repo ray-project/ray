@@ -37,6 +37,7 @@ from unittest.mock import MagicMock, patch
 
 import moto
 import pytest
+import yaml
 from click.testing import CliRunner
 from moto import mock_ec2, mock_iam
 from testfixtures import Replacer
@@ -47,9 +48,12 @@ import ray._private.ray_constants as ray_constants
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray.scripts.scripts as scripts
+import ray.tests.aws.utils.helpers as aws_helpers
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_default_ray_temp_dir
+from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler._private.util import prepare_config
 from ray.cluster_utils import cluster_not_supported
 from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
@@ -806,6 +810,86 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         )
 
         _check_output_via_pattern("test_ray_attach.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+@mock_ec2
+@mock_iam
+def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key):
+    from ray.autoscaler._private.commands import get_worker_node_ips
+
+    worker_ip_to_verify = None
+
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+
+    def commands_verifier(calls):
+        for call in calls:
+            if len(call[1]) > 0:
+                cmd = (
+                    " ".join(call[1][0]) if isinstance(call[1][0], list) else call[1][0]
+                )
+                if "ssh" in cmd and worker_ip_to_verify and worker_ip_to_verify in cmd:
+                    return True
+        return False
+
+    with _setup_popen_mock(commands_mock, commands_verifier):
+        runner = CliRunner()
+        result = runner.invoke(
+            scripts.up,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "-y",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+            ],
+        )
+        _die_on_error(result)
+
+        # Manually create a worker node to test attaching to non-head nodes.
+        # ray up only creates the head node; workers are launched asynchronously
+        # by the autoscaler which doesn't run in this mocked test environment.
+        config = yaml.safe_load(open(DEFAULT_TEST_CONFIG_PATH).read())
+        config["cluster_name"] = "test-cli"
+        config = prepare_config(config)
+        config = aws_config.bootstrap_aws(config)
+
+        provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+        worker_node_config = config["available_node_types"]["worker_nodes"][
+            "node_config"
+        ]
+        tags = aws_helpers.node_provider_tags(config, "worker_nodes")
+        provider.create_node(worker_node_config, tags, 1)
+
+        worker_ips = get_worker_node_ips(
+            DEFAULT_TEST_CONFIG_PATH, override_cluster_name="test-cli"
+        )
+        assert len(worker_ips) > 0, "Worker node should have been created"
+        worker_ip_to_verify = worker_ips[0]
+
+        result = runner.invoke(
+            scripts.attach,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+                "--node-ip",
+                worker_ip_to_verify,
+            ],
+        )
+
+        _check_output_via_pattern("test_ray_attach_with_ip.txt", result)
 
 
 @pytest.mark.skipif(

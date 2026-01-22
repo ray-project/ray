@@ -1,4 +1,4 @@
-name: ray-dashboard
+name: ray-dashboard$ARCH_SUFFIX
 froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
 dockerfile: ci/docker/ray-dashboard.Dockerfile
 srcs:

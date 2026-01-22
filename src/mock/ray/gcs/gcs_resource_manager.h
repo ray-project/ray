@@ -41,15 +41,13 @@ class MockGcsResourceManager : public GcsResourceManager {
       : GcsResourceManager(__mock_io_context_,
                            __mock_cluster_resource_manager_,
                            __mock_gcs_node_manager_,
-                           NodeID::FromRandom(),
-                           nullptr) {}
+                           NodeID::FromRandom()) {}
   explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
                                   GcsNodeManager &gcs_node_manager)
       : GcsResourceManager(__mock_io_context_,
                            cluster_resource_manager,
                            gcs_node_manager,
-                           NodeID::FromRandom(),
-                           nullptr) {}
+                           NodeID::FromRandom()) {}
 
   MOCK_METHOD(void,
               HandleGetAllAvailableResources,

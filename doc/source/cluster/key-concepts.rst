@@ -80,7 +80,7 @@ There are two ways to run a Ray job on a Ray cluster:
 
 For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-overview>`.
 
-.. figure:: images/ray-job-diagram.svg
+.. figure:: images/ray-job-diagram.png
     :align: center
     :width: 650px
 

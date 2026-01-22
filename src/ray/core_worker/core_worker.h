@@ -1887,9 +1887,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
