@@ -6,12 +6,6 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.datasource import (
-    BaseFileMetadataProvider,
-)
-from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
-)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -47,30 +41,6 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 4
-
-
-def test_read_text_meta_provider(
-    ray_start_regular_shared,
-    tmp_path,
-):
-    path = os.path.join(tmp_path, "test_text")
-    os.mkdir(path)
-    path = os.path.join(path, "file1.txt")
-    with open(path, "w") as f:
-        f.write("hello\n")
-        f.write("world\n")
-        f.write("goodbye\n")
-        f.write("ray\n")
-    ds = ray.data.read_text(path, meta_provider=DefaultFileMetadataProvider())
-    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 4
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_text(
-            path,
-            meta_provider=BaseFileMetadataProvider(),
-        )
 
 
 def test_read_text_remote_args(ray_start_cluster, tmp_path):
