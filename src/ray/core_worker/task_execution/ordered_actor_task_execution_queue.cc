@@ -62,8 +62,7 @@ void OrderedActorTaskExecutionQueue::Stop() {
   CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
-/// Add a new actor task's callbacks to the worker queue.
-void OrderedActorTaskExecutionQueue::Add(int64_t seq_no,
+void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                          int64_t client_processed_up_to,
                                          TaskToExecute task) {
   // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed

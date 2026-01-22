@@ -120,7 +120,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
 
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
   ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
   rpc::TaskEvents rpc_task_events;
   task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
@@ -140,7 +140,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(ObjectID::FromRandom().Binary());
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
   waiter.Complete(0);
   ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
   task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
@@ -185,10 +185,10 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   };
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
   io_service.run();
 
   // Wait for all tasks to finish.
@@ -224,7 +224,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   TaskSpecification ts;
   ts.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   // Enqueue a running task and a queued task.
-  queue.Add(0, -1, TaskToExecute(fn_ok_blocking, fn_rej, ts));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok_blocking, fn_rej, ts));
   std::atomic<int> n_rejected{0};
   auto fn_rej_count = [&n_rejected](const TaskSpecification &, const Status &status) {
     if (status.IsSchedulingCancelled()) {
@@ -237,7 +237,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   ts_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       ObjectID::FromRandom().Binary());
-  queue.Add(1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
+  queue.EnqueueTask(1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
   io_service.poll();
   running_started.get_future().wait();
 
@@ -276,10 +276,10 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(obj.Binary());
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
-  queue.Add(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
-  queue.Add(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
 
   ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
 
@@ -327,8 +327,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(obj.Binary());
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
 
   ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
   io_service.run();
@@ -364,16 +364,16 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   };
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.Add(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
   ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
   ASSERT_EQ(n_rej, 0);
   io_service.run();
   ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
   ASSERT_TRUE(WaitForCondition([&n_rej]() { return n_rej == 2; }, 1000));
-  queue.Add(4, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(5, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(4, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(5, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
 
   // Wait for all tasks to finish.
   auto default_executor = pool_manager->GetDefaultExecutor();
@@ -404,9 +404,9 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   };
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.Add(2, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(3, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.Add(1, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(2, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(3, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
+  queue.EnqueueTask(1, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
   io_service.run();
 
   // Wait for all tasks to finish.
@@ -466,15 +466,15 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   // 3 (retry of 2) should get executed. Then, 4 should be executed. Then 6 (retry of 5)
   // once the dependency is fetched.
   auto task_spec_0 = CreateActorTaskSpec(0, /*is_retry=*/false, /*dependency=*/true);
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_0));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_0));
   auto task_spec_1 = CreateActorTaskSpec(1);
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_1));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_1));
   auto task_spec_2_retry = CreateActorTaskSpec(3, /*is_retry=*/true);
-  queue.Add(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_2_retry));
+  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_2_retry));
   auto task_spec_4 = CreateActorTaskSpec(4);
-  queue.Add(4, 2, TaskToExecute(fn_ok, fn_rej, task_spec_4));
+  queue.EnqueueTask(4, 2, TaskToExecute(fn_ok, fn_rej, task_spec_4));
   auto task_spec_5_retry = CreateActorTaskSpec(6, /*is_retry=*/true, /*dependency=*/true);
-  queue.Add(6, -1, TaskToExecute(fn_ok, fn_rej, task_spec_5_retry));
+  queue.EnqueueTask(6, -1, TaskToExecute(fn_ok, fn_rej, task_spec_5_retry));
 
   io_service.run();
 
@@ -524,7 +524,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
 
-  queue.Add(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
   ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
   rpc::TaskEvents rpc_task_events;
   task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
@@ -544,7 +544,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(ObjectID::FromRandom().Binary());
-  queue.Add(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
   waiter.Complete(0);
   ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
   task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
@@ -609,13 +609,13 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   task_spec_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_1.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_1.GetMutableMessage().set_attempt_number(1);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_1, fn_rej, task_spec_1));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_1, fn_rej, task_spec_1));
   attempt_1_start_promise.get_future().wait();
   TaskSpecification task_spec_2;
   task_spec_2.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_2.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_2.GetMutableMessage().set_attempt_number(2);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_2, fn_rej, task_spec_2));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_2, fn_rej, task_spec_2));
   io_service.poll();
   // Attempt 2 should only start after attempt 1 finishes.
   auto attempt_2_start_future = attempt_2_start_promise.get_future();
@@ -671,7 +671,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   task_spec_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_1.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_1.GetMutableMessage().set_attempt_number(1);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_1, fn_rej_1, task_spec_1));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_1, fn_rej_1, task_spec_1));
   attempt_1_start_promise.get_future().wait();
 
   auto fn_ok_2 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
@@ -685,7 +685,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   task_spec_2.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_2.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_2.GetMutableMessage().set_attempt_number(2);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_2, fn_rej_2, task_spec_2));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_2, fn_rej_2, task_spec_2));
 
   auto fn_ok_4 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
   std::atomic<bool> attempt_4_cancelled = false;
@@ -699,7 +699,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   task_spec_4.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_4.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_4.GetMutableMessage().set_attempt_number(4);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_4, fn_rej_4, task_spec_4));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_4, fn_rej_4, task_spec_4));
   ASSERT_TRUE(attempt_2_cancelled.load());
 
   auto fn_ok_3 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
@@ -715,7 +715,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   task_spec_3.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_3.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_3.GetMutableMessage().set_attempt_number(3);
-  queue.Add(-1, -1, TaskToExecute(fn_ok_3, fn_rej_3, task_spec_3));
+  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_3, fn_rej_3, task_spec_3));
   ASSERT_TRUE(attempt_3_cancelled.load());
 
   // Attempt 4 should be cancelled.

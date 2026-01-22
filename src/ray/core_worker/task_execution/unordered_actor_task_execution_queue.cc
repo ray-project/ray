@@ -77,7 +77,7 @@ void UnorderedActorTaskExecutionQueue::Stop() {
   CancelAllQueuedTasks("Actor task execution queue stopped; canceling all queued tasks.");
 }
 
-void UnorderedActorTaskExecutionQueue::Add(int64_t seq_no,
+void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                            int64_t client_processed_up_to,
                                            TaskToExecute task) {
   // Add and execute a task. For different attempts of the same

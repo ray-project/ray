@@ -38,11 +38,11 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
       [&n_rej](const TaskSpecification &task_spec, const Status &status) { n_rej++; },
       task_spec);
 
-  queue->Add(task);
-  queue->Add(task);
-  queue->Add(task);
-  queue->Add(task);
-  queue->Add(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
   queue->ExecuteQueuedTasks();
   ASSERT_EQ(n_ok, 4);
@@ -69,9 +69,9 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
                     task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
-  queue->Add(task);
-  queue->Add(task);
-  queue->Add(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
 
   // Stopping should cancel all queued tasks without running them.
   queue->Stop();
