@@ -11,13 +11,13 @@ from ray.rllib.models.torch.misc import (
     valid_padding,
 )
 from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.core.models.base import Encoder, Model
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def _framework_implemented(torch: bool = True, tf2: bool = True):
     """Decorator to check if a model was implemented in a framework.
 
@@ -53,7 +53,7 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     return decorator
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class ModelConfig(abc.ABC):
     """Base class for configuring a `Model` instance.
@@ -95,7 +95,7 @@ class ModelConfig(abc.ABC):
         return None
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
@@ -231,7 +231,7 @@ class _MLPConfig(ModelConfig):
         get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class MLPHeadConfig(_MLPConfig):
     """Configuration for an MLP head.
@@ -300,7 +300,7 @@ class MLPHeadConfig(_MLPConfig):
             return TorchMLPHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class FreeLogStdMLPHeadConfig(_MLPConfig):
     """Configuration for an MLPHead with a floating second half of outputs.
@@ -384,7 +384,7 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             return TorchFreeLogStdMLPHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class CNNTransposeHeadConfig(ModelConfig):
     """Configuration for a convolutional transpose head (decoder) network.
@@ -635,7 +635,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             return TorchCNNTransposeHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional (encoder) network.
@@ -811,7 +811,7 @@ class CNNEncoderConfig(ModelConfig):
             return TorchCNNEncoder(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class MLPEncoderConfig(_MLPConfig):
     """Configuration for an MLP that acts as an encoder.
@@ -872,7 +872,7 @@ class MLPEncoderConfig(_MLPConfig):
             return TorchMLPEncoder(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class RecurrentEncoderConfig(ModelConfig):
     """Configuration for an LSTM-based or a GRU-based encoder.
@@ -1022,7 +1022,7 @@ class RecurrentEncoderConfig(ModelConfig):
             return GRU(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class ActorCriticEncoderConfig(ModelConfig):
     """Configuration for an ActorCriticEncoder.
@@ -1058,7 +1058,7 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchActorCriticEncoder(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class MultiStreamEncoderConfig(ModelConfig):
     """Configuration for a Multi-Stream Encoder.
