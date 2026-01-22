@@ -851,5 +851,5 @@ def main():
 
 if __name__ == "__main__":
     benchmark = Benchmark()
-    benchmark.run_fn("training-ingest-micro-benchmark", main)
+    benchmark.run_fn("training-ingest-benchmark", main)
     benchmark.write_result()

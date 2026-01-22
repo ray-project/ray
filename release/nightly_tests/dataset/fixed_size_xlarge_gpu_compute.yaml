@@ -21,7 +21,7 @@ worker_node_types:
       use_spot: false
 
     - name: gpu-worker
-      # GPU node for training ingest microbenchmark
+      # GPU node for training ingest benchmark
       # g4dn.8xlarge: 32 vCPU, 1 NVIDIA T4 GPU, 128 GiB memory
       instance_type: g4dn.8xlarge
       min_workers: 1
