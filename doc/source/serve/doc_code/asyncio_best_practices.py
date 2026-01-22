@@ -89,6 +89,19 @@ class ThreadedHTTP:
         return await asyncio.to_thread(fetch)
 # __threaded_http_end__
 
+# __threadpool_override_begin__
+from concurrent.futures import ThreadPoolExecutor
+
+@serve.deployment
+class CustomThreadPool:
+    def __init__(self):
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=16))
+
+    async def __call__(self, request):
+        return await asyncio.to_thread(lambda: "ok")
+# __threadpool_override_end__
+
 
 # __numpy_deployment_begin__
 @serve.deployment
