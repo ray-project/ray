@@ -1211,7 +1211,7 @@ class Algorithm(Checkpointable, Trainable):
             # meaning that e.g. the first time this function is called,
             # self.iteration will be 0.
             evaluate_this_iter = (
-                self.config.evaluation_interval
+                self.config.evaluation_interval is not None
                 and (self.iteration + 1) % self.config.evaluation_interval == 0
             )
 
