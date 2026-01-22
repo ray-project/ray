@@ -2602,7 +2602,7 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             shutil.rmtree(out_dir)
 
         shutil.copytree(cpp_templete_dir, out_dir)
-        for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
+        for filename in ["_WORKSPACE", "_BUILD.bazel", "_MODULE.bazel", "_.bazelrc"]:
             # Renames the bazel related files by removing the leading underscore.
             dest_name = os.path.join(out_dir, filename[1:])
             shutil.move(os.path.join(out_dir, filename), dest_name)
