@@ -1061,12 +1061,59 @@ class ActorCriticEncoderConfig(ModelConfig):
 @ExperimentalAPI
 @dataclass
 class MultiStreamEncoderConfig(ModelConfig):
+    """Configuration for a Multi-Stream Encoder.
 
+    The base encoders function like other encoders in RLlib. They are wrapped by the
+    Multi-Stream Encoder to provide a shared encoder Model to use in RLModules that
+    processes multiple input streams. The outputs of the individual encoders are
+    concatenated and further processed by shared fusion layers.
+
+    Attributes:
+        base_encoder_configs: A dictionary mapping stream names to their respective
+            encoder configurations.
+        hidden_layer_dims: Dimensions of the shared hidden layers after the
+            concatenation of the individual encoders' outputs.
+        hidden_layer_use_bias: Whether to use bias in the shared hidden layers.
+        hidden_layer_activation: Activation function to use in the shared hidden layers.
+        hidden_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the shared hidden layers. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_weights_initializer`.
+        hidden_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the shared hidden layers. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_bias_initializer`.
+        output_layer_dim: Optional dimension of the final output layer after the
+            shared hidden layers. If `None`, no output layer is added.
+        output_layer_use_bias: Whether to use bias  in the output layer.
+        output_layer_activation: Activation function to use in the output layer.
+        output_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the output layer. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        output_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_weights_initializer`.
+        output_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the output layer. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        output_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_bias_initializer`.
+    """
+
+    # Configuration for a Multi-Stream Encoder.s
     base_encoder_configs: Dict[str, ModelConfig] = None
 
+    # Shared hidden layers after the individual encoders' outputs have been
+    # concatenated.
     hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256, 256)
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
+    # TODO (simon): enable layernorm for multi-stream encoder.
     # hidden_layer_use_layernorm: bool = False
     hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None
     hidden_layer_weights_initializer_config: Optional[Dict] = None

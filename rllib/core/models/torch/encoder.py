@@ -291,7 +291,7 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
 
     Each input stream is encoded with its own encoder defined in
     `base_encoder_configs`. The resulting embeddings are concatenated and
-    passed through a final network to produce the output embedding.
+    passed through a final fusion network to produce the output embedding.
     """
 
     def __init__(self, config: MultiStreamEncoderConfig) -> None:
@@ -299,19 +299,14 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
         Encoder.__init__(self, config)
 
         # Create the neural network for observation stream.
-        self.feature_encoders = self.nets = nn.ModuleDict(
+        self.base_encoders = self.nets = nn.ModuleDict(
             {
                 k: cfg.build(framework="torch")
                 for k, cfg in sorted(config.base_encoder_configs.items())
             }
         )
 
-        # Create the final network.
-
-        output_bias_initializer = get_initializer_fn(
-            config.output_layer_bias_initializer, framework="torch"
-        )
-
+        # Get activation functions.
         self.hidden_activation = get_activation_fn(
             config.hidden_layer_activation, framework="torch"
         )
@@ -356,12 +351,10 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
             hidden_bias_initializer = get_initializer_fn(
                 config.hidden_layer_bias_initializer, framework="torch"
             )
-
             hidden_bias_initializer(
                 input_layer.bias, **config.hidden_layer_bias_initializer_config or {}
             )
-
-        #
+        # Initialize output layer weights if necessary.
         if config.output_layer_weights_initializer:
             output_weights_initializer = get_initializer_fn(
                 config.output_layer_weights_initializer, framework="torch"
@@ -371,24 +364,14 @@ class TorchMultiStreamEncoder(TorchModel, Encoder):
             )
         # Initialize output layer bias if necessary.
         if config.output_layer_bias_initializer:
+            output_bias_initializer = get_initializer_fn(
+                config.output_layer_bias_initializer, framework="torch"
+            )
             output_bias_initializer(
                 output_layer.bias, **config.output_bias_initializer_config or {}
             )
+        # Fusion net as ModuleList.
         self.net = nn.ModuleList([input_layer] + fusion_layers + [output_layer])
-        # self.net = nn.ModuleList(
-        #     [
-        #         nn.Linear(total_embed_dim, config.output_dims[0]),
-        #         nn.Linear(
-        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
-        #         ),
-        #         nn.Linear(
-        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
-        #         ),
-        #         nn.Linear(
-        #             config.output_dims[0] + total_embed_dim, config.output_dims[0]
-        #         ),
-        #     ]
-        # )
 
     @override(Model)
     def _forward(self, inputs, **kwargs):
