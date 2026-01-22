@@ -11,7 +11,7 @@ jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 <a href="https://github.com/ray-project/ray/tree/master/doc/source/train/tutorials/content" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial series provides hands-on learning for **Ray Train** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
+This tutorial series provides hands-on learning for **Ray Train** and its ecosystem (Ray Data, Anyscale Workspaces).  
 The tutorials walk through common ML workload patterns—vision, tabular, time series, generative, policy learning, and recommendation—showing how to scale them **from single-node to fully distributed training and inference** with minimal code changes.
 
 ---
@@ -48,18 +48,6 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
 
 - [**Recommendation system workloads**](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04e_rec_sys_workload_pattern.html)  
   Matrix-factorization recommendation system with MovieLens 100K, streaming batches with [`iter_torch_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.DataIterator.iter_torch_batches.html), custom training loop with checkpointing, and modular separation of training/eval/inference.
-
----
-
-### 3. Hyperparameter tuning (bonus)
-
-- [**Hyperparameter tuning with Ray Tune**](https://docs.ray.io/en/latest/train/tutorials/content/hyperparameter-tuning/05a_ray_tune_pytorch_example.html)  
-  Introduces **Ray Tune** for PyTorch hyperparameter optimization:  
-  - Define search spaces.  
-  - Run parallel trials with various schedulers.  
-  - Add checkpoint/resume logic with [`tune.get_checkpoint`](https://docs.ray.io/en/latest/tune/api/doc/ray.tune.get_checkpoint.html).  
-  - Retrieve and evaluate the best model checkpoint.  
-  This tutorial is standalone but naturally extends the preceding Ray Train patterns.
 
 ---
 
