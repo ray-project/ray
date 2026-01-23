@@ -1,25 +1,19 @@
-"""ImageNet dataset loading via S3 URL download with map_batches.
+"""ImageNet dataset loading via S3 URL download with Ray Data expressions.
 
 This module provides dataset loading that:
-1. Lists JPEG files from S3 using boto3
+1. Lists JPEG files from S3 using boto3 (parallelized via Ray tasks)
 2. Creates a Ray dataset from the file records
-3. Uses map_batches to download and process images from S3
+3. Uses Ray Data expressions (alpha) to download image bytes efficiently
+4. Uses map_batches to decode and process images
 
-This approach separates file listing from image downloading, allowing for
-efficient parallel downloads during map_batches execution.
-
-NOTE: The current implementation downloads images sequentially within each
-map_batches call, which is not optimal for I/O-bound S3 downloads. A potential
-optimization would be to use concurrent downloads (e.g., ThreadPoolExecutor),
-but this risks spawning too many threads when combined with Ray's parallelism.
-For production workloads requiring higher throughput, consider using Ray Data's
-native S3 reading capabilities with `ray.data.read_images()` instead.
+This approach leverages Ray Data's expressions API for optimized parallel I/O,
+separating the download step from image processing for better throughput.
 """
 
 import io
 import logging
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import boto3
 import numpy as np
@@ -27,6 +21,7 @@ from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
 
 import ray.data
+from ray.data.expressions import download
 
 from constants import DatasetKey
 from image_classification.imagenet import (
@@ -162,11 +157,14 @@ def list_s3_image_files(data_dir: str) -> List[Dict[str, str]]:
     return [{"path": path, "class": cls} for path, cls in cached_records]
 
 
-def get_download_and_process_batch_fn(
+def get_process_batch_fn(
     random_transforms: bool = True,
     label_to_id_map: Optional[Dict[str, int]] = None,
-):
-    """Get a map_batches function that downloads and processes images from S3.
+) -> Callable[[Dict[str, np.ndarray]], Dict[str, np.ndarray]]:
+    """Get a map_batches function that processes pre-downloaded image bytes.
+
+    This function expects image bytes to already be downloaded (via Ray Data
+    expressions) and handles decoding and transformations.
 
     Args:
         random_transforms: Whether to use random transforms for training
@@ -182,39 +180,24 @@ def get_download_and_process_batch_fn(
         to_torch_tensor=False, random_transforms=random_transforms
     )
 
-    def download_and_process_batch(
+    def process_batch(
         batch: Dict[str, np.ndarray],
     ) -> Dict[str, np.ndarray]:
-        """Download images from S3 and apply preprocessing.
-
-        Note: Images are downloaded sequentially within each batch. This is
-        intentionally kept simple to avoid thread management complexity when
-        running inside Ray tasks. Ray Data's parallelism across batches
-        provides the primary throughput scaling.
+        """Process pre-downloaded image bytes.
 
         Args:
-            batch: Dict with "path" and "class" arrays
+            batch: Dict with "bytes" (image data) and "class" arrays
 
         Returns:
             Dict with "image" (numpy array) and "label" (int) arrays
         """
-        s3_client = boto3.client("s3", region_name=AWS_REGION)
-
         processed_images = []
         labels = []
 
-        paths = list(batch["path"])
+        image_bytes_list = list(batch["bytes"])
         classes = list(batch["class"])
 
-        for s3_url, wnid in zip(paths, classes):
-            # Parse S3 URL: s3://bucket/key
-            url_path = s3_url[5:] if s3_url.startswith("s3://") else s3_url
-            bucket, key = url_path.split("/", 1)
-
-            # Download image from S3
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            data = response["Body"].read()
-
+        for data, wnid in zip(image_bytes_list, classes):
             # Decode and transform image
             image_pil = Image.open(io.BytesIO(data)).convert("RGB")
             image_tensor = pil_to_tensor(image_pil) / 255.0
@@ -229,7 +212,7 @@ def get_download_and_process_batch_fn(
             "label": np.array(labels),
         }
 
-    return download_and_process_batch
+    return process_batch
 
 
 def create_s3_url_dataset(
@@ -238,6 +221,9 @@ def create_s3_url_dataset(
     limit_rows: Optional[int] = None,
 ) -> ray.data.Dataset:
     """Create a Ray dataset that downloads images from S3 URLs.
+
+    Uses Ray Data expressions (alpha) for efficient parallel downloads,
+    then map_batches for image decoding and transformations.
 
     Args:
         data_dir: S3 path to the image directory
@@ -257,10 +243,12 @@ def create_s3_url_dataset(
     if limit_rows is not None and limit_rows > 0:
         ds = ds.limit(limit_rows)
 
-    # Download and process images using map_batches
-    download_and_process_fn = get_download_and_process_batch_fn(
-        random_transforms=random_transforms
-    )
-    ds = ds.map_batches(download_and_process_fn)
+    # Download image bytes using Ray Data expressions (alpha)
+    # This enables optimized parallel I/O managed by Ray Data
+    ds = ds.with_column("bytes", download("path"))
+
+    # Process downloaded bytes (decode and transform)
+    process_fn = get_process_batch_fn(random_transforms=random_transforms)
+    ds = ds.map_batches(process_fn)
 
     return ds
