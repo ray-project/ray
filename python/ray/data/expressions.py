@@ -1724,7 +1724,7 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     """
     if isinstance(uri_column_name, str):
         return DownloadExpr.from_uri(uri_column_name=uri_column_name)
-    if isinstance(uri_column_name, NamedExpr):
+    if isinstance(uri_column_name, NamedExpr) and not isinstance(uri_column_name, StarExpr):
         return DownloadExpr(uri_column=uri_column_name)
     raise ValueError(
         f"Expected a 'str' or 'NamedExpr', found {uri_column_name}: {type(uri_column_name)}"
