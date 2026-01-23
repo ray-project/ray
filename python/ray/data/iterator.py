@@ -85,9 +85,21 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_rows=5, schema={id: int64})
+        shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> ds.iterator()
-        DataIterator(Dataset(num_rows=5, schema={id: int64}))
+        DataIterator(shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized))
     """
 
     @abc.abstractmethod
@@ -826,7 +838,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(num_rows=?, schema=...))
+            DataIterator(Dataset(num_rows=?, schema=Unknown schema))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -846,9 +858,6 @@ class DataIterator(abc.ABC):
             >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
             >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
-            >>> it
-            DataIterator(Concatenator
-            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 

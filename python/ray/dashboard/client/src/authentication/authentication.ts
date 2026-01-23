@@ -10,7 +10,7 @@ import { formatUrl, get } from "../service/requestHandlers";
  * Response type for authentication mode endpoint.
  */
 export type AuthenticationModeResponse = {
-  authentication_mode: "disabled" | "token" | "k8s";
+  authentication_mode: "disabled" | "token";
 };
 
 /**
