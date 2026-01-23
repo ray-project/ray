@@ -18,7 +18,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_databricks_uc_datasource():
-    MockResponse = namedtuple("Response", "raise_for_status json content")
+    MockResponse = namedtuple("Response", "raise_for_status json content status_code")
 
     MockChunk = namedtuple("Chunk", "index, row_count byte_count data")
 
@@ -109,6 +109,7 @@ def test_databricks_uc_datasource():
                         "status": {"state": "PENDING"},
                     },
                     content=b"",
+                    status_code=200,
                 )
 
             assert False, "Invalid request."
@@ -137,6 +138,7 @@ def test_databricks_uc_datasource():
                         },
                     },
                     content=None,
+                    status_code=200,
                 )
 
             if match := re.match(
@@ -162,6 +164,7 @@ def test_databricks_uc_datasource():
                         ]
                     },
                     content=None,
+                    status_code=200,
                 )
 
             if match := re.match(r"^https://test_external_link/([^/]*)$", url):
@@ -173,6 +176,7 @@ def test_databricks_uc_datasource():
                     raise_for_status=lambda: None,
                     json=lambda: None,
                     content=mock_chunks[chunk_index].data,
+                    status_code=200,
                 )
 
             assert False, "Invalid request."
@@ -553,6 +557,8 @@ def test_databricks_uc_datasource_empty_result():
         #  Mock the POST request starting the query
         def post_mock(url, *args, **kwargs):
             class Resp:
+                status_code = 200
+
                 def raise_for_status(self):
                     pass
 
@@ -564,6 +570,8 @@ def test_databricks_uc_datasource_empty_result():
         # Mock the GET request returning no chunks key to simulate empty result
         def get_mock(url, *args, **kwargs):
             class Resp:
+                status_code = 200
+
                 def raise_for_status(self):
                     pass
 
