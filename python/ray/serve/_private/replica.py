@@ -2504,4 +2504,4 @@ class UserCallableWrapper:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
         finally:
             if self._user_code_threadpool is not None:
-                self._user_code_threadpool.shutdown()
+                self._user_code_threadpool.shutdown(wait=False)
