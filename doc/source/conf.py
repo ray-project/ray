@@ -243,7 +243,6 @@ exclude_patterns = [
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
     "train/tutorials/content/**/README.md",
-    "train/tutorials/content/workload-patterns/README.ipynb",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
