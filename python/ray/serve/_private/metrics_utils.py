@@ -323,9 +323,11 @@ def time_weighted_average(
     Returns:
         Time-weighted average over the interval, or None if no data overlaps.
     """
-    # Convert None to -1.0 for Cython (C doesn't have None)
-    ws = window_start if window_start is not None else -1.0
-    we = window_end if window_end is not None else -1.0
+    # Convert None to negative infinity for Cython (C doesn't have None)
+    # Using -inf instead of a specific value like -1.0 ensures any valid float
+    # (including -1.0) can be used as a window boundary.
+    ws = window_start if window_start is not None else float("-inf")
+    we = window_end if window_end is not None else float("-inf")
     return time_weighted_average_cython(step_series, ws, we, last_window_s)
 
 
@@ -382,7 +384,7 @@ def merge_instantaneous_total(
         return active_series[0]
 
     # Cython returns list of (timestamp, value) tuples; convert to TimeStampedValue
-    merged_tuples = merge_instantaneous_total_cython(replicas_timeseries)
+    merged_tuples = merge_instantaneous_total_cython(active_series)
     return [TimeStampedValue(ts, val) for ts, val in merged_tuples]
 
 

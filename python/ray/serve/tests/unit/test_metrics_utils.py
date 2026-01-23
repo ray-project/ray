@@ -1027,8 +1027,8 @@ class TestCythonImplementationEdgeCases:
 
         Regression test: Ensures negative window_start and window_end values
         are used as actual timestamps, not incorrectly treated as the sentinel
-        value for None. The Cython implementation uses -1.0 as a sentinel for
-        None, so only exactly -1.0 should trigger the default behavior.
+        value for None. The Cython implementation uses negative infinity as the
+        sentinel for None, so any valid float (including -1.0) works as a boundary.
         """
         # Series with negative timestamps
         series = [
@@ -1060,18 +1060,60 @@ class TestCythonImplementationEdgeCases:
         # [-10.0, -5.0): value = 5.0, duration = 5.0
         assert result_both_neg == pytest.approx(5.0, rel=1e-9)
 
-        # Test that -1.0 as window_start is still treated as "use default"
-        # (this is the sentinel value behavior we want to preserve)
-        series_for_sentinel = [
+        # Test that -1.0 can now be used as an actual window boundary
+        # (previously it was used as a sentinel for None, but now we use -inf)
+        series_for_minus_one = [
+            TimeStampedValue(-2.0, 50.0),
+            TimeStampedValue(-1.0, 100.0),
+            TimeStampedValue(0.0, 150.0),
+        ]
+        # Using window_start=-1.0 should use -1.0 as actual start, not "use default"
+        result_minus_one_start = time_weighted_average(series_for_minus_one, -1.0, 0.5)
+        # [-1.0, 0.0): value = 100.0, duration = 1.0
+        # [0.0, 0.5): value = 150.0, duration = 0.5
+        expected_minus_one = (100.0 * 1.0 + 150.0 * 0.5) / 1.5
+        assert result_minus_one_start == pytest.approx(expected_minus_one, rel=1e-9)
+
+        # Also verify that None still works correctly for default behavior
+        series_for_none = [
             TimeStampedValue(2.0, 100.0),
             TimeStampedValue(3.0, 200.0),
         ]
-        result_sentinel_start = time_weighted_average(series_for_sentinel, None, 4.0)
-        # With None (sentinel -1.0), should use first timestamp (2.0) as start
+        result_none_start = time_weighted_average(series_for_none, None, 4.0)
+        # With None, should use first timestamp (2.0) as start
         # [2.0, 3.0): value = 100.0, duration = 1.0
         # [3.0, 4.0): value = 200.0, duration = 1.0
-        expected_sentinel = (100.0 * 1.0 + 200.0 * 1.0) / 2.0
-        assert result_sentinel_start == pytest.approx(expected_sentinel, rel=1e-9)
+        expected_none = (100.0 * 1.0 + 200.0 * 1.0) / 2.0
+        assert result_none_start == pytest.approx(expected_none, rel=1e-9)
+
+    def test_time_weighted_average_minus_one_boundary(self):
+        """Regression test: -1.0 can be used as an actual window boundary.
+
+        Previously, the Cython implementation used -1.0 as a sentinel value for
+        None, which made it impossible to use -1.0 as an actual window boundary.
+        This was fixed by using negative infinity (-inf) as the sentinel instead.
+        """
+        # Test -1.0 as window_start
+        series = [
+            TimeStampedValue(-2.0, 10.0),
+            TimeStampedValue(-1.0, 20.0),
+            TimeStampedValue(0.0, 30.0),
+            TimeStampedValue(1.0, 40.0),
+        ]
+        result = time_weighted_average(series, -1.0, 1.0)
+        # [-1.0, 0.0): value = 20.0, duration = 1.0
+        # [0.0, 1.0): value = 30.0, duration = 1.0
+        expected = (20.0 * 1.0 + 30.0 * 1.0) / 2.0
+        assert result == pytest.approx(expected, rel=1e-9)
+
+        # Test -1.0 as window_end
+        result_end = time_weighted_average(series, -2.0, -1.0)
+        # [-2.0, -1.0): value = 10.0, duration = 1.0
+        assert result_end == pytest.approx(10.0, rel=1e-9)
+
+        # Test both boundaries as -1.0 (degenerate zero-width window)
+        result_both = time_weighted_average(series, -1.0, -1.0)
+        assert result_both is None  # Zero-width window should return None
 
     def test_time_weighted_average_with_long_series(self):
         """Test time_weighted_average with a very long series (stress test)."""
