@@ -153,6 +153,25 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_py313
+  python: "3.13"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
 
 #######################
 # Cluster scaling tests
@@ -4753,6 +4772,55 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: ray_train_workloads  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: train
+  working_dir: //doc/source/train/tutorials  # use // from repo root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses the default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: tune_pytorch_asha  # do not use dashes
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: tune
+  working_dir: //doc/source/tune/examples/tune_pytorch_asha
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_tune_pytorch_asha.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml
 
 - name: llm_batch_inference_text  # do not use dashes (regex sensitive)
   frequency: weekly
