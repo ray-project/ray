@@ -29,6 +29,9 @@ from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+)
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
@@ -2747,6 +2750,7 @@ def read_databricks_tables(
     query: Optional[str] = None,
     catalog: Optional[str] = None,
     schema: Optional[str] = None,
+    credential_provider: Optional[DatabricksCredentialProvider] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2771,12 +2775,19 @@ def read_databricks_tables(
 
         export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
+    Alternatively, you can provide a custom credential provider for more advanced
+    authentication scenarios (e.g., token refresh, dynamic credentials). Create a
+    subclass of ``DatabricksCredentialProvider`` and pass it via the
+    ``credential_provider`` parameter.
+
     .. note::
 
         This function is built on the
         `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
 
     Examples:
+
+        Read using environment variables:
 
         .. testcode::
             :skipif: True
@@ -2790,6 +2801,33 @@ def read_databricks_tables(
                 query='select id from table_1 limit 750000',
             )
 
+        Read using a custom credential provider:
+
+        .. testcode::
+            :skipif: True
+
+            from ray.data._internal.datasource.databricks_credentials import (
+                DatabricksCredentialProvider,
+            )
+
+            class MyCredentialProvider(DatabricksCredentialProvider):
+                def get_token(self) -> str:
+                    return "my-token"  # Fetch token from custom source
+
+                def get_host(self) -> str:
+                    return "my-host.databricks.com"
+
+                def invalidate(self) -> None:
+                    pass  # Clear cached credentials if applicable
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='...',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+                credential_provider=MyCredentialProvider(),
+            )
+
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
             executed on this warehouse.
@@ -2800,6 +2838,11 @@ def read_databricks_tables(
             you can't set ``table_name`` argument.
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            If provided, takes precedence over environment variables. The provider's
+            ``get_host()`` is checked before ``DATABRICKS_HOST`` env var.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2823,43 +2866,14 @@ def read_databricks_tables(
         DatabricksUCDatasource,
     )
 
-    def get_dbutils():
-        no_dbutils_error = RuntimeError("No dbutils module found.")
-        try:
-            import IPython
+    # Resolve credential provider (single source of truth for token and host)
+    from ray.data._internal.datasource.databricks_credentials import (
+        resolve_credential_provider,
+    )
 
-            ip_shell = IPython.get_ipython()
-            if ip_shell is None:
-                raise no_dbutils_error
-            return ip_shell.ns_table["user_global"]["dbutils"]
-        except ImportError:
-            raise no_dbutils_error
-        except KeyError:
-            raise no_dbutils_error
-
-    token = os.environ.get("DATABRICKS_TOKEN")
-
-    if not token:
-        raise ValueError(
-            "Please set environment variable 'DATABRICKS_TOKEN' to "
-            "databricks workspace access token."
-        )
-
-    host = os.environ.get("DATABRICKS_HOST")
-    if not host:
-        from ray.util.spark.utils import is_in_databricks_runtime
-
-        if is_in_databricks_runtime():
-            ctx = (
-                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
-            )
-            host = ctx.tags().get("browserHostName").get()
-        else:
-            raise ValueError(
-                "You are not in databricks runtime, please set environment variable "
-                "'DATABRICKS_HOST' to databricks workspace URL"
-                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
-            )
+    resolved_provider = resolve_credential_provider(
+        credential_provider=credential_provider
+    )
 
     if not catalog:
         from ray.util.spark.utils import get_spark_session
@@ -2881,12 +2895,11 @@ def read_databricks_tables(
         raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
-        host=host,
-        token=token,
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
         query=query,
+        credential_provider=resolved_provider,
     )
     return read_datasource(
         datasource=datasource,
