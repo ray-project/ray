@@ -40,6 +40,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
                    size_t max_buffer_size,
                    std::string_view metric_source,
                    ray::observability::MetricInterface &dropped_events_counter,
+                   ray::observability::MetricInterface &events_sent_counter,
+                   ray::observability::MetricInterface &events_failed_to_send_counter,
                    const NodeID &node_id);
 
   // Start exporting events to the event aggregator by periodically sending events to
@@ -67,6 +69,10 @@ class RayEventRecorder : public RayEventRecorderInterface {
   boost::circular_buffer<std::unique_ptr<RayEventInterface>> buffer_
       ABSL_GUARDED_BY(mutex_);
   ray::observability::MetricInterface &dropped_events_counter_;
+  // Metric for successfully sent events
+  ray::observability::MetricInterface &events_sent_counter_;
+  // Metric for failed events (after retries exhausted)
+  ray::observability::MetricInterface &events_failed_to_send_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
   // Node ID to be set on all events

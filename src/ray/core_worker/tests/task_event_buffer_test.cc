@@ -51,11 +51,16 @@ namespace worker {
 
 class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
  public:
+  void AddEvents(
+      rpc::events::AddEventsRequest &&request,
+      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) override {
+    AddEventsMock(request, callback);
+  }
+
   MOCK_METHOD(void,
-              AddEvents,
+              AddEventsMock,
               (const rpc::events::AddEventsRequest &request,
-               const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
-              (override));
+               const rpc::ClientCallback<rpc::events::AddEventsReply> &callback));
 };
 
 class MockEventAggregatorAddEvents
@@ -481,7 +486,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _))
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
@@ -490,7 +495,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
 
   task_event_buffer_->FlushEvents(false);
@@ -541,7 +546,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
     rpc::events::AddEventsReply reply_2;
     Status status_2 = Status::OK();
 
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _))
         .Times(2)
         .WillOnce(MakeAction(
             new MockEventAggregatorAddEvents(std::move(status_1), std::move(reply_1))))
@@ -610,9 +615,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestBackPressure) {
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(1);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(1);
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
 
   task_event_buffer_->FlushEvents(false);
@@ -648,9 +653,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestForcedFlush) {
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(2);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(2);
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
 
   auto task_id_1 = RandomTaskId();
@@ -696,7 +701,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _))
         .Times(num_events / batch_size)
         .WillRepeatedly(DoAll(
             Invoke([&batch_size](
@@ -707,7 +712,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
 
   for (int i = 0; i * batch_size < num_events; i++) {
@@ -803,7 +808,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _))
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
@@ -812,7 +817,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
   task_event_buffer_->FlushEvents(false);
 
@@ -1129,7 +1134,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   if (to_aggregator) {
     rpc::events::AddEventsReply reply;
     Status status = Status::OK();
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _))
         .WillOnce(DoAll(
             Invoke([&](const rpc::events::AddEventsRequest &request,
                        const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
@@ -1138,7 +1143,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
             MakeAction(
                 new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
   } else {
-    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+    EXPECT_CALL(*event_aggregator_client, AddEventsMock(_, _)).Times(0);
   }
 
   // Flush events

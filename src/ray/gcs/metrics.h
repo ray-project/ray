@@ -34,6 +34,8 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &task_events_dropped_gauge;
   ray::observability::MetricInterface &task_events_stored_gauge;
   ray::observability::MetricInterface &event_recorder_dropped_events_counter;
+  ray::observability::MetricInterface &event_recorder_events_sent_counter;
+  ray::observability::MetricInterface &event_recorder_events_failed_to_send_counter;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
   ray::observability::MetricInterface &storage_operation_count_counter;
   ray::observability::MetricInterface &resource_usage_gauge;
