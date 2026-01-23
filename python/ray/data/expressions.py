@@ -1190,7 +1190,7 @@ class UDFExpr(Expr):
             return self._data_type
         # Infer data type from argument types
         if not self._is_resolved():
-            raise ValueError("Can't infer data type for unresolved udf expression")
+            raise ValueError("Cannnot infer data type for unresolved udf expression")
         args_dtypes: List[DataType] = [arg.data_type for arg in self.args]
         kwargs_dtypes: Dict[str, DataType] = {
             name: kwarg.data_type for name, kwarg in self.kwargs.items()
@@ -1476,9 +1476,12 @@ def pyarrow_udf(return_dtype: DataType | None = None) -> Callable[..., UDFExpr]:
             # If the return type is None, we will infer it by
             # 1). Creating an *empty* null list with that type
             # 2). Running the compute function and use the resulting type.
-            def _infer_dtype(input_dtype: DataType):
-                dummy = pyarrow.array([], input_dtype.to_arrow_dtype())
-                return DataType.from_arrow(func(dummy).type)
+            def _infer_dtype(*input_dtype: DataType):
+                dummy_arrs = [
+                    pyarrow.array([], type=dtype.to_arrow_dtype())
+                    for dtype in input_dtype
+                ]
+                return DataType.from_arrow(func(*dummy_arrs).type)
 
             return_dtype = _infer_dtype
 
@@ -1721,7 +1724,11 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     """
     if isinstance(uri_column_name, str):
         return DownloadExpr.from_uri(uri_column_name=uri_column_name)
-    return DownloadExpr(uri_column=uri_column_name)
+    if isinstance(uri_column_name, NamedExpr):
+        return DownloadExpr(uri_column=uri_column_name)
+    raise ValueError(
+        f"Expected a 'str' or 'NamedExpr', found {uri_column_name}: {type(uri_column_name)}"
+    )
 
 
 # ──────────────────────────────────────
