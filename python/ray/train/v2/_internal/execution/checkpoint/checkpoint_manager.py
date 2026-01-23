@@ -282,7 +282,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
             raise CheckpointManagerInitializationError(repr(e)) from e
-        self._assert_checkpoints_exist()
 
         # Do this so we are using the same checkpoint and trainingresult objects.
         checkpoint_dir_name_to_checkpoint_result = {}
@@ -295,7 +294,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 training_result_state.checkpoint_dir_name
             ] = training_result
             self._checkpoint_results.append(training_result)
+        self._assert_checkpoints_exist()
 
+        assert len(self._checkpoint_results) == len(
+            manager_snapshot.checkpoint_report_indices
+        )
         self._checkpoint_to_report_index = {
             checkpoint_result.checkpoint: report_index
             for checkpoint_result, report_index in zip(
@@ -311,6 +314,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             else None
         )
 
+        assert len(manager_snapshot.pending_training_results) == len(
+            manager_snapshot.pending_validation_specs
+        )
         for training_result_state, validation_spec in zip(
             manager_snapshot.pending_training_results,
             manager_snapshot.pending_validation_specs,
