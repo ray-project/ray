@@ -35,14 +35,14 @@ bool AuthenticationTokenValidator::ValidateToken(
     const std::shared_ptr<const AuthenticationToken> &expected_token,
     std::string_view provided_metadata) {
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
-    RAY_CHECK(expected_token && !expected_token->empty())
-        << "Ray token authentication is enabled but expected token is empty";
+    if (!IsK8sTokenAuthEnabled()) {
+      RAY_CHECK(expected_token && !expected_token->empty())
+          << "Ray token authentication is enabled but expected token is empty";
 
-    // Use constant-time comparison directly on metadata without constructing object
-    return expected_token->CompareWithMetadata(provided_metadata);
-  }
+      // Use constant-time comparison directly on metadata without constructing object
+      return expected_token->CompareWithMetadata(provided_metadata);
+    }
 
-  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
     std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
     if (!k8s::k8s_client_initialized) {
       RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
