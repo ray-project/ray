@@ -34,9 +34,11 @@ cdef extern from "ray/util/memory.h" namespace "ray" nogil:
 
 cdef class _MemcopyThreadPool:
     cdef ParallelMemcopyThreadPool *_pool
+    cdef int _num_threads
 
     def __cinit__(self, int num_threads):
-        self._pool = CreateParallelMemcopyThreadPool(num_threads)
+        self._pool = NULL
+        self._num_threads = num_threads
 
     def __dealloc__(self):
         if self._pool != NULL:
@@ -44,9 +46,11 @@ cdef class _MemcopyThreadPool:
             self._pool = NULL
 
     def __bool__(self):
-        return self._pool != NULL
+        return self._num_threads > 1
 
     cdef ParallelMemcopyThreadPool* get(self):
+        if self._pool == NULL and self._num_threads > 1:
+            self._pool = CreateParallelMemcopyThreadPool(self._num_threads)
         return self._pool
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
