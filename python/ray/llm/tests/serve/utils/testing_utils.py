@@ -10,8 +10,10 @@ from typing import List, Optional, Union
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionResponse,
+    DetokenizeResponse,
     EmbeddingResponse,
     ScoreResponse,
+    TokenizeResponse,
     TranscriptionResponse,
 )
 
@@ -109,6 +111,40 @@ class LLMResponseValidator:
             assert score_data.object == "score"
             assert isinstance(score_data.score, float)
             assert score_data.index == i  # Index should match position in list
+
+    @staticmethod
+    def validate_tokenize_response(
+        response: TokenizeResponse,
+        expected_prompt: str,
+        return_token_strs: bool = False,
+    ):
+        """Validate tokenize responses."""
+        assert isinstance(response, TokenizeResponse)
+        assert response.count == len(expected_prompt)
+        assert response.max_model_len > 0
+        assert isinstance(response.tokens, list)
+        assert len(response.tokens) == len(expected_prompt)
+
+        # Validate tokens are the character codes of the prompt
+        expected_tokens = [ord(c) for c in expected_prompt]
+        assert response.tokens == expected_tokens
+
+        # Validate token strings if requested
+        if return_token_strs:
+            assert response.token_strs is not None
+            assert len(response.token_strs) == len(expected_prompt)
+            assert response.token_strs == list(expected_prompt)
+        else:
+            assert response.token_strs is None
+
+    @staticmethod
+    def validate_detokenize_response(
+        response: DetokenizeResponse,
+        expected_text: str,
+    ):
+        """Validate detokenize responses."""
+        assert isinstance(response, DetokenizeResponse)
+        assert response.prompt == expected_text
 
     @staticmethod
     def validate_transcription_response(

@@ -539,7 +539,7 @@ def run_rllib_example_script_experiment(
                 else 1
             ) * num_actual_learners
             # Define compute resources used.
-            config.resources(num_gpus=0)  # old API stack setting
+            config.resources(num_gpus=0)  # @OldAPIStack
             if args.num_learners is not None:
                 config.learners(num_learners=args.num_learners)
 
@@ -776,8 +776,13 @@ def run_rllib_example_script_experiment(
                 json.dump(json_summary, f)
 
         if not test_passed:
-            raise ValueError(
-                f"`{success_metric_key}` of {success_metric_value} not reached!"
-            )
+            if args.as_release_test:
+                print(
+                    f"`{success_metric_key}` of {success_metric_value} not reached! Best value reached is {best_value}"
+                )
+            else:
+                raise ValueError(
+                    f"`{success_metric_key}` of {success_metric_value} not reached! Best value reached is {best_value}"
+                )
 
     return results

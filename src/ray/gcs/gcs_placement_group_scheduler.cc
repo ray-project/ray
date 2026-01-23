@@ -759,21 +759,6 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     if (IsPlacementGroupWildcardResource(entry.first)) {
       wildcard_resources[entry.first] = capacity - entry.second;
     } else {
-      if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-        auto available_amount =
-            cluster_resource_manager.GetNodeResources(node_id).available.Get(resource_id);
-        if (available_amount != capacity) {
-          RAY_LOG(WARNING)
-              << "The resource " << entry.first
-              << " now is still in use when removing bundle " << bundle_spec->Index()
-              << " from placement group: " << bundle_spec->PlacementGroupId()
-              << ", maybe some workers depending on this bundle have not released the "
-                 "resource yet."
-              << " We will try it later.";
-          bundle_resource_ids.clear();
-          break;
-        }
-      }
       bundle_resource_ids.emplace_back(resource_id);
     }
   }

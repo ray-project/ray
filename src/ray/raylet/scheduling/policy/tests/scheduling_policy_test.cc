@@ -39,6 +39,16 @@ NodeResources CreateNodeResources(double available_cpu,
   return resources;
 }
 
+// Helper to create resources with labels
+NodeResources CreateNodeResourcesWithLabels(
+    double available_cpu,
+    double total_cpu,
+    const absl::flat_hash_map<std::string, std::string> &labels) {
+  NodeResources resources = CreateNodeResources(available_cpu, total_cpu, 0, 0, 0, 0);
+  resources.labels = labels;
+  return resources;
+}
+
 class SchedulingPolicyTest : public ::testing::Test {
  public:
   scheduling::NodeID local_node = scheduling::NodeID(0);
@@ -553,6 +563,48 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  nodes.emplace(remote_node,
+                CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-west"}}));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // Request 2 bundles requiring "zone: us-east", should succeed on local_node.
+  ResourceRequest req_east = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req_east.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
+
+  std::vector<const ResourceRequest *> req_list_success;
+  req_list_success.push_back(&req_east);
+  req_list_success.push_back(&req_east);
+
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result_success = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                            *cluster_resource_manager, [](auto) { return true; })
+                            .Schedule(req_list_success, strict_pack_op);
+
+  ASSERT_TRUE(result_success.status.IsSuccess());
+  ASSERT_EQ(result_success.selected_nodes.size(), 2);
+  ASSERT_EQ(result_success.selected_nodes[0], local_node);
+  ASSERT_EQ(result_success.selected_nodes[1], local_node);
+
+  // No node has both labels in the label selector, so this should be infeasible.
+  ResourceRequest req_west = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req_west.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-west"}}));
+
+  std::vector<const ResourceRequest *> req_list_fail;
+  req_list_fail.push_back(&req_east);
+  req_list_fail.push_back(&req_west);
+
+  auto result_fail = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                         *cluster_resource_manager, [](auto) { return true; })
+                         .Schedule(req_list_fail, strict_pack_op);
+
+  ASSERT_TRUE(result_fail.status.IsInfeasible());
 }
 
 int main(int argc, char **argv) {

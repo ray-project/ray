@@ -250,8 +250,8 @@ In some cases you may be required to choose an image for the panel. Images are l
 ## Creating a notebook example
 
 To add a new executable example to the Ray documentation, you can start from our
-[MyST notebook template](https://github.com/ray-project/ray/tree/master/doc/source/_templates/template.md) or
-[Jupyter notebook template](https://github.com/ray-project/ray/tree/master/doc/source/_templates/template.ipynb).
+[MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or
+[Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb).
 You could also simply download the document you're reading right now (click on the respective download button at the
 top of this page to get the `.ipynb` file) and start modifying it.
 All the example notebooks in Ray Tune get automatically tested by our CI system, provided you place them in the

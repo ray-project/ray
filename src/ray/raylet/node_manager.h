@@ -43,12 +43,13 @@
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
-#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -56,7 +57,6 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
-#include "ray/util/throttler.h"
 
 namespace ray::raylet {
 

@@ -73,7 +73,7 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_group_state = WorkerGroupState(
             start_time=time_monotonic(),
             workers=[MagicMock() for i in range(num_workers)],
-            placement_group=MagicMock(),
+            placement_group_handle=MagicMock(),
             sync_actor=None,
         )
 

@@ -24,11 +24,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/task_execution/actor_scheduling_queue.h"
+#include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 #include "ray/core_worker/task_execution/fiber.h"
-#include "ray/core_worker/task_execution/normal_scheduling_queue.h"
-#include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/task_execution/normal_task_execution_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
@@ -53,36 +53,37 @@ class TaskReceiver {
       bool *is_retryable_error,
       std::string *application_error)>;
 
-  using OnActorCreationTaskDone = std::function<Status()>;
-
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
-               DependencyWaiter &dependency_waiter,
-               std::function<std::function<void()>()> initialize_thread_callback,
-               OnActorCreationTaskDone actor_creation_task_done)
+               ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
+               std::function<std::function<void()>()> initialize_thread_callback)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
-        waiter_(dependency_waiter),
+        waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        actor_creation_task_done_(std::move(actor_creation_task_done)),
+        normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
-  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
-  /// the task and then start scheduling the requests to begin the execution. If it's a
-  /// non-actor request, this function will just enqueue the task.
+  /// Enqueue a task for execution that was received via `PushTask`.
+  ///
+  /// For actor tasks: the task will be enqueued and requests will be scheduled to begin
+  /// execution if possible.
+  ///
+  /// For normal tasks: the task will only be enqueued and the caller must call
+  /// `RunNormalTasksFromQueue` separately.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(rpc::PushTaskRequest request,
-                  rpc::PushTaskReply *reply,
-                  rpc::SendReplyCallback send_reply_callback);
+  /// \param[in] send_reply_callback The reply callback.
+  void QueueTaskForExecution(rpc::PushTaskRequest request,
+                             rpc::PushTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
 
-  /// Pop tasks from the queue and execute them sequentially
-  void RunNormalTasksFromQueue();
+  /// Execute as many tasks from the queue as are available.
+  void ExecuteQueuedNormalTasks();
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
@@ -105,6 +106,7 @@ class TaskReceiver {
  private:
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
+
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,
@@ -120,22 +122,19 @@ class TaskReceiver {
   worker::TaskEventBuffer &task_event_buffer_;
 
   /// Shared waiter for dependencies required by incoming tasks.
-  DependencyWaiter &waiter_;
+  ActorTaskExecutionArgWaiter &waiter_;
 
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
 
-  /// The callback function to be invoked when finishing a task.
-  OnActorCreationTaskDone actor_creation_task_done_;
-
-  /// Queue of pending requests per actor handle.
+  /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
+  /// submitted the task.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
-      actor_scheduling_queues_;
+  absl::flat_hash_map<WorkerID, std::unique_ptr<ActorTaskExecutionQueueInterface>>
+      actor_task_execution_queues_;
 
-  // Queue of pending normal (non-actor) tasks.
-  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
-      std::make_unique<NormalSchedulingQueue>();
+  // Queue of normal (non-actor) tasks waiting to execute.
+  std::unique_ptr<NormalTaskExecutionQueue> normal_task_execution_queue_;
 
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.

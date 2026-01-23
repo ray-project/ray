@@ -62,10 +62,8 @@ vision_processor_config = vLLMEngineProcessorConfig(
         trust_remote_code=True,
         limit_mm_per_prompt={"image": 1},
     ),
-    # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
     runtime_env=dict(
         env_vars=dict(
-            # HF_TOKEN=HF_TOKEN, # Token not needed for public models
             VLLM_USE_V1="1",
         ),
     ),
@@ -186,9 +184,6 @@ def create_vlm_config():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 1},
         ),
-        runtime_env={
-            # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
-        },
         batch_size=1,
         accelerator_type="L4",
         concurrency=1,

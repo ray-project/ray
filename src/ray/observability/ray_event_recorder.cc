@@ -42,8 +42,9 @@ void RayEventRecorder::StartExportingEvents() {
     RAY_LOG(INFO) << "Ray event recording is disabled. Skipping start exporting events.";
     return;
   }
-  RAY_CHECK(!exporting_started_)
-      << "RayEventRecorder::StartExportingEvents() should be called only once.";
+  if (exporting_started_) {
+    return;
+  }
   exporting_started_ = true;
   periodical_runner_->RunFnPeriodically(
       [this]() { ExportEvents(); },

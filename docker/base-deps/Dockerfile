@@ -23,9 +23,9 @@ ENV LANG=C.UTF-8
 ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin"
 ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.9
-
-ARG PYTHON_DEPSET
+ARG PYTHON_VERSION=3.10
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
+ARG PYTHON_DEPSET="python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock"
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -69,7 +69,7 @@ USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]

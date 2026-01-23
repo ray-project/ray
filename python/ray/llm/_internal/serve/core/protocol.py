@@ -19,7 +19,11 @@ if TYPE_CHECKING:
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
+        DetokenizeRequest,
+        DetokenizeResponse,
         ErrorResponse,
+        TokenizeRequest,
+        TokenizeResponse,
     )
 
 
@@ -165,6 +169,38 @@ class LLMServerProtocol(DeploymentProtocol):
 
         Returns:
             True if the engine is paused, False otherwise.
+        """
+
+    async def tokenize(
+        self,
+        request: "TokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["TokenizeResponse", "ErrorResponse"], None]:
+        """Tokenize the input text.
+
+        Args:
+            request: The tokenize request containing the text to tokenize.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator yielding TokenizeResponse or ErrorResponse objects.
+        """
+
+    async def detokenize(
+        self,
+        request: "DetokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["DetokenizeResponse", "ErrorResponse"], None]:
+        """Detokenize the input token IDs.
+
+        Args:
+            request: The detokenize request containing the token IDs.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator yielding DetokenizeResponse or ErrorResponse objects.
         """
 
     # TODO (Kourosh): This does not belong here.

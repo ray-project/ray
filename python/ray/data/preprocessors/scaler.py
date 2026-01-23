@@ -2,11 +2,15 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
+from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.version_support import SerializablePreprocessor
-from ray.util.annotations import PublicAPI
+from ray.data.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -118,6 +122,48 @@ class StandardScaler(SerializablePreprocessorBase):
 
         df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
+
+    @staticmethod
+    def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
+        if std == 0:
+            std = 1
+
+        return pc.divide(
+            pc.subtract(column, pa.scalar(float(mean))), pa.scalar(float(std))
+        )
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations."""
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j
+        input_columns = [table.column(input_col) for input_col in self.columns]
+
+        for input_col, output_col, column in zip(
+            self.columns, self.output_columns, input_columns
+        ):
+            s_mean = self.stats_[f"mean({input_col})"]
+            s_std = self.stats_[f"std({input_col})"]
+
+            if s_std is None or s_mean is None:
+                # Return column filled with nulls, preserving original column type
+                null_array = pa.nulls(len(column), type=column.type)
+                table = BlockAccessor.for_block(table).upsert_column(
+                    output_col, null_array
+                )
+                continue
+
+            scaled_column = self._scale_column(column, s_mean, s_std)
+
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, scaled_column
+            )
+
+        return table
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {

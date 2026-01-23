@@ -120,3 +120,67 @@ workerGroupSpecs:
 5\. Apply your KubeRay config.
 
 Your KubeRay application can use the `netrc` file to access private remote URIs, even when they don't contain credentials.
+
+## Using Bearer Tokens for HTTPS Authentication
+
+As an alternative to using a `netrc` file, you can authenticate HTTPS remote URIs using bearer tokens. This is particularly useful when working with APIs that require OAuth2 or similar token-based authentication.
+
+Set the `RAY_RUNTIME_ENV_BEARER_TOKEN` environment variable with your bearer token:
+
+```bash
+export RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
+```
+
+Ray will automatically include this token in the `Authorization` header when downloading HTTPS URIs in your `runtime_env`:
+
+```python
+runtime_env = {"working_dir": "https://example.com/private/repo.zip"}
+```
+
+The bearer token will be sent as an `Authorization: Bearer your_bearer_token_here` header with the HTTPS request.
+
+### Running on KubeRay: Bearer Tokens with Secrets
+
+For KubeRay deployments, you can securely provide the bearer token using Kubernetes secrets:
+
+1\. Create a Kubernetes secret containing your bearer token:
+
+```bash
+kubectl create secret generic bearer-token-secret \
+  --from-literal=RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
+```
+
+2\. Expose the secret to your KubeRay application using environment variables. Include the following YAML in your KubeRay config:
+
+```yaml
+headGroupSpec:
+    ...
+    containers:
+        - name: ...
+          image: rayproject/ray:latest
+          ...
+          env:
+            - name: RAY_RUNTIME_ENV_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bearer-token-secret
+                  key: RAY_RUNTIME_ENV_BEARER_TOKEN
+
+workerGroupSpecs:
+    ...
+    containers:
+        - name: ...
+          image: rayproject/ray:latest
+          ...
+          env:
+            - name: RAY_RUNTIME_ENV_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bearer-token-secret
+                  key: RAY_RUNTIME_ENV_BEARER_TOKEN
+```
+
+3\. Apply your KubeRay config.
+
+Your KubeRay application will use the bearer token to authenticate HTTPS requests when downloading remote URIs in the `runtime_env`.
+

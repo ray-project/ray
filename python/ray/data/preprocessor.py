@@ -126,6 +126,7 @@ class Preprocessor(abc.ABC):
             )
 
         self.stat_computation_plan.reset()
+        self.stats_ = {}
         fitted_ds = self._fit(ds)._fit_execute(ds)
         self._fitted = True
         return fitted_ds

@@ -48,6 +48,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
@@ -1821,31 +1822,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   }
 
   auto send_reply_callback_wrapper =
-      [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
+      [this, is_actor_creation_task, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
         if (reply->rejected() && is_actor_creation_task) {
           auto resources_data = reply->mutable_resources_data();
           resources_data->set_node_id(self_node_id_.Binary());
-          // If resources are not enough due to normal tasks' preemption
-          // for GCS based actor scheduling, return
-          // with normal task resource usages so GCS can fast update
-          // its resource view of this raylet.
-          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            auto normal_task_resources = local_lease_manager_.CalcNormalTaskResources();
-            RAY_LOG(DEBUG).WithField(actor_id)
-                << "Reject leasing as the raylet has no enough resources. "
-                   "normal_task_resources = "
-                << normal_task_resources.DebugString() << ", local_resource_view = "
-                << cluster_resource_scheduler_.GetClusterResourceManager()
-                       .GetNodeResourceViewString(
-                           scheduling::NodeID(self_node_id_.Binary()));
-            resources_data->set_resources_normal_task_changed(true);
-            auto resource_map = normal_task_resources.GetResourceMap();
-            resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                                    resource_map.end());
-            resources_data->set_resources_normal_task_timestamp(
-                absl::GetCurrentTimeNanos());
-          }
         }
         send_reply_callback(status, std::move(success), std::move(failure));
       };

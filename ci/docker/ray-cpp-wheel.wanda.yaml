@@ -1,0 +1,28 @@
+# Python-agnostic ray-cpp wheel.
+# Uses upstream images from one Python version but produces a py3-none wheel
+# that works with any Python 3. PYTHON_VERSION is set at buildkite level.
+name: "ray-cpp-wheel$ARCH_SUFFIX"
+froms:
+  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
+  - "cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"       # C++ binaries (ray_pkg.zip)
+  - "cr.ray.io/rayproject/ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX"   # C++ headers/libs (ray_cpp_pkg.zip)
+  - "cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX"                   # Java JARs
+  - "cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX"                    # Dashboard
+dockerfile: ci/docker/ray-cpp-wheel.Dockerfile
+srcs:
+  - pyproject.toml
+  - README.rst
+  - ci/build/build-ray-cpp-wheel.sh
+  - python/setup.py
+  - python/LICENSE.txt
+  - python/MANIFEST.in
+  - python/ray/_version.py
+build_args:
+  - MANYLINUX_VERSION
+  - HOSTTYPE
+  - BUILDKITE_COMMIT
+  - ARCH_SUFFIX
+  - RAY_CORE_IMAGE=cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_CPP_CORE_IMAGE=cr.ray.io/rayproject/ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_JAVA_IMAGE=cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX
+  - RAY_DASHBOARD_IMAGE=cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX

@@ -59,8 +59,6 @@ print(ray.get(ref1))
 
 
 # __nixl_limitations_start__
-from ray.exceptions import ActorDiedError
-
 @ray.remote(num_gpus=1)
 class Actor:
     def __init__(self):

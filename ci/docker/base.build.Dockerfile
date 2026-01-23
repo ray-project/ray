@@ -18,3 +18,6 @@ fi
 BUILD=1 ./ci/ci.sh init
 
 EOF
+
+ENV CC=clang
+ENV CXX=clang++-12

@@ -47,7 +47,7 @@ Data loading
 ^^^^^^^^^^^^
 
 .. note::
-    Find the latest version of the code at `dataset.py <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/dataset.py>`_
+    Find the latest version of the code at `dataset.py <https://github.com/ray-project/ray/blob/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/dataset.py>`_
 
     The latest version might differ slightly from the code presented here.
 
@@ -93,7 +93,7 @@ Distributed training
 
 
 .. note::
-    Find the latest version of the code at `train.py <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_
+    Find the latest version of the code at `train.py <https://github.com/ray-project/ray/blob/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_
 
     The latest version might differ slightly from the code presented here.
 
@@ -109,7 +109,7 @@ Remember that you want to do data-parallel training for all the models.
 #. Iterate over the dataset with `train_dataset.iter_torch_batches()``
 #. Report results to Ray Train with `session.report(results)``
 
-The code is compacted for brevity. The `full code <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_ is more thoroughly annotated.
+The code is compacted for brevity. The `full code <https://github.com/ray-project/ray/blob/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_ is more thoroughly annotated.
 
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/train.py

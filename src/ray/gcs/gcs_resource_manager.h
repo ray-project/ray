@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/ray_syncer/ray_syncer.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
@@ -56,12 +55,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
-  explicit GcsResourceManager(
-      instrumented_io_context &io_context,
-      ClusterResourceManager &cluster_resource_manager,
-      GcsNodeManager &gcs_node_manager,
-      NodeID local_node_id,
-      raylet::ClusterLeaseManager *cluster_lease_manager = nullptr);
+  explicit GcsResourceManager(instrumented_io_context &io_context,
+                              ClusterResourceManager &cluster_resource_manager,
+                              GcsNodeManager &gcs_node_manager,
+                              NodeID local_node_id);
 
   virtual ~GcsResourceManager() = default;
 
@@ -103,6 +100,15 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  /// Set the draining state of a node.
+  ///
+  /// \param node_id The ID of the node.
+  /// \param is_draining Whether the node is draining.
+  /// \param draining_deadline_timestamp_ms The deadline for the drain operation.
+  void SetNodeDraining(const NodeID &node_id,
+                       bool is_draining,
+                       int64_t draining_deadline_timestamp_ms);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -189,7 +195,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
-  raylet::ClusterLeaseManager *cluster_lease_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
 };

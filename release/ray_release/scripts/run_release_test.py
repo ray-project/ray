@@ -5,7 +5,6 @@ from typing import Optional, Tuple
 
 import click
 
-from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
     RELEASE_TEST_CONFIG_FILES,
@@ -71,12 +70,6 @@ from ray_release.result import Result
     help="Root of the test definition files. Default is the root of the repo.",
 )
 @click.option(
-    "--log-streaming-limit",
-    default=LAST_LOGS_LENGTH,
-    type=int,
-    help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
-)
-@click.option(
     "--image",
     default=None,
     type=str,
@@ -90,7 +83,6 @@ def main(
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ):
     global_config_file = os.path.join(
@@ -146,7 +138,6 @@ def main(
             reporters=reporters,
             smoke_test=smoke_test,
             test_definition_root=test_definition_root,
-            log_streaming_limit=log_streaming_limit,
             image=image,
         )
         return_code = result.return_code

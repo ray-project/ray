@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -41,6 +41,11 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
+    DefaultPlacementGroupHandle,
+    PlacementGroupHandle,
+    SlicePlacementGroupHandle,
+)
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -64,11 +69,7 @@ from ray.train.v2._internal.util import (
 )
 from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
-from ray.util.placement_group import (
-    PlacementGroup,
-    placement_group,
-    remove_placement_group,
-)
+from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -278,7 +279,7 @@ class WorkerGroup(BaseWorkerGroup):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            pg, slice_pg = self._create_placement_group(
+            pg_handle = self._create_placement_group(
                 self._train_run_context.scaling_config, worker_group_context
             )
 
@@ -294,20 +295,15 @@ class WorkerGroup(BaseWorkerGroup):
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
             try:
-                ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
+                ray.get(pg_handle.ready(), timeout=self._worker_group_start_timeout_s)
             except GetTimeoutError as timeout_exc:
-                remove_placement_group(pg)
-                if slice_pg:
-                    slice_pg.shutdown()
+                pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
-            worker_group_state_builder.with_placement_group(pg)
-
-            if slice_pg:
-                worker_group_state_builder.with_slice_placement_group(slice_pg)
+            worker_group_state_builder.with_placement_group_handle(pg_handle)
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
@@ -323,7 +319,7 @@ class WorkerGroup(BaseWorkerGroup):
 
             workers = self._create_workers(
                 worker_group_context.num_workers,
-                pg,
+                pg_handle.placement_group,
                 worker_group_context.resources_per_worker,
             )
             worker_group_state_builder.with_workers(workers)
@@ -456,8 +452,8 @@ class WorkerGroup(BaseWorkerGroup):
         self,
         scaling_config: ScalingConfig,
         worker_group_context: WorkerGroupContext,
-    ) -> Tuple[PlacementGroup, Optional[SlicePlacementGroup]]:
-        """Creates and returns the placement group for the worker group.
+    ) -> PlacementGroupHandle:
+        """Creates and returns a placement group handle for the worker group.
 
         If TPU resources are requested, this uses `SlicePlacementGroup` to reserve
         resources. Otherwise, it creates a standard placement group.
@@ -478,7 +474,7 @@ class WorkerGroup(BaseWorkerGroup):
                 accelerator_version = get_tpu_version_from_type(
                     scaling_config.accelerator_type
                 )
-                spg_handle = SlicePlacementGroup(
+                spg = SlicePlacementGroup(
                     topology=scaling_config.topology,
                     accelerator_version=accelerator_version,
                     num_slices=worker_group_context.num_slices,
@@ -486,21 +482,19 @@ class WorkerGroup(BaseWorkerGroup):
                     strategy=worker_group_context.placement_strategy,
                 )
 
-                return spg_handle.placement_group, spg_handle
+                return SlicePlacementGroupHandle(spg)
 
             except Exception as e:
                 raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
 
-        return (
-            placement_group(
-                # TODO: support heterogeneous workers and placement
-                bundles=[worker_group_context.resources_per_worker]
-                * worker_group_context.num_workers,
-                strategy=worker_group_context.placement_strategy,
-                bundle_label_selector=worker_group_context.label_selector,
-            ),
-            None,
+        pg = placement_group(
+            # TODO: support heterogeneous workers and placement
+            bundles=[worker_group_context.resources_per_worker]
+            * worker_group_context.num_workers,
+            strategy=worker_group_context.placement_strategy,
+            bundle_label_selector=worker_group_context.label_selector,
         )
+        return DefaultPlacementGroupHandle(pg)
 
     #####################################################################################
     # Shutdown Worker Group

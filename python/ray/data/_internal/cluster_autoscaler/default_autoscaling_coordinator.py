@@ -240,7 +240,18 @@ class _AutoscalingCoordinatorActor:
 
     TICK_INTERVAL_S = 20
 
-    def __init__(self):
+    def __init__(
+        self,
+        get_current_time: Callable[[], float] = time.time,
+        send_resources_request: Callable[
+            [List[ResourceDict]], None
+        ] = lambda bundles: ray.autoscaler.sdk.request_resources(bundles=bundles),
+        get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
+    ):
+        self._get_current_time = get_current_time
+        self._send_resources_request = send_resources_request
+        self._get_cluster_nodes = get_cluster_nodes
+
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
         self._cluster_node_resources: List[ResourceDict] = []
         self._update_cluster_node_resources()
@@ -282,7 +293,7 @@ class _AutoscalingCoordinatorActor:
         for r in resources:
             for k in r:
                 r[k] = math.ceil(r[k])
-        now = time.time()
+        now = self._get_current_time()
         request_updated = False
         old_req = self._ongoing_reqs.get(requester_id)
         if old_req is not None:
@@ -324,7 +335,7 @@ class _AutoscalingCoordinatorActor:
         self._reallocate_resources()
 
     def _purge_expired_requests(self):
-        now = time.time()
+        now = self._get_current_time()
         self._ongoing_reqs = {
             requester_id: req
             for requester_id, req in self._ongoing_reqs.items()
@@ -337,7 +348,7 @@ class _AutoscalingCoordinatorActor:
         merged_req = []
         for req in self._ongoing_reqs.values():
             merged_req.extend(req.requested_resources)
-        ray.autoscaler.sdk.request_resources(bundles=merged_req)
+        self._send_resources_request(merged_req)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""
@@ -371,7 +382,7 @@ class _AutoscalingCoordinatorActor:
                 return False
             return True
 
-        nodes = list(filter(_is_node_eligible, ray.nodes()))
+        nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
         nodes = sorted(nodes, key=lambda node: node.get("NodeID", ""))
         cluster_node_resources = [node["Resources"] for node in nodes]
         if cluster_node_resources == self._cluster_node_resources:
@@ -383,7 +394,7 @@ class _AutoscalingCoordinatorActor:
 
     def _reallocate_resources(self):
         """Reallocate cluster resources."""
-        now = time.time()
+        now = self._get_current_time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
         ongoing_reqs = sorted(
             [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]

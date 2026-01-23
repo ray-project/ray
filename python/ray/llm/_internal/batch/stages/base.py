@@ -168,7 +168,20 @@ class StatefulStageUDF:
         inputs = batch.pop(self.data_column)
         if hasattr(inputs, "tolist"):
             inputs = inputs.tolist()
-        self.validate_inputs(inputs)
+
+        # Separate error rows from normal rows BEFORE validation. Error rows
+        # (those with __inference_error__ set) bypass the UDF to avoid crashes
+        # when expected fields are missing (e.g., generated_tokens for DetokenizeUDF).
+        normal_rows = []
+        error_row_indices = set()
+        for idx, row in enumerate(inputs):
+            if row.get("__inference_error__") is not None:
+                error_row_indices.add(idx)
+            else:
+                normal_rows.append(row)
+
+        # Validate only normal rows - error rows may be missing required keys
+        self.validate_inputs(normal_rows)
 
         # Assign the index of the row in the batch to the idx_in_batch_column.
         # This is because the UDF output may be out-of-order (if asyncio.as_completed
@@ -177,17 +190,6 @@ class StatefulStageUDF:
         # the output of the UDF with the input.
         for idx, row in enumerate(inputs):
             row[self.IDX_IN_BATCH_COLUMN] = idx
-
-        # Separate error rows from normal rows. Error rows (those with
-        # __inference_error__ set) bypass the UDF to avoid crashes when
-        # expected fields are missing (e.g., generated_tokens for DetokenizeUDF).
-        normal_rows = []
-        error_row_indices = set()
-        for idx, row in enumerate(inputs):
-            if row.get("__inference_error__") is not None:
-                error_row_indices.add(idx)
-            else:
-                normal_rows.append(row)
 
         # Collect all outputs first, then return them in the original order
         # This is a requirement set by https://github.com/ray-project/ray/pull/54190/

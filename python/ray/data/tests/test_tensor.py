@@ -323,71 +323,75 @@ def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-    class_name = "ArrowTensorTypeV2" if tensor_format == "v2" else "ArrowTensorType"
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
         lambda _: {"data": np.ones((4, 4))}
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=10,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert ds.count() == 10
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+    assert isinstance(dtype, expected_type)
+    assert dtype.shape == (4, 4)
+    assert dtype.scalar_type == pa.float64()
 
     # Test map_batches.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+    assert isinstance(dtype, expected_type)
+    assert dtype.shape == (4, 4)
+    assert dtype.scalar_type == pa.float64()
 
     # Test flat_map.
     ds = ray.data.range(10, override_num_blocks=10).flat_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=20,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert ds.count() == 20
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+    assert isinstance(dtype, expected_type)
+    assert dtype.shape == (4, 4)
+    assert dtype.scalar_type == pa.float64()
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        "   schema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+    assert isinstance(dtype, expected_type)
+    assert dtype.shape == (4, 4)
+    assert dtype.scalar_type == pa.float64()
 
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=16,\n"
-        "   schema={a: TensorDtype(shape=(None, None), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 16
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+    assert isinstance(dtype, expected_type)
+    assert dtype.shape == (None, None)
+    assert dtype.scalar_type == pa.float64()
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])

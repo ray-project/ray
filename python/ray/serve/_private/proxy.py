@@ -78,6 +78,7 @@ from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    asyncio_grpc_exception_handler,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
@@ -1245,6 +1246,10 @@ class ProxyActor(ProxyActorInterface):
             if grpc_enabled
             else None
         )
+        if self.grpc_proxy:
+            get_or_create_event_loop().set_exception_handler(
+                asyncio_grpc_exception_handler
+            )
 
         # Start a task to initialize the HTTP server.
         # The result of this task is checked in the `ready` method.

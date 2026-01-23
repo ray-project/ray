@@ -8,6 +8,9 @@ export TORCHVISION_VERSION=0.15.2
 # Delete the existing bazel and replace it with bazelisk.
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
+# Install uv
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.9.22/install.ps1 | iex"
+
 conda init
 conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3
 

@@ -473,6 +473,25 @@ def test_add_column(ray_start_regular_shared):
         ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
 
 
+def test_add_column_to_pandas(ray_start_regular_shared):
+    # Refer to issue https://github.com/ray-project/ray/issues/51758
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"a": list(range(20))}), override_num_blocks=2
+    )
+
+    ds = ds.add_column(
+        "foo1", lambda df: pd.Series([1] * len(df)), batch_format="pandas"
+    )
+    ds = ds.add_column(
+        "foo2", lambda df: pd.DatetimeIndex([1] * len(df)), batch_format="pandas"
+    )
+    ds = ds.add_column(
+        "foo3", lambda df: pd.DataFrame({"foo": [1] * len(df)}), batch_format="pandas"
+    )
+    for row in ds.iter_rows():
+        assert row["foo1"] == 1 and row["foo2"] == pd.Timestamp(1) and row["foo3"] == 1
+
+
 @pytest.mark.parametrize(
     "names, expected_schema",
     [
@@ -1323,7 +1342,7 @@ def test_map_op_backpressure_configured_properly(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
 )
-def test_map_names(target_max_block_size_infinite_or_default):
+def test_map_names(target_max_block_size_infinite_or_default, capsys):
     """To test different UDF format such that the operator
     has the correct representation.
 
@@ -1333,35 +1352,40 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
     ds = ray.data.range(5)
 
-    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
-    assert r.startswith("Map(<lambda>)"), r
+    def _assert_explain_contains(dataset, expected):
+        dataset.explain()
+        captured = capsys.readouterr()
+        assert expected in captured.out, captured.out
+
+    mapped = ds.map(lambda x: {"id": str(x["id"])})
+    _assert_explain_contains(mapped, "Map(<lambda>)")
 
     class C:
         def __call__(self, x):
             return x
 
-    r = ds.map(C, concurrency=4).__repr__()
-    assert r.startswith("Map(C)"), r
+    mapped = ds.map(C, concurrency=4)
+    _assert_explain_contains(mapped, "Map(C)")
 
     # Simple and partial functions
     def func(x, y):
         return x
 
-    r = ds.map(func, fn_args=[0]).__repr__()
-    assert r.startswith("Map(func)")
+    mapped = ds.map(func, fn_args=[0])
+    _assert_explain_contains(mapped, "Map(func)")
 
     from functools import partial
 
-    r = ds.map(partial(func, y=1)).__repr__()
-    assert r.startswith("Map(func)"), r
+    mapped = ds.map(partial(func, y=1))
+    _assert_explain_contains(mapped, "Map(func)")
 
     # Preprocessor
     from ray.data.preprocessors import OneHotEncoder
 
     ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
     enc = OneHotEncoder(columns=["item"])
-    r = enc.fit_transform(ds).__repr__()
-    assert "OneHotEncoder" in r, r
+    transformed = enc.fit_transform(ds)
+    _assert_explain_contains(transformed, "OneHotEncoder")
 
 
 def test_map_with_max_calls():

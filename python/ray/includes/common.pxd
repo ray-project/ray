@@ -427,7 +427,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
-        const CNodeID &GetPrimaryNodeID() const
         const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const

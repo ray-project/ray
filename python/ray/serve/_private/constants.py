@@ -409,6 +409,12 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
+# Minimum interval between router queue length gauge updates per replica.
+# Throttling reduces metrics overhead on the hot path. Set to 0 to disable throttling.
+RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S = get_env_float_non_negative(
+    "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", 0.1
+)
+
 # Backoff seconds when choosing router failed, backoff time is calculated as
 # initial_backoff_s * backoff_multiplier ** attempt.
 # The default backoff time is [0, 0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
@@ -440,6 +446,12 @@ RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
 # Default is 2GiB, the max for a signed int.
 RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
     "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1
+)
+
+RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    # Default max message length in gRPC is 4MB, we keep that default
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH",
+    4 * 1024 * 1024,
 )
 
 # Default options passed when constructing gRPC servers.
@@ -530,6 +542,17 @@ RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
 # replica's main event loop.
 RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
     "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
+)
+
+# For now, this is used only for testing. In the suite of tests that
+# use gRPC to send requests, we flip this flag on.
+RAY_SERVE_USE_GRPC_BY_DEFAULT = (
+    os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
+)
+
+RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
+    not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
+    and RAY_SERVE_USE_GRPC_BY_DEFAULT
 )
 
 # The default buffer size for request path logs. Setting to 1 will ensure

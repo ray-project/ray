@@ -312,8 +312,8 @@ you have the following options:
 
         .. literalinclude:: ../doc_code/checkpoints.py
             :language: python
-            :start-after: __checkpoint_upload_function_start__
-            :end-before: __checkpoint_upload_function_end__
+            :start-after: __checkpoint_upload_fn_start__
+            :end-before: __checkpoint_upload_fn_end__
 
         .. warning::
 
