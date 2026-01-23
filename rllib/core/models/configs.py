@@ -1136,6 +1136,13 @@ class MultiStreamEncoderConfig(ModelConfig):
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
+
+        if self.base_encoder_configs is None or len(self.base_encoder_configs) == 0:
+            raise ValueError(
+                "`base_encoder_configs` of MultiStreamEncoderConfig must be a "
+                "non-empty dictionary mapping stream names to their respective "
+                "encoder configurations!"
+            )
         if self.input_dims is not None and len(self.input_dims) != 1:
             raise ValueError(
                 f"`input_dims` ({self.input_dims}) of MultiStreamEncoderConfig must be 1D, "
@@ -1158,6 +1165,9 @@ class MultiStreamEncoderConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
+        # Validate config.
+        self._validate(framework)
+
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMultiStreamEncoder
 
