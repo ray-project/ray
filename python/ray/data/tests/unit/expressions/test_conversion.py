@@ -287,7 +287,7 @@ class TestToPyArrow:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            _infer_data_type=lambda: DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
@@ -513,7 +513,7 @@ class TestIcebergExpressionVisitor:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            _infer_data_type=lambda: DataType(int),
+            _data_type=DataType(int),
         )
 
         visitor = _IcebergExpressionVisitor()

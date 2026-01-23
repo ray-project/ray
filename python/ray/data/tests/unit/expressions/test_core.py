@@ -18,14 +18,13 @@ from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
     BinaryOperation,
-    UnresolvedColumnExpr,
-    ResolvedColumnExpr,
     Expr,
     LiteralExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
     UnaryOperation,
+    UnresolvedColumnExpr,
     col,
     download,
     lit,
@@ -438,7 +437,7 @@ def _build_complex_expr():
         fn=custom_udf,
         args=[col("value"), lit(10)],
         kwargs={"z": col("multiplier")},
-        _infer_data_type=lambda: DataType(int),
+        _data_type=DataType(int),
     )
 
     # Build the mega-complex expression

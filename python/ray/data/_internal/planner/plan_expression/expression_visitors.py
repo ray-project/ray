@@ -276,9 +276,9 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
         return UDFExpr(
             fn=expr.fn,
-            data_type=expr.data_type,
             args=new_args,
             kwargs=new_kwargs,
+            _data_type=expr._data_type,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:

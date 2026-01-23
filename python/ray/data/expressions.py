@@ -1238,12 +1238,12 @@ class UDFExpr(Expr):
     args: List[Expr]
     kwargs: Dict[str, Expr]
     # TODO(Justin): Is this strictly required?
-    _infer_data_type: DataTypeInferFn
+    _data_type: DataTypeInferFn | DataType
 
     @override
     def _is_resolved(self) -> bool:
         return all(arg._is_resolved() for arg in self.args) and all(
-            kwarg.B() for kwarg in self.kwargs.values()
+            kwarg._is_resolved() for kwarg in self.kwargs.values()
         )
 
     @override
@@ -1251,13 +1251,16 @@ class UDFExpr(Expr):
     def data_type(self) -> DataType:
         # TODO(Justin): This behavior is a one off because we don't need to know
         # the arguments before knowing the data type.
+        if isinstance(self._data_type, DataType):
+            return self._data_type
+        # Infer data type from argument types
         if not self._is_resolved():
             raise ValueError("Can't infer data type for unresolved udf expression")
         args_dtypes: List[DataType] = [arg.data_type for arg in self.args]
         kwargs_dtypes: Dict[str, DataType] = {
             name: kwarg.data_type for name, kwarg in self.kwargs.items()
         }
-        return self._infer_data_type(*args_dtypes, **kwargs_dtypes)
+        return self._data_type(*args_dtypes, **kwargs_dtypes)
 
     @property
     def callable_class_spec(self) -> Optional[_CallableClassSpec]:
@@ -1311,13 +1314,6 @@ def _create_udf_callable(
         A callable that creates UDFExpr instances when called with expressions
     """
 
-    if isinstance(return_dtype, DataType):
-
-        def _infer_dtype():
-            return return_dtype
-
-        return_dtype = _infer_dtype
-
     def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
         expr_args = []
@@ -1338,7 +1334,7 @@ def _create_udf_callable(
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
-            _infer_data_type=return_dtype,
+            _data_type=return_dtype,
         )
 
     # Preserve original function metadata

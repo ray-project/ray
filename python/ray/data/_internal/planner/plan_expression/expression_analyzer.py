@@ -76,13 +76,13 @@ class ResolveAttributes(Rule):
                 new_child = self.resolve_attributes(child, schema)
                 return AliasExpr(expr=new_child, _name=name, _is_rename=is_rename)
 
-            case UDFExpr(fn=fn, args=args, kwargs=kwargs, data_type=dtype):
+            case UDFExpr(fn=fn, args=args, kwargs=kwargs, _data_type=data_type):
                 new_args = [self.resolve_attributes(arg, schema) for arg in args]
                 new_kwargs = {
                     k: self.resolve_attributes(v, schema) for k, v in kwargs.items()
                 }
                 return UDFExpr(
-                    fn=fn, args=new_args, kwargs=new_kwargs, _data_type=dtype
+                    fn=fn, args=new_args, kwargs=new_kwargs, _data_type=data_type
                 )
 
             case DownloadExpr(uri_column=uri_column):
