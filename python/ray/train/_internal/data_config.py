@@ -3,6 +3,10 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 from ray.actor import ActorHandle
+from ray.train._internal.device_mesh_config import (
+    DeviceMeshConfig,
+    DPConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -24,6 +28,7 @@ class DataConfig:
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
+        device_mesh_config: Optional[DeviceMeshConfig] = None,
     ):
         """Construct a DataConfig.
 
@@ -39,6 +44,13 @@ class DataConfig:
                 base your options off ``DataConfig.default_ingest_options()``.
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
+            device_mesh_config: Device mesh configuration for advanced parallelism
+                strategies. This configuration determines how data should be sharded
+                across workers based on their parallel dimensions (TP, PP, DP, etc.).
+                Workers in the same data shard receive the same data. If None, defaults
+                to ``DeviceMeshConfig(dp=DPConfig(replicate="auto"))``, which means
+                each worker receives a unique data shard (standard data parallel behavior).
+                See :class:`DeviceMeshConfig` for details.
         """
         from ray.data import ExecutionOptions
 
@@ -63,6 +75,10 @@ class DataConfig:
             self._execution_options.update(execution_options)
 
         self._enable_shard_locality = enable_shard_locality
+        # If None, use default config where each worker gets a unique data shard.
+        if device_mesh_config is None:
+            device_mesh_config = DeviceMeshConfig(dp=DPConfig(replicate="auto"))
+        self._device_mesh_config = device_mesh_config
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
@@ -80,6 +96,11 @@ class DataConfig:
     def _get_execution_options(self, dataset_name: str) -> "ExecutionOptions":
         """Return a copy of the configured execution options for a given dataset name."""
         return copy.deepcopy(self._execution_options[dataset_name])
+
+    @property
+    def device_mesh_config(self) -> DeviceMeshConfig:
+        """Return the device mesh configuration."""
+        return self._device_mesh_config
 
     @DeveloperAPI
     def configure(

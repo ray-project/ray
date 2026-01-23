@@ -19,6 +19,11 @@ from ray.air.result import Result
 # Import this first so it can be used in other modules
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
+from ray.train._internal.device_mesh_config import (
+    DeviceMeshConfig,
+    DPConfig,
+    get_data_shard_mapping,
+)
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
 from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
@@ -67,11 +72,14 @@ __all__ = [
     "get_checkpoint",
     "get_context",
     "get_dataset_shard",
+    "get_data_shard_mapping",
     "report",
     "BackendConfig",
     "Checkpoint",
     "CheckpointConfig",
     "DataConfig",
+    "DeviceMeshConfig",
+    "DPConfig",
     "FailureConfig",
     "Result",
     "RunConfig",
@@ -90,6 +98,9 @@ BackendConfig.__module__ = "ray.train"
 Checkpoint.__module__ = "ray.train"
 CheckpointConfig.__module__ = "ray.train"
 DataConfig.__module__ = "ray.train"
+DeviceMeshConfig.__module__ = "ray.train"
+DPConfig.__module__ = "ray.train"
+get_data_shard_mapping.__module__ = "ray.train"
 FailureConfig.__module__ = "ray.train"
 Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
