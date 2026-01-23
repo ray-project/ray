@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.execution.bundle_queue import OrderedBundleQueue
+from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data.block import BlockAccessor
 
@@ -22,7 +22,7 @@ def _create_bundle(data: Any) -> RefBundle:
 
 def test_ordered_queue_add_and_get_in_order():
     """Test adding and getting bundles in sequential order."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
 
@@ -46,7 +46,7 @@ def test_ordered_queue_add_and_get_in_order():
 
 def test_ordered_queue_add_out_of_order():
     """Test that bundles added out of order are returned in key order."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
     bundle2 = _create_bundle("data111")
@@ -71,7 +71,7 @@ def test_ordered_queue_add_out_of_order():
 
 def test_ordered_queue_multiple_bundles_per_key():
     """Test adding multiple bundles for the same key."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle1a = _create_bundle("data1a")
     bundle1b = _create_bundle("data1b")
     bundle2 = _create_bundle("data2")
@@ -94,7 +94,7 @@ def test_ordered_queue_multiple_bundles_per_key():
 
 def test_ordered_queue_finalize_before_all_consumed():
     """Test finalizing a key before all its bundles are consumed."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle1a = _create_bundle("data1a")
     bundle1b = _create_bundle("data1b")
     bundle2 = _create_bundle("data2")
@@ -116,7 +116,7 @@ def test_ordered_queue_finalize_before_all_consumed():
 
 def test_ordered_queue_has_next_blocked_by_earlier_key():
     """Test that has_next returns False when current key has no bundles."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle1 = _create_bundle("data11")
 
     # Add bundle for key 1, but nothing for key 0
@@ -136,7 +136,7 @@ def test_ordered_queue_has_next_blocked_by_earlier_key():
 
 def test_ordered_queue_peek_next():
     """Test peeking at the next bundle without removing it."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
 
@@ -153,7 +153,7 @@ def test_ordered_queue_peek_next():
 
 def test_ordered_queue_peek_next_empty():
     """Test peeking when current key has no bundles."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle1 = _create_bundle("data11")
 
     queue.add(bundle1, key=1)
@@ -164,7 +164,7 @@ def test_ordered_queue_peek_next_empty():
 
 def test_ordered_queue_get_next_empty_raises():
     """Test that get_next raises when current key is empty."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
 
     with pytest.raises(ValueError, match="Cannot pop from empty queue"):
         queue.get_next()
@@ -172,7 +172,7 @@ def test_ordered_queue_get_next_empty_raises():
 
 def test_ordered_queue_clear():
     """Test clearing the queue resets everything."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
 
@@ -191,7 +191,7 @@ def test_ordered_queue_clear():
 
 def test_ordered_queue_metrics():
     """Test that metrics are tracked correctly."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
 
@@ -211,7 +211,7 @@ def test_ordered_queue_metrics():
 
 def test_ordered_queue_finalize_out_of_order():
     """Test that keys can be finalized out of order."""
-    queue = OrderedBundleQueue()
+    queue = ReorderingBundleQueue()
     bundle0 = _create_bundle("data1")
     bundle1 = _create_bundle("data11")
     bundle2 = _create_bundle("data111")

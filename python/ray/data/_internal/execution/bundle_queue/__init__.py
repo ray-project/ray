@@ -6,7 +6,7 @@ from .base import (
 )
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
-from .ordered import OrderedBundleQueue
+from .ordered import ReorderingBundleQueue
 
 
 def create_bundle_queue() -> QueueWithRemoval:
@@ -16,7 +16,7 @@ def create_bundle_queue() -> QueueWithRemoval:
 __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
-    "OrderedBundleQueue",
+    "ReorderingBundleQueue",
     "FIFOBundleQueue",
     "QueueWithRemoval",
     "HashLinkedQueue",
