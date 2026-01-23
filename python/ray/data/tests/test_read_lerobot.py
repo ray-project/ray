@@ -37,6 +37,12 @@ class TestReadLerobot:
         if ray.is_initialized():
             ray.shutdown()
 
+    def teardown_method(self, method):
+        """Clean up after each test method."""
+        import gc
+
+        gc.collect()
+
     def test_read_lerobot_with_huggingface_repo_id(self):
         """
         Test reading LeRobot dataset from HuggingFace Hub using repo_id.
@@ -57,7 +63,7 @@ class TestReadLerobot:
             ds = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",  # Will use default cache location
-                episode_indices=None,  # Load all episodes
+                episode_indices=[0, 1, 2],  # Limit to 3 episodes to reduce memory
                 shuffle=False,
                 override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={
@@ -124,6 +130,12 @@ class TestReadLerobot:
 
             print("\n✅ TEST 1 PASSED: Successfully loaded dataset from HuggingFace Hub")
 
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
+
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
         except Exception as e:
@@ -153,6 +165,7 @@ class TestReadLerobot:
                 root="",
                 episode_indices=episode_indices,
                 shuffle=False,
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={
                     "action": [
                         0.0,
@@ -176,7 +189,9 @@ class TestReadLerobot:
 
             # Verify only specified episodes are present
             try:
-                sample_episodes = ds.select_columns(["episode_index"]).take_all()
+                sample_episodes = (
+                    ds.limit(1000).select_columns(["episode_index"]).take_all()
+                )
                 unique_episodes = {row["episode_index"] for row in sample_episodes}
                 print(f"   Unique episode indices in dataset: {unique_episodes}")
 
@@ -190,6 +205,12 @@ class TestReadLerobot:
                 print(f"   ⚠️  Could not verify episodes: {e}")
 
             print("\n✅ TEST 2 PASSED: Episode filtering works correctly")
+
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
 
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
@@ -217,7 +238,9 @@ class TestReadLerobot:
             ds = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",
+                episode_indices=[0, 1, 2],  # Limit to 3 episodes to reduce memory
                 shuffle=True,  # Enable shuffling
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={
                     "action": [
                         0.0,
@@ -249,6 +272,12 @@ class TestReadLerobot:
 
             print("\n✅ TEST 3 PASSED: Shuffling works correctly")
 
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
+
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
         except Exception as e:
@@ -276,6 +305,7 @@ class TestReadLerobot:
             ds = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",
+                episode_indices=[0, 1],  # Limit to 2 episodes to reduce memory
                 shuffle=False,
                 override_num_blocks=4,
                 delta_timestamps={
@@ -306,6 +336,7 @@ class TestReadLerobot:
             ds2 = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",
+                episode_indices=[0, 1],  # Limit to 2 episodes to reduce memory
                 shuffle=False,
                 concurrency=2,
                 delta_timestamps={
@@ -330,6 +361,12 @@ class TestReadLerobot:
             print("✅ Dataset loaded with concurrency limit")
 
             print("\n✅ TEST 4 PASSED: Parallelism options work correctly")
+
+            # Cleanup
+            del ds, ds2
+            import gc
+
+            gc.collect()
 
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
@@ -361,8 +398,10 @@ class TestReadLerobot:
                 ds = ray.data.read_lerobot(
                     repo_id=repo_id,
                     root="",
+                    episode_indices=[0, 1],  # Limit to 2 episodes to reduce memory
                     video_backend=backend,
                     shuffle=False,
+                    override_num_blocks=2,  # Limit parallelism for testing
                     delta_timestamps={
                         "action": [
                             0.0,
@@ -390,8 +429,10 @@ class TestReadLerobot:
             ds = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",
+                episode_indices=[0, 1],  # Limit to 2 episodes to reduce memory
                 video_batch_size=32,
                 shuffle=False,
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={
                     "action": [
                         0.0,
@@ -414,6 +455,12 @@ class TestReadLerobot:
             print("   ✅ Dataset loaded with custom video batch size")
 
             print("\n✅ TEST 5 PASSED: Video backend options work correctly")
+
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
 
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
@@ -440,7 +487,9 @@ class TestReadLerobot:
             ds = ray.data.read_lerobot(
                 repo_id=repo_id,
                 root="",
+                episode_indices=[0, 1, 2],  # Limit to 3 episodes to reduce memory
                 shuffle=False,
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={
                     "action": [
                         0.0,
@@ -481,6 +530,12 @@ class TestReadLerobot:
                 print(f"   {key}: {type(value).__name__}")
 
             print("\n✅ TEST 6 PASSED: Schema validation successful")
+
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
 
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
@@ -565,6 +620,12 @@ class TestReadLerobot:
                 "\n✅ TEST 7 PASSED: Successfully loaded dataset from pre-downloaded local directory"
             )
 
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
+
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
         except Exception as e:
@@ -597,6 +658,7 @@ class TestReadLerobot:
                     0,
                     1,
                 ],  # Limit to first two episodes for faster testing
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={"action": [0.0, 0.03, 0.06, 0.09, 0.12, 0.15]},
             )
 
@@ -662,6 +724,12 @@ class TestReadLerobot:
 
             print("\n✅ TEST 8 PASSED: Batch iteration works correctly")
 
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
+
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
         except Exception as e:
@@ -708,6 +776,7 @@ class TestReadLerobot:
                 root=local_dataset_path,  # Will be combined with repo_id
                 episode_indices=[0, 1, 2],  # Limit to 3 episodes
                 shuffle=False,
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps={"action": [0.0, 0.03, 0.06, 0.09, 0.12]},
             )
 
@@ -761,6 +830,12 @@ class TestReadLerobot:
                 "\n✅ TEST 9 PASSED: Pre-downloaded local dataset batch iteration works correctly"
             )
 
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
+
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
         except Exception as e:
@@ -809,6 +884,7 @@ class TestReadLerobot:
                 root=local_dataset_path,  # Will be combined with repo_id
                 shuffle=False,
                 episode_indices=[0],  # Single episode for faster testing
+                override_num_blocks=2,  # Limit parallelism for testing
                 delta_timestamps=delta_timestamps,
             )
 
@@ -849,6 +925,12 @@ class TestReadLerobot:
                     print(f"      Type: {type(horizon_data)}")
 
             print("\n✅ TEST 10 PASSED: Delta timestamps validation successful")
+
+            # Cleanup
+            del ds
+            import gc
+
+            gc.collect()
 
         except ImportError as e:
             pytest.skip(f"Required dependencies not installed: {e}")
