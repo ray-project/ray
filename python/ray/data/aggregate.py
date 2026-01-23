@@ -1441,7 +1441,9 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
         total_count = column_accessor.count(ignore_nulls=False)
 
         null_count = pc.sum(
-            pc.is_null(column_accessor._as_arrow_compatible(), nan_is_null=True)
+            pc.is_null(
+                column_accessor._to_arrow_compatible_container(), nan_is_null=True
+            )
         ).as_py()
 
         # Return our accumulator
@@ -1538,7 +1540,7 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         if count == 0:
             return [0, 0]
 
-        arrow_compatible = column_accessor._as_arrow_compatible()
+        arrow_compatible = column_accessor._to_arrow_compatible_container()
         # Use PyArrow compute to count zeros
         # First create a boolean mask for zero values
         zero_mask = pc.equal(arrow_compatible, 0)
