@@ -131,6 +131,19 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                     batch[Columns.NEXT_OBS],
                 )
             }
+            # If this is a stateful module add the input states.
+            if Columns.STATE_IN in batch:
+                # Add both, the input state for the actual observation and
+                # the one for the next observation.
+                batch_base.update(
+                    {
+                        Columns.STATE_IN: tree.map_structure(
+                            lambda t1, t2: torch.concat([t1, t2], dim=0),
+                            batch[Columns.STATE_IN],
+                            batch[Columns.NEXT_STATE_IN],
+                        )
+                    }
+                )
         # Otherwise we can just use the current observations.
         else:
             batch_base = {Columns.OBS: batch[Columns.OBS]}
