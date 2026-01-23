@@ -1107,10 +1107,6 @@ python/ray/data/_internal/execution/operators/union_operator.py
     DOC101: Method `UnionOperator.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `UnionOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*input_ops: PhysicalOperator, data_context: DataContext]. Arguments in the docstring but not in the function signature: [input_ops: ].
 --------------------
-python/ray/data/_internal/execution/operators/zip_operator.py
-    DOC101: Method `ZipOperator.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ZipOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*input_ops: PhysicalOperator, data_context: DataContext]. Arguments in the docstring but not in the function signature: [input_ops: ].
---------------------
 python/ray/data/_internal/execution/streaming_executor.py
     DOC101: Method `StreamingExecutor._scheduling_loop_step`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `StreamingExecutor._scheduling_loop_step`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [topology: Topology].

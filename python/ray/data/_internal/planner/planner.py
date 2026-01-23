@@ -85,9 +85,13 @@ def plan_from_op(
     return InputDataBuffer(data_context, op.input_data)
 
 
-def plan_zip_op(_, physical_children, data_context):
+def plan_zip_op(logical_op, physical_children, data_context):
     assert len(physical_children) >= 2
-    return ZipOperator(data_context, *physical_children)
+    return ZipOperator(
+        data_context,
+        logical_op.target_num_rows_per_block,
+        *physical_children,
+    )
 
 
 def plan_union_op(_, physical_children, data_context):

@@ -28,8 +28,14 @@ class Zip(NAry):
     def __init__(
         self,
         *input_ops: LogicalOperator,
+        target_num_rows_per_block: int = 25600,
     ):
         super().__init__(*input_ops)
+        self._target_num_rows_per_block = target_num_rows_per_block
+
+    @property
+    def target_num_rows_per_block(self) -> int:
+        return self._target_num_rows_per_block
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

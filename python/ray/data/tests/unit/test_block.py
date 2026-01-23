@@ -4,8 +4,9 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data.block import BlockAccessor, BlockColumnAccessor
+from ray.data.block import BlockAccessor, BlockColumnAccessor, _merge_schemas
 
 
 def test_find_partitions_single_column_ascending():
@@ -156,6 +157,41 @@ def test_find_partitions_duplicates():
     assert partitions[1].to_pydict() == {"value": []}  # [1,2)
     assert partitions[2].to_pydict() == {"value": [2, 2, 2, 2, 2]}  # [2,3)
     assert partitions[3].to_pydict() == {"value": []}  # >=3
+
+
+def test_merge_schemas_pyarrow():
+    """Test merging PyArrow schemas with duplicate handling."""
+    # Basic merge
+    schema1 = pa.schema([pa.field("a", pa.int64())])
+    schema2 = pa.schema([pa.field("b", pa.string())])
+    assert _merge_schemas([schema1, schema2]).names == ["a", "b"]
+
+    # Duplicates renamed with _1, _2 suffixes
+    schema1 = pa.schema([pa.field("col", pa.int64())])
+    schema2 = pa.schema([pa.field("col", pa.int64())])
+    schema3 = pa.schema([pa.field("col", pa.int64())])
+    assert _merge_schemas([schema1, schema2, schema3]).names == [
+        "col",
+        "col_1",
+        "col_2",
+    ]
+
+    # Handles None in list
+    assert _merge_schemas([schema1, None, schema2]).names == ["col", "col_1"]
+
+    # Edge cases
+    assert _merge_schemas([]) is None
+    assert _merge_schemas([None, None]) is None
+
+
+def test_merge_schemas_pandas():
+    """Test merging PandasBlockSchema with duplicate handling."""
+    schema1 = PandasBlockSchema(["a", "b"], [np.dtype("int64"), np.dtype("object")])
+    schema2 = PandasBlockSchema(["a", "c"], [np.dtype("float64"), np.dtype("bool")])
+
+    merged = _merge_schemas([schema1, schema2])
+
+    assert merged.names == ["a", "b", "a_1", "c"]
 
 
 if __name__ == "__main__":

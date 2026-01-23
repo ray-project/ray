@@ -3513,7 +3513,9 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    def zip(
+        self, *other: List["Dataset"], target_rows_per_block: int = 25600
+    ) -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3540,6 +3542,8 @@ class Dataset:
             *other: List of datasets to combine with this one. The datasets
                 must have the same row count as this dataset, otherwise the
                 ValueError is raised.
+            target_rows_per_block: The target number of rows per block for the
+                output zipped dataset. Default is 25600 rows per block.
 
         Returns:
             A :class:`Dataset` containing the columns of the second dataset
@@ -3549,8 +3553,13 @@ class Dataset:
         Raises:
             ValueError: If the datasets have different row counts.
         """
+        # ZipOperator handles alignment internally, no need for StreamingRepartition
         plan = self._plan.copy()
-        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
+        op = Zip(
+            self._logical_plan.dag,
+            *[ds._logical_plan.dag for ds in other],
+            target_num_rows_per_block=target_rows_per_block,
+        )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
