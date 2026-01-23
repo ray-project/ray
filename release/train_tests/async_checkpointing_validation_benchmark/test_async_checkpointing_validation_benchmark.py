@@ -1,8 +1,8 @@
+from enum import Enum
 import logging
 import os
 import tempfile
 import time
-from typing import Callable, Optional
 
 import torch
 import torchmetrics
@@ -15,11 +15,18 @@ from torchvision.transforms import ToTensor, Normalize
 import ray
 import ray.train
 import ray.train.torch
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train import CheckpointUploadMode, ValidationConfig, ValidationTaskConfig
 from ray._private.test_utils import safe_write_to_results_json
 
 
 logger = logging.getLogger(__name__)
+
+
+class ValidationType(Enum):
+    INLINE = "inline"
+    TORCH_TRAINER = "torch_trainer"
+    MAP_BATCHES = "map_batches"
+
 
 MAXIMUM_ALLOWED_ACCURACY_DIFF = 0.2
 MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER = 1.1
@@ -36,6 +43,11 @@ def transform_cifar(row: dict):
     )
     row["image"] = transform(row["image"])
     return row
+
+
+validation_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
+    transform_cifar
+)
 
 
 def create_model():
@@ -70,9 +82,9 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_with_map_batches(checkpoint, config):
+def validate_with_map_batches(checkpoint):
     start_time = time.time()
-    eval_res = config["dataset"].map_batches(
+    eval_res = validation_dataset.map_batches(
         Predictor,
         batch_size=128,
         num_gpus=1,
@@ -121,15 +133,15 @@ def eval_only_train_func(config_dict):
     )
 
 
-def validate_with_torch_trainer(checkpoint, config):
+def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
     start_time = time.time()
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
-        datasets={"test": config["dataset"]},
+        datasets={"test": validation_dataset},
         run_config=ray.train.RunConfig(
-            name=f"{config['parent_run_name']}-validation_epoch={config['epoch']}_batch_idx={config['batch_idx']}"
+            name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
         ),
     )
     result = trainer.fit()
@@ -153,7 +165,7 @@ def validate_and_report(
     validate_within_trainer = config["validate_within_trainer"]
     num_epochs = config["num_epochs"]
     checkpoint_upload_mode = config["checkpoint_upload_mode"]
-    validate_fn = config["validate_fn"]
+    validation_type = config["validation_type"]
     if validate_within_trainer:
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
             batch_size=128
@@ -187,21 +199,23 @@ def validate_and_report(
             os.path.join(iteration_checkpoint_dir, "model.pt"),
         )
         start_time = time.time()
-        if validate_fn:
-            validate_config = {
-                "dataset": config["test"],
-                "parent_run_name": ray.train.get_context().get_experiment_name(),
-                "epoch": epoch,
-                "batch_idx": batch_idx,
-            }
+        if validation_type == ValidationType.TORCH_TRAINER:
+            validation = ValidationTaskConfig(
+                fn_kwargs={
+                    "parent_run_name": ray.train.get_context().get_experiment_name(),
+                    "epoch": epoch,
+                    "batch_idx": batch_idx,
+                }
+            )
+        elif validation_type == ValidationType.MAP_BATCHES:
+            validation = True
         else:
-            validate_config = None
+            validation = False
         ray.train.report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validate_fn=validate_fn,
-            validate_config=validate_config,
+            validation=validation,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -256,30 +270,34 @@ def train_func(config):
 
 def run_training_with_validation(
     checkpoint_upload_mode: CheckpointUploadMode,
-    validate_fn: Optional[Callable],
+    validation_type: ValidationType,
     validate_within_trainer: bool,
     num_epochs: int,
     train_dataset: ray.data.Dataset,
-    test_dataset: ray.data.Dataset,
     training_rows: int,
 ):
     # Launch distributed training job.
     start_time = time.time()
     scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
+    if validation_type == ValidationType.INLINE:
+        validation_fn = None
+    elif validation_type == ValidationType.TORCH_TRAINER:
+        validation_fn = validate_with_torch_trainer
+    elif validation_type == ValidationType.MAP_BATCHES:
+        validation_fn = validate_with_map_batches
     datasets = {"train": train_dataset}
     train_loop_config = {
         "validate_within_trainer": validate_within_trainer,
         "num_epochs": num_epochs,
         "checkpoint_upload_mode": checkpoint_upload_mode,
-        "validate_fn": validate_fn,
         "rows_per_worker": training_rows / 2,
+        "validation_type": validation_type,
     }
     if validate_within_trainer:
-        datasets["test"] = test_dataset
-    else:
-        train_loop_config["test"] = test_dataset
+        datasets["test"] = validation_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
+        validation_config=ValidationConfig(fn=validation_fn) if validation_fn else None,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,
@@ -314,40 +332,34 @@ def main():
         transform_cifar
     )
     training_rows = train_dataset.count()
-    test_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
-        transform_cifar
-    )
     consolidated_metrics = {}
     num_epochs = 10
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
         CheckpointUploadMode.SYNC,
-        None,
+        ValidationType.INLINE,
         True,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
     ] = run_training_with_validation(
         CheckpointUploadMode.ASYNC,
-        validate_with_torch_trainer,
+        ValidationType.TORCH_TRAINER,
         False,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     consolidated_metrics[
         "async_cp_map_batches_val_metrics"
     ] = run_training_with_validation(
         CheckpointUploadMode.ASYNC,
-        validate_with_map_batches,
+        ValidationType.MAP_BATCHES,
         False,
         num_epochs,
         train_dataset,
-        test_dataset,
         training_rows,
     )
     logger.info(consolidated_metrics)
