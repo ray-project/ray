@@ -1507,8 +1507,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
           num_restarts_due_to_node_preemption + 1);
     }
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
+    auto new_num_restarts = num_restarts + 1;
+    mutable_actor_table_data->set_num_restarts(new_num_restarts);
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
+    actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
@@ -1517,13 +1519,21 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
-           if (done_callback) {
-             done_callback();
-           }
-           gcs_publisher_->PublishActor(
-               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent(false);
+        {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+             Status actor_table_status) {
+           gcs_table_storage_->ActorTaskSpecTable().Put(
+               actor_id,
+               *actor->GetMutableTaskSpec(),
+               {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+                    Status actor_task_spec_table_status) {
+                  if (done_callback) {
+                    done_callback();
+                  }
+                  gcs_publisher_->PublishActor(
+                      actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
+                  actor->WriteActorExportEvent(false);
+                },
+                io_context_});
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);
