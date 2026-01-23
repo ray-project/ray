@@ -32,7 +32,8 @@ message DriverJobDefinitionEvent {
   bytes driver_node_id = 4;
   string entrypoint = 5;
   Config config = 6;
-  string type = 7;
+  // True if job was submitted via Ray Job Submission API, false if started directly via ray.init()
+  bool is_submission_job = 7;
   string submission_id = 8;
   string driver_agent_http_address = 9;
   double entrypoint_num_cpus = 10;
