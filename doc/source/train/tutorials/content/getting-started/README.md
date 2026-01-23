@@ -5,6 +5,12 @@ jupyter nbconvert "01_02_03_intro_to_ray_train.ipynb" --to markdown --output "RE
 -->
 
 # Introduction to Ray Train workloads
+
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/ray_train_workloads?file=%252Ffiles%252Fgetting-started%252F01_02_03_intro_to_ray_train.ipynb"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/train/tutorials/content/getting-started/01_02_03_intro_to_ray_train.ipynb" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 This notebook shows how to run **distributed data-parallel training with PyTorch** on an Anyscale cluster using **Ray Train**. You train a **ResNet-18 model on MNIST** across multiple GPUs, with built-in support for **checkpointing, metrics reporting, and distributed orchestration**.  
 
 ## Learning objectives
