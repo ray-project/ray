@@ -40,6 +40,7 @@ Results to expect
 -----------------
 Training should reach a reward of ~12,000 within 1M timesteps (~2000 iterations).
 """
+import numpy as np
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
@@ -52,6 +53,7 @@ from ray.rllib.examples.utils import (
 parser = add_rllib_example_script_args(
     default_reward=800.0,
     default_timesteps=1_000_000,
+    default_iters=1000,
 )
 parser.set_defaults(
     env="Humanoid-v4",
@@ -72,32 +74,31 @@ config = (
         num_learners=args.num_learners,
     )
     .training(
-        initial_alpha=1.001,
-        actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
+        initial_alpha=1.0,
+        actor_lr=0.0005,
+        critic_lr=0.00035,
+        alpha_lr=0.005,
         lr=None,
         target_entropy="auto",
         n_step=(1, 5),
         tau=0.005,
-        train_batch_size_per_learner=256,
         target_network_update_freq=1,
+        train_batch_size_per_learner=256,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 100000,
+            "capacity": 256_000,
             "alpha": 0.6,
             "beta": 0.4,
         },
-        num_steps_sampled_before_learning_starts=10_000,
+        num_steps_sampled_before_learning_starts=16_000,
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],
             fcnet_activation="relu",
             fcnet_kernel_initializer=nn.init.xavier_uniform_,
-            head_fcnet_hiddens=[],
             head_fcnet_kernel_initializer="orthogonal_",
-            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+            head_fcnet_kernel_initializer_kwargs={"gain": np.sqrt(2)},
         ),
     )
 )

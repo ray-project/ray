@@ -45,10 +45,10 @@ import random
 from torch import nn
 
 from ray.rllib.algorithms.sac import SACConfig
-from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
+from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -122,10 +122,6 @@ config = (
                 }
                 | {"random": RLModuleSpec(module_class=RandomRLModule)}
             ),
-        ),
-
-        model_config=DefaultModelConfig(
-
         ),
     )
 )
