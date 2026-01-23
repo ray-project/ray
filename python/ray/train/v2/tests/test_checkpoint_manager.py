@@ -42,6 +42,20 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
             and tr1.checkpoint.filesystem == tr2.checkpoint.filesystem
         )
 
+    def _checkpoint_to_report_indices_equal(
+        cm1: CheckpointManager, cm2: CheckpointManager
+    ) -> bool:
+        # Do this because Checkpoint and Filesystem are not hashable.
+        cm1_dict = {
+            checkpoint.path: report_index
+            for checkpoint, report_index in cm1._checkpoint_to_report_index.items()
+        }
+        cm2_dict = {
+            checkpoint.path: report_index
+            for checkpoint, report_index in cm2._checkpoint_to_report_index.items()
+        }
+        return cm1_dict == cm2_dict
+
     if cm1._checkpoint_config != cm2._checkpoint_config:
         return False
     if not _training_results_equal(
@@ -57,6 +71,10 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
     for tr1, tr2 in zip(cm1.best_checkpoint_results, cm2.best_checkpoint_results):
         if not _training_results_equal(tr1, tr2):
             return False
+    if cm1._current_report_index != cm2._current_report_index:
+        return False
+    if not _checkpoint_to_report_indices_equal(cm1, cm2):
+        return False
     return True
 
 
@@ -147,6 +165,7 @@ async def test_before_init_train_context(tmp_path):
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [None] * 4,
+        "current_report_index": [0] * 4,
     }
 
     # Assert with a checkpoint
@@ -154,6 +173,7 @@ async def test_before_init_train_context(tmp_path):
     checkpoint_manager.register_checkpoint(latest_checkpoint_report)
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [latest_checkpoint_report.checkpoint] * 4,
+        "current_report_index": [1] * 4,
     }
 
 

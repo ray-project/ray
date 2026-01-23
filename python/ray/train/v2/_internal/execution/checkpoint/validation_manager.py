@@ -85,15 +85,16 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """Add _TrainingReports for incomplete validations to the queue."""
         for checkpoint, (
             training_result,
-            validation_spec,
+            validate,
         ) in self._checkpoint_manager.get_pending_training_results().items():
-            self._training_report_queue.append(
-                _TrainingReport(
-                    metrics=training_result.metrics,
-                    checkpoint=checkpoint,
-                    validation_spec=validation_spec,
+            if validate:
+                self._training_report_queue.append(
+                    _TrainingReport(
+                        metrics=training_result.metrics,
+                        checkpoint=checkpoint,
+                        validate=validate,
+                    )
                 )
-            )
 
     def after_report(
         self,

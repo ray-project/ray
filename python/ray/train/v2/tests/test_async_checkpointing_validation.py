@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from unittest.mock import create_autospec
 
 import pytest
@@ -324,6 +325,7 @@ def test_report_validation_fn_overrides_default_kwargs():
                 fn_kwargs={"validation_score": 1, "other_key": "other_value"}
             ),
         ),
+        run_config=RunConfig(storage_path=str(tmp_path)),
         scaling_config=ScalingConfig(num_workers=1),
     )
     result = trainer.fit()
@@ -362,11 +364,57 @@ def test_report_validation_fn_error():
         train_fn,
         validation_config=ValidationConfig(fn=validation_fn),
         scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
     )
     result = trainer.fit()
     assert result.error is None
     assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
+
+
+def test_report_validation_fn_resumption(tmp_path):
+    """Start train run with interrupted validations. Confirm second run finishes validations."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def validation_fn_stall(checkpoint):
+        signal_actor.send.remote()
+        while True:
+            time.sleep(1)
+
+    def validation_fn_finish(checkpoint):
+        return {"score": 100}
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validate=True,
+            )
+
+    @ray.remote
+    def run_trainer(validation_fn):
+        trainer = DataParallelTrainer(
+            train_fn,
+            validation_config=ValidationConfig(validation_fn=validation_fn),
+            scaling_config=ScalingConfig(num_workers=1),
+            run_config=RunConfig(
+                name="validation_fn_resumption", storage_path=str(tmp_path)
+            ),
+        )
+        return trainer.fit()
+
+    # Run trainer. Wait until validation kicked off. Cancel training.
+    training_task = run_trainer.remote(validation_fn_stall)
+    ray.get(signal_actor.wait.remote())
+    ray.cancel(training_task)
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        ray.get(training_task)
+
+    # Run second trainer that should finish interrupted validations.
+    training_task = run_trainer.remote(validation_fn_finish)
+    result = ray.get(training_task)
+    assert result.metrics == {"score": 100}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):
@@ -404,7 +452,7 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
-def test_checkpoint_upload_fn_returns_checkpoint():
+def test_checkpoint_upload_fn_returns_checkpoint(tmp_path):
     def train_fn():
         with create_dict_checkpoint({}) as checkpoint:
             ray.train.report(
@@ -416,6 +464,7 @@ def test_checkpoint_upload_fn_returns_checkpoint():
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(storage_path=str(tmp_path)),
     )
     with pytest.raises(
         WorkerGroupError,
@@ -424,7 +473,7 @@ def test_checkpoint_upload_fn_returns_checkpoint():
         trainer.fit()
 
 
-def test_report_get_all_reported_checkpoints():
+def test_report_get_all_reported_checkpoints(tmp_path):
     """Check that get_all_reported_checkpoints returns checkpoints depending on # report calls."""
 
     def train_fn():
@@ -444,11 +493,12 @@ def test_report_get_all_reported_checkpoints():
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
     )
     trainer.fit()
 
 
-def test_get_all_reported_checkpoints_all_consistency_modes():
+def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
     signal_actor = create_remote_signal_actor(ray).remote()
 
     def validation_fn(checkpoint, validation_score):
@@ -498,6 +548,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
         ),
         scaling_config=ScalingConfig(num_workers=2),
         train_loop_config={"signal_actor": signal_actor},
+        run_config=RunConfig(storage_path=str(tmp_path)),
     )
     trainer.fit()
 

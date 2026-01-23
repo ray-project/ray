@@ -128,6 +128,11 @@ class TrainContext:
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
+    def __post_init__(self):
+        # Ray train initializes worker with current report index
+        # report_call_index should start at the current report index
+        self.report_call_index = self.current_report_index
+
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
 
