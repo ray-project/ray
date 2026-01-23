@@ -244,10 +244,10 @@ class Checkpointable(abc.ABC):
                 # provided by the user, make sure to use filesystem.
                 if worker_ip_addr == self_ip_addr:
                     comp.foreach_actor(
-                        lambda w, _path=comp_path, _state=comp_state_ref, _use_msgpack=use_msgpack: (  # noqa
+                        lambda w, _path=comp_path, _filesystem=filesystem, _state=comp_state_ref, _use_msgpack=use_msgpack: (  # noqa
                             w.save_to_path(
                                 path=_path,
-                                filesystem=filesystem,
+                                filesystem=_filesystem,
                                 state=(
                                     ray.get(_state)
                                     if _state is not None
@@ -391,7 +391,10 @@ class Checkpointable(abc.ABC):
         # Restore components of `self` that themselves are `Checkpointable`.
         orig_comp_names = {c[0] for c in self.get_checkpointable_components()}
         self._restore_all_subcomponents_from_path(
-            path, filesystem, component=component, **kwargs
+            path=path,
+            filesystem=filesystem,
+            component=component,
+            **kwargs,
         )
 
         # Restore the "base" state (not individual subcomponents).
@@ -414,7 +417,10 @@ class Checkpointable(abc.ABC):
             diff_comp_names = new_comp_names - orig_comp_names
             if diff_comp_names:
                 self._restore_all_subcomponents_from_path(
-                    path, filesystem, only_comp_names=diff_comp_names, **kwargs
+                    path=path,
+                    filesystem=filesystem,
+                    only_comp_names=diff_comp_names,
+                    **kwargs,
                 )
 
     @classmethod
