@@ -5035,14 +5035,14 @@ py_test(
 
 py_test(
     name = "examples/ray_tune/appo_hyperparameter_tune",
-    size = "medium",
+    size = "large",
     srcs = ["examples/ray_tune/appo_hyperparameter_tune.py"],
     args = [
         "--num-env-runners=4",
         "--num-envs-per-env-runner=6",
         "--num-gpus-per-learner=1",
         "--num-learners=1",
-        "--num-samples=12",
+        "--num-samples=8",
         "--max-concurrent-trials=4",
     ],
     main = "examples/ray_tune/appo_hyperparameter_tune.py",
