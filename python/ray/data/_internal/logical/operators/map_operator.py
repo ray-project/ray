@@ -423,9 +423,10 @@ class StreamingRepartition(AbstractMap):
         target_num_rows_per_block: The target number of rows per block granularity for
             streaming repartition.
         strict: If True, guarantees that all output blocks, except for the last one,
-            will have exactly target_num_rows_per_block rows. If False, is more relaxed
-            and may produce blocks smaller than target_num_rows_per_block without
-            stitching them together. Defaults to False.
+            will have exactly target_num_rows_per_block rows. If False, uses best-effort
+            bundling and may produce at most one block smaller than target_num_rows_per_block
+            per input block without forcing exact sizes through block splitting.
+            Defaults to False.
     """
 
     def __init__(
