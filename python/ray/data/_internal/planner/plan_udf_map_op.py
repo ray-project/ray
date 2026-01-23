@@ -537,9 +537,12 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     def _get_batch_num_rows(batch: DataBatch) -> int:
         """Get row count from a batch, converting to block if needed."""
-        if isinstance(batch, collections.abc.Mapping):
-            batch = BlockAccessor.batch_to_block(batch)
-        return BlockAccessor.for_block(batch).num_rows()
+        # BlockAccessor.for_block only works with pa.Table and pd.DataFrame
+        # Convert other batch types (dict, numpy array) to block first
+        if isinstance(batch, (pa.Table, pd.DataFrame)):
+            return BlockAccessor.for_block(batch).num_rows()
+        block = BlockAccessor.batch_to_block(batch)
+        return BlockAccessor.for_block(block).num_rows()
 
     def _warn_row_count_mismatch(input_rows: int, output_rows: int) -> None:
         """Warn once if row count changed but can_modify_num_rows=False."""
@@ -563,27 +566,27 @@ def _generate_transform_fn_for_map_batches(
         if can_modify_num_rows:
             transform_fn = base_transform_fn
         else:
-
+            # For async UDFs, we can only compare aggregate row counts since
+            # async generators may produce multiple outputs per input batch.
+            # This won't catch cases where changes balance out across batches,
+            # but avoids incorrect per-batch comparisons.
             def transform_fn(
                 batches: Iterable[DataBatch], ctx: TaskContext
             ) -> Iterable[DataBatch]:
-                # Track per-batch input row counts to detect mismatches
-                input_row_counts: List[int] = []
-                output_idx = 0
+                total_input_rows = 0
+                total_output_rows = 0
 
                 def counting_batches():
+                    nonlocal total_input_rows
                     for batch in batches:
-                        input_row_counts.append(_get_batch_num_rows(batch))
+                        total_input_rows += _get_batch_num_rows(batch)
                         yield batch
 
                 for out_batch in base_transform_fn(counting_batches(), ctx):
-                    output_num_rows = _get_batch_num_rows(out_batch)
-                    if output_idx < len(input_row_counts):
-                        input_num_rows = input_row_counts[output_idx]
-                        if input_num_rows != output_num_rows:
-                            _warn_row_count_mismatch(input_num_rows, output_num_rows)
-                    output_idx += 1
+                    total_output_rows += _get_batch_num_rows(out_batch)
                     yield out_batch
+
+                _warn_row_count_mismatch(total_input_rows, total_output_rows)
 
     else:
 
