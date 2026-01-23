@@ -126,7 +126,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             # current and next observations.
             batch_base = {
                 Columns.OBS: tree.map_structure(
-                    lambda x, y: torch.concat([x, y], dim=0),
+                    lambda x, y: torch.cat([x, y], dim=0),
                     batch[Columns.OBS],
                     batch[Columns.NEXT_OBS],
                 )
@@ -138,7 +138,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 batch_base.update(
                     {
                         Columns.STATE_IN: tree.map_structure(
-                            lambda t1, t2: torch.concat([t1, t2], dim=0),
+                            lambda t1, t2: torch.cat([t1, t2], dim=0),
                             batch[Columns.STATE_IN],
                             batch[Columns.NEXT_STATE_IN],
                         )
