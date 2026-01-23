@@ -276,7 +276,7 @@ def test_databricks_uc_datasource_with_credential_provider():
         )
 
         provider = StaticCredentialProvider(token="my_provider_token", host="test_host")
-        datasource = DatabricksUCDatasource(
+        _datasource = DatabricksUCDatasource(
             warehouse_id="test_warehouse",
             catalog="test_catalog",
             schema="test_schema",
@@ -582,7 +582,6 @@ def test_databricks_uc_datasource_empty_result():
             os.environ,
             {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"},
         ):
-
             # Call with dummy query to hit mocked flow
             ds = ray.data.read_databricks_tables(
                 warehouse_id="dummy_warehouse",

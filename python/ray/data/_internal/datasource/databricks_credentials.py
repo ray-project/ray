@@ -140,9 +140,9 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
         host = os.environ.get(self._host_env_var) or self._detect_databricks_host()
         if not host:
             raise ValueError(
-                f"Environment variable '{self._host_env_var}' is not set and "
-                "Databricks runtime host detection failed. Please set it to your "
-                'Databricks workspace URL (e.g. "adb-<workspace-id>.<random>.azuredatabricks.net").'
+                "You are not in databricks runtime, please set environment variable "
+                f"'{self._host_env_var}' to databricks workspace URL "
+                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
             )
         self._host = host
 
@@ -184,12 +184,14 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
         return self._host
 
     def invalidate(self) -> None:
-        """No-op for environment credentials.
+        """Re-read token from environment variable.
 
-        Environment variables are read fresh each time, so no
-        invalidation is needed.
+        This allows picking up refreshed tokens when the environment
+        variable is updated (e.g., by an external token refresh process).
         """
-        pass
+        token = os.environ.get(self._token_env_var)
+        if token:
+            self._token = token
 
 
 def resolve_credential_provider(

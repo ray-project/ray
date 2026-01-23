@@ -102,7 +102,9 @@ class TestEnvironmentCredentialProvider:
     def test_init_raises_when_host_not_set(self):
         """Test __init__ raises ValueError when host env var is not set."""
         with mock.patch.dict(os.environ, {"DATABRICKS_TOKEN": "token"}, clear=True):
-            with pytest.raises(ValueError, match="DATABRICKS_HOST.*not set"):
+            with pytest.raises(
+                ValueError, match="set environment variable.*DATABRICKS_HOST"
+            ):
                 EnvironmentCredentialProvider()
 
     def test_host_detected_from_databricks_runtime(self):
@@ -129,14 +131,31 @@ class TestEnvironmentCredentialProvider:
             assert provider.get_token() == "custom_token"
             assert provider.get_host() == "custom_host"
 
-    def test_invalidate_is_noop(self):
-        """Test that invalidate doesn't affect environment credentials."""
+    def test_invalidate_refreshes_token_from_env(self):
+        """Test that invalidate re-reads token from environment."""
         with mock.patch.dict(
-            os.environ, {"DATABRICKS_TOKEN": "env_token", "DATABRICKS_HOST": "host"}
+            os.environ, {"DATABRICKS_TOKEN": "initial_token", "DATABRICKS_HOST": "host"}
         ):
             provider = EnvironmentCredentialProvider()
+            assert provider.get_token() == "initial_token"
+
+            # Simulate external token refresh
+            os.environ["DATABRICKS_TOKEN"] = "refreshed_token"
             provider.invalidate()
-            assert provider.get_token() == "env_token"
+            assert provider.get_token() == "refreshed_token"
+
+    def test_invalidate_keeps_token_if_env_unset(self):
+        """Test that invalidate keeps existing token if env var is unset."""
+        with mock.patch.dict(
+            os.environ, {"DATABRICKS_TOKEN": "initial_token", "DATABRICKS_HOST": "host"}
+        ):
+            provider = EnvironmentCredentialProvider()
+
+            # Remove env var after initialization
+            del os.environ["DATABRICKS_TOKEN"]
+            provider.invalidate()
+            # Should keep the old token rather than failing
+            assert provider.get_token() == "initial_token"
 
 
 class TestResolveCredentialProvider:
@@ -171,6 +190,33 @@ class TestResolveCredentialProvider:
         ):
             result = resolve_credential_provider(credential_provider=None)
             assert isinstance(result, EnvironmentCredentialProvider)
+
+
+class TestCredentialProviderSerialization:
+    """Tests for credential provider serialization (needed for Ray workers)."""
+
+    def test_static_provider_is_picklable(self):
+        """Verify StaticCredentialProvider can be pickled and unpickled."""
+        import pickle
+
+        provider = StaticCredentialProvider(token="test_token", host="test_host")
+        pickled = pickle.dumps(provider)
+        unpickled = pickle.loads(pickled)
+        assert unpickled.get_token() == "test_token"
+        assert unpickled.get_host() == "test_host"
+
+    def test_environment_provider_is_picklable(self):
+        """Verify EnvironmentCredentialProvider can be pickled and unpickled."""
+        import pickle
+
+        with mock.patch.dict(
+            os.environ, {"DATABRICKS_TOKEN": "env_token", "DATABRICKS_HOST": "env_host"}
+        ):
+            provider = EnvironmentCredentialProvider()
+            pickled = pickle.dumps(provider)
+            unpickled = pickle.loads(pickled)
+            assert unpickled.get_token() == "env_token"
+            assert unpickled.get_host() == "env_host"
 
 
 if __name__ == "__main__":
