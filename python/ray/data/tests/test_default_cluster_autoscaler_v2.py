@@ -263,52 +263,41 @@ class TestClusterAutoscaling:
         """Test that low utilization sends current allocation.
 
         Test scenario:
-        1. Dataset has already been allocated resources (2 nodes)
-        2. Utilization is low (50%, below 75% threshold)
+        1. Dataset has already been allocated resources (1 nodes)
+        2. Utilization is low (0%, below default threshold)
         3. Should send current allocation to preserve resource footprint
         """
-        requester_id = "data-test_execution_id"
-        scale_up_threshold = 0.75
-        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
-        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
+        utilization: ExecutionResources = ...
 
-        # Low utilization, does not trigger scale-up
-        low_utilization = ExecutionResources(cpu=0.5, gpu=0.5, object_store_memory=0.5)
-        fake_coordinator = FakeAutoscalingCoordinator()
+        class FakeUtilizationGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
 
+            def get(self):
+                return utilization
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
             resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
-            cluster_scaling_up_delta=1,
-            resource_utilization_calculator=StubUtilizationGauge(low_utilization),
-            cluster_scaling_up_util_threshold=scale_up_threshold,
+            resource_utilization_calculator=FakeUtilizationGauge(),
             min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {
-                resource_spec1: 1,
-                resource_spec2: 1,
-            },
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+            get_node_counts=lambda: {node_resource_spec: 0},
         )
 
-        # Simulate that resources were allocated in a previous scaling cycle
-        simulated_allocation = [
-            {"CPU": 4, "GPU": 0, "memory": 1000},
-            {"CPU": 8, "GPU": 2, "memory": 2000},
-        ]
-        fake_coordinator.request_resources(
-            requester_id=requester_id,
-            resources=simulated_allocation,
-            expire_after_s=180,
-            request_remaining=True,
-        )
-
-        # Trigger scaling with low utilization
+        # Trigger scaling with high utilization. The cluster autoscaler should request
+        # one node.
+        utilization = ExecutionResources(cpu=1, gpu=1, memory=1)
         autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
-        # Should preserve the current allocation
-        allocated_after_scaling = fake_coordinator.get_allocated_resources(requester_id)
-        assert allocated_after_scaling == simulated_allocation
+        # Trigger scaling with low utilization. The cluster autoscaler should re-request
+        # one node rather than no resources.
+        utilization = ExecutionResources(cpu=0, gpu=0, memory=0)
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
