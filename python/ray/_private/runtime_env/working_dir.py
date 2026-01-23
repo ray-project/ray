@@ -14,6 +14,7 @@ from ray._private.runtime_env.packaging import (
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    is_supported_working_dir_package,
     parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -67,8 +68,14 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for remote URIs.")
+        if (
+            protocol in Protocol.remote_protocols()
+            and not is_supported_working_dir_package(Path(path))
+        ):
+            raise ValueError(
+                "Only .zip, .tar, .tar.gz, .tgz, .tar.zst, or .tzst files "
+                "supported for remote URIs."
+            )
         return runtime_env
 
     default_excludes = ray_constants.get_runtime_env_default_excludes()
@@ -98,10 +105,12 @@ def upload_working_dir_if_needed(
         )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
-        if not package_path.exists() or package_path.suffix != ".zip":
+        if not package_path.exists() or not is_supported_working_dir_package(
+            package_path
+        ):
             raise ValueError(
                 f"directory {package_path} must be an existing "
-                "directory or a zip package"
+                "directory or a supported package"
             )
 
         pkg_uri = get_uri_for_package(package_path)

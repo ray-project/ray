@@ -7,7 +7,12 @@ from typing import Dict, List, Optional, Union
 import yaml
 
 from ray._private.path_utils import is_path
-from ray._private.runtime_env.packaging import parse_path
+from ray._private.runtime_env.packaging import (
+    Protocol,
+    is_supported_working_dir_package,
+    parse_path,
+    parse_uri,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +98,22 @@ def validate_working_dir_uri(working_dir_uri: str) -> str:
             "`working_dir` must be a string, got " f"{type(working_dir_uri)}."
         )
 
-    validate_uri(working_dir_uri)
+    try:
+        protocol, path = parse_uri(working_dir_uri)
+    except ValueError:
+        raise ValueError(
+            f"{working_dir_uri} is not a valid URI. Passing directories or modules to "
+            "be dynamically uploaded is only supported at the job level "
+            "(i.e., passed to `ray.init`)."
+        )
+
+    if protocol in Protocol.remote_protocols() and not is_supported_working_dir_package(
+        Path(path)
+    ):
+        raise ValueError(
+            "Only .zip, .tar, .tar.gz, .tgz, .tar.zst, or .tzst files "
+            "supported for remote URIs."
+        )
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
@@ -109,7 +129,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     if is_path(working_dir):
         validate_path(working_dir)
     else:
-        validate_uri(working_dir)
+        validate_working_dir_uri(working_dir)
 
     return working_dir
 
