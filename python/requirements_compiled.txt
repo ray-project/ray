@@ -440,7 +440,7 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.9.0
+deltalake==0.17.0
     # via -r python/requirements/ml/data-test-requirements.txt
 dill==0.3.7
     # via
@@ -1600,7 +1600,9 @@ pyarrow==19.0.1
     #   raydp
     #   triad
 pyarrow-hotfix==0.7
-    # via hudi
+    # via
+    #   deltalake
+    #   hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
