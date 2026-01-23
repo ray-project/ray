@@ -264,6 +264,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         For UPSERT mode, also collects key columns to identify rows to delete.
 
+        Args:
+            blocks: Iterable of data blocks to write.
+            ctx: Task context with metadata like write_uuid.
+
         Returns:
             DeltaWriteResult containing add_actions, upsert_keys (if applicable),
             and schemas from written blocks.
@@ -891,6 +895,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         self, write_result: WriteResult[DeltaWriteResult]
     ) -> tuple[List["AddAction"], Optional[pa.Table]]:
         """Collect all results from distributed write tasks.
+
+        Args:
+            write_result: WriteResult containing DeltaWriteResult from each task.
 
         Returns:
             Tuple of (all_file_actions, combined_upsert_keys).
