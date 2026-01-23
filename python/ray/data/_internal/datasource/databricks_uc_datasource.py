@@ -45,8 +45,7 @@ class DatabricksUCDatasource(Datasource):
     ):
         self._credential_provider = credential_provider
 
-        # Get credentials from provider (single source of truth)
-        self.token = self._credential_provider.get_token()
+        # Get host from provider (token is fetched fresh for each request)
         self.host = self._credential_provider.get_host()
         self.warehouse_id = warehouse_id
         self.catalog = catalog
@@ -70,14 +69,10 @@ class DatabricksUCDatasource(Datasource):
             }
         )
 
-        req_headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + self.token,
-        }
-
+        # Use fresh token for statement creation
         response = requests.post(
             url_base,
-            headers=req_headers,
+            headers=_build_headers(self._credential_provider),
             data=payload,
         )
         response.raise_for_status()
@@ -89,17 +84,29 @@ class DatabricksUCDatasource(Datasource):
         try:
             while state in ["PENDING", "RUNNING"]:
                 time.sleep(_STATEMENT_EXEC_POLL_TIME_S)
+                # Use fresh token for each poll request
                 response = requests.get(
                     urljoin(url_base, statement_id) + "/",
-                    headers=req_headers,
+                    headers=_build_headers(self._credential_provider),
                 )
+                # Retry once on 401 after invalidating credentials
+                if response.status_code == 401:
+                    logger.info(
+                        "Received 401 during polling, invalidating credentials "
+                        "and retrying."
+                    )
+                    self._credential_provider.invalidate()
+                    response = requests.get(
+                        urljoin(url_base, statement_id) + "/",
+                        headers=_build_headers(self._credential_provider),
+                    )
                 response.raise_for_status()
                 state = response.json()["status"]["state"]
         except KeyboardInterrupt:
             # User cancel the command, so we cancel query execution.
             requests.post(
                 urljoin(url_base, f"{statement_id}/cancel"),
-                headers=req_headers,
+                headers=_build_headers(self._credential_provider),
             )
             try:
                 response.raise_for_status()

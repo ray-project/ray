@@ -289,9 +289,6 @@ def test_databricks_uc_datasource_with_credential_provider():
         assert "Authorization" in call_kwargs["headers"]
         assert "Bearer my_provider_token" in call_kwargs["headers"]["Authorization"]
 
-        # Verify backward compatibility: self.token attribute is set
-        assert datasource.token == "my_provider_token"
-
 
 def test_databricks_uc_datasource_401_retry():
     """Test that 401 response triggers credential invalidation and retry."""
@@ -386,6 +383,166 @@ def test_databricks_uc_datasource_401_retry():
 
         # Verify invalidate was not called during datasource creation
         assert mock_provider.invalidate_count == 0
+
+
+def test_databricks_uc_datasource_fresh_token_per_request():
+    """Test that fresh tokens are fetched for each request during polling."""
+    from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksCredentialProvider,
+    )
+    from ray.data._internal.datasource.databricks_uc_datasource import (
+        DatabricksUCDatasource,
+    )
+
+    # Create a credential provider that returns incrementing tokens
+    class TokenTrackingProvider(DatabricksCredentialProvider):
+        def __init__(self):
+            self.token_fetch_count = 0
+
+        def get_token(self) -> str:
+            self.token_fetch_count += 1
+            return f"token_{self.token_fetch_count}"
+
+        def get_host(self) -> str:
+            return "test_host"
+
+        def invalidate(self) -> None:
+            pass
+
+    provider = TokenTrackingProvider()
+
+    with (
+        mock.patch("requests.get") as mock_get,
+        mock.patch("requests.post") as mock_post,
+    ):
+        # Track tokens used in requests
+        tokens_used = []
+
+        def capture_post(url, *args, **kwargs):
+            tokens_used.append(kwargs["headers"]["Authorization"])
+            return mock.Mock(
+                raise_for_status=lambda: None,
+                json=lambda: {
+                    "statement_id": "test_stmt",
+                    "status": {"state": "PENDING"},
+                },
+            )
+
+        poll_count = [0]
+
+        def capture_get(url, *args, **kwargs):
+            tokens_used.append(kwargs["headers"]["Authorization"])
+            poll_count[0] += 1
+            # Return PENDING twice, then SUCCEEDED
+            if poll_count[0] < 3:
+                state = "PENDING"
+            else:
+                state = "SUCCEEDED"
+            return mock.Mock(
+                status_code=200,
+                raise_for_status=lambda: None,
+                json=lambda: {
+                    "status": {"state": state},
+                    "manifest": {"truncated": False, "chunks": []},
+                },
+            )
+
+        mock_post.side_effect = capture_post
+        mock_get.side_effect = capture_get
+
+        DatabricksUCDatasource(
+            warehouse_id="test_warehouse",
+            catalog="test_catalog",
+            schema="test_schema",
+            query="SELECT 1",
+            credential_provider=provider,
+        )
+
+        # Verify fresh token was fetched for each request:
+        # 1 POST (statement creation) + 3 GETs (polling)
+        assert provider.token_fetch_count == 4
+        assert tokens_used == [
+            "Bearer token_1",  # POST
+            "Bearer token_2",  # GET poll 1
+            "Bearer token_3",  # GET poll 2
+            "Bearer token_4",  # GET poll 3
+        ]
+
+
+def test_databricks_uc_datasource_401_retry_during_polling():
+    """Test that 401 during polling triggers credential invalidation and retry."""
+    from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksCredentialProvider,
+    )
+    from ray.data._internal.datasource.databricks_uc_datasource import (
+        DatabricksUCDatasource,
+    )
+
+    class RefreshableProvider(DatabricksCredentialProvider):
+        def __init__(self):
+            self.invalidate_count = 0
+            self.current_token = "expired_token"
+
+        def get_token(self) -> str:
+            return self.current_token
+
+        def get_host(self) -> str:
+            return "test_host"
+
+        def invalidate(self) -> None:
+            self.invalidate_count += 1
+            self.current_token = "refreshed_token"
+
+    provider = RefreshableProvider()
+
+    with (
+        mock.patch("requests.get") as mock_get,
+        mock.patch("requests.post") as mock_post,
+    ):
+        mock_post.return_value = mock.Mock(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "statement_id": "test_stmt",
+                "status": {"state": "PENDING"},
+            },
+        )
+
+        poll_count = [0]
+
+        def get_side_effect(url, *args, **kwargs):
+            poll_count[0] += 1
+            headers = kwargs.get("headers", {})
+            auth_header = headers.get("Authorization", "")
+
+            # First poll returns 401 with expired token
+            if poll_count[0] == 1 and "expired_token" in auth_header:
+                return mock.Mock(
+                    status_code=401,
+                    raise_for_status=mock.Mock(side_effect=Exception("401")),
+                )
+            # Retry or subsequent polls succeed
+            return mock.Mock(
+                status_code=200,
+                raise_for_status=lambda: None,
+                json=lambda: {
+                    "status": {"state": "SUCCEEDED"},
+                    "manifest": {"truncated": False, "chunks": []},
+                },
+            )
+
+        mock_get.side_effect = get_side_effect
+
+        DatabricksUCDatasource(
+            warehouse_id="test_warehouse",
+            catalog="test_catalog",
+            schema="test_schema",
+            query="SELECT 1",
+            credential_provider=provider,
+        )
+
+        # Verify invalidate was called once during polling
+        assert provider.invalidate_count == 1
+        assert provider.current_token == "refreshed_token"
 
 
 def test_databricks_uc_datasource_empty_result():
