@@ -391,6 +391,45 @@ def test_parquet_read_partitioned_with_columns(
     ]
 
 
+def test_parquet_read_partitioned_excludes_unrequested_partition_columns(
+    ray_start_regular_shared, tmp_path
+):
+    """Test that partition columns are excluded when not explicitly requested.
+
+    This is a regression test to ensure that when a user uses select_columns()
+    with only data columns, partition columns are NOT automatically included.
+    """
+    table = pa.table(
+        {
+            "partition_col0": [1, 1, 2, 2],
+            "partition_col1": ["a", "a", "b", "b"],
+            "data_col0": [10.5, 20.3, 30.2, 25.8],
+            "data_col1": [100, 200, 300, 400],
+        }
+    )
+
+    pq.write_to_dataset(
+        table,
+        root_path=tmp_path,
+        partition_cols=["partition_col0", "partition_col1"],
+    )
+
+    # Request only data columns excluding partition columns
+    ds = ray.data.read_parquet(
+        tmp_path,
+        columns=["data_col0"],
+        partitioning=Partitioning("hive"),
+    )
+
+    # Verify only the requested column is present
+    assert ds.columns() == ["data_col0"]
+
+    # Verify the data is correct
+    result_df = ds.to_pandas()
+    expected_df = pd.DataFrame({"data_col0": [10.5, 20.3, 25.8, 30.2]})
+    assert rows_same(result_df, expected_df)
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
