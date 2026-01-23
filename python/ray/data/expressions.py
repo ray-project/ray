@@ -12,6 +12,7 @@ from typing import (
     Generic,
     List,
     Optional,
+    Protocol,
     Tuple,
     Type,
     TypeVar,
@@ -37,6 +38,13 @@ T = TypeVar("T")
 
 UDFCallable = Callable[..., "UDFExpr"]
 Decorated = Union[UDFCallable, Type[T]]
+
+
+class DataTypeInferFn(Protocol):
+    """Protocol for functions that infer output DataType from input DataTypes."""
+
+    def __call__(self, *args: DataType, **kwargs: DataType) -> DataType:
+        ...
 
 
 # TODO(Justin): I'm going to assume this is annoying for users to use if they want
@@ -471,11 +479,11 @@ class Expr(ABC):
 
     def __mod__(self, other: Any):
         """Modulation operator (%)."""
-        return self._bin(other, Operation.MOD)
+        return self._bin(other, BinaryOperation.MOD)
 
     def __rmod__(self, other: Any):
         """Modulation operator (%)."""
-        return LiteralExpr(other)._bin(self, Operation.MOD)
+        return LiteralExpr(other)._bin(self, BinaryOperation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
@@ -1229,13 +1237,13 @@ class UDFExpr(Expr):
     fn: Callable[..., BatchColumn]  # Can be regular function OR _CallableClassUDF
     args: List[Expr]
     kwargs: Dict[str, Expr]
-    # TODO(Justin): Is this stricly required?
-    _data_type: DataType
+    # TODO(Justin): Is this strictly required?
+    _infer_data_type: DataTypeInferFn
 
     @override
     def _is_resolved(self) -> bool:
         return all(arg._is_resolved() for arg in self.args) and all(
-            kwarg._is_resolved() for kwarg in self.kwargs.values()
+            kwarg.B() for kwarg in self.kwargs.values()
         )
 
     @override
@@ -1243,7 +1251,13 @@ class UDFExpr(Expr):
     def data_type(self) -> DataType:
         # TODO(Justin): This behavior is a one off because we don't need to know
         # the arguments before knowing the data type.
-        return self._data_type
+        if not self._is_resolved():
+            raise ValueError("Can't infer data type for unresolved udf expression")
+        args_dtypes: List[DataType] = [arg.data_type for arg in self.args]
+        kwargs_dtypes: Dict[str, DataType] = {
+            name: kwarg.data_type for name, kwarg in self.kwargs.items()
+        }
+        return self._infer_data_type(*args_dtypes, **kwargs_dtypes)
 
     @property
     def callable_class_spec(self) -> Optional[_CallableClassSpec]:
@@ -1284,7 +1298,7 @@ class UDFExpr(Expr):
 
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
-    return_dtype: DataType,
+    return_dtype: DataTypeInferFn | DataType,
 ) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions.
 
@@ -1296,6 +1310,13 @@ def _create_udf_callable(
     Returns:
         A callable that creates UDFExpr instances when called with expressions
     """
+
+    if isinstance(return_dtype, DataType):
+
+        def _infer_dtype():
+            return return_dtype
+
+        return_dtype = _infer_dtype
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
@@ -1317,7 +1338,7 @@ def _create_udf_callable(
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
-            _data_type=return_dtype,
+            _infer_data_type=return_dtype,
         )
 
     # Preserve original function metadata
@@ -1429,7 +1450,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
                     # The _CallableClassUDF is self-contained - no external setup needed
                     return _create_udf_callable(
                         self._expr_udf,
-                        return_dtype,
+                        return_dtype=return_dtype,
                     )(*call_args, **call_kwargs)
 
             # Preserve the original class name and module for better error messages
@@ -1440,7 +1461,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
             return ExpressionAwareCallableClass
         else:
             # Regular function
-            return _create_udf_callable(func_or_class, return_dtype)
+            return _create_udf_callable(func_or_class, return_dtype=return_dtype)
 
     return decorator
 
@@ -1501,7 +1522,7 @@ def _create_pyarrow_wrapper(
 
 
 @PublicAPI(stability="alpha")
-def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
+def pyarrow_udf(return_dtype: DataTypeInferFn | DataType) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
     This decorator wraps PyArrow compute functions to automatically convert pandas
@@ -1522,7 +1543,7 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         # Wrap the function with PyArrow conversion logic
         wrapped_fn = _create_pyarrow_wrapper(func)
         # Create UDFExpr callable using the wrapped function
-        return _create_udf_callable(wrapped_fn, return_dtype)
+        return _create_udf_callable(wrapped_fn, return_dtype=return_dtype)
 
     return decorator
 
@@ -1533,8 +1554,15 @@ def _create_pyarrow_compute_udf(
 ) -> Callable[..., "UDFExpr"]:
     """Create an expression UDF backed by a PyArrow compute function."""
 
+    def _infer_dtype(input_dtype: DataType):
+        dummy = pyarrow.scalar(1, input_dtype.to_arrow_dtype())
+        return pc_func(dummy).type
+
+    if return_dtype is None:
+        return_dtype: DataTypeInferFn = _infer_dtype
+
     def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
-        @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
+        @pyarrow_udf(return_dtype=return_dtype)
         def udf(arr: pyarrow.Array) -> pyarrow.Array:
             return pc_func(arr, *positional, **kwargs)
 
