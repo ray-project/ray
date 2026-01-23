@@ -239,11 +239,11 @@ class VPGPolicyNoSharedEncoder(TorchRLModule):
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dim, self.action_space.n),
         )
-        self._encoder = VPGIndividualEncoder(self.observation_space, embedding_dim)
+        self.encoder = VPGIndividualEncoder(self.observation_space, embedding_dim)
 
     def _forward(self, batch, **kwargs):
         if ENCODER_OUT not in batch:
-            batch = self._encoder(batch)
+            batch = self.encoder(batch)
         embeddings = batch[ENCODER_OUT]
         logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
