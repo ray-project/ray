@@ -2034,7 +2034,9 @@ class Dataset:
         split_dataset = Dataset(plan, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
-        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
+        return StreamSplitDataIterator.create(
+            split_dataset, n, replicas_per_split, locality_hints
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
