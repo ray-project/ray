@@ -1,18 +1,24 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
-from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.data.block import BlockAccessor
+from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
+from ray.data.preprocessors.version_support import SerializablePreprocessor
+from ray.data.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
-class StandardScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.standard_scaler")
+class StandardScaler(SerializablePreprocessorBase):
     r"""Translate and scale each column by its mean and standard deviation,
     respectively.
 
@@ -117,12 +123,69 @@ class StandardScaler(Preprocessor):
         df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
 
+    @staticmethod
+    def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
+        if std == 0:
+            std = 1
+
+        return pc.divide(
+            pc.subtract(column, pa.scalar(float(mean))), pa.scalar(float(std))
+        )
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations."""
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j
+        input_columns = [table.column(input_col) for input_col in self.columns]
+
+        for input_col, output_col, column in zip(
+            self.columns, self.output_columns, input_columns
+        ):
+            s_mean = self.stats_[f"mean({input_col})"]
+            s_std = self.stats_[f"std({input_col})"]
+
+            if s_std is None or s_mean is None:
+                # Return column filled with nulls, preserving original column type
+                null_array = pa.nulls(len(column), type=column.type)
+                table = BlockAccessor.for_block(table).upsert_column(
+                    output_col, null_array
+                )
+                continue
+
+            scaled_column = self._scale_column(column, s_mean, s_std)
+
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, scaled_column
+            )
+
+        return table
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class MinMaxScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.min_max_scaler")
+class MinMaxScaler(SerializablePreprocessorBase):
     r"""Scale each column by its range.
 
     The general formula is given by
@@ -214,12 +277,27 @@ class MinMaxScaler(Preprocessor):
         df[self.output_columns] = df[self.columns].transform(column_min_max_scaler)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class MaxAbsScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.max_abs_scaler")
+class MaxAbsScaler(SerializablePreprocessorBase):
     r"""Scale each column by its absolute max value.
 
     The general formula is given by
@@ -305,12 +383,27 @@ class MaxAbsScaler(Preprocessor):
         df[self.output_columns] = df[self.columns].transform(column_abs_max_scaler)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class RobustScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.robust_scaler")
+class RobustScaler(SerializablePreprocessorBase):
     r"""Scale and translate each column using approximate quantiles.
 
     The general formula is given by
@@ -445,6 +538,24 @@ class RobustScaler(Preprocessor):
 
         df[self.output_columns] = df[self.columns].transform(column_robust_scaler)
         return df
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "quantile_range": self.quantile_range,
+            "quantile_precision": self.quantile_precision,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.quantile_range = fields["quantile_range"]
+        self.quantile_precision = fields["quantile_precision"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (

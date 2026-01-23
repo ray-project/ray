@@ -28,28 +28,34 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
 
   NodeInfoAccessor accessor;
   int num_notifications = 0;
-  accessor.node_change_callback_ = [&](NodeID, const rpc::GcsNodeInfo &) {
-    num_notifications++;
-  };
+  accessor.node_change_callback_address_and_liveness_ =
+      [&](NodeID, const rpc::GcsNodeAddressAndLiveness &) { num_notifications++; };
   NodeID node_id = NodeID::FromRandom();
 
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(node_id.Binary());
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
-  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
-  const auto *gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info));
+  auto gotten_node_info =
+      accessor.GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_TRUE(gotten_node_info.has_value());
   ASSERT_EQ(gotten_node_info->node_id(), node_id.Binary());
   ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::ALIVE);
 
   node_info.set_state(rpc::GcsNodeInfo::DEAD);
-  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
-  gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info));
+  gotten_node_info =
+      accessor.GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_TRUE(gotten_node_info.has_value());
   ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::DEAD);
-  ASSERT_EQ(accessor.Get(node_id, /*filter_dead_nodes=*/true), nullptr);
+  ASSERT_FALSE(accessor.GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true)
+                   .has_value());
 
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
-  accessor.HandleNotification(rpc::GcsNodeInfo(node_info));
-  gotten_node_info = accessor.Get(node_id, /*filter_dead_nodes=*/false);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info));
+  gotten_node_info =
+      accessor.GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/false);
+  ASSERT_TRUE(gotten_node_info.has_value());
   ASSERT_EQ(gotten_node_info->state(), rpc::GcsNodeInfo::DEAD);
 
   ASSERT_EQ(num_notifications, 2);
@@ -57,7 +63,7 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
 
 TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   NodeInfoAccessor accessor;
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   NodeID node_id = NodeID::FromRandom();
   node_info.set_node_id(node_id.Binary());
@@ -66,12 +72,10 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   death_info->set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   death_info->set_reason_message("Test termination reason");
 
-  node_info.set_end_time_ms(12345678);
-
   accessor.HandleNotification(std::move(node_info));
 
-  auto cached_node = accessor.Get(node_id, false);
-  ASSERT_NE(cached_node, nullptr);
+  auto cached_node = accessor.GetNodeAddressAndLiveness(node_id, false);
+  ASSERT_TRUE(cached_node.has_value());
   ASSERT_EQ(cached_node->node_id(), node_id.Binary());
   ASSERT_EQ(cached_node->state(),
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
@@ -79,7 +83,6 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   ASSERT_TRUE(cached_node->has_death_info());
   ASSERT_EQ(cached_node->death_info().reason(), rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   ASSERT_EQ(cached_node->death_info().reason_message(), "Test termination reason");
-  ASSERT_EQ(cached_node->end_time_ms(), 12345678);
 }
 
 int main(int argc, char **argv) {

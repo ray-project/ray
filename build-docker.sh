@@ -38,9 +38,9 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS+=("-q")
         ;;
         --python-version)
-            # Python version to install. e.g. 3.9
+            # Python version to install. e.g. 3.10
             # Changing python versions may require a different wheel.
-            # If not provided defaults to 3.9
+            # If not provided defaults to 3.10
             shift
             PYTHON_VERSION="$1"
         ;;
@@ -64,11 +64,17 @@ RAY_DEPS_BUILD_DIR="$(mktemp -d)"
 cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
 mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
 cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+cp python/requirements_compiled_py${PYTHON_VERSION}.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled_py${PYTHON_VERSION}.txt"
+PYTHON_DEPSET_FILE_NAME="ray_base_deps_py${PYTHON_VERSION}.lock"
+REQUIREMENTS_FILE_BASE_DEPS="python/deplocks/base_deps/${PYTHON_DEPSET_FILE_NAME}"
+
+cp "${REQUIREMENTS_FILE_BASE_DEPS}" "${RAY_DEPS_BUILD_DIR}/."
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
+    --build-arg PYTHON_DEPSET="${PYTHON_DEPSET_FILE_NAME}"
     -t "rayproject/base-deps:dev$GPU" "${RAY_DEPS_BUILD_DIR}"
 )
 

@@ -381,12 +381,14 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         wait_for_condition(lambda: verify_nodes(3, 1))
 
         def kill_node(node_id):
-            cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
-            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
-            print(f"Killing pid {pid}")
-            # kill the pid
-            cmd = f"kill -9 {pid}"
-            subprocess.check_output(cmd, shell=True)
+            cmd = f"ps auxww | grep {node_id} | grep -v grep | awk '{{print $2}}'"
+            pids = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pids {pids}")
+            # kill the pids (handle multiple PIDs separated by newlines)
+            for pid in pids.split("\n"):
+                if pid:
+                    cmd = f"kill -9 {pid}"
+                    subprocess.run(cmd, shell=True)
 
         # Kill a worker node with 'R1' in resources
         for n in ray.nodes():
@@ -398,7 +400,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         kill_node(node["NodeID"])
 
         # Wait for the node to be removed
-        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+        wait_for_condition(lambda: verify_nodes(2, 1), 30)
 
         # Only provision nodes for unplaced bundles;
         # avoid rescheduling the whole placement group.
@@ -498,7 +500,7 @@ while True:
                 "raylet_report_resources_period_milliseconds": 10000,
                 "global_gc_min_interval_s": 1,
                 "local_gc_interval_s": 1,
-                "high_plasma_storage_usage": 0.2,
+                "plasma_store_usage_trigger_gc_threshold": 0.2,
                 "raylet_check_gc_period_milliseconds": 10,
             },
         )
@@ -512,7 +514,7 @@ while True:
             assert len(cluster_state.idle_nodes) == num_worker_nodes + 1
             return True
 
-        wait_for_condition(nodes_up)
+        wait_for_condition(nodes_up, timeout=20)
 
         # Schedule tasks
         run_string_as_driver_nonblocking(driver_script)

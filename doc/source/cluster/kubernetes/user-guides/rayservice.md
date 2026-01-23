@@ -35,7 +35,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-service.sample.yaml
+curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-service.sample.yaml
 kubectl apply -f ray-service.sample.yaml
 ```
 
@@ -200,7 +200,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.5.0/ray-operator/config/samples/ray-service.sample.yaml).
+Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.5.1/ray-operator/config/samples/ray-service.sample.yaml).
 This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
 
 ```sh
@@ -230,6 +230,8 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 (step-8-zero-downtime-upgrade-for-ray-clusters)=
 ## Step 8: Zero downtime upgrade for Ray clusters
+
+This section describes the default `NewCluster` upgrade strategy. For large-scale deployments where duplicating resources isn't feasible, see [RayService incremental upgrade](kuberay-rayservice-incremental-upgrade) for the `NewClusterWithIncrementalUpgrade` strategy, which uses fewer resources during upgrades.
 
 In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters.
 Instead, it reapplies the new configurations to the existing RayCluster.

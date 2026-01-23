@@ -1,4 +1,4 @@
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG RAYCI_IS_GPU_BUILD=false

@@ -126,7 +126,7 @@ void LeaseDependencyManager::StartGetRequest(
     const auto obj_id = ObjectRefToId(ref);
     object_ids.emplace_back(obj_id);
     auto it = GetOrInsertRequiredObject(obj_id, ref);
-    it->second.dependent_get_requests.insert(worker_id);
+    ++it->second.dependent_get_requests[worker_id];
   }
 
   uint64_t new_pull_request_id = object_manager_.Pull(
@@ -158,7 +158,10 @@ void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id,
   for (const auto &obj_id : object_ids) {
     auto obj_iter = required_objects_.find(obj_id);
     RAY_CHECK(obj_iter != required_objects_.end());
-    obj_iter->second.dependent_get_requests.erase(worker_id);
+    --obj_iter->second.dependent_get_requests[worker_id];
+    if (obj_iter->second.dependent_get_requests[worker_id] == 0) {
+      obj_iter->second.dependent_get_requests.erase(worker_id);
+    }
     RemoveObjectIfNotNeeded(obj_iter);
   }
 
@@ -193,7 +196,10 @@ void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
     for (const auto &obj_id : object_ids) {
       auto obj_iter = required_objects_.find(obj_id);
       RAY_CHECK(obj_iter != required_objects_.end());
-      obj_iter->second.dependent_get_requests.erase(worker_id);
+      --obj_iter->second.dependent_get_requests[worker_id];
+      if (obj_iter->second.dependent_get_requests[worker_id] == 0) {
+        obj_iter->second.dependent_get_requests.erase(worker_id);
+      }
       RemoveObjectIfNotNeeded(obj_iter);
     }
 

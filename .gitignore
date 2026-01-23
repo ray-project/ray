@@ -37,6 +37,7 @@ python/ray/autoscaler/kuberay/config
 
 # Python byte code files
 *.pyc
+__pycache__/
 python/.eggs
 .eggs
 # Backup files
@@ -243,3 +244,6 @@ tag-mapping.json
 
 # Custom BYOD build rayci yaml file
 .buildkite/release/custom_byod_build.rayci.yml
+
+# Claude files
+/.claude/

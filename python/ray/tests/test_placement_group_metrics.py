@@ -7,7 +7,8 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
 )
 from ray._private.worker import RayContext
 from ray.util.placement_group import remove_placement_group
@@ -17,8 +18,8 @@ _SYSTEM_CONFIG = {
 }
 
 
-def groups_by_state(info: RayContext) -> Dict:
-    res = raw_metrics(info)
+def groups_by_state(info: RayContext, timeseries: PrometheusTimeseries) -> Dict:
+    res = raw_metric_timeseries(info, timeseries)
     info = defaultdict(int)
     if "ray_placement_groups" in res:
         for sample in res["ray_placement_groups"]:
@@ -42,8 +43,9 @@ def test_basic_states(shutdown_only):
         "CREATED": 2,
         "PENDING": 1,
     }
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
-        lambda: groups_by_state(info) == expected,
+        lambda: groups_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )
@@ -55,8 +57,9 @@ def test_basic_states(shutdown_only):
     expected = {
         "REMOVED": 3,
     }
+    timeseries = PrometheusTimeseries()
     wait_for_condition(
-        lambda: groups_by_state(info) == expected,
+        lambda: groups_by_state(info, timeseries) == expected,
         timeout=20,
         retry_interval_ms=500,
     )

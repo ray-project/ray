@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Box, useTheme } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 
 const PercentageBar = (
@@ -6,12 +6,18 @@ const PercentageBar = (
 ) => {
   const { num, total } = props;
   const per = Math.round((num / total) * 100);
+  const theme = useTheme();
 
   return (
     <Box
       sx={{
-        background: "linear-gradient(45deg, #21CBF3ee 30%, #2196F3ee 90%)",
-        border: `1px solid #ffffffbb`,
+        background:
+          theme.palette.mode === "dark"
+            ? "linear-gradient(45deg, #0D47A1ee 30%, #01579Bee 90%)"
+            : "linear-gradient(45deg, #21CBF3ee 30%, #2196F3ee 90%)",
+        border: `1px solid ${
+          theme.palette.mode === "dark" ? theme.palette.divider : "#ffffffbb"
+        }`,
         padding: "0 12px",
         height: 18,
         lineHeight: "18px",

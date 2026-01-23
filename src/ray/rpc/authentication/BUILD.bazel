@@ -22,6 +22,27 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "k8s_constants",
+    hdrs = ["k8s_constants.h"],
+    visibility = ["//visibility:public"],
+)
+
+ray_cc_library(
+    name = "k8s_util",
+    srcs = ["k8s_util.cc"],
+    hdrs = ["k8s_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":authentication_token",
+        ":k8s_constants",
+        "//src/ray/util:logging",
+        "@boost//:asio_ssl",
+        "@boost//:beast",
+        "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
     name = "authentication_token_loader",
     srcs = ["authentication_token_loader.cc"],
     hdrs = ["authentication_token_loader.h"],
@@ -29,6 +50,7 @@ ray_cc_library(
     deps = [
         ":authentication_mode",
         ":authentication_token",
+        ":k8s_constants",
         "//src/ray/util:logging",
     ],
 )
@@ -43,5 +65,17 @@ ray_cc_library(
         ":authentication_token_loader",
         "//src/ray/common:constants",
         "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "authentication_token_validator",
+    srcs = ["authentication_token_validator.cc"],
+    hdrs = ["authentication_token_validator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":authentication_mode",
+        ":authentication_token",
+        ":k8s_util",
     ],
 )

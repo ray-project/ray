@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 import pyarrow.fs
 
@@ -19,6 +19,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
+from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -48,6 +49,9 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        label_selector: A list of label selectors for Ray Train worker placement.
+            If a single label selector is provided, it will be applied to all Ray Train workers.
+            If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
             training coordinator and workers on the nodes with the specified type
             of accelerators.
@@ -67,6 +71,9 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
+    label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+
+    # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
 
@@ -74,17 +81,43 @@ class ScalingConfig(ScalingConfigV1):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        self._validate_tpu_config()
+
+        if (
+            isinstance(self.label_selector, list)
+            and isinstance(self.num_workers, int)
+            and len(self.label_selector) != self.num_workers
+        ):
+            raise ValueError(
+                "If `label_selector` is a list, it must be the same length as `num_workers`."
+            )
+
+        if self.num_workers == 0:
+            logger.info(
+                "Running in local mode. The training function will run in the same process. "
+                "If you are using it and running into issues please file a report at "
+                "https://github.com/ray-project/ray/issues."
+            )
+
+        super().__post_init__()
+
+    def _validate_tpu_config(self):
+        """Validates configuration specifically for TPU usage."""
+
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
-        if not self.use_tpu and self.num_tpus_per_worker > 0:
-            raise ValueError(
-                "`use_tpu` is False but `TPU` was found in "
-                "`resources_per_worker`. Either set `use_tpu` to True or "
-                "remove `TPU` from `resources_per_worker."
-            )
+        if not self.use_tpu:
+            if self.num_tpus_per_worker > 0:
+                raise ValueError(
+                    "`use_tpu` is False but `TPU` was found in "
+                    "`resources_per_worker`. Either set `use_tpu` to True or "
+                    "remove `TPU` from `resources_per_worker."
+                )
+            # If not using TPU, we are done validating TPU-specific logic.
+            return
 
-        if self.use_tpu and self.num_tpus_per_worker == 0:
+        if self.num_tpus_per_worker == 0:
             raise ValueError(
                 "`use_tpu` is True but `TPU` is set to 0 in "
                 "`resources_per_worker`. Either set `use_tpu` to False or "
@@ -92,7 +125,7 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
-        if self.use_tpu and self.num_workers > 1:
+        if self.num_workers > 1:
             if not self.topology:
                 raise ValueError(
                     "`topology` must be specified in ScalingConfig when `use_tpu=True` "
@@ -103,15 +136,38 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
+            if self.label_selector:
+                raise ValueError(
+                    "Cannot set `label_selector` when `use_tpu=True` because "
+                    "Ray Train automatically reserves a TPU slice with a predefined label."
+                )
 
-        if self.num_workers == 0:
-            logger.info(
-                "Running in local mode. The training function will run in the same process. "
-                "If you are using it and running into issues please file a report at "
-                "https://github.com/ray-project/ray/issues."
-            )
+        # Validate TPU resources when both topology and accelerator type are specified.
+        if self.topology and self.accelerator_type:
+            try:
+                workers_per_slice, tpu_resources = get_tpu_worker_resources(
+                    topology=self.topology,
+                    accelerator_type=self.accelerator_type,
+                    resources_per_unit=self.resources_per_worker,
+                    num_slices=1,
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Could not parse TPU topology details for "
+                    f"type={self.accelerator_type}, "
+                    f"topology={self.topology}. Error: {e}"
+                )
 
-        super().__post_init__()
+            if workers_per_slice > 0 and self.num_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+
+            if self.resources_per_worker is None:
+                self.resources_per_worker = tpu_resources
 
     @property
     def _resources_per_worker_not_none(self):

@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.configs import DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
@@ -35,7 +35,7 @@ class TestRayDockerContainer(RayCITestBase):
 
             # Run with default python version and ray image
             self.cmds = []
-            v = DEFAULT_PYTHON_VERSION
+            v = DEFAULT_PYTHON_TAG_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, cuda, "ray")
@@ -45,7 +45,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu124 "
                 f"ray:{sha}-{pv}-cu124_pip-freeze.txt"
             )
@@ -62,7 +61,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -79,7 +77,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
@@ -106,7 +103,7 @@ class TestRayDockerContainer(RayCITestBase):
 
             # Run with default python version and ray image
             self.cmds = []
-            v = DEFAULT_PYTHON_VERSION
+            v = DEFAULT_PYTHON_TAG_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             cuda = "cu12.1.1-cudnn8"
@@ -117,7 +114,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu121 "
                 f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
@@ -143,7 +139,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -168,7 +163,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
@@ -203,7 +197,7 @@ class TestRayDockerContainer(RayCITestBase):
 
             # Run with default python version and ray image
             self.cmds = []
-            v = DEFAULT_PYTHON_VERSION
+            v = DEFAULT_PYTHON_TAG_VERSION
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, cuda, "ray")
@@ -213,7 +207,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu118 "
                 f"ray:{sha}-{pv}-cu118_pip-freeze.txt"
             )
@@ -231,7 +224,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -248,14 +240,13 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
 
     def test_canonical_tag(self) -> None:
         sha = "123456"
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray", canonical_tag="abc")
         assert container._get_canonical_tag() == "abc"
@@ -284,7 +275,7 @@ class TestRayDockerContainer(RayCITestBase):
         # get_canonical_tag), so we only test the basic cases here
         sha = "123456"
         rayci_build_id = "a1b2c3d4"
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray")
         formatted_date = datetime.now().strftime("%y%m%d")
@@ -314,7 +305,7 @@ class TestRayDockerContainer(RayCITestBase):
     def test_get_image_name(self) -> None:
         sha = "123456"
         rayci_build_id = "a1b2c3d4"
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         pv = self.get_python_version(v)
         formatted_date = datetime.now().strftime("%y%m%d")
         container = RayDockerContainer(v, "cpu", "ray")
@@ -433,7 +424,7 @@ class TestRayDockerContainer(RayCITestBase):
         with mock.patch.dict(
             os.environ, {"BUILDKITE_BRANCH": f"releases/{release_version}"}
         ):
-            v = DEFAULT_PYTHON_VERSION
+            v = DEFAULT_PYTHON_TAG_VERSION
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, "cpu", "ray")
             assert container._get_image_names() == [
@@ -444,13 +435,13 @@ class TestRayDockerContainer(RayCITestBase):
             ]
 
     def test_get_python_version_tag(self) -> None:
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray")
         assert container._get_python_version_tag() == f"-{pv}"
 
     def test_get_platform_tag(self) -> None:
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         container = RayDockerContainer(v, "cpu", "ray")
         assert container._get_platform_tag() == "-cpu"
 
@@ -472,8 +463,11 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray")
         assert container._get_platform_tag() == "-cu128"
 
+        container = RayDockerContainer(v, "cu12.9.1-cudnn", "ray")
+        assert container._get_platform_tag() == "-cu129"
+
     def test_should_upload(self) -> None:
-        v = DEFAULT_PYTHON_VERSION
+        v = DEFAULT_PYTHON_TAG_VERSION
         test_cases = [
             # environment_variables, expected_result (with upload flag on)
             (
