@@ -31,8 +31,6 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
-    FixedShapeTensorArray,
     create_arrow_tensor_type,
 )
 from ray.data._internal.util import (
@@ -792,16 +790,6 @@ class ParquetDatasource(Datasource):
             )
 
         if tensor_column_schema is not None:
-            ctx = DataContext.get_current()
-            # Warn if native tensors requested but PyArrow version is too old
-            if (
-                ctx.use_arrow_native_fixed_shape_tensor_type
-                and FixedShapeTensorArray is None
-            ):
-                logger.warning(
-                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} to enable native tensor arrays"
-                )
-
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
                 pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()

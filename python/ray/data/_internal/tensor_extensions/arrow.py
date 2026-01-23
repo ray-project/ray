@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 import threading
+import warnings
 from abc import abstractmethod
 from datetime import datetime
 from enum import Enum
@@ -77,6 +78,22 @@ if (
 else:
     FixedShapeTensorArray = None
     FixedShapeTensorType = None
+
+
+def warn_native_fixed_shape_tensors_if_pyarrow_version_unsupported():
+    """Warn once if PyArrow version is too old for native tensor arrays."""
+    from ray.data.context import DataContext
+
+    if (
+        DataContext.get_current().use_arrow_native_fixed_shape_tensor_type
+        and FixedShapeTensorArray is None
+    ):
+        warnings.warn(
+            f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+            "to enable native tensor arrays",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 # List of scalar types supported by Arrow's FixedShapeTensorArray
@@ -778,15 +795,31 @@ def create_arrow_tensor_type(
         ValueError: If NATIVE format is requested but PyArrow < 12.0.0.
     """
     if tensor_format is None:
-        # Use context defaults with priority: NATIVE > V2 > V1
+
+        # When tensor_format is None, use context defaults with priority: NATIVE > V2 > V1
         from ray.data.context import DataContext
 
         ctx = DataContext.get_current()
+        # Native tensor format requires fully-known shapes (no None dims)
+        is_variable_shaped = any(dim is None for dim in shape)
+
         if (
             ctx.use_arrow_native_fixed_shape_tensor_type
+            and not is_variable_shaped
+            and FixedShapeTensorType is None
+            and log_once("native_fixed_shape_tensors_not_supported")
+        ):
+            warnings.warn(
+                f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+                "to enable native tensor arrays",
+                UserWarning,
+                stacklevel=3,
+            )
+
+        if (
+            ctx.use_arrow_native_fixed_shape_tensor_type
+            and not is_variable_shaped
             and FixedShapeTensorType is not None
-            # Native tensor format requires fully-known shapes (no None dims)
-            and all(dim is not None for dim in shape)
         ):
             tensor_format = TensorFormat.NATIVE
         elif ctx.use_arrow_tensor_v2:
