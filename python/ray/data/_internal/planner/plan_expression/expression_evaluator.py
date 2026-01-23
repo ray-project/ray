@@ -514,6 +514,7 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Attribute):
             # Recursively handle nested attributes
             left_expr = self.visit(node.value)
+            # TODO(Justin): Ask goutam about this
             if isinstance(left_expr, (ResolvedColumnExpr)):
                 return ResolvedColumnExpr(
                     _data_type=left_expr.data_type,

@@ -137,7 +137,7 @@ class BinaryOperation(Operation, Enum):
         left = pyarrow.scalar(None, l_dtype.to_arrow_dtype())
         right = pyarrow.scalar(None, r_dtype.to_arrow_dtype())
 
-        return _ARROW_EXPR_OPS_MAP[self](left, right).type
+        return DataType.from_arrow(_ARROW_EXPR_OPS_MAP[self](left, right).type)
 
 
 class _ExprVisitor(ABC, Generic[T]):
@@ -825,7 +825,6 @@ class ResolvedColumnExpr(NamedExpr):
 
     _data_type: DataType = field(default_factory=lambda: DataType(object))
 
-    @property
     def _is_resolved(self) -> bool:
         return True
 
@@ -1462,11 +1461,10 @@ def pyarrow_udf(return_dtype: DataType | None = None) -> Callable[..., UDFExpr]:
     regardless of the underlying block format (pandas, arrow, or items).
 
     Used internally by namespace methods (list, str, struct) that wrap PyArrow
-    compute functions.
+    compute functions. TODO(Justin): Update the docstring
 
     Args:
         return_dtype: The data type of the return value
-        TODO(Justin): Update the docstring
 
     Returns:
         A callable that creates UDFExpr instances with automatic conversion
