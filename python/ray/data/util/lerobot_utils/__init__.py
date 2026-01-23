@@ -28,7 +28,10 @@ from .lerobot_meta_utils import (
     load_stats,
     load_tasks,
 )
-from .video_utils import decode_video_frames, get_safe_default_codec
+
+# Note: video_utils imports are not included here to avoid importing
+# optional dependencies (av/PyAV) at module level. Import them directly
+# from ray.data.util.lerobot_utils.video_utils when needed.
 
 __all__ = [
     "load_info",
@@ -38,7 +41,5 @@ __all__ = [
     "is_valid_version",
     "get_safe_version",
     "LeRobotDatasetMetadata",
-    "decode_video_frames",
-    "get_safe_default_codec",
     "get_horizon_indices",
 ]

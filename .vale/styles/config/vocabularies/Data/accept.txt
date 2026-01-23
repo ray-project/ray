@@ -2,12 +2,14 @@ assess_quality
 autoscaler
 [Aa]vro
 [Bb]ackpressure
+conda
 Dask
 [Dd]ata('s)?
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
 docstrings
 dtype
+FFmpeg
 FLAC
 [Gg]roup[bB]y
 [Hh]asher(s)?

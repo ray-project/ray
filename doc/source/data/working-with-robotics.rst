@@ -226,19 +226,19 @@ TorchCodec provides better performance for large-scale video processing.
 Troubleshooting TorchCodec Setup
 =================================
 
-Common Issue: "Could not load libtorchcodec"
+Common Issue: "Couldn't load libtorchcodec"
 ---------------------------------------------
 
 **Error message:**
 
 .. code-block:: text
 
-    RuntimeError: Could not load libtorchcodec. Likely causes:
+    RuntimeError: Couldn't load libtorchcodec. Likely causes:
               1. FFmpeg is not properly installed in your environment.
 
 **Diagnosis:**
 
-TorchCodec cannot find FFmpeg shared libraries. TorchCodec supports FFmpeg versions 4, 5, 6, and 7.
+TorchCodec can't find FFmpeg shared libraries. TorchCodec supports FFmpeg versions 4, 5, 6, and 7.
 
 **Solution:**
 
@@ -251,7 +251,7 @@ TorchCodec cannot find FFmpeg shared libraries. TorchCodec supports FFmpeg versi
        # or
        ls /usr/local/lib/libavutil*  # macOS/Linux
 
-2. **If FFmpeg is not installed, install it:**
+2. **If FFmpeg isn't installed, install it:**
 
    Using conda (recommended):
 

@@ -101,11 +101,6 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.util.lerobot_utils.horizon_utils import (
-    process_horizon_batch,
-)
-from ray.data.util.lerobot_utils.lerobot_dataset_meta import LeRobotDatasetMetadata
-from ray.data.util.lerobot_utils.video_utils import decode_video_frames
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -3737,7 +3732,10 @@ def read_lerobot(
         Read a LeRobot dataset with videos:
 
         >>> import ray
-        >>> ds = ray.data.read_lerobot("lerobot/aloha_mobile_cabinet")
+        >>> ds = ray.data.read_lerobot(
+        ...     "lerobot/aloha_mobile_cabinet",
+        ...     root="",
+        ... )
         >>> ds.schema()
         Column         Type
         ------         ----
@@ -3749,14 +3747,18 @@ def read_lerobot(
         cam_high       ArrowTensorTypeV2(shape=(T, H, W, 3), dtype=uint8)
         ...
 
-        Read without loading videos (faster, metadata only):
+        Read with local root:
 
-        >>> ds = ray.data.read_lerobot("lerobot/pusht")
+        >>> ds = ray.data.read_lerobot(
+        ...     "lerobot/pusht",
+        ...     root="/path/to/local/cache"
+        ... )
 
         Customize video loading:
 
         >>> ds = ray.data.read_lerobot(
         ...     "lerobot/aloha_mobile_cabinet",
+        ...     root="/path/to/local/cache",
         ...     video_backend="pyav",
         ...     video_batch_size=64
         ... )
@@ -3807,9 +3809,16 @@ def read_lerobot(
         - LeRobot datasets: https://huggingface.co/lerobot
         - :meth:`~ray.data.read_parquet`: For reading parquet files directly
     """
+    # Lazy imports for optional LeRobot dependencies
     import os
 
     from huggingface_hub import HfFileSystem
+
+    from ray.data.util.lerobot_utils.horizon_utils import process_horizon_batch
+    from ray.data.util.lerobot_utils.lerobot_dataset_meta import (
+        LeRobotDatasetMetadata,
+    )
+    from ray.data.util.lerobot_utils.video_utils import decode_video_frames
 
     # Initialize metadata once - it will determine the correct root internally
     meta = LeRobotDatasetMetadata(
