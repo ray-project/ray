@@ -80,27 +80,12 @@ else:
     FixedShapeTensorType = None
 
 
-def warn_native_fixed_shape_tensors_if_pyarrow_version_unsupported():
-    """Warn once if PyArrow version is too old for native tensor arrays."""
-    from ray.data.context import DataContext
-
-    if (
-        DataContext.get_current().use_arrow_native_fixed_shape_tensor_type
-        and FixedShapeTensorArray is None
-    ):
-        warnings.warn(
-            f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-            "to enable native tensor arrays",
-            UserWarning,
-            stacklevel=2,
-        )
-
-
 # List of scalar types supported by Arrow's FixedShapeTensorArray
 _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
     pa.int8(),
     pa.uint8(),
     pa.int16(),
+    pa.uint16(),
     pa.uint32(),
     pa.int32(),
     pa.uint64(),

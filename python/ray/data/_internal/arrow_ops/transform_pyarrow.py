@@ -836,6 +836,10 @@ def to_numpy(
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This may not be performant
+            array = combine_chunked_array(array)
+            return array.to_numpy_ndarray()
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:
