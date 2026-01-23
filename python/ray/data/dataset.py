@@ -6399,6 +6399,10 @@ class Dataset:
             MapRows[Map(<lambda>)]
             +- Read[ReadRange]
             <BLANKLINE>
+            -------- Logical Plan (Analyzed) --------
+            MapRows[Map(<lambda>)]
+            +- Read[ReadRange]
+            <BLANKLINE>
             -------- Logical Plan (Optimized) --------
             MapRows[Map(<lambda>)]
             +- Read[ReadRange]

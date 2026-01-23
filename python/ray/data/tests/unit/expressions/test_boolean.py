@@ -10,7 +10,14 @@ import pandas as pd
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, UnaryExpr, col, lit
+from ray.data.expressions import (
+    BinaryExpr,
+    BinaryOperation,
+    UnaryExpr,
+    UnaryOperation,
+    col,
+    lit,
+)
 
 # ──────────────────────────────────────
 # Logical AND Operations
@@ -35,7 +42,7 @@ class TestLogicalAnd:
         """Test AND of two boolean columns."""
         expr = col("is_active") & col("is_verified")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.AND
+        assert expr.op == BinaryOperation.AND
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, False, False, False])
         pd.testing.assert_series_equal(
@@ -84,7 +91,7 @@ class TestLogicalOr:
         """Test OR of two boolean columns."""
         expr = col("is_admin") | col("is_moderator")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.OR
+        assert expr.op == BinaryOperation.OR
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, True, False, False])
         pd.testing.assert_series_equal(
@@ -133,7 +140,7 @@ class TestLogicalNot:
         """Test NOT of a boolean column."""
         expr = ~col("is_active")
         assert isinstance(expr, UnaryExpr)
-        assert expr.op == Operation.NOT
+        assert expr.op == UnaryOperation.NOT
         result = eval_expr(expr, sample_data)
         expected = pd.Series([False, True, False, True])
         pd.testing.assert_series_equal(

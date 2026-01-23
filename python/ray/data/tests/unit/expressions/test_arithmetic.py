@@ -16,7 +16,7 @@ import pytest
 from pkg_resources import parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
+from ray.data.expressions import BinaryExpr, BinaryOperation, UDFExpr, col, lit
 from ray.data.tests.conftest import get_pyarrow_version
 
 pytestmark = pytest.mark.skipif(
@@ -57,7 +57,7 @@ class TestBasicArithmetic:
     def test_addition(self, sample_data, expr, expected_name, expected_values):
         """Test addition operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.ADD
+        assert expr.op == BinaryOperation.ADD
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -69,7 +69,7 @@ class TestBasicArithmetic:
         """Test reverse addition (literal + expr)."""
         expr = 5 + col("a")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.ADD
+        assert expr.op == BinaryOperation.ADD
         result = eval_expr(expr, sample_data)
         expected = pd.Series([15, 25, 35, 45])
         pd.testing.assert_series_equal(
@@ -89,7 +89,7 @@ class TestBasicArithmetic:
     def test_subtraction(self, sample_data, expr, expected_values):
         """Test subtraction operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.SUB
+        assert expr.op == BinaryOperation.SUB
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -101,7 +101,7 @@ class TestBasicArithmetic:
         """Test reverse subtraction (literal - expr)."""
         expr = 100 - col("a")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.SUB
+        assert expr.op == BinaryOperation.SUB
         result = eval_expr(expr, sample_data)
         expected = pd.Series([90, 80, 70, 60])
         pd.testing.assert_series_equal(
@@ -121,7 +121,7 @@ class TestBasicArithmetic:
     def test_multiplication(self, sample_data, expr, expected_values):
         """Test multiplication operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.MUL
+        assert expr.op == BinaryOperation.MUL
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -133,7 +133,7 @@ class TestBasicArithmetic:
         """Test reverse multiplication (literal * expr)."""
         expr = 3 * col("b")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.MUL
+        assert expr.op == BinaryOperation.MUL
         result = eval_expr(expr, sample_data)
         expected = pd.Series([6, 12, 15, 24])
         pd.testing.assert_series_equal(
@@ -153,7 +153,7 @@ class TestBasicArithmetic:
     def test_division(self, sample_data, expr, expected_values):
         """Test division operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.DIV
+        assert expr.op == BinaryOperation.DIV
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -165,7 +165,7 @@ class TestBasicArithmetic:
         """Test reverse division (literal / expr)."""
         expr = 100 / col("a")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.DIV
+        assert expr.op == BinaryOperation.DIV
         result = eval_expr(expr, sample_data)
         expected = pd.Series([10.0, 5.0, 100 / 30, 2.5])
         pd.testing.assert_series_equal(
@@ -185,7 +185,7 @@ class TestBasicArithmetic:
     def test_floor_division(self, sample_data, expr, expected_values):
         """Test floor division operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.FLOORDIV
+        assert expr.op == BinaryOperation.FLOORDIV
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -197,7 +197,7 @@ class TestBasicArithmetic:
         """Test reverse floor division (literal // expr)."""
         expr = 100 // col("a")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.FLOORDIV
+        assert expr.op == BinaryOperation.FLOORDIV
         result = eval_expr(expr, sample_data)
         expected = pd.Series([10, 5, 3, 2])
         pd.testing.assert_series_equal(
@@ -218,7 +218,7 @@ class TestBasicArithmetic:
     def test_modulo(self, sample_data, expr, expected_values):
         """Test modulo operations."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.MOD
+        assert expr.op == BinaryOperation.MOD
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),

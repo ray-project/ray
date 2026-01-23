@@ -18,14 +18,17 @@ from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
+    BinaryOperation,
     DownloadExpr,
     Expr,
     LiteralExpr,
     Operation,
+    ResolvedColumnExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
+    UnresolvedColumnExpr,
     _ExprVisitor,
     col,
 )
@@ -40,25 +43,25 @@ def _pa_is_in(left: Any, right: Any) -> Any:
 
 
 _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
-    Operation.ADD: operator.add,
-    Operation.SUB: operator.sub,
-    Operation.MUL: operator.mul,
-    Operation.DIV: operator.truediv,
-    Operation.MOD: operator.mod,
-    Operation.FLOORDIV: operator.floordiv,
-    Operation.GT: operator.gt,
-    Operation.LT: operator.lt,
-    Operation.GE: operator.ge,
-    Operation.LE: operator.le,
-    Operation.EQ: operator.eq,
-    Operation.NE: operator.ne,
-    Operation.AND: operator.and_,
-    Operation.OR: operator.or_,
-    Operation.NOT: operator.invert,
-    Operation.IS_NULL: pd.isna,
-    Operation.IS_NOT_NULL: pd.notna,
-    Operation.IN: lambda left, right: left.isin(right),
-    Operation.NOT_IN: lambda left, right: ~left.isin(right),
+    BinaryOperation.ADD: operator.add,
+    BinaryOperation.SUB: operator.sub,
+    BinaryOperation.MUL: operator.mul,
+    BinaryOperation.DIV: operator.truediv,
+    BinaryOperation.MOD: operator.mod,
+    BinaryOperation.FLOORDIV: operator.floordiv,
+    BinaryOperation.GT: operator.gt,
+    BinaryOperation.LT: operator.lt,
+    BinaryOperation.GE: operator.ge,
+    BinaryOperation.LE: operator.le,
+    BinaryOperation.EQ: operator.eq,
+    BinaryOperation.NE: operator.ne,
+    BinaryOperation.AND: operator.and_,
+    BinaryOperation.OR: operator.or_,
+    UnaryOperation.NOT: operator.invert,
+    UnaryOperation.IS_NULL: pd.isna,
+    UnaryOperation.IS_NOT_NULL: pd.notna,
+    BinaryOperation.IN: lambda left, right: left.isin(right),
+    BinaryOperation.NOT_IN: lambda left, right: ~left.isin(right),
 }
 
 
@@ -125,29 +128,29 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
 
 
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
-    Operation.ADD: _pa_add_or_concat,
-    Operation.SUB: pc.subtract,
-    Operation.MUL: pc.multiply,
-    Operation.DIV: pc.divide,
-    Operation.MOD: lambda left, right: (
+    BinaryOperation.ADD: _pa_add_or_concat,
+    BinaryOperation.SUB: pc.subtract,
+    BinaryOperation.MUL: pc.multiply,
+    BinaryOperation.DIV: pc.divide,
+    BinaryOperation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M
         pc.subtract(left, pc.multiply(pc.floor(pc.divide(left, right)), right))
     ),
-    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
-    Operation.GT: pc.greater,
-    Operation.LT: pc.less,
-    Operation.GE: pc.greater_equal,
-    Operation.LE: pc.less_equal,
-    Operation.EQ: pc.equal,
-    Operation.NE: pc.not_equal,
-    Operation.AND: pc.and_kleene,
-    Operation.OR: pc.or_kleene,
-    Operation.NOT: pc.invert,
-    Operation.IS_NULL: pc.is_null,
-    Operation.IS_NOT_NULL: pc.is_valid,
-    Operation.IN: _pa_is_in,
-    Operation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
+    BinaryOperation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
+    BinaryOperation.GT: pc.greater,
+    BinaryOperation.LT: pc.less,
+    BinaryOperation.GE: pc.greater_equal,
+    BinaryOperation.LE: pc.less_equal,
+    BinaryOperation.EQ: pc.equal,
+    BinaryOperation.NE: pc.not_equal,
+    BinaryOperation.AND: pc.and_kleene,
+    BinaryOperation.OR: pc.or_kleene,
+    UnaryOperation.NOT: pc.invert,
+    UnaryOperation.IS_NULL: pc.is_null,
+    UnaryOperation.IS_NOT_NULL: pc.is_valid,
+    BinaryOperation.IN: _pa_is_in,
+    BinaryOperation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
 }
 
 
@@ -407,7 +410,7 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
 
     def visit_Compare(self, node: ast.Compare) -> "Expr":
         """Handle comparison operations (e.g., a == b, a < b, a in b)."""
-        from ray.data.expressions import BinaryExpr, Operation
+        from ray.data.expressions import BinaryExpr
 
         if len(node.ops) != 1 or len(node.comparators) != 1:
             raise ValueError("Only simple binary comparisons are supported")
@@ -418,14 +421,14 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
 
         # Map AST comparison operators to Ray Data operations
         op_map = {
-            ast.Eq: Operation.EQ,
-            ast.NotEq: Operation.NE,
-            ast.Lt: Operation.LT,
-            ast.LtE: Operation.LE,
-            ast.Gt: Operation.GT,
-            ast.GtE: Operation.GE,
-            ast.In: Operation.IN,
-            ast.NotIn: Operation.NOT_IN,
+            ast.Eq: BinaryOperation.EQ,
+            ast.NotEq: BinaryOperation.NE,
+            ast.Lt: BinaryOperation.LT,
+            ast.LtE: BinaryOperation.LE,
+            ast.Gt: BinaryOperation.GT,
+            ast.GtE: BinaryOperation.GE,
+            ast.In: BinaryOperation.IN,
+            ast.NotIn: BinaryOperation.NOT_IN,
         }
 
         if type(op) not in op_map:
@@ -435,16 +438,18 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
 
     def visit_BoolOp(self, node: ast.BoolOp) -> "Expr":
         """Handle logical operations (e.g., a and b, a or b)."""
-        from ray.data.expressions import BinaryExpr, Operation
+        from ray.data.expressions import BinaryExpr
 
         conditions = [self.visit(value) for value in node.values]
         combined_expr = conditions[0]
 
         for condition in conditions[1:]:
             if isinstance(node.op, ast.And):
-                combined_expr = BinaryExpr(Operation.AND, combined_expr, condition)
+                combined_expr = BinaryExpr(
+                    BinaryOperation.AND, combined_expr, condition
+                )
             elif isinstance(node.op, ast.Or):
-                combined_expr = BinaryExpr(Operation.OR, combined_expr, condition)
+                combined_expr = BinaryExpr(BinaryOperation.OR, combined_expr, condition)
             else:
                 raise ValueError(
                     f"Unsupported logical operator: {type(node.op).__name__}"
@@ -454,11 +459,11 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> "Expr":
         """Handle unary operations (e.g., not a, -5)."""
-        from ray.data.expressions import Operation, UnaryExpr, lit
+        from ray.data.expressions import UnaryExpr, lit
 
         if isinstance(node.op, ast.Not):
             operand = self.visit(node.operand)
-            return UnaryExpr(Operation.NOT, operand)
+            return UnaryExpr(UnaryOperation.NOT, operand)
         elif isinstance(node.op, ast.USub):
             operand = self.visit(node.operand)
             return operand * lit(-1)
@@ -509,8 +514,16 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Attribute):
             # Recursively handle nested attributes
             left_expr = self.visit(node.value)
-            if isinstance(left_expr, ColumnExpr):
-                return col(f"{left_expr._name}.{node.attr}")
+            # TODO(Justin): Ask goutam about this
+            if isinstance(left_expr, (ResolvedColumnExpr)):
+                return ResolvedColumnExpr(
+                    _data_type=left_expr.data_type,
+                    _name=f"{left_expr.name}.{node.attr}",
+                )
+            if isinstance(left_expr, (UnresolvedColumnExpr)):
+                return UnresolvedColumnExpr(
+                    _name=f"{left_expr.name}.{node.attr}",
+                )
 
         raise ValueError(
             f"Unsupported attribute access: {node.attr}. Node details: {ast.dump(node)}"
@@ -518,7 +531,7 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> "Expr":
         """Handle function calls for operations like is_null, is_not_null, is_nan."""
-        from ray.data.expressions import BinaryExpr, Operation, UnaryExpr
+        from ray.data.expressions import BinaryExpr, UnaryExpr
 
         func_name = node.func.id if isinstance(node.func, ast.Name) else str(node.func)
 
@@ -526,26 +539,26 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             if len(node.args) != 1:
                 raise ValueError("is_null() expects exactly one argument")
             operand = self.visit(node.args[0])
-            return UnaryExpr(Operation.IS_NULL, operand)
+            return UnaryExpr(UnaryOperation.IS_NULL, operand)
         # Adding this conditional to keep it consistent with the current implementation,
         # of carrying Pyarrow's semantic of `is_valid`
         elif func_name == "is_valid" or func_name == "is_not_null":
             if len(node.args) != 1:
                 raise ValueError(f"{func_name}() expects exactly one argument")
             operand = self.visit(node.args[0])
-            return UnaryExpr(Operation.IS_NOT_NULL, operand)
+            return UnaryExpr(UnaryOperation.IS_NOT_NULL, operand)
         elif func_name == "is_nan":
             if len(node.args) != 1:
                 raise ValueError("is_nan() expects exactly one argument")
             operand = self.visit(node.args[0])
             # Use x != x pattern for NaN detection (NaN != NaN is True)
-            return BinaryExpr(Operation.NE, operand, operand)
+            return BinaryExpr(BinaryOperation.NE, operand, operand)
         elif func_name == "is_in":
             if len(node.args) != 2:
                 raise ValueError("is_in() expects exactly two arguments")
             left = self.visit(node.args[0])
             right = self.visit(node.args[1])
-            return BinaryExpr(Operation.IN, left, right)
+            return BinaryExpr(BinaryOperation.IN, left, right)
         else:
             raise ValueError(f"Unsupported function: {func_name}")
 
@@ -576,11 +589,26 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 
-    def visit_column(self, expr: ColumnExpr) -> Union[BlockColumn, ScalarType]:
-        """Visit a column expression and return the column data.
+    def visit_resolved_column(
+        self, expr: "ResolvedColumnExpr"
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit a resolved column expression and return the column data.
 
         Args:
-            expr: The column expression.
+            expr: The resolved column expression.
+
+        Returns:
+            The column data as a BlockColumn.
+        """
+        return self.block[expr.name]
+
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit an unresolved column expression and return the column data.
+
+        Args:
+            expr: The unresolved column expression.
 
         Returns:
             The column data as a BlockColumn.

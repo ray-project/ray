@@ -35,12 +35,16 @@ instantiate them directly, but you may encounter them when working with expressi
     :toctree: doc/
 
     Expr
-    ColumnExpr
+    NamedExpr
+    ResolvedColumnExpr
+    UnresolvedColumnExpr
     LiteralExpr
     BinaryExpr
     UnaryExpr
     UDFExpr
+    AliasExpr
     StarExpr
+    DownloadExpr
 
 Expression namespaces
 ------------------------------------

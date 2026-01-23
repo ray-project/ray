@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, col, lit
+from ray.data.expressions import BinaryExpr, BinaryOperation, col, lit
 
 # ──────────────────────────────────────
 # Basic Comparison Operations
@@ -44,7 +44,7 @@ class TestComparisonOperators:
     def test_greater_than(self, sample_data, expr, expected_values):
         """Test greater than (>) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.GT
+        assert expr.op == BinaryOperation.GT
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -56,7 +56,7 @@ class TestComparisonOperators:
         """Test reverse greater than (literal > col)."""
         expr = 22 > col("age")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.LT  # Reverse: 22 > age becomes age < 22
+        assert expr.op == BinaryOperation.LT  # Reverse: 22 > age becomes age < 22
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, True, False, False, True])
         pd.testing.assert_series_equal(
@@ -76,7 +76,7 @@ class TestComparisonOperators:
     def test_less_than(self, sample_data, expr, expected_values):
         """Test less than (<) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.LT
+        assert expr.op == BinaryOperation.LT
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -88,7 +88,7 @@ class TestComparisonOperators:
         """Test reverse less than (literal < col)."""
         expr = 20 < col("age")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.GT  # Reverse: 20 < age becomes age > 20
+        assert expr.op == BinaryOperation.GT  # Reverse: 20 < age becomes age > 20
         result = eval_expr(expr, sample_data)
         expected = pd.Series([False, True, True, True, False])
         pd.testing.assert_series_equal(
@@ -108,7 +108,7 @@ class TestComparisonOperators:
     def test_greater_equal(self, sample_data, expr, expected_values):
         """Test greater than or equal (>=) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.GE
+        assert expr.op == BinaryOperation.GE
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -120,7 +120,7 @@ class TestComparisonOperators:
         """Test reverse greater equal (literal >= col)."""
         expr = 21 >= col("age")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.LE  # Reverse
+        assert expr.op == BinaryOperation.LE  # Reverse
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, True, False, False, True])
         pd.testing.assert_series_equal(
@@ -140,7 +140,7 @@ class TestComparisonOperators:
     def test_less_equal(self, sample_data, expr, expected_values):
         """Test less than or equal (<=) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.LE
+        assert expr.op == BinaryOperation.LE
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -152,7 +152,7 @@ class TestComparisonOperators:
         """Test reverse less equal (literal <= col)."""
         expr = 25 <= col("age")
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.GE  # Reverse
+        assert expr.op == BinaryOperation.GE  # Reverse
         result = eval_expr(expr, sample_data)
         expected = pd.Series([False, False, True, True, False])
         pd.testing.assert_series_equal(
@@ -173,7 +173,7 @@ class TestComparisonOperators:
     def test_equality(self, sample_data, expr, expected_values):
         """Test equality (==) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.EQ
+        assert expr.op == BinaryOperation.EQ
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
@@ -194,7 +194,7 @@ class TestComparisonOperators:
     def test_not_equal(self, sample_data, expr, expected_values):
         """Test not equal (!=) comparisons."""
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.NE
+        assert expr.op == BinaryOperation.NE
         result = eval_expr(expr, sample_data)
         pd.testing.assert_series_equal(
             result.reset_index(drop=True),
