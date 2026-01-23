@@ -81,6 +81,7 @@ config = (
         circular_buffer_iterations_per_batch=2,
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
+        lambda_=0.95,
     )
     .rl_module(
         model_config=DefaultModelConfig(vf_share_layers=True),

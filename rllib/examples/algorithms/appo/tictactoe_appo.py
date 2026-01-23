@@ -101,6 +101,7 @@ config = (
         lr=0.00025,
         vf_loss_coeff=1.0,
         entropy_coeff=[[0, 0.01], [1_000_000, 0.0]],
+        lambda_=0.95,
         broadcast_interval=5,
         # learner_queue_size=1,
         circular_buffer_num_batches=4,

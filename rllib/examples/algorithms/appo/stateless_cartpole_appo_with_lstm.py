@@ -99,6 +99,7 @@ config = (
         num_epochs=1,
         vf_loss_coeff=0.05,
         entropy_coeff=0.005,
+        lambda_=0.95,
         use_circular_buffer=False,
         broadcast_interval=10,
     )
