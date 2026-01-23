@@ -132,7 +132,7 @@ def tmp_dir():
 
 
 @pytest.fixture(scope="session")
-def _shared_serve_instance():
+def _shared_serve_instance(ray_shutdown):
     # Note(simon):
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
