@@ -265,17 +265,10 @@ class _AutoscalingCoordinatorActor:
             def tick_thread_run():
                 while True:
                     time.sleep(self.TICK_INTERVAL_S)
-                    self._tick()
+                    self.tick()
 
             self._tick_thread = threading.Thread(target=tick_thread_run, daemon=True)
             self._tick_thread.start()
-
-    def _tick(self):
-        """Internal tick method called by the background thread."""
-        with self._lock:
-            self._merge_and_send_requests()
-            self._update_cluster_node_resources()
-            self._reallocate_resources()
 
     def tick(self):
         """Used to perform periodical operations, e.g., purge expired requests,
@@ -294,12 +287,12 @@ class _AutoscalingCoordinatorActor:
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
     ) -> None:
         logger.debug("Received request from %s: %s.", requester_id, resources)
-        # Round up the resource values to integers,
-        # because the Autoscaler SDK only accepts integer values.
-        for r in resources:
-            for k in r:
-                r[k] = math.ceil(r[k])
         with self._lock:
+            # Round up the resource values to integers,
+            # because the Autoscaler SDK only accepts integer values.
+            for r in resources:
+                for k in r:
+                    r[k] = math.ceil(r[k])
             now = self._get_current_time()
             request_updated = False
             old_req = self._ongoing_reqs.get(requester_id)
