@@ -16,12 +16,10 @@ For production workloads requiring higher throughput, consider using Ray Data's
 native S3 reading capabilities with `ray.data.read_images()` instead.
 """
 
-import io
 import logging
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
-import boto3
 import numpy as np
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor
@@ -33,11 +31,11 @@ from image_classification.imagenet import (
     get_transform,
     IMAGENET_WNID_TO_ID,
 )
+from s3_utils import parse_s3_url, create_s3_client, download_s3_object_as_buffer
 
 logger = logging.getLogger(__name__)
 
 # S3 configuration for ImageNet JPEG data
-AWS_REGION = "us-west-2"
 S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC"
 IMAGENET_S3_URL_SPLIT_DIRS = {
     DatasetKey.TRAIN: f"{S3_ROOT}/train",
@@ -63,7 +61,7 @@ def _get_class_labels(bucket: str, prefix: str) -> List[str]:
         prefix += "/"
 
     # List directories using delimiter
-    s3_client = boto3.client("s3", region_name=AWS_REGION)
+    s3_client = create_s3_client()
     paginator = s3_client.get_paginator("list_objects_v2")
 
     # Use delimiter to get "directory" level
@@ -93,7 +91,7 @@ def _list_files_for_label(
     Returns:
         List of tuples with (file_path, class_name)
     """
-    s3_client = boto3.client("s3", region_name=AWS_REGION)
+    s3_client = create_s3_client()
     paginator = s3_client.get_paginator("list_objects_v2")
 
     # Construct the full prefix for this label
@@ -118,13 +116,9 @@ def _list_s3_image_files_cached(data_dir: str) -> Tuple[Tuple[str, str], ...]:
     """
     logger.info(f"Listing JPEG files from {data_dir}...")
 
-    # Parse S3 URL: s3://bucket/prefix
-    s3_path = data_dir
-    if s3_path.startswith("s3://"):
-        s3_path = s3_path[5:]
-    parts = s3_path.split("/", 1)
-    bucket = parts[0]
-    prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
+    # Parse S3 URL using shared utility
+    bucket, prefix = parse_s3_url(data_dir)
+    prefix = prefix.rstrip("/")
 
     # Get all class labels
     labels = _get_class_labels(bucket, prefix)
@@ -198,7 +192,7 @@ def get_download_and_process_batch_fn(
         Returns:
             Dict with "image" (numpy array) and "label" (int) arrays
         """
-        s3_client = boto3.client("s3", region_name=AWS_REGION)
+        s3_client = create_s3_client()
 
         processed_images = []
         labels = []
@@ -207,16 +201,11 @@ def get_download_and_process_batch_fn(
         classes = list(batch["class"])
 
         for s3_url, wnid in zip(paths, classes):
-            # Parse S3 URL: s3://bucket/key
-            url_path = s3_url[5:] if s3_url.startswith("s3://") else s3_url
-            bucket, key = url_path.split("/", 1)
-
-            # Download image from S3
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            data = response["Body"].read()
+            # Download image from S3 using shared utility
+            image_buffer = download_s3_object_as_buffer(s3_client, s3_url)
 
             # Decode and transform image
-            image_pil = Image.open(io.BytesIO(data)).convert("RGB")
+            image_pil = Image.open(image_buffer).convert("RGB")
             image_tensor = pil_to_tensor(image_pil) / 255.0
             processed_image = np.array(transform(image_tensor))
             processed_images.append(processed_image)

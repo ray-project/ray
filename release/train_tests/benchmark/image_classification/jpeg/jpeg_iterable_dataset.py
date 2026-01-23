@@ -121,8 +121,7 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
         """
         worker_id, _ = self._get_worker_info()
         try:
-            bucket = file_url.replace("s3://", "").split("/")[0]
-            key = "/".join(file_url.replace("s3://", "").split("/")[1:])
+            bucket, key = self._parse_s3_url(file_url)
 
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
             image_data = response["Body"].read()
