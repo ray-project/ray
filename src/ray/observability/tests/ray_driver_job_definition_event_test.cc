@@ -60,7 +60,7 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerialize) {
   ASSERT_EQ(job_def.entrypoint(), "python script.py");
   ASSERT_EQ(job_def.config().metadata().at("user"), "test_user");
   ASSERT_EQ(job_def.config().serialized_runtime_env(), "{\"pip\": [\"requests\"]}");
-  ASSERT_EQ(job_def.type(), "SUBMISSION");
+  ASSERT_TRUE(job_def.is_submission_job());
   ASSERT_EQ(job_def.submission_id(), "sub_456");
   ASSERT_EQ(job_def.driver_agent_http_address(), "http://127.0.0.1:8265");
   ASSERT_DOUBLE_EQ(job_def.entrypoint_num_cpus(), 2.0);
@@ -71,7 +71,7 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerialize) {
 }
 
 TEST_F(RayDriverJobDefinitionEventTest, TestSerializeDriverJob) {
-  // Test a driver job (no submission_id)
+  // Test a driver job (no submission_id, no job_info)
   rpc::JobTableData job_data;
   job_data.set_job_id("driver_job_789");
   job_data.set_driver_pid(99999);
@@ -86,25 +86,11 @@ TEST_F(RayDriverJobDefinitionEventTest, TestSerializeDriverJob) {
 
   const auto &job_def = serialized_event.driver_job_definition_event();
 
-  // Should be classified as DRIVER type
-  ASSERT_EQ(job_def.type(), "DRIVER");
-  ASSERT_EQ(job_def.submission_id(), "");  // Empty for driver jobs
-}
+  // Driver job assertions
+  ASSERT_FALSE(job_def.is_submission_job());
+  ASSERT_EQ(job_def.submission_id(), "");
 
-TEST_F(RayDriverJobDefinitionEventTest, TestSerializeWithoutJobInfo) {
-  // Test when job_info is not present
-  rpc::JobTableData job_data;
-  job_data.set_job_id("minimal_job");
-  job_data.set_driver_pid(11111);
-  job_data.mutable_driver_address()->set_node_id("minimal_node");
-  job_data.set_entrypoint("python minimal.py");
-
-  auto event = std::make_unique<RayDriverJobDefinitionEvent>(job_data, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
-
-  const auto &job_def = serialized_event.driver_job_definition_event();
-
-  // Uses proto3 defaults when not set
+  // Default value assertions when job_info not present
   ASSERT_EQ(job_def.driver_agent_http_address(), "");
   ASSERT_DOUBLE_EQ(job_def.entrypoint_num_cpus(), 0.0);
   ASSERT_DOUBLE_EQ(job_def.entrypoint_num_gpus(), 0.0);

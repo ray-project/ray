@@ -34,16 +34,14 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
 
   data_.mutable_config()->set_serialized_runtime_env(
       data.config().runtime_env_info().serialized_runtime_env());
-
-  // Populate job type and submission_id
-  std::string job_type = "DRIVER";
   auto submission_id_iter = data.config().metadata().find("job_submission_id");
   if (submission_id_iter != data.config().metadata().end() &&
       !submission_id_iter->second.empty()) {
-    job_type = "SUBMISSION";
+    data_.set_is_submission_job(true);
     data_.set_submission_id(submission_id_iter->second);
+  } else {
+    data_.set_is_submission_job(false);
   }
-  data_.set_type(job_type);
 
   // Populate fields from job_info if available
   if (data.has_job_info()) {
