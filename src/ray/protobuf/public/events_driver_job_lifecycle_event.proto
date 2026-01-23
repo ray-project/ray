@@ -35,7 +35,7 @@ message DriverJobLifecycleEvent {
     google.protobuf.Timestamp timestamp = 2;
     string message = 3;
     string error_type = 4;
-    int32 exit_code = 5;
+    optional int32 exit_code = 5;
   }
 
   bytes job_id = 1;
