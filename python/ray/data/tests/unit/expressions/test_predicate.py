@@ -9,7 +9,14 @@ import pandas as pd
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, UnaryExpr, col, lit
+from ray.data.expressions import (
+    BinaryExpr,
+    BinaryOperation,
+    UnaryExpr,
+    UnaryOperation,
+    col,
+    lit,
+)
 
 # ──────────────────────────────────────
 # Null Predicate Operations
@@ -33,7 +40,7 @@ class TestIsNull:
         """Test is_null on numeric column."""
         expr = col("value").is_null()
         assert isinstance(expr, UnaryExpr)
-        assert expr.op == Operation.IS_NULL
+        assert expr.op == UnaryOperation.IS_NULL
         result = eval_expr(expr, sample_data)
         expected = pd.Series([False, True, False, True, False])
         pd.testing.assert_series_equal(
@@ -76,7 +83,7 @@ class TestIsNotNull:
         """Test is_not_null on numeric column."""
         expr = col("value").is_not_null()
         assert isinstance(expr, UnaryExpr)
-        assert expr.op == Operation.IS_NOT_NULL
+        assert expr.op == UnaryOperation.IS_NOT_NULL
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, False, True, False, True])
         pd.testing.assert_series_equal(
@@ -159,7 +166,7 @@ class TestIsIn:
         """Test is_in with string list."""
         expr = col("status").is_in(["active", "pending"])
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.IN
+        assert expr.op == BinaryOperation.IN
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, False, True, True, False])
         pd.testing.assert_series_equal(
@@ -230,7 +237,7 @@ class TestNotIn:
         """Test not_in with string list."""
         expr = col("status").not_in(["inactive", "deleted"])
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.NOT_IN
+        assert expr.op == BinaryOperation.NOT_IN
         result = eval_expr(expr, sample_data)
         expected = pd.Series([True, False, True, True, False])
         pd.testing.assert_series_equal(

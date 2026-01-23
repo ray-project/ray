@@ -17,13 +17,14 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
+    BinaryOperation,
     ColumnExpr,
     Expr,
     LiteralExpr,
-    Operation,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
     col,
     download,
     lit,
@@ -126,7 +127,7 @@ class TestBinaryExpr:
         """Test that binary expressions have correct structure."""
         expr = col("a") + lit(1)
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.ADD
+        assert expr.op == BinaryOperation.ADD
         assert isinstance(expr.left, ColumnExpr)
         assert isinstance(expr.right, LiteralExpr)
 
@@ -177,9 +178,9 @@ class TestUnaryExpr:
     @pytest.mark.parametrize(
         "expr,expected_op",
         [
-            (col("age").is_null(), Operation.IS_NULL),
-            (col("name").is_not_null(), Operation.IS_NOT_NULL),
-            (~col("active"), Operation.NOT),
+            (col("age").is_null(), UnaryOperation.IS_NULL),
+            (col("name").is_not_null(), UnaryOperation.IS_NOT_NULL),
+            (~col("active"), UnaryOperation.NOT),
         ],
         ids=["is_null", "is_not_null", "not"],
     )
