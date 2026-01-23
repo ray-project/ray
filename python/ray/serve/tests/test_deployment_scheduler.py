@@ -580,6 +580,7 @@ async def test_e2e_serve_fallback_strategy(serve_instance_with_labeled_nodes):
     [
         (False, None),  # Actor-level label_selector.
         (True, "PACK"),  # PG bundle_label_selector with PACK strategy.
+        (True, "STRICT_PACK"),  # PG bundle_label_selector with STRICT_PACK strategy.
         (True, "SPREAD"),  # PG bundle_label_selector with SPREAD strategy.
         (
             True,
