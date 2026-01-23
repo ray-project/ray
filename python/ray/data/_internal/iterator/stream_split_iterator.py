@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -33,37 +34,47 @@ class StreamSplitDataIterator(DataIterator):
     @staticmethod
     def create(
         base_dataset: "Dataset",
-        n: int,
+        n_splits: int,
+        replicas_per_split: int,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
 
         See also: `Dataset.streaming_split`.
         """
-        # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # To avoid deadlock, the concurrency on this actor must be set to at least `n_splits * replicas_per_split`.
         # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n + 1,
+            max_concurrency=n_splits * replicas_per_split + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(base_dataset, n, locality_hints)
+        ).remote(base_dataset, n_splits, replicas_per_split, locality_hints)
 
-        return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
-        ]
+        iterators = []
+        for i_split in range(n_splits):
+            iterators.extend(
+                [
+                    StreamSplitDataIterator(
+                        base_dataset, coord_actor, i_split, i_replica_worker
+                    )
+                    for i_replica_worker in range(replicas_per_split)
+                ]
+            )
+
+        return iterators
 
     def __init__(
         self,
         base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
-        world_size: int,
+        id_in_split: int,
     ):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
-        self._world_size = world_size
+        self._id_in_split = id_in_split
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
     def _to_ref_bundle_iterator(
@@ -143,7 +154,8 @@ class SplitCoordinator:
     def __init__(
         self,
         dataset: "Dataset",
-        n: int,
+        n_splits: int,
+        replicas_per_split: int,
         locality_hints: Optional[List[NodeIdStr]],
     ):
 
@@ -157,14 +169,19 @@ class SplitCoordinator:
             self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
-        self._n = n
+        self._n_splits = n_splits
+        self._replicas_per_split = replicas_per_split
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+        # one split should fetch the blocks with one thread
+        self._per_split_locks = [threading.RLock() for _ in range(n_splits)]
         self._executor = None
 
-        # Guarded by self._lock.
-        self._next_bundle: Dict[int, RefBundle] = {}
-        self._unfinished_clients_in_epoch = n
+        # map from split index to a list of deques of RefBundles, one for each replica worker
+        self._next_bundle: Dict[int, List[deque[RefBundle]]] = defaultdict(
+            lambda: [deque() for _ in range(replicas_per_split)]
+        )
+        self._unfinished_clients_in_epoch = n_splits * replicas_per_split
         self._cur_epoch = -1
 
         # Track prefetched bytes reported by each client (from BatchIterator).
@@ -214,6 +231,7 @@ class SplitCoordinator:
         self,
         epoch_id: int,
         output_split_idx: int,
+        id_in_split: int,
         client_prefetched_bytes: int = 0,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
@@ -223,6 +241,7 @@ class SplitCoordinator:
         Args:
             epoch_id: The epoch ID from start_epoch().
             output_split_idx: The output split index for this client.
+            id_in_split: The id of the replica worker for this client in the split.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
 
@@ -237,42 +256,60 @@ class SplitCoordinator:
 
         returned_normally = False
         try:
-            # Ensure there is at least one bundle.
-            with self._lock:
-                if output_split_idx in self._next_bundle:
-                    next_bundle = self._next_bundle[output_split_idx]
-                else:
+            with self._per_split_locks[output_split_idx]:
+                # Ensure there is at least one bundle.
+                with self._lock:
+                    bundle_queues = self._next_bundle[output_split_idx]
+                bundle_queue = bundle_queues[id_in_split]
+                if not bundle_queue:
                     next_bundle = None
+                else:
+                    next_bundle = bundle_queue.popleft()
 
-            # Fetch next bundle if needed.
-            while next_bundle is None or not next_bundle.blocks:
-                # This is a BLOCKING call, so do it outside the lock.
-                next_bundle = self._output_iterator.get_next(output_split_idx)
+                fetched_bundle = None
+                # Fetch next bundle if needed.
+                while next_bundle is None or not next_bundle.blocks:
+                    # First, check if there are more bundles in the queue
+                    # (e.g., added by other workers in the same replica).
+                    # Only fetch new data if the queue is truly empty.
+                    if bundle_queue:
+                        next_bundle = bundle_queue.popleft()
+                    else:
+                        # This is a BLOCKING call, so do it outside the global lock.
+                        # But inside the _per_split_locks[output_split_idx] lock, because we don't want
+                        # the other replica workers to fetch bundles.
+                        fetched_bundle = self._output_iterator.get_next(
+                            output_split_idx
+                        )
+                        next_bundle = fetched_bundle
 
-            schema = next_bundle.schema
-            block = next_bundle.blocks[-1]
-            next_bundle = RefBundle(
-                blocks=next_bundle.blocks[:-1],
-                schema=next_bundle.schema,
-                owns_blocks=next_bundle.owns_blocks,
-                output_split_idx=next_bundle.output_split_idx,
-            )
+                if fetched_bundle is not None:
+                    for i in range(self._replicas_per_split):
+                        if i != id_in_split:
+                            bundle_queues[i].append(fetched_bundle)
 
-            # Accumulate any remaining blocks in next_bundle map as needed.
-            with self._lock:
-                self._next_bundle[output_split_idx] = next_bundle
-                if not next_bundle.blocks:
-                    del self._next_bundle[output_split_idx]
-                # Update client prefetched bytes and report to resource manager.
-                self._client_prefetched_bytes[
-                    output_split_idx
-                ] = client_prefetched_bytes
-                self._report_prefetched_bytes_to_executor()
+                schema = next_bundle.schema
+                block = next_bundle.blocks[-1]
+                next_bundle = RefBundle(
+                    blocks=next_bundle.blocks[:-1],
+                    schema=next_bundle.schema,
+                    owns_blocks=next_bundle.owns_blocks,
+                    output_split_idx=next_bundle.output_split_idx,
+                )
 
-            returned_normally = True
-            return RefBundle(
-                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
-            )
+                # Accumulate any remaining blocks in next_bundle map as needed.
+                with self._lock:
+                    self._next_bundle[output_split_idx] = bundle_queues
+                    # Update client prefetched bytes and report to resource manager.
+                    self._client_prefetched_bytes[
+                        output_split_idx * self._replicas_per_split + id_in_split
+                    ] = client_prefetched_bytes
+                    self._report_prefetched_bytes_to_executor()
+
+                returned_normally = True
+                return RefBundle(
+                    [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+                )
         except StopIteration:
             return None
         finally:
@@ -280,7 +317,9 @@ class SplitCoordinator:
             # exceptions) to avoid stale backpressure data.
             if not returned_normally:
                 with self._lock:
-                    self._client_prefetched_bytes[output_split_idx] = 0
+                    self._client_prefetched_bytes[
+                        output_split_idx * self._replicas_per_split + id_in_split
+                    ] = 0
                     self._report_prefetched_bytes_to_executor()
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
