@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -88,22 +88,20 @@ class QueueMonitorActor:
             self._broker.close()
             self._broker = None
 
-    def get_config(self) -> Dict[str, Any]:
-        """
-        Get the QueueMonitor configuration as a serializable dict.
+    def get_cached_queue_length(self) -> int:
+        """Returns the cached queue length (last fetched from broker).
 
         Returns:
-            Dict with 'broker_url', 'queue_name', and 'rabbitmq_http_url' keys
+            Number of pending tasks in the queue.
         """
-        return {
-            "broker_url": self._broker_url,
-            "queue_name": self._queue_name,
-            "rabbitmq_http_url": self._rabbitmq_http_url,
-        }
+        return self._cached_queue_length
 
     async def _refresh_queue_length(self):
         """
         Fetch queue length from the broker and update the cache.
+
+        Returns:
+            None
 
         Raises:
             ValueError: If queue is not found in broker response or
@@ -120,6 +118,7 @@ class QueueMonitorActor:
                         )
                     # Cache the queue length for metrics pushing
                     self._cached_queue_length = queue_length
+                    return
 
         raise ValueError(f"Queue '{self._queue_name}' not found in broker response")
 
