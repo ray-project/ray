@@ -138,13 +138,18 @@ def tmp_dir():
 
 
 @pytest.fixture(scope="session")
-def _shared_serve_instance(ray_shutdown):
+def _shared_serve_instance():
     # Note(simon):
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
     # To run locally, please use this instead.
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
+
+    # Ensure Ray is not already running before starting this session-scoped instance
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
