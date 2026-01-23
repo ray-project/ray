@@ -566,8 +566,6 @@ class DataContext:
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     # By default, enable the progress bar for operator-level progress.
-    # In __post_init__(), we disable operator-level progress
-    # bars when running in a Ray job.
     enable_operator_progress_bars: bool = True
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
