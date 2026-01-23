@@ -480,10 +480,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
                 if contains_native_tensor_columns:
                     # HACK: For v1 and v2 tensors, we can control what is returned by overiding the
-                    # `as_py()` method. However for pyarrow native FixedShapeTensorArrays,
-                    # we cannot, and therefore must manually convert them to ndarrays, which
-                    # preserve its shape/ndim. Without the logic below, the FixedShapeTensorArrays
-                    # would be translated to contiguous 1d arrays.
+                    # `https://arrow.apache.org/docs/python/generated/pyarrow.ExtensionScalar.html#pyarrow.ExtensionScalar.as_py`
+                    # method . See `ArrowTensorScalar` for example implementation. However for pyarrow native FixedShapeTensorArrays,
+                    # we cannot, and therefore must manually convert them to ndarrays, which preserve its shape/ndim. Without the
+                    # logic below, the FixedShapeTensorArrays would be translated to contiguous 1d arrays. See
+                    # https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html#pyarrow.FixedShapeTensorArray.to_numpy_ndarray
+                    # for more details.
                     col_values = []
                     for column in batch.itercolumns():
                         if _is_native_tensor_type(column.type):

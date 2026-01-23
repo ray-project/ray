@@ -1596,6 +1596,7 @@ def unify_tensor_arrays(
     unified_arrs = []
     for arr in arrs:
         if _is_native_tensor_type(arr.type):
+            # Might be not be performant
             arr = ArrowVariableShapedTensorArray.from_numpy(arr.to_numpy_ndarray())
         else:
             arr = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
