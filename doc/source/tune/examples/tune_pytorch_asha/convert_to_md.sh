@@ -8,13 +8,13 @@ convert_nb_to_readme() {
     local output_dir="$2"
     local nb_filename="$(basename "$nb_path")"
     local md_path="$output_dir/README.md"
-    
+
     # Delete README if it already exists
     [ -f "$md_path" ] && rm "$md_path"
-    
+
     # Convert notebook to Markdown
     jupyter nbconvert "$nb_path" --to markdown --output README.md --output-dir "$output_dir"
-    
+
     # Prepend warning comment (will be hidden when rendered in the console)
     tmp_file="$(mktemp)"
     {
@@ -27,12 +27,10 @@ convert_nb_to_readme() {
         cat "$md_path"
     } > "$tmp_file"
     mv "$tmp_file" "$md_path"
-    
+
     echo "Generated $md_path from $nb_filename"
 }
 
-# Convert getting-started: Use the single notebook as source
-convert_nb_to_readme "content/getting-started/01_02_03_intro_to_ray_train.ipynb" "content/getting-started"
+convert_nb_to_readme "content/tune_pytorch_asha.ipynb" "content"
 
-echo "All README.md files generated successfully!"
-
+echo "README.md generated successfully!"
