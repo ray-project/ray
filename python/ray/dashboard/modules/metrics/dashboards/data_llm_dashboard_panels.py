@@ -197,12 +197,28 @@ DATA_LLM_GRAFANA_PANELS = [
     Panel(
         id=8,
         title="vLLM: Queue Time",
-        description="Time requests spend waiting in the queue before processing.",
+        description="P50, P90, P95, P99, and Mean time requests spend waiting in the queue.",
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
-                legend="{{model_name}} - {{WorkerId}}",
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
+                legend="Mean - {{model_name}} - {{WorkerId}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
+                legend="P50 - {{model_name}} - {{WorkerId}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
+                legend="P90 - {{model_name}} - {{WorkerId}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
+                legend="P95 - {{model_name}} - {{WorkerId}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
+                legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
         fill=1,
