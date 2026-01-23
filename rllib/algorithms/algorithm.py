@@ -3339,12 +3339,6 @@ class Algorithm(Checkpointable, Trainable):
         ):
             self.eval_env_runner_group.stop()
 
-        if (
-            hasattr(self, "offline_eval_runner_group")
-            and self.offline_eval_runner_group is not None
-        ):
-            self.offline_eval_runner_group.stop()
-
     @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
