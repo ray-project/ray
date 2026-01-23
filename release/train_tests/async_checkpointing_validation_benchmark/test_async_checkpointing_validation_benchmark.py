@@ -280,11 +280,11 @@ def run_training_with_validation(
     start_time = time.time()
     scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
     if validation_type == ValidationType.INLINE:
-        validate_fn = None
+        validation_fn = None
     elif validation_type == ValidationType.TORCH_TRAINER:
-        validate_fn = validate_with_torch_trainer
+        validation_fn = validate_with_torch_trainer
     elif validation_type == ValidationType.MAP_BATCHES:
-        validate_fn = validate_with_map_batches
+        validation_fn = validate_with_map_batches
     datasets = {"train": train_dataset}
     train_loop_config = {
         "validate_within_trainer": validate_within_trainer,
@@ -297,7 +297,7 @@ def run_training_with_validation(
         datasets["test"] = validation_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validation_config=ValidationConfig(fn=validate_fn) if validate_fn else None,
+        validation_config=ValidationConfig(fn=validation_fn) if validation_fn else None,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,

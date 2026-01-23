@@ -234,7 +234,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
 
-def test_report_validation_without_validate_fn():
+def test_report_validation_without_validation_fn():
     def train_fn():
         ray.train.report(metrics={}, checkpoint=None, validation=True)
 
@@ -247,8 +247,8 @@ def test_report_validation_without_validate_fn():
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
 
-def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
-    def validate_fn(checkpoint, new_score=None):
+def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
+    def validation_fn(checkpoint, new_score=None):
         if new_score:
             return {"score": new_score}
         else:
@@ -287,7 +287,7 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
 
     trainer = DataParallelTrainer(
         train_fn,
-        validation_config=ValidationConfig(fn=validate_fn),
+        validation_config=ValidationConfig(fn=validation_fn),
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -304,8 +304,8 @@ def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
     assert result.best_checkpoints[1][1] == {"score": 5}
 
 
-def test_report_validate_fn_overrides_default_kwargs():
-    def validate_fn(checkpoint, validation_score, other_key):
+def test_report_validation_fn_overrides_default_kwargs():
+    def validation_fn(checkpoint, validation_score, other_key):
         return {"validation_score": validation_score, "other_key": other_key}
 
     def train_fn():
@@ -319,7 +319,7 @@ def test_report_validate_fn_overrides_default_kwargs():
     trainer = DataParallelTrainer(
         train_fn,
         validation_config=ValidationConfig(
-            fn=validate_fn,
+            fn=validation_fn,
             task_config=ValidationTaskConfig(
                 fn_kwargs={"validation_score": 1, "other_key": "other_value"}
             ),
@@ -333,8 +333,8 @@ def test_report_validate_fn_overrides_default_kwargs():
     }
 
 
-def test_report_validate_fn_error():
-    def validate_fn(checkpoint, rank=None, iteration=None):
+def test_report_validation_fn_error():
+    def validation_fn(checkpoint, rank=None, iteration=None):
         if rank == 0 and iteration == 0:
             raise ValueError("validation failed")
         return {}
@@ -360,7 +360,7 @@ def test_report_validate_fn_error():
 
     trainer = DataParallelTrainer(
         train_fn,
-        validation_config=ValidationConfig(fn=validate_fn),
+        validation_config=ValidationConfig(fn=validation_fn),
         scaling_config=ScalingConfig(num_workers=2),
     )
     result = trainer.fit()
@@ -451,7 +451,7 @@ def test_report_get_all_reported_checkpoints():
 def test_get_all_reported_checkpoints_all_consistency_modes():
     signal_actor = create_remote_signal_actor(ray).remote()
 
-    def validate_fn(checkpoint, validation_score):
+    def validation_fn(checkpoint, validation_score):
         ray.get(signal_actor.wait.remote())
         return {
             "validation_score": validation_score,
@@ -493,7 +493,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
     trainer = DataParallelTrainer(
         train_fn,
         validation_config=ValidationConfig(
-            fn=validate_fn,
+            fn=validation_fn,
             task_config=ValidationTaskConfig(fn_kwargs={"validation_score": 100}),
         ),
         scaling_config=ScalingConfig(num_workers=2),

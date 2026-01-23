@@ -74,13 +74,13 @@ def test_before_init_train_context():
 def test_checkpoint_validation_management_reordering(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
-    def validate_fn(checkpoint, score):
+    def validation_fn(checkpoint, score):
         return {"score": score}
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
-            fn=validate_fn,
+            fn=validation_fn,
             task_config=ValidationTaskConfig(fn_kwargs={"score": 100}),
         ),
     )
@@ -139,12 +139,12 @@ def test_checkpoint_validation_management_reordering(tmp_path):
 def test_checkpoint_validation_management_failure(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
-    def failing_validate_fn(checkpoint):
+    def failing_validation_fn(checkpoint):
         return "invalid_return_type"
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(fn=failing_validate_fn),
+        validation_config=ValidationConfig(fn=failing_validation_fn),
     )
     failing_training_result = create_dummy_training_results(
         num_results=1,
@@ -175,16 +175,16 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
 
 
-def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
+def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
-    def infinite_waiting_validate_fn(checkpoint):
+    def infinite_waiting_validation_fn(checkpoint):
         while True:
             time.sleep(1)
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(fn=infinite_waiting_validate_fn),
+        validation_config=ValidationConfig(fn=infinite_waiting_validation_fn),
     )
     timing_out_training_result = create_dummy_training_results(
         num_results=1,

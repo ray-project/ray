@@ -30,7 +30,7 @@ MAX_IN_FLIGHT_VALIDATIONS = 1
 
 
 @ray.remote
-def run_validate_fn(
+def run_validation_fn(
     validation_config: ValidationConfig,
     validation_task_config: Union[bool, ValidationTaskConfig],
     checkpoint: Checkpoint,
@@ -121,7 +121,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""
-        # TODO: figure out where to place run_validate_fn task:
+        # TODO: figure out where to place run_validation_fn task:
         # TODO: provide option to run this on gpu?
         num_validations_to_start = max(
             MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
@@ -131,7 +131,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         )
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
-            validate_task = run_validate_fn.remote(
+            validate_task = run_validation_fn.remote(
                 self._validation_config,
                 training_report.validation,
                 training_report.checkpoint,

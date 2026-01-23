@@ -1,4 +1,4 @@
-# __validate_fn_simple_start__
+# __validation_fn_simple_start__
 
 import os
 import torch
@@ -10,7 +10,7 @@ import ray.data
 validation_dataset = ...
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Load the checkpoint
     model = ...
     with checkpoint.as_directory() as checkpoint_dir:
@@ -28,9 +28,9 @@ def validate_fn(checkpoint: ray.train.Checkpoint) -> dict:
     return {"score": total_accuracy / len(validation_dataset)}
 
 
-# __validate_fn_simple_end__
+# __validation_fn_simple_end__
 
-# __validate_fn_torch_trainer_start__
+# __validation_fn_torch_trainer_start__
 import torchmetrics
 from torch.nn import CrossEntropyLoss
 
@@ -69,7 +69,7 @@ def eval_only_train_fn(config_dict: dict) -> None:
     )
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int) -> dict:
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_fn,
         train_loop_config={"checkpoint": checkpoint},
@@ -87,9 +87,9 @@ def validate_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: in
     return result.metrics
 
 
-# __validate_fn_torch_trainer_end__
+# __validation_fn_torch_trainer_end__
 
-# __validate_fn_map_batches_start__
+# __validation_fn_map_batches_start__
 
 
 class Predictor:
@@ -107,7 +107,7 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
     validation_dataset.set_name("validation")
     eval_res = validation_dataset.map_batches(
@@ -123,9 +123,9 @@ def validate_fn(checkpoint: ray.train.Checkpoint) -> dict:
     }
 
 
-# __validate_fn_map_batches_end__
+# __validation_fn_map_batches_end__
 
-# __validate_fn_report_start__
+# __validation_fn_report_start__
 import tempfile
 
 from ray.train import ValidationConfig, ValidationTaskConfig
@@ -162,7 +162,7 @@ def run_trainer() -> ray.train.Result:
     train_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validation_config=ValidationConfig(fn=validate_fn),
+        validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
         scaling_config=ray.train.ScalingConfig(
@@ -175,4 +175,4 @@ def run_trainer() -> ray.train.Result:
     return trainer.fit()
 
 
-# __validate_fn_report_end__
+# __validation_fn_report_end__
