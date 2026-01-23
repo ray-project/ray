@@ -124,7 +124,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    ray._private.arrow_utils._check_pyarrow_version()
+    ray.data.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(

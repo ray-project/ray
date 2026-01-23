@@ -4,7 +4,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.util import rows_same
 from ray.data.aggregate import (
     ApproximateQuantile,
@@ -17,6 +16,7 @@ from ray.data.aggregate import (
     Std,
     ZeroPercentage,
 )
+from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,

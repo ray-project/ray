@@ -10,7 +10,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
@@ -31,6 +30,7 @@ from ray.data.aggregate import (
     Sum,
     Unique,
 )
+from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.expressions import col

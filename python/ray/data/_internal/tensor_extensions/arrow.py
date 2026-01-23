@@ -15,7 +15,6 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
-from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
@@ -32,6 +31,7 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
+from ray.data.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
