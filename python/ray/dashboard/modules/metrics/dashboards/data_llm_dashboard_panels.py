@@ -21,11 +21,11 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="tokens/s",
         targets=[
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by (model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="Prompt Tokens/Sec - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='sum by (model_name, WorkerId) (rate(ray_vllm_generation_tokens_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by (model_name, WorkerId) (rate(ray_vllm_generation_tokens_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="Generation Tokens/Sec - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -41,23 +41,23 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_time_per_output_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="Mean - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -73,7 +73,7 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="percentunit",
         targets=[
             Target(
-                expr='sum by (WorkerId) (ray_vllm_kv_cache_usage_perc{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}})',
+                expr='sum by (WorkerId) (ray_vllm_kv_cache_usage_perc{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}})',
                 legend="GPU Cache Usage - {{WorkerId}}",
             ),
         ],
@@ -89,15 +89,15 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr='max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))))',
+                expr='max(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))))',
                 legend="Max Hit Rate",
             ),
             Target(
-                expr='min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))))',
+                expr='min(100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))))',
                 legend="Min Hit Rate",
             ),
             Target(
-                expr='100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='100 * (sum by (WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])) / sum by (WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="Hit Rate: worker {{WorkerId}}",
             ),
         ],
@@ -113,23 +113,23 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="Average - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId)(rate(ray_vllm_time_to_first_token_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -145,23 +145,23 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="Average - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P50 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.9, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P90 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.95, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P95 - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.99, sum by(le, model_name, WorkerId) (rate(ray_vllm_e2e_request_latency_seconds_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P99 - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -177,15 +177,15 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='ray_vllm_num_requests_running{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}',
+                expr='ray_vllm_num_requests_running{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}',
                 legend="Num Running - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='ray_vllm_num_requests_swapped{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}',
+                expr='ray_vllm_num_requests_swapped{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}',
                 legend="Num Swapped - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='ray_vllm_num_requests_waiting{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}',
+                expr='ray_vllm_num_requests_waiting{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}',
                 legend="Num Waiting - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -201,7 +201,7 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_queue_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="{{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -217,15 +217,15 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.5, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P90-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="Average-{{model_name}}-{{WorkerId}}",
             ),
         ],
@@ -241,18 +241,18 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.50, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P50-{{model_name}}-{{WorkerId}}",
             ),
             Target(
-                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))',
+                expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))',
                 legend="P90-{{model_name}}-{{WorkerId}}",
             ),
             Target(
                 expr=(
-                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))'
+                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))'
                     "\n/\n"
-                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval])))'
+                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval])))'
                 ),
                 legend="Average-{{model_name}}-{{WorkerId}}",
             ),
@@ -269,7 +269,7 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="Requests",
         targets=[
             Target(
-                expr='sum by(finished_reason, model_name, WorkerId) (increase(ray_vllm_request_success_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by(finished_reason, model_name, WorkerId) (increase(ray_vllm_request_success_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="{{finished_reason}} - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -285,11 +285,11 @@ DATA_LLM_GRAFANA_PANELS = [
         unit="s",
         targets=[
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_prefill_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_prefill_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="Prefill - {{model_name}} - {{WorkerId}}",
             ),
             Target(
-                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_decode_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid"}}[$interval]))',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_request_decode_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", ReplicaId=""}}[$interval]))',
                 legend="Decode - {{model_name}} - {{WorkerId}}",
             ),
         ],
