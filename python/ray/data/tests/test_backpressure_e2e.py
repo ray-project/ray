@@ -259,9 +259,9 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
                 print(f">>> Read task: {i=}")
 
                 ray.get(self.counter.increment.remote())
-                return [pd.DataFrame({
-                    "data": np.ones((n // parallelism * 1024 * 1024,))
-                })]
+                return [
+                    pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})
+                ]
 
             sz = (n // parallelism) * 1024 * 1024 * 8
 
