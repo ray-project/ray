@@ -1134,6 +1134,28 @@ class MultiStreamEncoderConfig(ModelConfig):
     def output_dims(self):
         return (self.output_layer_dim,)
 
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that settings are valid."""
+        if self.input_dims is not None and len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of MultiStreamEncoderConfig must be 1D, "
+                "e.g. `[32]`!"
+            )
+        if len(self.output_dims) != 1:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of MultiStreamEncoderConfig must be "
+                "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
+                " be wrong."
+            )
+
+        # Call these already here to catch errors early on.
+        get_activation_fn(self.hidden_layer_activation, framework=framework)
+        get_activation_fn(self.output_layer_activation, framework=framework)
+        get_initializer_fn(self.hidden_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.hidden_layer_bias_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
+
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
         if framework == "torch":
