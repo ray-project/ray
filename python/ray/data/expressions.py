@@ -134,8 +134,8 @@ class BinaryOperation(Operation, Enum):
             _ARROW_EXPR_OPS_MAP,
         )
 
-        left = pyarrow.scalar(None, l_dtype.to_arrow_dtype())
-        right = pyarrow.scalar(None, r_dtype.to_arrow_dtype())
+        left = pyarrow.array([], l_dtype.to_arrow_dtype())
+        right = pyarrow.array([], r_dtype.to_arrow_dtype())
 
         return DataType.from_arrow(_ARROW_EXPR_OPS_MAP[self](left, right).type)
 
@@ -1478,7 +1478,7 @@ def pyarrow_udf(return_dtype: DataType | None = None) -> Callable[..., UDFExpr]:
             # 2). Running the compute function and use the resulting type.
             def _infer_dtype(input_dtype: DataType):
                 dummy = pyarrow.array([], input_dtype.to_arrow_dtype())
-                return func(dummy).type
+                return DataType.from_arrow(func(dummy).type)
 
             return_dtype = _infer_dtype
 
@@ -1732,7 +1732,8 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
 # Re-export eval_expr for public use
 
 __all__ = [
-    "Operation",
+    "BinaryOperation",
+    "UnaryOperation",
     "Expr",
     "NamedExpr",
     "ResolvedColumnExpr",
