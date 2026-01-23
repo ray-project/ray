@@ -130,80 +130,14 @@ class BinaryOperation(Operation, Enum):
 
     @override
     def infer_dtype(self, l_dtype: DataType, r_dtype: DataType) -> DataType:
-        import pyarrow as pa
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
 
-        match self:
-            case self.ADD:
-                # ADD: numbers + numbers
-                if l_dtype.is_numerical_type() and r_dtype.is_numerical_type():
-                    left = pa.scalar(1, l_dtype.to_arrow_dtype())
-                    right = pa.scalar(1, r_dtype.to_arrow_dtype())
-                    return DataType.from_arrow((left + right).type)
-                # ADD: string + string
-                elif l_dtype.is_string_type() and r_dtype.is_string_type():
-                    # String concatenation returns the same string type
-                    return l_dtype
-                else:
-                    raise TypeError(
-                        f"ADD operation not supported for types {l_dtype} and {r_dtype}"
-                    )
+        left = pyarrow.scalar(None, l_dtype.to_arrow_dtype())
+        right = pyarrow.scalar(None, r_dtype.to_arrow_dtype())
 
-            case self.MUL:
-                # MUL: numbers * numbers
-                if l_dtype.is_numerical_type() and r_dtype.is_numerical_type():
-                    left = pa.scalar(1, l_dtype.to_arrow_dtype())
-                    right = pa.scalar(1, r_dtype.to_arrow_dtype())
-                    return DataType.from_arrow((left * right).type)
-                # MUL: string * integer (repetition)
-                elif l_dtype.is_string_type() and pa.types.is_integer(
-                    r_dtype.to_arrow_dtype()
-                ):
-                    return l_dtype
-                # MUL: integer * string (repetition)
-                elif (
-                    pa.types.is_integer(l_dtype.to_arrow_dtype())
-                    and r_dtype.is_string_type()
-                ):
-                    return r_dtype
-                else:
-                    raise TypeError(
-                        f"MUL operation not supported for types {l_dtype} and {r_dtype}"
-                    )
-
-            case self.SUB | self.DIV | self.FLOORDIV:
-                # SUB, DIV, FLOORDIV: only numbers
-                if l_dtype.is_numerical_type() and r_dtype.is_numerical_type():
-                    left = pa.scalar(1, l_dtype.to_arrow_dtype())
-                    right = pa.scalar(1, r_dtype.to_arrow_dtype())
-
-                    if self == self.SUB:
-                        result = left - right
-                    elif self == self.DIV:
-                        result = left / right
-                    else:  # FLOORDIV
-                        result = left // right
-
-                    return DataType.from_arrow(result.type)
-                else:
-                    raise TypeError(
-                        f"{self.name} operation not supported for types {l_dtype} and {r_dtype}"
-                    )
-
-            case (
-                self.GT
-                | self.LT
-                | self.GE
-                | self.LE
-                | self.EQ
-                | self.NE
-                | self.AND
-                | self.OR
-                | self.IN
-                | self.NOT_IN
-            ):
-                return DataType.bool()
-
-        raise RuntimeError(f"Unreachable {self}")
+        return _ARROW_EXPR_OPS_MAP[self](left, right).type
 
 
 class _ExprVisitor(ABC, Generic[T]):
@@ -289,6 +223,10 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa
 
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
         if expr.op in (BinaryOperation.IN, BinaryOperation.NOT_IN):
             left = self.visit(expr.left)
             if isinstance(expr.right, LiteralExpr):
@@ -308,19 +246,17 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
 
         left = self.visit(expr.left)
         right = self.visit(expr.right)
-        from ray.data._internal.planner.plan_expression.expression_evaluator import (
-            _ARROW_EXPR_OPS_MAP,
-        )
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
         raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
 
     def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
-        operand = self.visit(expr.operand)
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
             _ARROW_EXPR_OPS_MAP,
         )
+
+        operand = self.visit(expr.operand)
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](operand)
@@ -1518,7 +1454,7 @@ def _create_pyarrow_wrapper(
 
 
 @PublicAPI(stability="alpha")
-def pyarrow_udf(return_dtype: DataTypeInferFn | DataType) -> Callable[..., UDFExpr]:
+def pyarrow_udf(return_dtype: DataType | None = None) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
     This decorator wraps PyArrow compute functions to automatically convert pandas
@@ -1530,12 +1466,24 @@ def pyarrow_udf(return_dtype: DataTypeInferFn | DataType) -> Callable[..., UDFEx
 
     Args:
         return_dtype: The data type of the return value
+        TODO(Justin): Update the docstring
 
     Returns:
         A callable that creates UDFExpr instances with automatic conversion
     """
 
     def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+        nonlocal return_dtype
+        if return_dtype is None:
+            # If the return type is None, we will infer it by
+            # 1). Creating an *empty* null list with that type
+            # 2). Running the compute function and use the resulting type.
+            def _infer_dtype(input_dtype: DataType):
+                dummy = pyarrow.array([], input_dtype.to_arrow_dtype())
+                return func(dummy).type
+
+            return_dtype = _infer_dtype
+
         # Wrap the function with PyArrow conversion logic
         wrapped_fn = _create_pyarrow_wrapper(func)
         # Create UDFExpr callable using the wrapped function
@@ -1549,13 +1497,6 @@ def _create_pyarrow_compute_udf(
     return_dtype: DataType | None = None,
 ) -> Callable[..., "UDFExpr"]:
     """Create an expression UDF backed by a PyArrow compute function."""
-
-    def _infer_dtype(input_dtype: DataType):
-        dummy = pyarrow.scalar(1, input_dtype.to_arrow_dtype())
-        return pc_func(dummy).type
-
-    if return_dtype is None:
-        return_dtype: DataTypeInferFn = _infer_dtype
 
     def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
         @pyarrow_udf(return_dtype=return_dtype)
