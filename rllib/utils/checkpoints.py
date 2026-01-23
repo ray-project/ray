@@ -672,7 +672,12 @@ class Checkpointable(abc.ABC):
                     # directly from the path otherwise sync the checkpoint from the head
                     # to the worker and load it from there.
                     if worker_node_ip == _head_ip:
-                        w.restore_from_path(_path, component=_comp_arg, **_kwargs)
+                        w.restore_from_path(
+                            path=_path,
+                            filesystem=filesystem,
+                            component=_comp_arg,
+                            **_kwargs,
+                        )
                     else:
                         with tempfile.TemporaryDirectory() as temp_dir:
                             sync_dir_between_nodes(
