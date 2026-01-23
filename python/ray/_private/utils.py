@@ -33,9 +33,6 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
-from ray._raylet import GcsClient
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
-from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -1115,53 +1112,6 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
-
-
-def get_all_node_info_until_retrieved(
-    gcs_client: GcsClient,
-    node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
-    state_filter: Optional[int] = None,
-    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
-    timeout_per_retry: Optional[int | float] = None,
-) -> List[GcsNodeInfo]:
-    """
-    Get all node info from GCS with retry until the node info is found.
-
-    Raises:
-        Exception: If the node info is not found after the retries,
-                   Or the RPC error getting the node info from GCS.
-
-    Args:
-        gcs_client: The GCS client.
-        node_selectors: The attributes to filter the node info.
-        state_filter: The state to filter the node info.
-        num_retries: The number of retries.
-        timeout_per_retry: The timeout per request to get the node info.
-
-    Returns:
-        The list of node info matching the selectors and state filter.
-    """
-    node_infos = []
-    for _ in range(num_retries):
-        try:
-            node_infos = gcs_client.get_all_node_info(
-                timeout=timeout_per_retry,
-                node_selectors=node_selectors,
-                state_filter=state_filter,
-            ).values()
-        except Exception as e:
-            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
-            node_infos = []
-
-        if node_infos:
-            break
-        time.sleep(2)
-
-    if not node_infos:
-        raise Exception(
-            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
-        )
-    return node_infos
 
 
 def parse_resources_json(
