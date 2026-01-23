@@ -62,6 +62,16 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
+def _dict_to_namespace(obj: Any) -> Any:
+    """Recursively converts dictionaries to argparse.Namespace."""
+    if isinstance(obj, dict):
+        return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [_dict_to_namespace(item) for item in obj]
+    else:
+        return obj
+
+
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
@@ -257,8 +267,8 @@ class VLLMEngine(LLMEngine):
 
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
-        args = argparse.Namespace(
-            **(vllm_frontend_args.__dict__ | vllm_engine_args.__dict__)
+        args = _dict_to_namespace(
+            vllm_frontend_args.__dict__ | vllm_engine_args.__dict__
         )
 
         if "vllm_config" in inspect.signature(init_app_state).parameters:

@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.streaming_executor_state import (
+    format_op_state_summary,
+)
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
@@ -153,6 +156,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
         pg = self._op_display.get(opstate)
         if pg is not None:
             pg.update_absolute(
-                opstate.output_row_count, opstate.op.num_output_rows_total()
+                opstate.op.metrics.row_outputs_taken, opstate.op.num_output_rows_total()
             )
-            pg.set_description(opstate.summary_str(resource_manager))
+            summary_str = format_op_state_summary(opstate, resource_manager)
+            pg.set_description(f"- {opstate.op.name}: {summary_str}")
