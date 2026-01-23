@@ -790,10 +790,12 @@ class ParquetDatasource(Datasource):
             )
 
         if tensor_column_schema is not None:
+            # Without this code, schema inference for parquet datasets will default to
+            # binary types.
+
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
                 pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()
-                # Use factory to create tensor type (respects context defaults)
                 tensor_type = create_arrow_tensor_type(shape=shape, dtype=pa_dtype)
                 field = pa.field(name, tensor_type)
 
@@ -806,6 +808,7 @@ class ParquetDatasource(Datasource):
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
             try:
+                # An empty table with extensions will fail for pyarrow==9.0.0
                 dummy_table = target_schema.empty_table()
                 target_schema = _block_udf(dummy_table).schema.with_metadata(
                     target_schema.metadata
