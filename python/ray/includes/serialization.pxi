@@ -49,8 +49,15 @@ cdef class _MemcopyThreadPool:
         return self._num_threads > 1
 
     cdef ParallelMemcopyThreadPool* get(self):
+        cdef ParallelMemcopyThreadPool* created_pool
         if self._pool == NULL and self._num_threads > 1:
-            self._pool = CreateParallelMemcopyThreadPool(self._num_threads)
+            created_pool = CreateParallelMemcopyThreadPool(self._num_threads)
+            # Another thread may have initialized the pool while we were
+            # creating ours. Prefer the existing pool and free the extra one.
+            if self._pool == NULL:
+                self._pool = created_pool
+            elif created_pool != NULL:
+                DestroyParallelMemcopyThreadPool(created_pool)
         return self._pool
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
