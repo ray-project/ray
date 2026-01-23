@@ -289,13 +289,13 @@ class TestClusterAutoscaling:
 
         # Trigger scaling with high utilization. The cluster autoscaler should request
         # one node.
-        utilization = ExecutionResources(cpu=1, gpu=1, memory=1)
+        utilization = ExecutionResources(cpu=1)
         autoscaler.try_trigger_scaling()
         assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
         # Trigger scaling with low utilization. The cluster autoscaler should re-request
         # one node rather than no resources.
-        utilization = ExecutionResources(cpu=0, gpu=0, memory=0)
+        utilization = ExecutionResources(cpu=0)
         autoscaler.try_trigger_scaling()
         assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
