@@ -1366,7 +1366,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         A callable that creates UDFExpr instances when called with expressions
 
     Example:
-        >>> from ray.data.expressions import col, udf
+        >>> from ray.data.expressions import col, DataType, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>> import ray
