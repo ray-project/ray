@@ -56,6 +56,9 @@ def ray_shutdown():
 
 @pytest.fixture
 def ray_cluster():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
     yield cluster
     serve.shutdown()
@@ -65,6 +68,9 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
     # modifies the dictionary that's passed in.
     params = deepcopy(request.param)

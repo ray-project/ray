@@ -43,8 +43,11 @@ def _get_random_port() -> int:
 def ray_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
