@@ -153,30 +153,46 @@ install_node() {
     return
   fi
 
-  if [[ -n "${BUILDKITE-}" ]] ; then
-    if [[ "${OSTYPE}" = darwin* ]]; then
-      if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-      else
-        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
-      fi
-    else
-      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSfL https://deb.nodesource.com/setup_14.x | sudo -E bash -
-      sudo apt-get install -y nodejs
-      return
-    fi
+  if [[ "${BUILDKITE-}" == "" ]] ; then
+    echo "Skipping install_node in non-Buildkite environment is not supported" > /dev/stderr
+    return
   fi
 
-  # Install the latest version of Node.js in order to build the dashboard.
-  (
-    set +x # suppress set -x since it'll get very noisy here.
-    . "${HOME}/.nvm/nvm.sh"
-    NODE_VERSION="14"
-    nvm install $NODE_VERSION
-    nvm use --silent $NODE_VERSION
-    npm config set loglevel warn  # make NPM quieter
-  )
+  if [[ "${OSTYPE}" = darwin* ]]; then
+    curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+
+    (
+      set +x # suppress set -x since it'll get very noisy here.
+      . "${HOME}/.nvm/nvm.sh"
+      NODE_VERSION="14"
+      nvm install $NODE_VERSION
+      nvm use --silent $NODE_VERSION
+      npm config set loglevel warn  # make NPM quieter
+    )
+  else
+    # Linux
+
+    NODE_VERSION_FULL="14.21.3"
+
+    if [[ "$(uname -m)" == "x86_64" ]]; then
+      NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-x64.tar.xz"
+      NODE_SHA256="05c08a107c50572ab39ce9e8663a2a2d696b5d262d5bd6f98d84b997ce932d9a"
+    else # aarch64
+      NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-arm64.tar.xz"
+      NODE_SHA256="f06642bfcf0b8cc50231624629bec58b183954641b638e38ed6f94cd39e8a6ef"
+    fi
+
+    NODE_DIR="/usr/local/node"
+    curl -fsSL "${NODE_URL}" -o /tmp/node.tar.xz
+    echo "$NODE_SHA256  /tmp/node.tar.xz" | sha256sum -c -
+    sudo mkdir -p "$NODE_DIR"
+    sudo tar -xf /tmp/node.tar.xz -C "$NODE_DIR" --strip-components=1
+    rm /tmp/node.tar.xz
+    sudo ln -sf /usr/local/node/bin/node /usr/local/bin/node
+    sudo ln -sf /usr/local/node/bin/npm /usr/local/bin/npm
+    sudo ln -sf /usr/local/node/bin/npx /usr/local/bin/npx
+
+  fi
 }
 
 install_toolchains() {

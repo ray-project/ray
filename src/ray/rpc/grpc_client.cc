@@ -62,7 +62,7 @@ std::shared_ptr<grpc::Channel> BuildChannel(
   // Step 2: Create channel with interceptors if token auth is enabled
   std::string target_address = BuildAddress(address, port);
 
-  if (RequiresTokenAuthentication()) {
+  if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
     // Create channel with auth interceptor
     return grpc::experimental::CreateCustomChannelWithInterceptors(
         target_address, channel_creds, *arguments, CreateTokenAuthInterceptorFactories());

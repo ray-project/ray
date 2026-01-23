@@ -9,11 +9,15 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Filter, Project
+from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
 from ray.data.expressions import Expr, col
+
+__all__ = [
+    "PredicatePushdown",
+]
 
 
 class PredicatePushdown(Rule):

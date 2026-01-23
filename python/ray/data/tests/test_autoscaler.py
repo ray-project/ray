@@ -2,7 +2,7 @@ import time
 from contextlib import contextmanager
 from types import MethodType
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -340,6 +340,7 @@ def test_cluster_scaling():
 
     autoscaler = DefaultClusterAutoscaler(
         topology=topology,
+        resource_limits=ExecutionResources.inf(),
         execution_id="execution_id",
     )
 
@@ -349,6 +350,233 @@ def test_cluster_scaling():
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]
     )
+
+
+def test_cluster_scaling_respects_cpu_limits():
+    """Test that cluster autoscaling respects user-configured CPU limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources.for_limits(cpu=4),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request: [{"CPU": 2}, {"CPU": 2}, {"CPU": 2}] (6 CPUs)
+    # With limit of 4 CPUs, should only request 2 bundles (4 CPUs)
+    autoscaler._send_resource_request.assert_called_once_with([{"CPU": 2}, {"CPU": 2}])
+
+
+def test_cluster_scaling_respects_gpu_limits():
+    """Test that cluster autoscaling respects user-configured GPU limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=1, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources.for_limits(gpu=2),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request 3 bundles (3 GPUs)
+    # With limit of 2 GPUs, should only request 2 bundles
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}]
+    )
+
+
+def test_cluster_scaling_respects_memory_limits():
+    """Test that cluster autoscaling respects user-configured memory limits."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=0, memory=1000)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources.for_limits(memory=2000),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Without limits, would request 3 bundles (3000 memory)
+    # With limit of 2000 memory, should only request 2 bundles
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 1, "memory": 1000}, {"CPU": 1, "memory": 1000}]
+    )
+
+
+def test_cluster_scaling_no_limits():
+    """Test that cluster autoscaling works normally when no limits are set."""
+    op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=2),
+    )
+    op_state1 = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(
+            runnable=False,
+        ),
+    )
+    topology = {
+        op1: op_state1,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources.inf(),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # With no limits, all 3 bundles should be requested
+    autoscaler._send_resource_request.assert_called_once_with(
+        [{"CPU": 2}, {"CPU": 2}, {"CPU": 2}]
+    )
+
+
+def test_cluster_scaling_active_bundles_prioritized_over_pending():
+    """Test that active task bundles are prioritized over pending bundles when limits apply.
+
+    This tests the scenario where:
+    - Large operator: Running 1 task at 3 CPUs, no pending work
+    - Small operator 1: Running 0 tasks, has pending work at 1 CPU
+    - Small operator 2: Running 0 tasks, has pending work at 1 CPU
+    - Current consumption: 3 CPUs
+    - User limit: 4 CPUs
+
+    The active bundle (3 CPUs) should always be included, and only pending bundles
+    that fit within the remaining budget should be added.
+    """
+    # Large operator with 1 running task (3 CPUs), no pending work
+    large_op = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=1),
+    )
+    large_op_state = MagicMock(
+        has_pending_bundles=MagicMock(return_value=False),
+        _scheduling_status=MagicMock(runnable=False),
+    )
+
+    # Small operator 1 with no running tasks, has pending work (1 CPU)
+    small_op1 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=0),
+    )
+    small_op1_state = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(runnable=False),
+    )
+
+    # Small operator 2 with no running tasks, has pending work (1 CPU)
+    small_op2 = MagicMock(
+        input_dependencies=[],
+        incremental_resource_usage=MagicMock(
+            return_value=ExecutionResources(cpu=1, gpu=0, object_store_memory=0)
+        ),
+        num_active_tasks=MagicMock(return_value=0),
+    )
+    small_op2_state = MagicMock(
+        has_pending_bundles=MagicMock(return_value=True),
+        _scheduling_status=MagicMock(runnable=False),
+    )
+
+    topology = {
+        large_op: large_op_state,
+        small_op1: small_op1_state,
+        small_op2: small_op2_state,
+    }
+
+    autoscaler = DefaultClusterAutoscaler(
+        topology=topology,
+        resource_limits=ExecutionResources.for_limits(cpu=4),
+        execution_id="execution_id",
+    )
+
+    autoscaler._send_resource_request = MagicMock()
+    autoscaler.try_trigger_scaling()
+
+    # Expected behavior:
+    # - Active bundles: [{CPU: 3}] (always included)
+    # - Pending bundles: [{CPU: 1}, {CPU: 1}] (best-effort, sorted smallest first)
+    # - Result: [{CPU: 3}, {CPU: 1}] (3 + 1 = 4 CPUs, within limit)
+    call_args = autoscaler._send_resource_request.call_args[0][0]
+
+    # The active bundle (3 CPUs) must be included
+    assert {
+        "CPU": 3
+    } in call_args, (
+        f"Active task bundle (3 CPUs) should always be included. Got: {call_args}"
+    )
+
+    # Total CPUs should not exceed limit
+    total_cpu = sum(b.get("CPU", 0) for b in call_args)
+    assert total_cpu <= 4, f"Total CPUs {total_cpu} exceeds limit of 4"
+
+    # Should include the active bundle plus one pending bundle (3 + 1 = 4)
+    assert (
+        len(call_args) == 2
+    ), f"Expected 2 bundles (1 active + 1 pending), got {len(call_args)}: {call_args}"
 
 
 class BarrierWaiter:
@@ -430,7 +658,6 @@ def test_autoscaling_config_validation_warnings(
     ray_start_10_cpus_shared, restore_data_context
 ):
     """Test that validation warnings are emitted when actor pool config won't allow scaling up."""
-    from unittest.mock import patch
 
     class SimpleMapper:
         """Simple callable class for testing autoscaling validation."""

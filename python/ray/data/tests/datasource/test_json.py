@@ -15,14 +15,8 @@ from ray.data._internal.datasource.json_datasource import PandasJSONDatasource
 from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.datasource import (
-    BaseFileMetadataProvider,
-)
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-)
-from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -204,31 +198,6 @@ def test_read_json_fallback_from_pyarrow_failure(
     # falling back to json.load() when pyarrow fails.
     ds = ray.data.read_json(path1)
     assert ds.take_all() == data
-
-
-def test_json_read_meta_provider(
-    ray_start_regular_shared,
-    tmp_path,
-    target_max_block_size_infinite_or_default,
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(tmp_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True)
-    ds = ray.data.read_json(
-        path1,
-        meta_provider=DefaultFileMetadataProvider(),
-    )
-
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 3
-    assert ds.input_files() == [path1]
-    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_json(
-            path1,
-            meta_provider=BaseFileMetadataProvider(),
-        )
 
 
 def test_json_read_with_read_options(

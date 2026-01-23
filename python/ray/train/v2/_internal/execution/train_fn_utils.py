@@ -3,7 +3,6 @@ import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from ray.data import DataIterator
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
@@ -22,6 +21,7 @@ from ray.train.v2.api.report_config import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator
     from ray.train import Checkpoint
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -97,7 +97,7 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         """Get the dataset shard for this training process.
 
         Args:
@@ -171,7 +171,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_checkpoint(self):
         return get_internal_train_context().get_checkpoint()
 
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> DistributedTrainContext:
@@ -199,7 +199,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def __init__(
         self,
         experiment_name: str,
-        dataset_shards: Optional[Dict[str, DataIterator]] = None,
+        dataset_shards: Optional[Dict[str, "DataIterator"]] = None,
         world_size: int = 1,
         world_rank: int = 0,
         local_rank: int = 0,
@@ -238,7 +238,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint
 
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         dataset_name = dataset_info.dataset_name
         assert (
             self._dataset_shards is not None and dataset_name in self._dataset_shards

@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 import ray
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.data.iterator import _IterableFromIterator
 from ray.train import Checkpoint
 from ray.util import PublicAPI
 
@@ -109,6 +108,7 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
     methods and inject the data integration logics if the `train_dataset` and
     `eval_dataset` are Ray Data Iterables.
     """
+    from ray.data.iterator import _IterableFromIterator
 
     if TRANSFORMERS_IMPORT_ERROR is not None:
         raise TRANSFORMERS_IMPORT_ERROR

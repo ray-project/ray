@@ -131,10 +131,13 @@ def test_uv_run_runtime_env_hook():
     def check_uv_run(
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
     ):
+        subprocess_kwargs = subprocess_kwargs or {}
+        env = dict(subprocess_kwargs.get("env") or os.environ)
+        env["UV_PYTHON"] = sys.executable
         result = subprocess.run(
             cmd + [json.dumps(runtime_env)],
             capture_output=True,
-            **(subprocess_kwargs if subprocess_kwargs else {}),
+            **{**subprocess_kwargs, "env": env},
         )
         output = result.stdout.strip().decode()
         if result.returncode != 0:
@@ -149,7 +152,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.getcwd(),
         },
     )
@@ -157,7 +160,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", "--directory", "/tmp", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.path.realpath("/tmp"),
         },
     )
@@ -165,7 +168,7 @@ def test_uv_run_runtime_env_hook():
         [find_uv_bin(), "run", "--no-project", script],
         {"working_dir": "/some/path"},
         {
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": "/some/path",
         },
     )
@@ -181,7 +184,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run",
+                "py_executable": f"{find_uv_bin()} run --python {sys.executable}",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -197,7 +200,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", "--with-requirements", requirements, script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements}",
+                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements} --python {sys.executable}",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -259,7 +262,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -272,7 +275,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -291,7 +294,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.getcwd(),
         },
     )
@@ -309,7 +312,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
             "working_dir": os.getcwd(),
         },
     )

@@ -591,6 +591,7 @@ def _run_many(
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
             global_logging_config=None,
         )
 

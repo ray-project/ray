@@ -129,7 +129,6 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                 initialize_thread_callback_);
           }
 
-          RAY_CHECK_OK(actor_creation_task_done_());
           if (status.IsCreationTaskError()) {
             RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
                              << accepted_task_spec.TaskId()

@@ -129,7 +129,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                 "worker_id": controller_details.worker_id,
                 "log_file_path": controller_details.log_file_path,
             },
-            "proxy_location": "EveryNode",
+            "proxy_location": "HeadOnly",
             "http_options": {"host": "0.0.0.0"},
             "grpc_options": {
                 "port": 9000,

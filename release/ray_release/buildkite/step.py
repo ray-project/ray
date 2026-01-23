@@ -127,8 +127,6 @@ def get_step(
     cmd = [
         "./release/run_release_test.sh",
         shlex.quote(test["name"]),
-        "--log-streaming-limit",
-        "100",
     ]
 
     for file in test_collection_file or []:
@@ -182,16 +180,10 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable, allow to soft fail
-    stable = test.get("stable", True)
     clone_test = copy.deepcopy(test)  # avoid modifying the original test
     clone_test.update_from_s3()
     jailed = clone_test.get_state() == TestState.JAILED
     full_label = ""
-    if not stable:
-        step["soft_fail"] = True
-    if not stable:
-        full_label += "[unstable]"
     if jailed:
         full_label += "[jailed]"
 

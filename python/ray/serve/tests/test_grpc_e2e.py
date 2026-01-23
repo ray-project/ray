@@ -34,6 +34,9 @@ class Ingress:
         return await self._handle.options(_by_reference=False).remote()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Temp directory cleanup fails on Windows"
+)
 @pytest.mark.parametrize(
     "ray_instance",
     [{"RAY_SERVE_LOG_TO_STDERR": "1"}],
@@ -76,6 +79,9 @@ def check_running():
     return True
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows signal handling not compatible"
+)
 @pytest.mark.parametrize(
     "ray_instance",
     [{"RAY_SERVE_PROXY_USE_GRPC": "1"}],

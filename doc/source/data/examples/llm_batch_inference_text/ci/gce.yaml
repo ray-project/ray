@@ -1,0 +1,17 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-central1
+
+# Head node
+head_node_type:
+  name: 8CPU-32GB
+  instance_type: n2-standard-8
+
+# Worker nodes
+worker_node_types:
+  - name: 1xL4:8CPU-32GB
+    instance_type: g2-standard-8-nvidia-l4-1
+    min_workers: 0
+    max_workers: 10
+
+flags:
+  allow-cross-zone-autoscaling: true
