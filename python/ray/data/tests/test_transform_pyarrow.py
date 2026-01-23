@@ -22,7 +22,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     _extension_array_concat_supported,
 )
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (
@@ -35,6 +34,7 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
+from ray.data.util.arrow_utils import get_pyarrow_version
 
 
 def test_try_defragment_table():

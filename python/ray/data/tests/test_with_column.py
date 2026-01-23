@@ -6,11 +6,11 @@ from pkg_resources import parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
+from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 

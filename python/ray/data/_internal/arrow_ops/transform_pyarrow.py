@@ -16,7 +16,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
-from ray.data.arrow_utils import get_pyarrow_version
+from ray.data.util.arrow_utils import get_pyarrow_version
 
 try:
     import pyarrow

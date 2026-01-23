@@ -17,9 +17,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.util.arrow_utils import get_pyarrow_version
 
 if TYPE_CHECKING:
     import pyarrow as pa

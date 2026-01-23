@@ -8,9 +8,9 @@ from packaging.version import parse as parse_version
 import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import MiB, rows_same
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
+from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 

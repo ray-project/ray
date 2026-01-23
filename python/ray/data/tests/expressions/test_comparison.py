@@ -8,9 +8,9 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
+from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 pytestmark = pytest.mark.skipif(

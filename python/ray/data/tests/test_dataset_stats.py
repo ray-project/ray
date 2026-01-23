@@ -16,7 +16,6 @@ from ray.data.aggregate import (
     Std,
     ZeroPercentage,
 )
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,
@@ -26,6 +25,7 @@ from ray.data.stats import (
     _numerical_aggregators,
     _temporal_aggregators,
 )
+from ray.data.util.arrow_utils import get_pyarrow_version
 
 
 class TestDtypeAggregatorsForDataset:

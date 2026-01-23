@@ -17,7 +17,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import MiB
-from ray.data.arrow_utils import get_pyarrow_version
+from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 import psutil

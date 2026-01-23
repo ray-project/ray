@@ -7,10 +7,10 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record
 from ray.data.tests.util import extract_values
+from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 
