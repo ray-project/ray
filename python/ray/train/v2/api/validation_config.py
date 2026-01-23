@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-class ValidateFn(Protocol):
+class ValidationFn(Protocol):
     """Protocol for a function that validates a checkpoint."""
 
     def __call__(self, checkpoint: "Checkpoint", **kwargs: Any) -> Dict:
@@ -48,7 +48,7 @@ class ValidationConfig:
 
     def __init__(
         self,
-        fn: ValidateFn,
+        fn: ValidationFn,
         task_config: Optional[ValidationTaskConfig] = None,
     ):
         self.fn = fn
