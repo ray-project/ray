@@ -2,13 +2,11 @@ import logging
 import math
 from typing import Any, Dict, Optional, Tuple
 
-import ray
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.queue_monitor import get_queue_monitor_actor
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -175,17 +173,8 @@ def async_inference_autoscaling_policy(
     # Get decision counter from state (for smoothing)
     decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
 
-    # === STEP 1: Get queue length from QueueMonitor actor ===
-    try:
-        queue_monitor_actor = get_queue_monitor_actor(ctx.deployment_name)
-        queue_length = ray.get(
-            queue_monitor_actor.get_queue_length.remote(), timeout=5.0
-        )
-    except Exception as e:
-        logger.warning(
-            f"[{ctx.deployment_name}] Could not query QueueMonitor: {e}, maintaining {curr_target_num_replicas} replicas"
-        )
-        return curr_target_num_replicas, policy_state
+    # === STEP 1: Get queue length from context (pushed by QueueMonitor) ===
+    queue_length = ctx.async_inference_task_queue_length
 
     # Calculate total workload = queue tasks + HTTP requests
     total_workload = queue_length + total_num_requests

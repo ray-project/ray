@@ -1,7 +1,6 @@
 import sys
 import time
 from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,6 +22,7 @@ def create_autoscaling_context(
     max_replicas: int = 10,
     target_ongoing_requests: float = 10.0,
     total_num_requests: int = 0,
+    async_inference_task_queue_length: int = 0,
     upscale_delay_s: float = 0.0,
     downscale_delay_s: float = 0.0,
     downscale_to_zero_delay_s: Optional[float] = None,
@@ -59,78 +59,12 @@ def create_autoscaling_context(
         last_scale_down_time=None,
         current_time=current_time or time.time(),
         config=config,
+        async_inference_task_queue_length=async_inference_task_queue_length,
     )
 
 
-class MockQueueMonitor:
-    """Simple mock for queue monitor in tests."""
-
-    def __init__(self):
-        self.queue_length = 0
-        self.error = None
-        self.get_actor_mock = None
-
-    def set_queue_length(self, length: int):
-        self.queue_length = length
-        self.error = None
-
-    def set_actor_not_found(self):
-        self.error = ValueError("Actor not found")
-
-    def set_query_failed(self):
-        self.error = Exception("Query failed")
-
-
-@pytest.fixture
-def queue_monitor_mock():
-    """Fixture that mocks get_queue_monitor_actor and ray.get for testing."""
-    mock = MockQueueMonitor()
-
-    def get_actor(deployment_name, namespace="serve"):
-        if mock.error and isinstance(mock.error, ValueError):
-            raise mock.error
-        return MagicMock()
-
-    def ray_get(obj_ref, timeout=None):
-        if mock.error and not isinstance(mock.error, ValueError):
-            raise mock.error
-        return mock.queue_length
-
-    with patch(
-        "ray.serve.autoscaling_policy.get_queue_monitor_actor", side_effect=get_actor
-    ) as get_actor_mock, patch(
-        "ray.serve.autoscaling_policy.ray.get", side_effect=ray_get
-    ):
-        mock.get_actor_mock = get_actor_mock
-        yield mock
-
-
-class TestCombinedWorkloadAutoscalingPolicy:
+class TestAsyncInferenceAutoscalingPolicy:
     """Tests for async_inference_autoscaling_policy function."""
-
-    def test_queue_monitor_unavailable_maintains_replicas(self, queue_monitor_mock):
-        """Test that unavailable QueueMonitor maintains current replica count."""
-        queue_monitor_mock.set_actor_not_found()
-
-        ctx = create_autoscaling_context(
-            current_num_replicas=5,
-            target_num_replicas=5,
-        )
-
-        new_replicas, _ = async_inference_autoscaling_policy(ctx)
-        assert new_replicas == 5
-
-    def test_queue_monitor_query_fails_maintains_replicas(self, queue_monitor_mock):
-        """Test that failed query maintains current replica count."""
-        queue_monitor_mock.set_query_failed()
-
-        ctx = create_autoscaling_context(
-            current_num_replicas=3,
-            target_num_replicas=3,
-        )
-
-        new_replicas, _ = async_inference_autoscaling_policy(ctx)
-        assert new_replicas == 3
 
     @pytest.mark.parametrize(
         "queue_length,target_per_replica,expected_replicas",
@@ -143,18 +77,16 @@ class TestCombinedWorkloadAutoscalingPolicy:
     )
     def test_basic_scaling_formula(
         self,
-        queue_monitor_mock,
         queue_length,
         target_per_replica,
         expected_replicas,
     ):
         """Test basic scaling formula: ceil(queue_length / target_per_replica)."""
-        queue_monitor_mock.set_queue_length(queue_length)
-
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=target_per_replica,
+            async_inference_task_queue_length=queue_length,
             min_replicas=0,
             max_replicas=20,
         )
@@ -162,19 +94,19 @@ class TestCombinedWorkloadAutoscalingPolicy:
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == expected_replicas
 
-    def test_scaling_with_combined_workload(self, queue_monitor_mock):
+    def test_scaling_with_combined_workload(self):
         """Test that scaling uses sum of queue_length and total_num_requests."""
         queue_length = 30
         total_num_requests = 20
         # Total workload = 30 + 20 = 50
         # With target_ongoing_requests=10, expected = ceil(50/10) = 5
-        queue_monitor_mock.set_queue_length(queue_length)
 
         ctx = create_autoscaling_context(
             current_num_replicas=2,
             target_num_replicas=2,
             target_ongoing_requests=10,
             total_num_requests=total_num_requests,
+            async_inference_task_queue_length=queue_length,
             min_replicas=0,
             max_replicas=20,
         )
@@ -182,14 +114,13 @@ class TestCombinedWorkloadAutoscalingPolicy:
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 5
 
-    def test_scale_down_to_one_before_zero(self, queue_monitor_mock):
+    def test_scale_down_to_one_before_zero(self):
         """Test that scaling to zero goes through 1 first (policy enforces 1->0)."""
-        queue_monitor_mock.set_queue_length(0)
-
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=0,
             min_replicas=0,
             max_replicas=20,
         )
@@ -198,42 +129,39 @@ class TestCombinedWorkloadAutoscalingPolicy:
         # Policy enforces min of 1 for non-zero to zero transition
         assert new_replicas == 1
 
-    def test_respects_max_replicas(self, queue_monitor_mock):
+    def test_respects_max_replicas(self):
         """Test that scaling respects max_replicas bound."""
-        queue_monitor_mock.set_queue_length(1000)
-
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=1000,
             max_replicas=10,
         )
 
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 10
 
-    def test_respects_min_replicas(self, queue_monitor_mock):
+    def test_respects_min_replicas(self):
         """Test that scaling respects min_replicas bound."""
-        queue_monitor_mock.set_queue_length(5)
-
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=5,
             min_replicas=3,
         )
 
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 3
 
-    def test_scale_from_zero(self, queue_monitor_mock):
+    def test_scale_from_zero(self):
         """Test scaling up from zero replicas."""
-        queue_monitor_mock.set_queue_length(50)
-
         ctx = create_autoscaling_context(
             current_num_replicas=0,
             target_num_replicas=0,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=50,
             min_replicas=0,
             max_replicas=10,
         )
@@ -241,14 +169,13 @@ class TestCombinedWorkloadAutoscalingPolicy:
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 1
 
-    def test_scale_from_zero_with_one_task(self, queue_monitor_mock):
+    def test_scale_from_zero_with_one_task(self):
         """Test scaling from zero with a single task."""
-        queue_monitor_mock.set_queue_length(1)
-
         ctx = create_autoscaling_context(
             current_num_replicas=0,
             target_num_replicas=0,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=1,
             min_replicas=0,
             max_replicas=10,
         )
@@ -256,44 +183,25 @@ class TestCombinedWorkloadAutoscalingPolicy:
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 1
 
-    def test_stay_at_zero_with_empty_queue(self, queue_monitor_mock):
+    def test_stay_at_zero_with_empty_queue(self):
         """Test staying at zero replicas when queue is empty."""
-        queue_monitor_mock.set_queue_length(0)
-
         ctx = create_autoscaling_context(
             current_num_replicas=0,
             target_num_replicas=0,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=0,
             min_replicas=0,
         )
 
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 0
 
-    def test_correct_deployment_name_passed(self, queue_monitor_mock):
-        """Test that correct deployment name is passed to get_queue_monitor_actor."""
-        queue_monitor_mock.set_queue_length(50)
 
-        ctx = create_autoscaling_context(
-            current_num_replicas=5,
-            target_num_replicas=5,
-            deployment_name="my_task_consumer",
-            app_name="my_app",
-        )
-
-        async_inference_autoscaling_policy(ctx)
-
-        # Verify get_queue_monitor_actor was called with the correct deployment name
-        queue_monitor_mock.get_actor_mock.assert_called_once_with("my_task_consumer")
-
-
-class TestCombinedWorkloadAutoscalingPolicyDelays:
+class TestAsyncInferenceAutoscalingPolicyDelays:
     """Tests for upscale and downscale delays in async_inference_autoscaling_policy."""
 
-    def test_upscale_delay(self, queue_monitor_mock):
+    def test_upscale_delay(self):
         """Test that upscale decisions require delay."""
-        queue_monitor_mock.set_queue_length(200)
-
         upscale_delay_s = 30.0
         wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
 
@@ -302,6 +210,7 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=200,
             max_replicas=20,
             upscale_delay_s=upscale_delay_s,
             policy_state=policy_state,
@@ -317,10 +226,8 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
         assert new_replicas == 20
 
-    def test_downscale_delay(self, queue_monitor_mock):
+    def test_downscale_delay(self):
         """Test that downscale decisions require delay."""
-        queue_monitor_mock.set_queue_length(20)
-
         downscale_delay_s = 60.0
         wait_periods = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
 
@@ -329,6 +236,7 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
             current_num_replicas=10,
             target_num_replicas=10,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=20,
             min_replicas=1,
             downscale_delay_s=downscale_delay_s,
             policy_state=policy_state,
@@ -345,18 +253,17 @@ class TestCombinedWorkloadAutoscalingPolicyDelays:
         assert new_replicas == 2
 
 
-class TestCombinedWorkloadAutoscalingPolicyState:
+class TestAsyncInferenceAutoscalingPolicyState:
     """Tests for policy state management."""
 
-    def test_preserves_decision_counter(self, queue_monitor_mock):
+    def test_preserves_decision_counter(self):
         """Test that decision counter is preserved across calls."""
-        queue_monitor_mock.set_queue_length(200)
-
         policy_state = {}
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=200,
             upscale_delay_s=30.0,
             policy_state=policy_state,
         )
@@ -369,6 +276,7 @@ class TestCombinedWorkloadAutoscalingPolicyState:
             current_num_replicas=5,
             target_num_replicas=5,
             target_ongoing_requests=10,
+            async_inference_task_queue_length=200,
             upscale_delay_s=30.0,
             policy_state=policy_state,
         )

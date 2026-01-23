@@ -6,6 +6,7 @@ import pytest
 import redis
 
 import ray
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.queue_monitor import (
     create_queue_monitor_actor,
 )
@@ -40,8 +41,9 @@ class TestQueueMonitorActor:
         for i in range(30):
             redis_client.lpush("test_queue", f"message_{i}")
 
+        deployment_id = DeploymentID("test_deployment", "test_app")
         monitor = create_queue_monitor_actor(
-            "test_deployment", redis_broker_url, "test_queue"
+            deployment_id, redis_broker_url, "test_queue"
         )
         length = ray.get(monitor.get_queue_length.remote())
 
@@ -51,8 +53,9 @@ class TestQueueMonitorActor:
         self, ray_instance, redis_client, redis_broker_url
     ):
         """Test queue length returns 0 for empty queue."""
+        deployment_id = DeploymentID("test_deployment", "test_app")
         monitor = create_queue_monitor_actor(
-            "test_deployment", redis_broker_url, "test_queue"
+            deployment_id, redis_broker_url, "test_queue"
         )
         length = ray.get(monitor.get_queue_length.remote())
 
@@ -60,8 +63,9 @@ class TestQueueMonitorActor:
 
     def test_get_config(self, ray_instance, redis_broker_url):
         """Test get_config returns the configuration as a dict."""
+        deployment_id = DeploymentID("test_deployment", "test_app")
         monitor = create_queue_monitor_actor(
-            "test_deployment", redis_broker_url, "test_queue"
+            deployment_id, redis_broker_url, "test_queue"
         )
         config = ray.get(monitor.get_config.remote())
 
