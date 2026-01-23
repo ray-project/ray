@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import gymnasium as gym
 
-import ray
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -56,13 +55,9 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
             )
         )
 
-    def tearDown(self):
-        # Pull down Ray after each test.
-        ray.shutdown()
-
     def test_offline_evaluation_runner_setup(self):
 
-        # Create an `OfflineEvaluationRunner` instance.
+        # Create an `OfflineEvalautionRunner` instance.
         offline_eval_runner = OfflineEvaluationRunner(config=self.config)
 
         # Ensure that the runner has a config.
