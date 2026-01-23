@@ -72,7 +72,7 @@ class ReportCallbackHandler(WorkerGroupCallback):
         ]
 
         consolidated_checkpoint = None
-        validation_spec = None
+        validation = False
         if checkpoint_results:
             # Double check the storage path of the checkpoints in the training results.
             unique_checkpoint_paths = {tr.checkpoint.path for tr in checkpoint_results}
@@ -88,7 +88,7 @@ class ReportCallbackHandler(WorkerGroupCallback):
                     "This is unexpected -- please file a Github issue."
                 )
             consolidated_checkpoint = checkpoint_results[0].checkpoint
-            validation_spec = checkpoint_results[0].validation_spec
+            validation = checkpoint_results[0].validation
 
         # Step 4: Invoke all dependent `ReportCallback`s.
         metrics_per_worker = [
@@ -99,7 +99,7 @@ class ReportCallbackHandler(WorkerGroupCallback):
                 training_report=_TrainingReport(
                     checkpoint=consolidated_checkpoint,
                     metrics=metrics_per_worker[0],
-                    validation_spec=validation_spec,
+                    validation=validation,
                 ),
                 metrics=metrics_per_worker,
             )
