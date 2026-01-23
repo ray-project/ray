@@ -447,10 +447,6 @@ class Test(dict):
         """Returns the runtime environment variables for the BYOD cluster."""
         return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
 
-    def get_byod_pips(self) -> List[str]:
-        """Returns the list of pips for the BYOD cluster."""
-        return self._get_byod_config().get("pip", [])
-
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.

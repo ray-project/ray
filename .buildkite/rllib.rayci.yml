@@ -114,7 +114,7 @@ steps:
     parallelism: 5
     instance_type: gpu-large
     commands:
-      # All multi-gpu tagged tests
+      # All multi-gpu tagged tests (including all learning, examples and component testings)
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
