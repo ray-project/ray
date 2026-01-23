@@ -388,3 +388,6 @@ def serve_instance_with_labeled_nodes(ray_cluster):
     serve.start()
 
     yield _get_global_client(), node_1_id, node_2_id, cluster
+
+    serve.shutdown()
+    ray.shutdown()
