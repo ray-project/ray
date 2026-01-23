@@ -86,8 +86,7 @@ RayPlacementGroupLifecycleEvent::ConvertState(
   case rpc::PlacementGroupTableData::RESCHEDULING:
     return rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING;
   default:
-    RAY_LOG(WARNING) << "Unknown placement group state: " << state;
-    return rpc::events::PlacementGroupLifecycleEvent::PENDING;
+    RAY_LOG(FATAL) << "Unknown placement group state: " << state;
   }
 }
 
@@ -110,8 +109,7 @@ RayPlacementGroupLifecycleEvent::ConvertSchedulingState(
   case rpc::PlacementGroupStats::FINISHED:
     return rpc::events::PlacementGroupLifecycleEvent::FINISHED;
   default:
-    RAY_LOG(WARNING) << "Unknown scheduling state: " << state;
-    return rpc::events::PlacementGroupLifecycleEvent::QUEUED;
+    RAY_LOG(FATAL) << "Unknown scheduling state: " << state;
   }
 }
 
