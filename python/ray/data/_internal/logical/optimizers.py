@@ -8,19 +8,17 @@ from ray.data._internal.logical.interfaces import (
     Plan,
     Rule,
 )
-from ray.data._internal.logical.rules.combine_repartitions import CombineRepartitions
-from ray.data._internal.logical.rules.configure_map_task_memory import (
+from ray.data._internal.logical.rules import (
+    CombineShuffles,
     ConfigureMapTaskMemoryUsingOutputSize,
-)
-from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
-from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+    FuseOperators,
+    InheritBatchFormatRule,
     InheritTargetMaxBlockSizeRule,
+    LimitPushdownRule,
+    PredicatePushdown,
+    ProjectionPushdown,
+    SetReadParallelismRule,
 )
-from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
-from ray.data._internal.logical.rules.operator_fusion import FuseOperators
-from ray.data._internal.logical.rules.predicate_pushdown import PredicatePushdown
-from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushdown
-from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
@@ -29,7 +27,7 @@ _LOGICAL_RULESET = Ruleset(
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,
-        CombineRepartitions,
+        CombineShuffles,
     ]
 )
 

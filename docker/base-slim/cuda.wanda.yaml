@@ -3,6 +3,8 @@ froms: ["nvidia/cuda:$CUDA_VERSION-runtime-ubuntu22.04"]
 dockerfile: docker/base-slim/Dockerfile
 srcs:
   - python/requirements_compiled.txt
+  - python/requirements_compiled_py$PYTHON_VERSION.txt
+  - python/deplocks/base_slim/ray_base_slim_py$PYTHON_VERSION.lock
 build_args:
   - PYTHON_VERSION
   - BASE_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu22.04
