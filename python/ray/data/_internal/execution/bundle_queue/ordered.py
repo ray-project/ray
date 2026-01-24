@@ -20,6 +20,7 @@ class ReorderingBundleQueue(BaseBundleQueue):
         self._inner: DefaultDict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_index: int = 0
         self._completed_keys: Set[int] = set()
+        self._finished: bool = False
 
     def _move_to_next_index(self):
         """Move the output index to the next task.
@@ -29,9 +30,16 @@ class ReorderingBundleQueue(BaseBundleQueue):
         """
         assert len(self._inner[self._current_index]) == 0
         assert self._current_index in self._completed_keys
+
         del self._inner[self._current_index]
+
         self._completed_keys.remove(self._current_index)
-        self._current_index += 1
+
+        if self._inner:
+            self._current_index += 1
+        else:
+            self._current_index = -1
+            self._finished = True
 
     @override
     def _add_inner(self, bundle: RefBundle, key: int) -> None:
@@ -40,17 +48,23 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def has_next(self) -> bool:
-        return len(self._inner[self._current_index]) > 0
+        if self._finished:
+            return False
+
+        if (
+            len(self._inner[self._current_index]) == 0 and
+            self._current_index in self._completed_keys
+        ):
+            self._move_to_next_index()
+
+        return True
 
     @override
     def _get_next_inner(self) -> RefBundle:
         if not self._inner[self._current_index]:
             raise ValueError("Cannot pop from empty queue.")
-        next_bundle = self._inner[self._current_index].popleft()
-        if len(self._inner[self._current_index]) == 0:
-            if self._current_index in self._completed_keys:
-                self._move_to_next_index()
-        return next_bundle
+
+        return self._inner[self._current_index].popleft()
 
     @override
     def peek_next(self) -> Optional[RefBundle]:
