@@ -676,6 +676,81 @@ def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):
         )
 
 
+def test_get_health_metrics(serve_instance):
+    """Test that get_health_metrics returns valid controller health metrics."""
+
+    controller = _get_global_client()._controller
+
+    # Deploy a simple application to ensure controller is active
+    @serve.deployment
+    def health_test_app():
+        return "ok"
+
+    serve.run(health_test_app.bind())
+
+    # Get health metrics
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify it's a dictionary
+    assert isinstance(metrics, dict)
+
+    # Verify all expected fields are present
+    expected_fields = [
+        "timestamp",
+        "controller_start_time",
+        "uptime_s",
+        "num_control_loops",
+        "last_loop_duration_s",
+        "avg_loop_duration_s",
+        "max_loop_duration_s",
+        "min_loop_duration_s",
+        "loops_per_second",
+        "last_sleep_duration_s",
+        "expected_sleep_duration_s",
+        "event_loop_delay_s",
+        "num_asyncio_tasks",
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+        "last_handle_metrics_delay_ms",
+        "last_replica_metrics_delay_ms",
+        "avg_handle_metrics_delay_ms",
+        "avg_replica_metrics_delay_ms",
+        "max_handle_metrics_delay_ms",
+        "max_replica_metrics_delay_ms",
+        "process_memory_mb",
+    ]
+
+    for field in expected_fields:
+        assert field in metrics, f"Missing field: {field}"
+
+    # Verify types and basic sanity checks
+    assert metrics["timestamp"] > 0
+    assert metrics["controller_start_time"] > 0
+    assert metrics["uptime_s"] >= 0
+    assert metrics["expected_sleep_duration_s"] > 0  # Should be CONTROL_LOOP_INTERVAL_S
+
+    # Wait for at least one control loop to complete
+    def has_control_loops():
+        m = ray.get(controller.get_health_metrics.remote())
+        return m["num_control_loops"] > 0
+
+    wait_for_condition(has_control_loops, timeout=10)
+
+    # Get updated metrics after control loops have run
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify control loop metrics are populated
+    assert metrics["num_control_loops"] > 0
+    assert metrics["last_loop_duration_s"] > 0
+    assert metrics["loops_per_second"] > 0
+
+    # Verify the metrics are JSON serializable
+    metrics_json = json.dumps(metrics)
+    assert isinstance(metrics_json, str)
+
+
 if __name__ == "__main__":
     import sys
 
