@@ -280,6 +280,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             raise CheckpointManagerInitializationError(repr(e)) from e
 
         # Do this so we are using the same checkpoint and trainingresult objects.
+        # TODO: consider asserting that every checkpoint has a unique dir name
         checkpoint_dir_name_to_checkpoint_result = {}
 
         for training_result_state in manager_snapshot.checkpoint_results:

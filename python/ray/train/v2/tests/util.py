@@ -282,6 +282,7 @@ def create_dummy_training_reports(
     storage_context: StorageContext,
     include_metrics: bool = True,
     include_validation: bool = False,
+    starting_checkpoint_index: int = 0,
 ) -> List[_TrainingReport]:
     training_results = []
     for i in range(num_results):

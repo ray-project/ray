@@ -113,7 +113,10 @@ async def test_save_load_state_equivalence(
     training_reports = create_dummy_training_reports(
         num_results=2, storage_context=storage_context
     ) + create_dummy_training_reports(
-        num_results=1, storage_context=storage_context, include_validation=True
+        num_results=1,
+        storage_context=storage_context,
+        include_validation=True,
+        starting_checkpoint_index=2,
     )
 
     # Register the training results into checkpoint manager
@@ -200,7 +203,10 @@ async def test_pending_checkpoint_management(tmp_path):
     )
     final_training_report.validation = False
     scoreless_training_report = create_dummy_training_reports(
-        num_results=1, storage_context=storage_context, include_metrics=False
+        num_results=1,
+        storage_context=storage_context,
+        include_metrics=False,
+        starting_checkpoint_index=3,
     )[0]
 
     # Register pending/final/unknown checkpoints and verify their storage
