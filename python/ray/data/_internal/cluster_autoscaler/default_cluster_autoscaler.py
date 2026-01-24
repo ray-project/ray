@@ -9,11 +9,18 @@ from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
+@Deprecated(
+    message="DefaultClusterAutoscaler (V1) is deprecated. "
+    "Use DefaultClusterAutoscalerV2 instead by setting "
+    "RAY_DATA_CLUSTER_AUTOSCALER=V2 or using the default.",
+    warning=True,
+)
 class DefaultClusterAutoscaler(ClusterAutoscaler):
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
