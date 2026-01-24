@@ -1,9 +1,13 @@
 import inspect
 import logging
-from typing import Optional, Union
+from functools import wraps
+from typing import Any, Callable, Optional, TypeVar, Union, overload
 
 from ray.util import log_once
 from ray.util.annotations import _mark_annotated
+
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +22,7 @@ def deprecation_warning(
     new: Optional[str] = None,
     *,
     help: Optional[str] = None,
-    error: Optional[Union[bool, Exception]] = None,
+    error: Optional[Union[bool, type[Exception]]] = None,
     stacklevel: int = 2,
 ) -> None:
     """Warns (via the `logger` object) or throws a deprecation warning/error.
@@ -57,7 +61,35 @@ def deprecation_warning(
         )
 
 
-def Deprecated(old=None, *, new=None, help=None, error):
+@overload
+def Deprecated(
+    old: None = None,
+    *,
+    new: Optional[str] = None,
+    help: Optional[str] = None,
+    error: Union[bool, type[Exception]],
+) -> Callable[[F], F]:
+    ...
+
+
+@overload
+def Deprecated(
+    old: str,
+    *,
+    new: Optional[str] = None,
+    help: Optional[str] = None,
+    error: Union[bool, type[Exception]],
+) -> Callable[[F], F]:
+    ...
+
+
+def Deprecated(
+    old: Optional[str] = None,
+    *,
+    new: Optional[str] = None,
+    help: Optional[str] = None,
+    error: Union[bool, type[Exception]],
+) -> Callable[[F], F]:
     """Decorator for documenting a deprecated class, method, or function.
 
     Automatically adds a `deprecation.deprecation_warning(old=...,
@@ -97,7 +129,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
             ...
     """
 
-    def _inner(obj):
+    def _inner(obj: F) -> F:
         # A deprecated class.
         if inspect.isclass(obj):
             # Patch the class' init method to raise the warning/error.
@@ -122,6 +154,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
 
         # A deprecated class method or function.
         # Patch with the warning/error at the beginning.
+        @wraps(obj)
         def _ctor(*args, **kwargs):
             if log_once(old or obj.__name__):
                 deprecation_warning(
@@ -135,7 +168,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
             return obj(*args, **kwargs)
 
         # Return the patched class method/function.
-        return _ctor
+        return _ctor  # type: ignore[return-value]
 
     # Return the prepared decorator.
     return _inner
