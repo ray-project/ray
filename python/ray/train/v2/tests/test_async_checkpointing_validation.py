@@ -402,7 +402,7 @@ def test_report_validation_fn_success_after_retry():
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=1),
-        validation_config=ValidationConfig(validation_fn=validation_fn),
+        validation_config=ValidationConfig(fn=validation_fn),
     )
     result = trainer.fit()
     assert result.best_checkpoints[0][1] == {"score": 100}

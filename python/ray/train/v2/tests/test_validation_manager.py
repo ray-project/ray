@@ -196,7 +196,7 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(validation_fn=one_time_failing_validation_fn),
+        validation_config=ValidationConfig(fn=one_time_failing_validation_fn),
     )
     training_result = create_dummy_training_results(
         num_results=1,
