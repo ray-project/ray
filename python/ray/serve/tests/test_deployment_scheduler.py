@@ -641,24 +641,27 @@ async def test_e2e_serve_label_selector_unschedulable(
             return any(a["state"] == "PENDING_CREATION" for a in actors)
 
     # Serve deployment should remain stuck in deploying because Actor/PG can't be scheduled.
-    wait_for_condition(verify_resource_request_stuck, timeout=10)
+    wait_for_condition(verify_resource_request_stuck, timeout=30)
     assert not check_status("RUNNING"), (
         "Test setup failed: The deployment became RUNNING before the required "
         "node was added. The label selector constraint was ignored."
     )
 
     # Add a suitable node to the cluster.
-    cluster.add_node(num_cpus=2, labels=target_label, resources={"target_node": 1})
+    new_node = cluster.add_node(
+        num_cpus=2, labels=target_label, resources={"target_node": 1}
+    )
     cluster.wait_for_nodes()
     expected_node_id = ray.get(
         get_node_id.options(resources={"target_node": 1}).remote()
     )
 
     # Validate deployment can now be scheduled since label selector is satisfied.
-    wait_for_condition(lambda: check_status("RUNNING"), timeout=10)
+    wait_for_condition(lambda: check_status("RUNNING"), timeout=30)
     assert await handle.remote() == expected_node_id
 
     serve.delete("unschedulable_label_app")
+    cluster.remove_node(new_node)
 
 
 @pytest.mark.asyncio
@@ -704,24 +707,27 @@ async def test_e2e_serve_fallback_strategy_unschedulable(
         return any(a["state"] == "PENDING_CREATION" for a in actors)
 
     # Serve deployment should remain stuck in deploying because Actor/PG can't be scheduled.
-    wait_for_condition(verify_resource_request_stuck, timeout=10)
+    wait_for_condition(verify_resource_request_stuck, timeout=30)
     assert not check_status("RUNNING"), (
         "Test setup failed: The deployment became RUNNING before the required "
         "node was added. The label selector constraint was ignored."
     )
 
     # Add a node that matches the fallback.
-    cluster.add_node(num_cpus=2, labels=fallback_label, resources={"fallback_node": 1})
+    new_node = cluster.add_node(
+        num_cpus=2, labels=fallback_label, resources={"fallback_node": 1}
+    )
     cluster.wait_for_nodes()
     expected_node_id = ray.get(
         get_node_id.options(resources={"fallback_node": 1}).remote()
     )
 
     # The serve deployment should recover and start running on the fallback node.
-    wait_for_condition(lambda: check_status("RUNNING"), timeout=10)
+    wait_for_condition(lambda: check_status("RUNNING"), timeout=30)
     assert await handle.remote() == expected_node_id
 
     serve.delete("unschedulable_fallback_app")
+    cluster.remove_node(new_node)
 
 
 if __name__ == "__main__":

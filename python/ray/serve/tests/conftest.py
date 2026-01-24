@@ -354,9 +354,9 @@ def _get_node_id():
 
 
 # Test fixture to start a Serve instance in a RayCluster with two labeled nodes
-@pytest.fixture
-def serve_instance_with_labeled_nodes(ray_cluster):
-    cluster = ray_cluster
+@pytest.fixture(scope="module")
+def serve_instance_with_labeled_nodes():
+    cluster = Cluster()
 
     # Unlabeled default node.
     cluster.add_node(num_cpus=3, resources={"worker0": 1})
@@ -391,3 +391,4 @@ def serve_instance_with_labeled_nodes(ray_cluster):
 
     serve.shutdown()
     ray.shutdown()
+    cluster.shutdown()
