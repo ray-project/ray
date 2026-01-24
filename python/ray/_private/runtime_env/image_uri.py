@@ -10,7 +10,11 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 default_logger = logging.getLogger(__name__)
 
 
-async def _create_impl(image_uri: str, logger: logging.Logger):
+async def _create_impl(
+    image_uri: str,
+    logger: logging.Logger,
+    run_options: Optional[List[str]] = None,
+):
     # Pull image if it doesn't exist
     # Also get path to `default_worker.py` inside the image.
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -27,11 +31,26 @@ with open('/shared/worker_path.txt', 'w') as f:
             "--rm",
             "-v",
             f"{tmpdir}:/shared:Z",
+        ]
+
+        # Include run_options in probe command for GPU/device access
+        # Filter to only include device-related options for the probe
+        if run_options:
+            for opt in run_options:
+                # Include GPU-related options needed for container initialization
+                if any(gpu_flag in opt for gpu_flag in [
+                    "--gpus", "--device", "--runtime=nvidia",
+                    "nvidia.com/gpu", "--ipc", "--ulimit"
+                ]):
+                    cmd.append(opt)
+
+        cmd.extend([
+            "--entrypoint",
+            "python3",
             image_uri,
-            "python",
             "-c",
             get_worker_path_script,
-        ]
+        ])
 
         logger.info("Pulling image %s", image_uri)
 
@@ -61,6 +80,8 @@ with open('/shared/worker_path.txt', 'w') as f:
 
         logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
         return worker_path
+
+
 
 
 def _modify_context_impl(
@@ -199,7 +220,12 @@ class ContainerPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_py_container() or not runtime_env.py_container_image():
             return
 
-        self.worker_path = await _create_impl(runtime_env.py_container_image(), logger)
+        # Pass run_options to probe for GPU/device access
+        self.worker_path = await _create_impl(
+            runtime_env.py_container_image(),
+            logger,
+            run_options=runtime_env.py_container_run_options(),
+        )
 
     def modify_context(
         self,
