@@ -11,6 +11,7 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetrics,
     ControllerHealthMetricsTracker,
+    DurationStats,
 )
 from ray.serve.schema import (
     HTTPOptionsSchema,
@@ -343,6 +344,42 @@ class TestCalculateScaleDirection:
         )
 
 
+class TestDurationStats:
+    """Tests for DurationStats model."""
+
+    def test_empty_values(self):
+        """Test statistics from empty list."""
+        stats = DurationStats.from_values([])
+        assert stats.mean == 0.0
+        assert stats.std == 0.0
+        assert stats.min == 0.0
+        assert stats.max == 0.0
+
+    def test_single_value(self):
+        """Test statistics from single value."""
+        stats = DurationStats.from_values([5.0])
+        assert stats.mean == 5.0
+        assert stats.std == 0.0
+        assert stats.min == 5.0
+        assert stats.max == 5.0
+
+    def test_multiple_values(self):
+        """Test statistics from multiple values."""
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        stats = DurationStats.from_values(values)
+        assert stats.mean == 3.0
+        assert stats.min == 1.0
+        assert stats.max == 5.0
+        # std for [1,2,3,4,5] with population std = sqrt(2)
+        assert abs(stats.std - 1.4142135623730951) < 0.0001
+
+    def test_dict_serialization(self):
+        """Test that DurationStats serializes to dict."""
+        stats = DurationStats(mean=1.0, std=0.5, min=0.5, max=1.5)
+        result = stats.dict()
+        assert result == {"mean": 1.0, "std": 0.5, "min": 0.5, "max": 1.5}
+
+
 class TestControllerHealthMetrics:
     """Tests for ControllerHealthMetrics dataclass."""
 
@@ -353,21 +390,20 @@ class TestControllerHealthMetrics:
         assert metrics.controller_start_time == 0.0
         assert metrics.uptime_s == 0.0
         assert metrics.num_control_loops == 0
-        assert metrics.last_loop_duration_s == 0.0
-        assert metrics.avg_loop_duration_s == 0.0
+        assert metrics.loop_duration_s is None
         assert metrics.event_loop_delay_s == 0.0
         assert metrics.num_asyncio_tasks == 0
         assert metrics.process_memory_mb == 0.0
 
     def test_dict(self):
         """Test serialization to dictionary."""
+        loop_stats = DurationStats(mean=0.3, std=0.1, min=0.1, max=0.5)
         metrics = ControllerHealthMetrics(
             timestamp=1000.0,
             controller_start_time=900.0,
             uptime_s=100.0,
             num_control_loops=50,
-            last_loop_duration_s=0.5,
-            avg_loop_duration_s=0.3,
+            loop_duration_s=loop_stats,
         )
         result = metrics.dict()
 
@@ -376,8 +412,7 @@ class TestControllerHealthMetrics:
         assert result["controller_start_time"] == 900.0
         assert result["uptime_s"] == 100.0
         assert result["num_control_loops"] == 50
-        assert result["last_loop_duration_s"] == 0.5
-        assert result["avg_loop_duration_s"] == 0.3
+        assert result["loop_duration_s"]["mean"] == 0.3
 
     def test_all_fields_in_dict(self):
         """Ensure dict() includes all fields."""
@@ -389,10 +424,7 @@ class TestControllerHealthMetrics:
             "controller_start_time",
             "uptime_s",
             "num_control_loops",
-            "last_loop_duration_s",
-            "avg_loop_duration_s",
-            "max_loop_duration_s",
-            "min_loop_duration_s",
+            "loop_duration_s",
             "loops_per_second",
             "last_sleep_duration_s",
             "expected_sleep_duration_s",
@@ -402,12 +434,8 @@ class TestControllerHealthMetrics:
             "application_state_update_duration_s",
             "proxy_state_update_duration_s",
             "node_update_duration_s",
-            "last_handle_metrics_delay_ms",
-            "last_replica_metrics_delay_ms",
-            "avg_handle_metrics_delay_ms",
-            "avg_replica_metrics_delay_ms",
-            "max_handle_metrics_delay_ms",
-            "max_replica_metrics_delay_ms",
+            "handle_metrics_delay_ms",
+            "replica_metrics_delay_ms",
             "process_memory_mb",
         ]
 
@@ -431,16 +459,13 @@ class TestCollectHealthMetrics:
         assert len(tracker.loop_durations) == 5
         assert tracker.last_loop_duration_s == 0.5
 
-        # Compute statistics manually to verify
-        expected_avg = sum(durations) / len(durations)
-        expected_max = max(durations)
-        expected_min = min(durations)
-
-        loop_durations = list(tracker.loop_durations)
-        avg = sum(loop_durations) / len(loop_durations)
-        assert avg == expected_avg
-        assert max(loop_durations) == expected_max
-        assert min(loop_durations) == expected_min
+        # Collect metrics and verify DurationStats
+        metrics = tracker.collect_metrics()
+        assert metrics.loop_duration_s is not None
+        assert metrics.loop_duration_s.mean == 0.3
+        assert metrics.loop_duration_s.min == 0.1
+        assert metrics.loop_duration_s.max == 0.5
+        assert metrics.loop_duration_s.std > 0
 
     def test_metrics_delay_statistics(self):
         """Test that metrics delay statistics are computed correctly."""
@@ -456,38 +481,33 @@ class TestCollectHealthMetrics:
         for d in replica_delays:
             tracker.record_replica_metrics_delay(d)
 
-        # Verify averages
-        handle_list = list(tracker.handle_metrics_delays)
-        replica_list = list(tracker.replica_metrics_delays)
+        # Collect metrics and verify DurationStats
+        metrics = tracker.collect_metrics()
 
-        assert sum(handle_list) / len(handle_list) == 30.0
-        assert sum(replica_list) / len(replica_list) == 25.0
-        assert max(handle_list) == 50.0
-        assert max(replica_list) == 45.0
+        assert metrics.handle_metrics_delay_ms is not None
+        assert metrics.handle_metrics_delay_ms.mean == 30.0
+        assert metrics.handle_metrics_delay_ms.min == 10.0
+        assert metrics.handle_metrics_delay_ms.max == 50.0
+
+        assert metrics.replica_metrics_delay_ms is not None
+        assert metrics.replica_metrics_delay_ms.mean == 25.0
+        assert metrics.replica_metrics_delay_ms.min == 5.0
+        assert metrics.replica_metrics_delay_ms.max == 45.0
 
     def test_empty_metrics_delays(self):
         """Test handling of empty metrics delay lists."""
         tracker = ControllerHealthMetricsTracker()
 
-        # When no delays recorded, should handle gracefully
-        handle_delays = list(tracker.handle_metrics_delays)
-        replica_delays = list(tracker.replica_metrics_delays)
+        # When no delays recorded, DurationStats should have zero values
+        metrics = tracker.collect_metrics()
 
-        assert len(handle_delays) == 0
-        assert len(replica_delays) == 0
+        assert metrics.handle_metrics_delay_ms is not None
+        assert metrics.handle_metrics_delay_ms.mean == 0.0
+        assert metrics.handle_metrics_delay_ms.max == 0.0
 
-        # Computing avg/max on empty lists should be handled
-        avg_handle = sum(handle_delays) / len(handle_delays) if handle_delays else 0.0
-        avg_replica = (
-            sum(replica_delays) / len(replica_delays) if replica_delays else 0.0
-        )
-        max_handle = max(handle_delays) if handle_delays else 0.0
-        max_replica = max(replica_delays) if replica_delays else 0.0
-
-        assert avg_handle == 0.0
-        assert avg_replica == 0.0
-        assert max_handle == 0.0
-        assert max_replica == 0.0
+        assert metrics.replica_metrics_delay_ms is not None
+        assert metrics.replica_metrics_delay_ms.mean == 0.0
+        assert metrics.replica_metrics_delay_ms.max == 0.0
 
     def test_event_loop_delay_calculation(self):
         """Test event loop delay is calculated correctly."""

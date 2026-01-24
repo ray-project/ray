@@ -700,10 +700,7 @@ def test_get_health_metrics(serve_instance):
         "controller_start_time",
         "uptime_s",
         "num_control_loops",
-        "last_loop_duration_s",
-        "avg_loop_duration_s",
-        "max_loop_duration_s",
-        "min_loop_duration_s",
+        "loop_duration_s",
         "loops_per_second",
         "last_sleep_duration_s",
         "expected_sleep_duration_s",
@@ -713,12 +710,8 @@ def test_get_health_metrics(serve_instance):
         "application_state_update_duration_s",
         "proxy_state_update_duration_s",
         "node_update_duration_s",
-        "last_handle_metrics_delay_ms",
-        "last_replica_metrics_delay_ms",
-        "avg_handle_metrics_delay_ms",
-        "avg_replica_metrics_delay_ms",
-        "max_handle_metrics_delay_ms",
-        "max_replica_metrics_delay_ms",
+        "handle_metrics_delay_ms",
+        "replica_metrics_delay_ms",
         "process_memory_mb",
     ]
 
@@ -743,8 +736,16 @@ def test_get_health_metrics(serve_instance):
 
     # Verify control loop metrics are populated
     assert metrics["num_control_loops"] > 0
-    assert metrics["last_loop_duration_s"] > 0
     assert metrics["loops_per_second"] > 0
+
+    # Verify DurationStats structure for loop_duration_s
+    loop_stats = metrics["loop_duration_s"]
+    assert loop_stats is not None
+    assert "mean" in loop_stats
+    assert "std" in loop_stats
+    assert "min" in loop_stats
+    assert "max" in loop_stats
+    assert loop_stats["mean"] > 0
 
     # Verify the metrics are JSON serializable
     metrics_json = json.dumps(metrics)
