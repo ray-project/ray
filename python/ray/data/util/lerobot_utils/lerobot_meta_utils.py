@@ -150,10 +150,10 @@ def load_nested_dataset(
             # Load with PyArrow to avoid parsing old 'List' feature types in embedded metadata
             arrow_dataset = pa_ds.dataset(paths, format="parquet")
             table = arrow_dataset.to_table()
-            
+
             if features is not None:
                 table = table.cast(features.arrow_schema)
-            
+
             return Dataset(table)
 
         arrow_dataset = pa_ds.dataset(paths, format="parquet")
