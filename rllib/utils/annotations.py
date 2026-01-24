@@ -205,7 +205,7 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj: F) -> F:
     return obj
 
 
-def is_overridden(obj: F) -> bool:
+def is_overridden(obj: Callable[..., Any]) -> bool:
     """Check whether a function has been overridden.
 
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic

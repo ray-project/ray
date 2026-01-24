@@ -1,7 +1,7 @@
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar, Union, overload
+from typing import Any, Callable, Optional, TypeVar, Union, cast, overload
 
 from ray.util import log_once
 from ray.util.annotations import _mark_annotated
@@ -168,7 +168,7 @@ def Deprecated(
             return obj(*args, **kwargs)
 
         # Return the patched class method/function.
-        return _ctor  # type: ignore[return-value]
+        return cast(F, _ctor)
 
     # Return the prepared decorator.
     return _inner
