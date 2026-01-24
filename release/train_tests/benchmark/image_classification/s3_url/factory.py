@@ -66,7 +66,7 @@ class ImageClassificationS3UrlRayDataLoaderFactory(
             else None
         )
         val_ds = create_s3_url_dataset(
-            data_dir=self._data_dirs[DatasetKey.VALID],
+            data_dir=self._data_dirs[DatasetKey.TRAIN],
             random_transforms=False,
             limit_rows=val_limit,
         )

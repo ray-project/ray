@@ -205,7 +205,7 @@ def get_process_batch_fn(
             processed_images.append(processed_image)
 
             # Convert label
-            labels.append(label_to_id_map.get(wnid, -1))
+            labels.append(label_to_id_map[wnid])
 
         return {
             "image": np.stack(processed_images),
