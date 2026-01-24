@@ -155,6 +155,23 @@ class StreamingExecutor(Executor, threading.Thread):
             tag_keys=("dataset", "operator"),
         )
 
+        # Cluster autoscaler utilization gauges
+        self._cluster_cpu_utilization_gauge: Gauge = Gauge(
+            "data_cluster_cpu_utilization",
+            description="Cluster utilization % (CPU)",
+            tag_keys=("dataset",),
+        )
+        self._cluster_gpu_utilization_gauge: Gauge = Gauge(
+            "data_cluster_gpu_utilization",
+            description="Cluster utilization % (GPU)",
+            tag_keys=("dataset",),
+        )
+        self._cluster_object_store_memory_utilization_gauge: Gauge = Gauge(
+            "data_cluster_object_store_memory_utilization",
+            description="Cluster utilization % (Object Store Memory)",
+            tag_keys=("dataset",),
+        )
+
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> OutputIterator:
@@ -373,6 +390,30 @@ class StreamingExecutor(Executor, threading.Thread):
             }
             self._update_budget_metrics(op, tags)
             self._update_max_bytes_to_read_metric(op, tags)
+        self._update_cluster_utilization_metrics()
+
+    def _update_cluster_utilization_metrics(self):
+        """Update cluster utilization gauges for CPU, GPU, and object store memory."""
+        tags = {"dataset": self._dataset_id}
+        global_usage = self._resource_manager.get_global_usage()
+        global_limits = self._resource_manager.get_global_limits()
+
+        # Calculate utilization percentages (0-100)
+        cpu_util = (
+            (global_usage.cpu / global_limits.cpu * 100) if global_limits.cpu else 0
+        )
+        gpu_util = (
+            (global_usage.gpu / global_limits.gpu * 100) if global_limits.gpu else 0
+        )
+        osm_util = (
+            (global_usage.object_store_memory / global_limits.object_store_memory * 100)
+            if global_limits.object_store_memory
+            else 0
+        )
+
+        self._cluster_cpu_utilization_gauge.set(cpu_util, tags=tags)
+        self._cluster_gpu_utilization_gauge.set(gpu_util, tags=tags)
+        self._cluster_object_store_memory_utilization_gauge.set(osm_util, tags=tags)
 
     def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
         budget = self._resource_manager.get_budget(op)
