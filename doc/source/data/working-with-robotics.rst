@@ -1,8 +1,8 @@
 .. _working_with_robotics:
 
-========================
+==========================
 Working with Robotics Data
-========================
+==========================
 
 Ray Data provides built-in support for loading and processing robotics datasets,
 with native integration for `LeRobot <https://huggingface.co/lerobot>`_ datasets from HuggingFace.
@@ -222,6 +222,7 @@ TorchCodec provides better performance for large-scale video processing.
 * More complex setup (see :ref:`Setting up TorchCodec <setup_torchcodec>`)
 
 .. _setup_torchcodec:
+.. _robotics_troubleshooting:
 
 Troubleshooting TorchCodec Setup
 =================================
