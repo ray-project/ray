@@ -326,6 +326,19 @@ def metrics_start_shutdown(request):
             "task_retry_delay_ms": 50,
         },
     )
+
+    # Wait for metrics endpoint to be ready before starting Serve
+    def metrics_endpoint_ready():
+        try:
+            resp = httpx.get(
+                f"http://localhost:{TEST_METRICS_EXPORT_PORT}", timeout=1.0
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    wait_for_condition(metrics_endpoint_ready, timeout=30, retry_interval_ms=500)
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
