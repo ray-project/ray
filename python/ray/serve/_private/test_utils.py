@@ -909,28 +909,6 @@ def check_metric_float_eq(
 def get_metric_dictionaries(
     name: str, timeout: float = 20, timeseries: Optional[PrometheusTimeseries] = None
 ) -> List[Dict]:
-    """Gets a list of metric's tags from metrics' text output.
-
-    Return:
-        Example:
-
-        >>> get_metric_dictionaries("ray_serve_num_http_requests")
-        [
-            {
-                'Component': 'core_worker',
-                'JobId': '01000000',
-                ...
-                'method': 'GET',
-                'route': '/hello'
-            },
-            {
-                'Component': 'core_worker',
-                ...
-                'method': 'GET',
-                'route': '/hello/'
-            }
-        ]
-    """
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
