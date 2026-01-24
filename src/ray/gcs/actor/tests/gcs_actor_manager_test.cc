@@ -1445,11 +1445,41 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
   io_service_.run_one();
+  io_service_.run_one();
   ASSERT_EQ(created_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetNodeID(), node_id2);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction(), 0);
+  ASSERT_EQ(actor->GetMutableTaskSpec()->attempt_number(), 1);
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->state(), rpc::ActorTableData::ALIVE);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->num_restarts(), 1);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->num_restarts_due_to_lineage_reconstruction(), 0);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTaskSpecTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::TaskSpec> task_spec) {
+         ASSERT_EQ(task_spec->attempt_number(), 1);
+       },
+       io_service_});
+  io_service_.run_one();
 
   // The actor is out of scope and dead.
   ReportActorOutOfScope(actor->GetActorID(),
@@ -1464,6 +1494,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   rpc::RestartActorForLineageReconstructionReply reply;
   gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
       request, &reply, [](auto, auto, auto) {});
+  io_service_.run_one();
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
@@ -1481,6 +1512,34 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_EQ(actor->GetNodeID(), node_id3);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction(), 1);
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->state(), rpc::ActorTableData::ALIVE);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->num_restarts(), 2);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::ActorTableData> actor_table_data) {
+         ASSERT_EQ(actor_table_data->num_restarts_due_to_lineage_reconstruction(), 1);
+       },
+       io_service_});
+  io_service_.run_one();
+  gcs_table_storage_->ActorTaskSpecTable().Get(
+      actor->GetActorID(),
+      {[](Status, std::optional<rpc::TaskSpec> task_spec) {
+         ASSERT_EQ(task_spec->attempt_number(), 2);
+       },
+       io_service_});
+  io_service_.run_one();
 }
 
 TEST_F(GcsActorManagerTest, TestRestartPermanentlyDeadActorForLineageReconstruction) {

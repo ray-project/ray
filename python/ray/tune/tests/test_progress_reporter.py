@@ -702,7 +702,7 @@ class ProgressReporterTest(unittest.TestCase):
                 assert EXPECTED_END_TO_END_END in output
                 for line in output.splitlines():
                     if "(raylet)" in line:
-                        assert "Setting" in line, "Unexpected raylet log messages"
+                        assert "cluster ID" in line, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)

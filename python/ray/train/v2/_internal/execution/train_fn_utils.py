@@ -1,9 +1,8 @@
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-from ray.data import DataIterator
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
@@ -18,10 +17,12 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator
     from ray.train import Checkpoint
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -45,8 +46,7 @@ class TrainFnUtils(ABC):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -64,10 +64,9 @@ class TrainFnUtils(ABC):
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validate_fn: If provided, Ray Train will validate the checkpoint using
-                this function.
-            validate_config: Configuration passed to the validate_fn. Can contain info
-                like the validation dataset.
+            validation: [Alpha] If True, triggers validation with default kwargs from validation_config.
+                If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
+                defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
         """
         pass
 
@@ -97,7 +96,7 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         """Get the dataset shard for this training process.
 
         Args:
@@ -154,8 +153,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         return get_internal_train_context().report(
             metrics,
@@ -164,14 +162,13 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_mode,
             delete_local_checkpoint_after_upload,
             checkpoint_upload_fn,
-            validate_fn,
-            validate_config,
+            validation,
         )
 
     def get_checkpoint(self):
         return get_internal_train_context().get_checkpoint()
 
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> DistributedTrainContext:
@@ -199,7 +196,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def __init__(
         self,
         experiment_name: str,
-        dataset_shards: Optional[Dict[str, DataIterator]] = None,
+        dataset_shards: Optional[Dict[str, "DataIterator"]] = None,
         world_size: int = 1,
         world_rank: int = 0,
         local_rank: int = 0,
@@ -228,8 +225,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
@@ -238,7 +234,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint
 
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         dataset_name = dataset_info.dataset_name
         assert (
             self._dataset_shards is not None and dataset_name in self._dataset_shards
