@@ -136,7 +136,7 @@ config = (
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=8,
         circular_buffer_num_batches=4,
-        circular_buffer_iterations_per_batch=4,
+        circular_buffer_iterations_per_batch=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(
