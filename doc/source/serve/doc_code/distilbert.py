@@ -48,14 +48,16 @@ if __name__ == "__main__":
     import ray
 
     ray.init(runtime_env={"pip": ["transformers==4.52.4", "accelerate==1.7.0"]})
-    serve.run(entrypoint)
+    handle = serve.run(entrypoint)
+    # Warmup call to ensure deployment scales up from min_replicas=0
+    handle.classify.remote("warmup").result()
 
     prompt = (
         "This was a masterpiece. Not completely faithful to the books, but "
-        "enthralling  from beginning to end. Might be my favorite of the three."
+        "enthralling from beginning to end. Might be my favorite of the three."
     )
-    input = "%20".join(prompt.split(" "))
-    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
+    prompt_query = "%20".join(prompt.split(" "))
+    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt_query}")
     print(resp.status_code, resp.json())
 
     assert resp.status_code == 200
