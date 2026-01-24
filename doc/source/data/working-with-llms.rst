@@ -343,11 +343,11 @@ Two parameters control concurrent batch processing: ``max_concurrent_batches`` a
 Understanding the parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**max_concurrent_batches** (default: 8)
+``max_concurrent_batches``, default: 8
     The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. Works well for ``batch_size >= 64``.
 
-**max_tasks_in_flight_per_actor** (experimental, default: 4)
-    How many tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so there are always tasks ready when the actor finishes one. Access via the ``experimental`` dict.
+``max_tasks_in_flight_per_actor``, experimental, default: 4
+    How many tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so there are always tasks ready when the actor finishes one. Access through the ``experimental`` dict.
 
 How they work together
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -357,7 +357,7 @@ These parameters control different parts of the pipeline:
 - ``max_tasks_in_flight_per_actor`` controls how many tasks Ray Data sends to the actor queue
 - ``max_concurrent_batches`` controls how many batches can execute simultaneously
 
-If ``max_tasks_in_flight_per_actor`` (default 4) is less than ``max_concurrent_batches`` (default 8), the actor cannot reach full concurrency because there aren't enough queued tasks to fill all concurrent slots.
+If ``max_tasks_in_flight_per_actor``, which defaults to 4, is less than ``max_concurrent_batches``, which defaults to 8, the actor can't reach full concurrency because there aren't enough queued tasks to fill all concurrent slots.
 
 To maximize throughput, increase ``max_tasks_in_flight_per_actor`` to keep the actor's task queue saturated.
 
@@ -378,7 +378,7 @@ You may see this warning:
     configured max_concurrency=8 and max_tasks_in_flight_per_actor=4
     (max utilization will be 50%)
 
-This appears when ``max_tasks_in_flight_per_actor / max_concurrent_batches`` is below Ray Data's utilization threshold. With the defaults (4/8 = 50%), the threshold cannot be reached.
+This appears when ``max_tasks_in_flight_per_actor / max_concurrent_batches`` is below Ray Data's utilization threshold. With the defaults, the ratio is 4 to 8, or 50%, so you can't reach the threshold.
 
 To silence this warning, set ``max_tasks_in_flight_per_actor`` high enough to exceed the 175% threshold:
 
@@ -392,7 +392,7 @@ To silence this warning, set ``max_tasks_in_flight_per_actor`` high enough to ex
     )
 
 .. note::
-    This warning is informational and does not prevent execution. For most vLLM workloads, setting ``max_tasks_in_flight_per_actor`` equal to ``max_concurrent_batches`` (e.g., both set to 8) is sufficient to achieve full throughput, even if the warning still appears.
+    This warning is informational and doesn't prevent execution. For most vLLM workloads, setting ``max_tasks_in_flight_per_actor`` equal to ``max_concurrent_batches`` is sufficient to achieve full throughput, even if the warning still appears. For example, set both to 8.
 
 .. _serve_deployments:
 
