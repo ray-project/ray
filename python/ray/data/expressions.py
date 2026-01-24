@@ -580,7 +580,7 @@ class Expr(ABC):
 
     # NULL Handling
     def is_nan(self) -> "UDFExpr":
-        return _create_pyarrow_compute_udf(pc.is_nan)(self)
+        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(self)
 
     def is_finite(self) -> "UDFExpr":
         return _create_pyarrow_compute_udf(pc.is_finite)(self)
