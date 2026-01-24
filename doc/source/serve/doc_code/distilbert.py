@@ -1,6 +1,5 @@
 # __example_code_start__
 from fastapi import FastAPI
-import torch
 from transformers import pipeline
 
 from ray import serve
@@ -22,7 +21,7 @@ class APIIngress:
 
 
 @serve.deployment(
-    ray_actor_options={"num_gpus": 1},
+    # ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
 class DistilBertModel:
@@ -31,8 +30,7 @@ class DistilBertModel:
             "sentiment-analysis",
             model="distilbert-base-uncased",
             framework="pt",
-            # Transformers requires you to pass device with index
-            device=torch.device("cuda:0"),
+            device="cuda",
         )
 
     def classify(self, sentence: str):
@@ -47,7 +45,7 @@ if __name__ == "__main__":
     import requests
     import ray
 
-    ray.init(runtime_env={"pip": ["transformers==4.52.4", "accelerate==1.7.0"]})
+    ray.init(runtime_env={"pip": ["transformers==4.51.3", "accelerate==1.7.0"]})
     handle = serve.run(entrypoint)
     # Warmup call to ensure deployment scales up from min_replicas=0
     handle.classify.remote("warmup").result()
