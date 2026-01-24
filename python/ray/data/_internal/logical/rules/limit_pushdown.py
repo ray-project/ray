@@ -103,11 +103,12 @@ class LimitPushdownRule(Rule):
                 and not current.can_modify_num_rows()
                 and current.input_dependencies
             ):
-                if isinstance(current, Limit) and current._limit == limit:
-                    return True
+                if isinstance(current, Limit):
+                    return current._limit == limit
                 # Safe to use input_dependency: current is an AbstractOneToOne here.
                 current = current.input_dependency
-            return False
+
+            return isinstance(current, Limit) and current._limit == limit
 
         # Insert a branch-local Limit and push it further upstream.
         branch_tails: List[LogicalOperator] = []
