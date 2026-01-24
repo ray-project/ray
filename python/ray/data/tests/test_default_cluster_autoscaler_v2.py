@@ -259,6 +259,46 @@ class TestClusterAutoscaling:
         )
         assert resources_allocated == expected_resources
 
+    def test_low_utilization_sends_current_allocation(self):
+        """Test that low utilization sends current allocation.
+
+        Test scenario:
+        1. Dataset has already been allocated resources (1 nodes)
+        2. Utilization is low (0%, below default threshold)
+        3. Should send current allocation to preserve resource footprint
+        """
+        utilization: ExecutionResources = ...
+
+        class FakeUtilizationGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=FakeUtilizationGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+            get_node_counts=lambda: {node_resource_spec: 0},
+        )
+
+        # Trigger scaling with high utilization. The cluster autoscaler should request
+        # one node.
+        utilization = ExecutionResources(cpu=1)
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
+
+        # Trigger scaling with low utilization. The cluster autoscaler should re-request
+        # one node rather than no resources.
+        utilization = ExecutionResources(cpu=0)
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
+
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
         # Simulate a cluster with only head node (no worker nodes)

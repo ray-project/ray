@@ -117,14 +117,12 @@ def test_add_and_remove_duplicates():
     queue.add(bundle1)
 
     assert len(queue) == 3
-    assert (
-        queue.estimate_size_bytes() == 2 * bundle1.size_bytes() + bundle2.size_bytes()
-    )
     assert queue.num_rows() == 3
     assert queue.num_blocks() == 3
     queue.remove(bundle1)
     assert len(queue) == 2
 
+    assert queue.estimate_size_bytes() == bundle1.size_bytes() + bundle2.size_bytes()
     assert queue.num_rows() == 2
     assert queue.num_blocks() == 2
     assert queue.peek_next() is bundle2

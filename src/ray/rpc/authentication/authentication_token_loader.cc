@@ -151,9 +151,10 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
     }
   }
 
-  // Precedence 3 (ENABLE_K8S_TOKEN_AUTH only): Load Kubernetes service account token
+  // Precedence 3 (ENABLE_K8S_TOKEN_AUTH only): Load Ray service account token in
+  // /var/run/secrets/ray.io/serviceaccount/token
   if (IsK8sTokenAuthEnabled()) {
-    const std::string k8s_token_path(k8s::kK8sSaTokenPath);
+    const std::string k8s_token_path(k8s::kRaySaTokenPath);
     std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)

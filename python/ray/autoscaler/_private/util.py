@@ -240,7 +240,10 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     is_local = config.get("provider", {}).get("type") == "local"
     is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
-        config = prepare_local(config)
+        config, modified = prepare_local(config)
+        # If the config is already prepared via ray up, return it as is.
+        if not modified:
+            return config
     elif is_kuberay:
         # With KubeRay, we don't need to do anything here since KubeRay
         # generate the autoscaler config from the RayCluster CR instead
@@ -431,7 +434,7 @@ def with_head_node_ip(cmds, head_ip=None):
 
 
 def hash_launch_conf(node_conf, auth):
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha256()
     # For hashing, we replace the path to the key with the
     # key itself. This is to make sure the hashes are the
     # same even if keys live at different locations on different
@@ -467,8 +470,8 @@ def hash_runtime_conf(
     cluster_synced_files contents have changed. It is used at monitor time to
     determine if additional file syncing is needed.
     """
-    runtime_hasher = hashlib.sha1()
-    contents_hasher = hashlib.sha1()
+    runtime_hasher = hashlib.sha256()
+    contents_hasher = hashlib.sha256()
 
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):

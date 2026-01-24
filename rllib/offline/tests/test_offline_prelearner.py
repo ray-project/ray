@@ -36,6 +36,9 @@ class TestOfflinePreLearner(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+        # Delete the cluster address just in case.
+        ray._common.utils.reset_ray_address()
+
     def setUp(self) -> None:
         data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]

@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 import requests
 
-from ci.ray_ci.automation.crane_lib import call_crane_copy
+from ci.ray_ci.automation.crane_lib import CraneError, call_crane_copy
 from ci.ray_ci.automation.docker_tags_lib import (
     AuthTokenException,
     DockerHubRateLimitException,
@@ -251,10 +251,7 @@ def test_is_release_tag(tag, release_versions, expected_value):
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.call_crane_copy")
 def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
-    mock_call_crane_cp.return_value = (
-        0,
-        "aws-ecr/name/repo:test_tag: digest: sha256:sample-sha256 size: 1788",
-    )
+    mock_call_crane_cp.return_value = None  # Success (no exception)
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
     mock_call_crane_cp.assert_called_once_with(
@@ -267,7 +264,7 @@ def test_copy_tag_to_aws_ecr(mock_call_crane_cp):
 @mock.patch("ci.ray_ci.automation.docker_tags_lib.call_crane_copy")
 def test_copy_tag_to_aws_ecr_failure(mock_call_crane_cp):
     tag = "test_namespace/test_repository:test_tag"
-    mock_call_crane_cp.return_value = (1, "Error: Failed to copy tag.")
+    mock_call_crane_cp.side_effect = CraneError("Failed to copy tag.")
 
     is_copied = copy_tag_to_aws_ecr(tag, "aws-ecr/name/repo")
     mock_call_crane_cp.assert_called_once_with(

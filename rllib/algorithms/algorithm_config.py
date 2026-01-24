@@ -537,7 +537,7 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
-        self.offline_evaluation_type: str = None
+        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -3524,7 +3524,7 @@ class AlgorithmConfig(_Config):
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
+                is: `(agent_id, episode, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.
@@ -5403,13 +5403,19 @@ class AlgorithmConfig(_Config):
         offline_eval_types = list(OfflinePolicyEvaluationTypes)
         if (
             self.offline_evaluation_type
-            and self.offline_evaluation_type != "eval_loss"
-            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
+            and self.offline_evaluation_type
+            not in OfflinePolicyEvaluationTypes._value2member_map_
         ):
             self._value_error(
                 f"Unknown offline evaluation type: {self.offline_evaluation_type}."
                 "Available types of offline evaluation are either `'eval_loss' to evaluate "
                 f"the training loss on a validation dataset or {offline_eval_types}."
+            )
+
+        if self.offline_evaluation_type is None:
+            self._value_error(
+                "If `offline_evaluation_interval > 0`, `offline_evaluation_type` must be set to "
+                "specify the type of offline evaluation to be performed."
             )
 
         from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner

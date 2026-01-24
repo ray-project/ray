@@ -194,9 +194,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 "Cluster utilization is below threshold: "
                 f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.object_store_memory:.2f}."
             )
-            # Still send an empty request when upscaling is not needed,
+            # Send current resources allocation when upscaling is not needed,
             # to renew our registration on AutoscalingCoordinator.
-            self._send_resource_request([])
+            curr_resources = self._autoscaling_coordinator.get_allocated_resources(
+                requester_id=self._requester_id
+            )
+            self._send_resource_request(curr_resources)
             return
 
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
