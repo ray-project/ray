@@ -3913,6 +3913,8 @@ def read_lerobot(
                 video_path_groups = defaultdict(list)
 
                 for i, (ep, ts) in enumerate(zip(ep_idx, timestamps)):
+                    # Convert numpy.int64 to Python int for HuggingFace dataset indexing
+                    ep = int(ep)
                     video_path = f"{resolved_root}/{metadata_dict['get_video_file_path'](ep, key)}"
                     ts = episode_dict[ep][f"videos/{key}/from_timestamp"] + ts
                     video_path_groups[video_path].append(

@@ -59,9 +59,11 @@ def process_horizon_batch(
 
     sorted_batch = batch.sort_values(by="timestamp").reset_index(drop=True)
     ep_start = 0
+    # Convert numpy.int64 to Python int for HuggingFace dataset indexing
+    episode_idx = int(sorted_batch["episode_index"].values[0])
     ep_end = (
-        episode_dict[sorted_batch["episode_index"].values[0]]["dataset_to_index"]
-        - episode_dict[sorted_batch["episode_index"].values[0]]["dataset_from_index"]
+        episode_dict[episode_idx]["dataset_to_index"]
+        - episode_dict[episode_idx]["dataset_from_index"]
     )
     # Assert timestamps are monotonically increasing after sort
     timestamps = sorted_batch["timestamp"].values
