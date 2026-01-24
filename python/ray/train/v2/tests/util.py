@@ -291,7 +291,8 @@ def create_dummy_training_reports(
             ValidationTaskConfig(fn_kwargs={"arg": i}) if include_validation else False
         )
         checkpoint_path = os.path.join(
-            storage_context.experiment_fs_path, f"checkpoint_{i}"
+            storage_context.experiment_fs_path,
+            f"checkpoint_{starting_checkpoint_index + i}",
         )
         os.makedirs(checkpoint_path, exist_ok=True)
         training_results.append(
