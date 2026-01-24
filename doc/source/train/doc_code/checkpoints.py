@@ -503,7 +503,7 @@ def train_fn(config):
 # __checkpoint_upload_mode_no_upload_end__
 
 
-# __checkpoint_upload_function_start__
+# __checkpoint_upload_fn_start__
 
 from torch.distributed.checkpoint.state_dict_saver import async_save
 from s3torchconnector.dcp import S3StorageWriter
@@ -542,11 +542,11 @@ def train_fn(config):
             metrics=metrics,
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
-            checkpoint_upload_function=wait_async_save,
+            checkpoint_upload_fn=wait_async_save,
         )
 
 
-# __checkpoint_upload_function_end__
+# __checkpoint_upload_fn_end__
 
 # __get_all_reported_checkpoints_example_start__
 
@@ -560,8 +560,7 @@ def train_fn():
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
-            validate_fn=...,
-            validate_config=...,
+            validation=...,
         )
 
     # Get committed checkpoints which may still have ongoing validations.
