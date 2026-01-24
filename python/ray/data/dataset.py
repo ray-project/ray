@@ -1996,11 +1996,11 @@ class Dataset:
             equal: If ``True``, each output iterator sees an exactly equal number
                 of rows, dropping data if necessary. If ``False``, some iterators may
                 see slightly more or less rows than others, but no data is dropped.
-            locality_hints: Specify the node ids corresponding to each iterator
+            locality_hints: Specify the node ids corresponding to each data split
                 location. Dataset will try to minimize data movement based on the
-                iterator output locations. This list must have length
-                ``n * replicas_per_split``. You can get the current node id of a
-                task or actor by calling ``ray.get_runtime_context().get_node_id()``.
+                iterator output locations. This list must have length ``n`` (one
+                node id per split). You can get the current node id of a task or
+                actor by calling ``ray.get_runtime_context().get_node_id()``.
             replicas_per_split: Number of consumers (iterators) that receive the same
                 data split. Defaults to 1 (no duplication). When greater than 1, each
                 of the ``n`` data splits is replicated to ``replicas_per_split``

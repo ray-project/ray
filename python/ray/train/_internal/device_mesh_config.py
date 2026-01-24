@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Literal, Tuple, Union
+from typing import Dict, Literal, Tuple, Union
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -193,13 +193,12 @@ class DeviceMeshConfig:
 
 @DeveloperAPI
 def get_data_shard_mapping(
-    world_rank: int,
     device_mesh_config: DeviceMeshConfig,
     world_size: int,
-) -> Tuple[int, int, int]:
-    """Map a world rank to its data shard ID and rank within that shard.
+) -> Dict[int, Tuple[int, int]]:
+    """Map all world ranks to their data shard ID and rank within that shard.
 
-    This function determines which data shard a worker belongs to and its
+    This function determines which data shard each worker belongs to and its
     position within that shard, based on the device mesh configuration.
     Workers in the same data shard receive the same data, while workers
     in different shards receive different data partitions.
@@ -208,21 +207,18 @@ def get_data_shard_mapping(
     which determines how ranks are assigned across parallel dimensions.
 
     Args:
-        world_rank: The global rank of the worker (0 to world_size-1).
         device_mesh_config: The device mesh configuration.
         world_size: Total number of workers.
 
     Returns:
-        A tuple of (data_shard_id, rank_in_shard, num_data_shards) where:
+        A dict mapping world_rank to (data_shard_id, rank_in_shard) where:
         - data_shard_id: The ID of the data shard this rank belongs to
             (0 to num_data_shards-1). Workers with the same data_shard_id
             should receive the same data.
         - rank_in_shard: The rank within the data shard (0 to shard_size-1).
-        - num_data_shards: Total number of data shards.
 
     Raises:
-        ValueError: If world_size doesn't match the device mesh config,
-            or if world_rank is out of bounds.
+        ValueError: If world_size doesn't match the device mesh config.
 
     Example:
         For a 16-GPU setup with 2-way DP (replicate) and 8-way model parallel:
@@ -231,19 +227,16 @@ def get_data_shard_mapping(
         ...     dp=DPConfig(replicate=2, shard=1),
         ...     tp=8,
         ... )
+        >>> mapping = get_data_shard_mapping(config, world_size=16)
         >>> # Rank 0: data_shard_id=0, rank_in_shard=0
-        >>> get_data_shard_mapping(0, config, world_size=16)
-        (0, 0, 2)
+        >>> mapping[0]
+        (0, 0)
         >>> # Rank 8: data_shard_id=1, rank_in_shard=0
-        >>> get_data_shard_mapping(8, config, world_size=16)
-        (1, 0, 2)
+        >>> mapping[8]
+        (1, 0)
     """
     # Validate inputs
     device_mesh_config.validate_world_size(world_size)
-    if world_rank < 0 or world_rank >= world_size:
-        raise ValueError(
-            f"world_rank ({world_rank}) must be in range [0, {world_size})"
-        )
 
     # Axes that define different data shards (workers with different values
     # on these axes get different data)
@@ -255,37 +248,36 @@ def get_data_shard_mapping(
         size = device_mesh_config.get_axis_size(axis, world_size)
         axis_sizes.append((axis, size))
 
-    # Compute coordinates for each axis from world_rank
-    # Using column-major ordering (rightmost varies fastest)
-    coords = {}
-    remaining = world_rank
-    for axis, size in reversed(axis_sizes):
-        coords[axis] = remaining % size
-        remaining //= size
+    # Build the mapping for all world ranks
+    mapping = {}
+    for world_rank in range(world_size):
+        # Compute coordinates for each axis from world_rank
+        # Using column-major ordering (rightmost varies fastest)
+        coords = {}
+        remaining = world_rank
+        for axis, size in reversed(axis_sizes):
+            coords[axis] = remaining % size
+            remaining //= size
 
-    # Compute data_shard_id: combine coordinates of data-shard axes
-    data_shard_id = 0
-    data_shard_multiplier = 1
+        # Compute data_shard_id: combine coordinates of data-shard axes
+        data_shard_id = 0
+        data_shard_multiplier = 1
 
-    for axis, size in reversed(axis_sizes):
-        if axis in data_shard_axes and axis in coords:
-            data_shard_id += coords[axis] * data_shard_multiplier
-            data_shard_multiplier *= size
+        for axis, size in reversed(axis_sizes):
+            if axis in data_shard_axes and axis in coords:
+                data_shard_id += coords[axis] * data_shard_multiplier
+                data_shard_multiplier *= size
 
-    # Compute rank_in_shard: the position within workers that share the same data
-    # This includes all non-data-shard axes
-    rank_in_shard = 0
-    rank_multiplier = 1
+        # Compute rank_in_shard: the position within workers that share the same data
+        # This includes all non-data-shard axes
+        rank_in_shard = 0
+        rank_multiplier = 1
 
-    for axis, size in reversed(axis_sizes):
-        if axis not in data_shard_axes:
-            rank_in_shard += coords[axis] * rank_multiplier
-            rank_multiplier *= size
+        for axis, size in reversed(axis_sizes):
+            if axis not in data_shard_axes:
+                rank_in_shard += coords[axis] * rank_multiplier
+                rank_multiplier *= size
 
-    # Compute number of data shards
-    num_data_shards = 1
-    for axis, size in axis_sizes:
-        if axis in data_shard_axes:
-            num_data_shards *= size
+        mapping[world_rank] = (data_shard_id, rank_in_shard)
 
-    return data_shard_id, rank_in_shard, num_data_shards
+    return mapping
