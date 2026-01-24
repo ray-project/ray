@@ -23,7 +23,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 **Operations:**
 
 * :ref:`Troubleshooting <troubleshooting>` - GPU memory, model loading issues
-* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA
+* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency
 
 .. _vllm_quickstart:
 
@@ -332,6 +332,67 @@ Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for
     :language: python
     :start-after: __runai_config_example_start__
     :end-before: __runai_config_example_end__
+
+.. _tuning_concurrent_batches:
+
+Tuning concurrent batch processing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two parameters control concurrent batch processing: ``max_concurrent_batches`` and ``max_tasks_in_flight_per_actor``. Understanding their interaction helps achieve optimal throughput.
+
+Understanding the parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**max_concurrent_batches** (default: 8)
+    The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. Works well for ``batch_size >= 64``.
+
+**max_tasks_in_flight_per_actor** (experimental, default: 4)
+    How many tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so there are always tasks ready when the actor finishes one. Access via the ``experimental`` dict.
+
+How they work together
+^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control different parts of the pipeline:
+
+- ``max_tasks_in_flight_per_actor`` controls how many tasks Ray Data sends to the actor queue
+- ``max_concurrent_batches`` controls how many batches can execute simultaneously
+
+If ``max_tasks_in_flight_per_actor`` (default 4) is less than ``max_concurrent_batches`` (default 8), the actor cannot reach full concurrency because there aren't enough queued tasks to fill all concurrent slots.
+
+To maximize throughput, increase ``max_tasks_in_flight_per_actor`` to keep the actor's task queue saturated.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_batches_tuning_example_start__
+    :end-before: __concurrent_batches_tuning_example_end__
+
+Troubleshooting the autoscaling warning
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You may see this warning:
+
+.. code-block:: text
+
+    Actor Pool configuration will not allow it to scale up:
+    configured utilization threshold (175%) couldn't be reached with
+    configured max_concurrency=8 and max_tasks_in_flight_per_actor=4
+    (max utilization will be 50%)
+
+This appears when ``max_tasks_in_flight_per_actor / max_concurrent_batches`` is below Ray Data's utilization threshold. With the defaults (4/8 = 50%), the threshold cannot be reached.
+
+To silence this warning, set ``max_tasks_in_flight_per_actor`` high enough to exceed the 175% threshold:
+
+.. code-block:: python
+
+    config = vLLMEngineProcessorConfig(
+        model_source="unsloth/Llama-3.1-8B-Instruct",
+        max_concurrent_batches=8,
+        # 16/8 = 200%, which exceeds the 175% threshold
+        experimental={"max_tasks_in_flight_per_actor": 16},
+    )
+
+.. note::
+    This warning is informational and does not prevent execution. For most vLLM workloads, setting ``max_tasks_in_flight_per_actor`` equal to ``max_concurrent_batches`` (e.g., both set to 8) is sufficient to achieve full throughput, even if the warning still appears.
 
 .. _serve_deployments:
 
