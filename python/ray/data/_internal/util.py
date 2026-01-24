@@ -549,6 +549,11 @@ def _all_to_all_api() -> Callable[[F], F]:
     return wrap
 
 
+@overload
+def AllToAllAPI(obj: F) -> F:
+    ...
+
+
 def AllToAllAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
