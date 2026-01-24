@@ -372,31 +372,43 @@ def test_report_validation_fn_error():
     assert len(result.best_checkpoints) == 2
 
 
-def test_report_validation_fn_resumption(tmp_path):
+@pytest.mark.parametrize(
+    "validation_task_config, expected_score",
+    [
+        (True, 1),
+        (ValidationTaskConfig(fn_kwargs={"score": 2}), 2),
+    ],
+)
+def test_report_validation_fn_resumption(
+    tmp_path, validation_task_config, expected_score
+):
     """Start train run with interrupted validations. Confirm second run finishes validations."""
     signal_actor = create_remote_signal_actor(ray).remote()
 
-    def validation_fn_stall(checkpoint):
+    def validation_fn_stall(checkpoint, score):
         signal_actor.send.remote()
         while True:
             time.sleep(1)
 
-    def validation_fn_finish(checkpoint):
-        return {"score": 100}
+    def validation_fn_finish(checkpoint, score):
+        return {"score": score}
 
     def train_fn():
         with create_dict_checkpoint({}) as cp:
             ray.train.report(
                 metrics={},
                 checkpoint=cp,
-                validate=True,
+                validate=validation_task_config,
             )
 
     @ray.remote
     def run_trainer(validation_fn):
         trainer = DataParallelTrainer(
             train_fn,
-            validation_config=ValidationConfig(validation_fn=validation_fn),
+            validation_config=ValidationConfig(
+                validation_fn=validation_fn,
+                validation_task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+            ),
             scaling_config=ScalingConfig(num_workers=1),
             run_config=RunConfig(
                 name="validation_fn_resumption", storage_path=str(tmp_path)
@@ -414,7 +426,7 @@ def test_report_validation_fn_resumption(tmp_path):
     # Run second trainer that should finish interrupted validations.
     training_task = run_trainer.remote(validation_fn_finish)
     result = ray.get(training_task)
-    assert result.metrics == {"score": 100}
+    assert result.metrics == {"score": expected_score}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):
