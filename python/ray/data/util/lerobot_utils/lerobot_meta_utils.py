@@ -144,13 +144,17 @@ def load_nested_dataset(
         )
 
     with SuppressProgressBars():
-        # When no filtering needed, Dataset uses memory-mapped loading for efficiency
-        # PyArrow loads the entire dataset into memory
+        # When no filtering needed, load using PyArrow first to avoid old metadata issues
+        # PyArrow loads the dataset, then we create HF Dataset without the embedded metadata
         if episodes is None:
-            # print("Features: ", features)
-            return Dataset.from_parquet(
-                [str(path) for path in paths], features=features
-            )
+            # Load with PyArrow to avoid parsing old 'List' feature types in embedded metadata
+            arrow_dataset = pa_ds.dataset(paths, format="parquet")
+            table = arrow_dataset.to_table()
+            
+            if features is not None:
+                table = table.cast(features.arrow_schema)
+            
+            return Dataset(table)
 
         arrow_dataset = pa_ds.dataset(paths, format="parquet")
         filter_expr = pa_ds.field("episode_index").isin(episodes)
