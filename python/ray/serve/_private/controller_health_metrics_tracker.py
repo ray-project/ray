@@ -1,6 +1,7 @@
 import asyncio
 import math
 import resource
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -157,8 +158,13 @@ class ControllerHealthMetricsTracker:
         )
 
         # Get memory usage in MB
+        # Note: ru_maxrss is in bytes on macOS but kilobytes on Linux
         rusage = resource.getrusage(resource.RUSAGE_SELF)
-        process_memory_mb = rusage.ru_maxrss / 1024  # Convert KB to MB on Linux
+        process_memory_mb = (
+            rusage.ru_maxrss / (1024 * 1024)  # Convert bytes to MB on macOS
+            if sys.platform == "darwin"
+            else rusage.ru_maxrss / 1024  # Convert KB to MB on Linux
+        )
 
         return ControllerHealthMetrics(
             timestamp=now,
