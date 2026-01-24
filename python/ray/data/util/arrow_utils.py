@@ -6,6 +6,8 @@ from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 from packaging.version import Version, parse as parse_version
 
+from ray.util.annotations import DeveloperAPI
+
 _RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
 
 
@@ -54,6 +56,7 @@ def _check_pyarrow_version():
         _PYARROW_VERSION_VALIDATED = True
 
 
+@DeveloperAPI
 def get_pyarrow_version() -> Optional[Version]:
     """Get the version of the pyarrow package or None if not installed."""
     global _PYARROW_INSTALLED, _PYARROW_VERSION
@@ -111,6 +114,7 @@ def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
     return urlunparse(parsed_url)
 
 
+@DeveloperAPI
 def add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
     """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
     parameter. For pyarrow >= 9.0.0, this is required in order to allow
