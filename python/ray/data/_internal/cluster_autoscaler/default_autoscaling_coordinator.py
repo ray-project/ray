@@ -265,12 +265,12 @@ class _AutoscalingCoordinatorActor:
             def tick_thread_run():
                 while True:
                     time.sleep(self.TICK_INTERVAL_S)
-                    self.tick()
+                    self._tick()
 
             self._tick_thread = threading.Thread(target=tick_thread_run, daemon=True)
             self._tick_thread.start()
 
-    def tick(self):
+    def _tick(self):
         """Used to perform periodical operations, e.g., purge expired requests,
         merge and send requests, check cluster resource updates, etc."""
         with self._lock:
