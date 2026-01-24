@@ -34,6 +34,40 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
 
   data_.mutable_config()->set_serialized_runtime_env(
       data.config().runtime_env_info().serialized_runtime_env());
+  auto submission_id_iter = data.config().metadata().find("job_submission_id");
+  if (submission_id_iter != data.config().metadata().end() &&
+      !submission_id_iter->second.empty()) {
+    data_.set_is_submission_job(true);
+    data_.set_submission_id(submission_id_iter->second);
+  } else {
+    data_.set_is_submission_job(false);
+  }
+
+  // Populate fields from job_info if available
+  if (data.has_job_info()) {
+    const auto &job_info = data.job_info();
+
+    if (job_info.has_driver_agent_http_address()) {
+      data_.set_driver_agent_http_address(job_info.driver_agent_http_address());
+    }
+
+    if (job_info.has_entrypoint_num_cpus()) {
+      data_.set_entrypoint_num_cpus(job_info.entrypoint_num_cpus());
+    }
+
+    if (job_info.has_entrypoint_num_gpus()) {
+      data_.set_entrypoint_num_gpus(job_info.entrypoint_num_gpus());
+    }
+
+    if (job_info.has_entrypoint_memory()) {
+      data_.set_entrypoint_memory(job_info.entrypoint_memory());
+    }
+
+    if (!job_info.entrypoint_resources().empty()) {
+      data_.mutable_entrypoint_resources()->insert(
+          job_info.entrypoint_resources().begin(), job_info.entrypoint_resources().end());
+    }
+  }
 }
 
 std::string RayDriverJobDefinitionEvent::GetEntityId() const { return data_.job_id(); }
