@@ -54,7 +54,7 @@ def run_validation_fn(
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
-            "The validate function must return a dictionary of metrics. "
+            "The validation function must return a dictionary of metrics. "
             f"Got {type(metrics_dict)} instead."
         )
     return metrics_dict
@@ -85,14 +85,14 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """Add _TrainingReports for incomplete validations to the queue."""
         for checkpoint, (
             training_result,
-            validate,
+            validation,
         ) in self._checkpoint_manager.get_pending_training_results().items():
-            if validate:
+            if validation:
                 self._training_report_queue.append(
                     _TrainingReport(
                         metrics=training_result.metrics,
                         checkpoint=checkpoint,
-                        validate=validate,
+                        validation=validation,
                     )
                 )
 

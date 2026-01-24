@@ -40,7 +40,7 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
-from ray.train.v2.api.report_config import ValidationTaskConfig
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -281,13 +281,13 @@ def create_dummy_training_reports(
     num_results: int,
     storage_context: StorageContext,
     include_metrics: bool = True,
-    include_validate: bool = False,
+    include_validation: bool = False,
 ) -> List[_TrainingReport]:
     training_results = []
     for i in range(num_results):
         metrics = {"score": i} if include_metrics else {}
-        validate = (
-            ValidationTaskConfig(fn_kwargs={"arg": i}) if include_validate else False
+        validation = (
+            ValidationTaskConfig(fn_kwargs={"arg": i}) if include_validation else False
         )
         checkpoint_path = os.path.join(
             storage_context.experiment_fs_path, f"checkpoint_{i}"
@@ -300,7 +300,7 @@ def create_dummy_training_reports(
                     filesystem=storage_context.storage_filesystem,
                 ),
                 metrics=metrics,
-                validate=validate,
+                validation=validation,
             )
         )
     return training_results

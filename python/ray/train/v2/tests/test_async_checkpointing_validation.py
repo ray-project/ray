@@ -305,7 +305,7 @@ def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
     assert result.best_checkpoints[1][1] == {"score": 5}
 
 
-def test_report_validation_fn_overrides_default_kwargs():
+def test_report_validation_fn_overrides_default_kwargs(tmp_path):
     def validation_fn(checkpoint, validation_score, other_key):
         return {"validation_score": validation_score, "other_key": other_key}
 
@@ -335,7 +335,7 @@ def test_report_validation_fn_overrides_default_kwargs():
     }
 
 
-def test_report_validation_fn_error():
+def test_report_validation_fn_error(tmp_path):
     def validation_fn(checkpoint, rank=None, iteration=None):
         if rank == 0 and iteration == 0:
             raise ValueError("validation failed")
@@ -393,21 +393,24 @@ def test_report_validation_fn_resumption(
     def validation_fn_finish(checkpoint, score):
         return {"score": score}
 
-    def train_fn():
+    def train_fn_first():
         with create_dict_checkpoint({}) as cp:
             ray.train.report(
                 metrics={},
                 checkpoint=cp,
-                validate=validation_task_config,
+                validation=validation_task_config,
             )
 
+    def train_fn_second():
+        pass
+
     @ray.remote
-    def run_trainer(validation_fn):
+    def run_trainer(validation_fn, train_fn):
         trainer = DataParallelTrainer(
             train_fn,
             validation_config=ValidationConfig(
-                validation_fn=validation_fn,
-                validation_task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+                fn=validation_fn,
+                task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
             ),
             scaling_config=ScalingConfig(num_workers=1),
             run_config=RunConfig(
@@ -417,14 +420,14 @@ def test_report_validation_fn_resumption(
         return trainer.fit()
 
     # Run trainer. Wait until validation kicked off. Cancel training.
-    training_task = run_trainer.remote(validation_fn_stall)
+    training_task = run_trainer.remote(validation_fn_stall, train_fn_first)
     ray.get(signal_actor.wait.remote())
     ray.cancel(training_task)
     with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(training_task)
 
     # Run second trainer that should finish interrupted validations.
-    training_task = run_trainer.remote(validation_fn_finish)
+    training_task = run_trainer.remote(validation_fn_finish, train_fn_second)
     result = ray.get(training_task)
     assert result.metrics == {"score": expected_score}
 

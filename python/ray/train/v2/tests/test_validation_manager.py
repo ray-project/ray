@@ -261,8 +261,8 @@ def test_checkpoint_validation_management_resume(tmp_path):
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
-            validation_fn=validation_fn,
-            validation_task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+            fn=validation_fn,
+            task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
         ),
     )
 

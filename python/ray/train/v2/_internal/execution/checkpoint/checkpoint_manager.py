@@ -22,11 +22,9 @@ from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.report_config import (
-    CheckpointConsistencyMode,
-    ValidationTaskConfig,
-)
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -140,10 +138,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        if training_report.validate:
+        if training_report.validation:
             self._pending_training_results[checkpoint_result.checkpoint] = (
                 checkpoint_result,
-                training_report.validate,
+                training_report.validation,
             )
 
         self._current_report_index += 1
