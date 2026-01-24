@@ -108,13 +108,6 @@ def throughput_same_send_per_recv(
 
 
 def latency_test(_num_transfers, transport, size, device, sender, receiver):
-    # Warmup.
-    ray.get(
-        receiver.recv.remote(
-            sender.send.options(tensor_transport=transport).remote(size, device)
-        )
-    )
-
     times = []
     for _ in range(10):
         start = time.perf_counter()
