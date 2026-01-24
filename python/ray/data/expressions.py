@@ -580,13 +580,19 @@ class Expr(ABC):
 
     # NULL Handling
     def is_nan(self) -> "UDFExpr":
-        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(self)
+        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(
+            self
+        )
 
     def is_finite(self) -> "UDFExpr":
-        return _create_pyarrow_compute_udf(pc.is_finite)(self)
+        return _create_pyarrow_compute_udf(pc.is_finite, return_dtype=DataType.bool())(
+            self
+        )
 
     def is_inf(self) -> "UDFExpr":
-        return _create_pyarrow_compute_udf(pc.is_inf)(self)
+        return _create_pyarrow_compute_udf(pc.is_inf, return_dtype=DataType.bool())(
+            self
+        )
 
     @property
     def arr(self) -> "_ArrayNamespace":

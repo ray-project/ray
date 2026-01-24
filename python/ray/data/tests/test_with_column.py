@@ -1023,9 +1023,17 @@ def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_share
     [
         # Test is_nan
         pytest.param(
-            [{"x": float("Nan")}, {"x": -3}, {"x": 0}],
+            [
+                {"x": float("nan")},
+                {"x": -3.0},
+                {"x": 0.0},
+                {"x": 3.14},
+                {"x": float("inf")},
+                {"x": float("-inf")},
+                {"x": None},
+            ],
             lambda: col("x").is_nan(),
-            [True, False, False],
+            [True, False, False, False, False, False, None],
             "is_nan",
         ),
         # Test is_finite
@@ -1051,7 +1059,7 @@ def test_with_column_null_handling_operations(
     expected_results,
     test_id,
 ):
-    """Test arithmetic helper expressions: negate, sign, power, abs."""
+    """Test null handling helper expressions."""
     ds = ray.data.from_items(test_data)
     expr = expr_factory()
     result_df = ds.with_column("result", expr).to_pandas()
