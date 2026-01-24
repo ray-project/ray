@@ -285,11 +285,6 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
 
 
 def test_proxy_metrics_not_found(metrics_start_shutdown):
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -382,11 +377,6 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
 
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -484,11 +474,6 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
     _ = httpx.get(broken_url).text
@@ -539,11 +524,6 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
 )
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -586,11 +566,6 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     """Test that HTTP disconnect metrics are reported correctly."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -627,11 +602,6 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
 
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -682,10 +652,6 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
 
     @serve.deployment()
     def f(*args):
@@ -748,8 +714,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
+    # TODO(eicherseiji): Remove skip when HAProxy is open-sourced.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS:
         pytest.skip()
 
@@ -827,10 +792,6 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
 
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
 
     def check_request_count_metrics(
         expected_error_count: int,
@@ -1085,19 +1046,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
     )
 
 
-@pytest.fixture
-def disable_router_queue_len_throttle(monkeypatch):
-    """Disable throttling for router queue len gauge updates during testing.
-
-    The throttle can cause flakiness: if the gauge is set to 0 on replica init
-    and then updated to 1 within the throttle window (100ms), the update is skipped.
-    """
-    monkeypatch.setenv("RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", "0")
-
-
-def test_router_queue_len_metric(
-    disable_router_queue_len_throttle, metrics_start_shutdown
-):
+def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
     signal = SignalActor.remote()
 
@@ -1215,11 +1164,6 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     4. Multiple requests to the same pattern are grouped together
     5. Both normal pattern and factory pattern work correctly
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when
-    # proxy metrics recording is ported for direct ingress.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     if use_factory_pattern:
         # Factory pattern: callable returns FastAPI app at runtime
         def create_app():
