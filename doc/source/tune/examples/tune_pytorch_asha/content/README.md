@@ -111,13 +111,7 @@ import os, sys, subprocess
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 # Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-])
+!pip install -r requirements.txt
 ```
 
 
