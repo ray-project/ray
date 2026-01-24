@@ -18,9 +18,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
-from ray.train.v2._internal.execution.training_report import (
-    _TrainingReport,
-)
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
@@ -89,7 +87,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from pending checkpoint to (training result, validation task config)
+        # Map from pending checkpoint to (training result, validation task config or boolean)
         self._pending_training_results = {}
 
         # Map from checkpoint to report index. Used to order checkpoints.
