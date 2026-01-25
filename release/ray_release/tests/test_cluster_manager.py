@@ -71,8 +71,6 @@ class _DelayedResponse:
 
 
 class MinimalSessionManagerTest(unittest.TestCase):
-    cls = MinimalClusterManager
-
     def setUp(self) -> None:
         self.sdk = MockSDK()
         self.sdk.returns["get_project"] = APIDict(
@@ -81,7 +79,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
-        self.cluster_manager = self.cls(
+        self.cluster_manager = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
             test=MockTest(
@@ -92,20 +90,18 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ),
         )
         self.sdk.reset()
-        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
     def testClusterName(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test"}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test_\d+$")
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test"}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=True,
@@ -116,8 +112,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
     def testSetClusterEnv(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test", "cluster": {"byod": {}}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,

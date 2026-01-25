@@ -549,7 +549,24 @@ def _configure_key_pair(config, compute):
             )
             public_key, private_key = generate_rsa_key_pair()
 
-            _create_project_ssh_key_pair(project, public_key, ssh_user, compute)
+            for attempt in range(MAX_POLLS):
+                try:
+                    _create_project_ssh_key_pair(project, public_key, ssh_user, compute)
+                    break
+                except errors.HttpError as e:
+                    if e.resp.status != 412 or attempt == MAX_POLLS - 1:
+                        raise
+                    logger.warning(
+                        "GCP project metadata update conflict for %s (%s); retrying",
+                        config["provider"]["project_id"],
+                        e,
+                    )
+                    time.sleep(POLL_INTERVAL)
+                    project = (
+                        compute.projects()
+                        .get(project=config["provider"]["project_id"])
+                        .execute()
+                    )
 
             # Create the directory if it doesn't exists
             private_key_dir = os.path.dirname(private_key_path)

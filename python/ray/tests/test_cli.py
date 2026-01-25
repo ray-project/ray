@@ -37,6 +37,7 @@ from unittest.mock import MagicMock, patch
 
 import moto
 import pytest
+import yaml
 from click.testing import CliRunner
 from moto import mock_ec2, mock_iam
 from testfixtures import Replacer
@@ -47,9 +48,12 @@ import ray._private.ray_constants as ray_constants
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray.scripts.scripts as scripts
+import ray.tests.aws.utils.helpers as aws_helpers
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
-from ray._common.utils import get_default_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
+from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler._private.util import prepare_config
 from ray.cluster_utils import cluster_not_supported
 from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
@@ -344,13 +348,14 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup_ray):
+def test_ray_start_worker_cannot_specify_temp_dir(
+    configure_lang, tmp_path, cleanup_ray
+):
     """
-    Verify that ray start --temp-dir works on worker nodes independently of head node.
+    Verify ray start --temp-dir raises an exception when it is used without --head.
     """
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
-
-    # Start head node without specifying temp-dir
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
         [
@@ -359,33 +364,12 @@ def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup
     )
     print(result.output)
     _die_on_error(result)
-
-    # Start worker node with temp-dir specified
-    worker_temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
-        [
-            f"--address=localhost:{ray_constants.DEFAULT_PORT}",
-            f"--temp-dir={worker_temp_dir}",
-        ],
+        [f"--address=localhost:{ray_constants.DEFAULT_PORT}", f"--temp-dir={temp_dir}"],
     )
-    _die_on_error(result)
-
-    # Check that worker temp-dir was created at the specified location
-    assert os.path.isfile(os.path.join(worker_temp_dir, "ray_current_cluster"))
-    assert os.path.isdir(os.path.join(worker_temp_dir, "session_latest"))
-
-    # Check that we can rerun `ray start` even though the cluster address file
-    # is already written.
-    _die_on_error(
-        runner.invoke(
-            scripts.start,
-            [
-                f"--address=localhost:{ray_constants.DEFAULT_PORT}",
-                f"--temp-dir={worker_temp_dir}",
-            ],
-        )
-    )
+    assert result.exit_code == 0
+    assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
 
 
 def _ray_start_hook(ray_params, head):
@@ -495,7 +479,7 @@ def test_ray_start_head_block_and_signals(
 
     exit_log = Path(
         os.path.join(
-            get_default_ray_temp_dir(),
+            get_ray_temp_dir(),
             ray_constants.SESSION_LATEST,
             "logs",
             "ray_process_exit.log",
@@ -806,6 +790,86 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         )
 
         _check_output_via_pattern("test_ray_attach.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+@mock_ec2
+@mock_iam
+def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key):
+    from ray.autoscaler._private.commands import get_worker_node_ips
+
+    worker_ip_to_verify = None
+
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+
+    def commands_verifier(calls):
+        for call in calls:
+            if len(call[1]) > 0:
+                cmd = (
+                    " ".join(call[1][0]) if isinstance(call[1][0], list) else call[1][0]
+                )
+                if "ssh" in cmd and worker_ip_to_verify and worker_ip_to_verify in cmd:
+                    return True
+        return False
+
+    with _setup_popen_mock(commands_mock, commands_verifier):
+        runner = CliRunner()
+        result = runner.invoke(
+            scripts.up,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "-y",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+            ],
+        )
+        _die_on_error(result)
+
+        # Manually create a worker node to test attaching to non-head nodes.
+        # ray up only creates the head node; workers are launched asynchronously
+        # by the autoscaler which doesn't run in this mocked test environment.
+        config = yaml.safe_load(open(DEFAULT_TEST_CONFIG_PATH).read())
+        config["cluster_name"] = "test-cli"
+        config = prepare_config(config)
+        config = aws_config.bootstrap_aws(config)
+
+        provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+        worker_node_config = config["available_node_types"]["worker_nodes"][
+            "node_config"
+        ]
+        tags = aws_helpers.node_provider_tags(config, "worker_nodes")
+        provider.create_node(worker_node_config, tags, 1)
+
+        worker_ips = get_worker_node_ips(
+            DEFAULT_TEST_CONFIG_PATH, override_cluster_name="test-cli"
+        )
+        assert len(worker_ips) > 0, "Worker node should have been created"
+        worker_ip_to_verify = worker_ips[0]
+
+        result = runner.invoke(
+            scripts.attach,
+            [
+                DEFAULT_TEST_CONFIG_PATH,
+                "--no-config-cache",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+                "--node-ip",
+                worker_ip_to_verify,
+            ],
+        )
+
+        _check_output_via_pattern("test_ray_attach_with_ip.txt", result)
 
 
 @pytest.mark.skipif(
