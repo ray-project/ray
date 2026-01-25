@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pyarrow
 import pyarrow.compute as pc
 
@@ -56,9 +57,9 @@ def _make_empty_list_array(arr: pyarrow.Array, component: MapComponent) -> pyarr
             f"(key and value), but got: {arr.type}."
         )
     return pyarrow.ListArray.from_arrays(
-        offsets=[0] * (len(arr) + 1),
+        offsets=np.repeat(0, len(arr) + 1),
         values=pyarrow.array([], type=pyarrow.null()),
-        mask=pyarrow.array([True] * len(arr)),
+        mask=pyarrow.array(np.repeat(True, len(arr))),
     )
 
 
