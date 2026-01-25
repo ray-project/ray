@@ -85,6 +85,21 @@ def _rebuild_list_array(
     )
 
 
+def _get_result_type(
+    arr_type: pyarrow.DataType, component: MapComponent
+) -> pyarrow.DataType:
+    """Infer the result list type from the input map type."""
+    if pyarrow.types.is_map(arr_type):
+        inner = arr_type.key_type if component == MapComponent.KEYS else arr_type.item_type
+        return pyarrow.list_(inner)
+    if pyarrow.types.is_list(arr_type) or pyarrow.types.is_large_list(arr_type):
+        struct_type = arr_type.value_type
+        if pyarrow.types.is_struct(struct_type) and struct_type.num_fields >= 2:
+            idx = 0 if component == MapComponent.KEYS else 1
+            return pyarrow.list_(struct_type.field(idx).type)
+    return pyarrow.list_(pyarrow.null())
+
+
 def _extract_map_component(
     arr: pyarrow.Array, component: MapComponent
 ) -> pyarrow.Array:
@@ -94,9 +109,10 @@ def _extract_map_component(
     expose dedicated compute kernels for map projection in the Python API.
     """
     if isinstance(arr, pyarrow.ChunkedArray):
-        return pyarrow.chunked_array(
-            [_extract_map_component(chunk, component) for chunk in arr.chunks]
-        )
+        chunks = [_extract_map_component(chunk, component) for chunk in arr.chunks]
+        if not chunks:
+            return pyarrow.chunked_array([], type=_get_result_type(arr.type, component))
+        return pyarrow.chunked_array(chunks)
 
     child_array = _get_child_array(arr, component)
 

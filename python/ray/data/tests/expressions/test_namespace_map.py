@@ -122,6 +122,29 @@ def test_map_nulls_and_empty():
     assert rows[2]["keys"] is None and rows[2]["values"] is None
 
 
+def test_empty_chunked_array():
+    """Test extraction works on empty ChunkedArray (zero chunks)."""
+    from ray.data.namespace_expressions.map_namespace import (
+        MapComponent,
+        _extract_map_component,
+    )
+
+    # Create empty ChunkedArray with map type
+    map_type = pa.map_(pa.string(), pa.int64())
+    empty_chunked = pa.chunked_array([], type=map_type)
+    assert empty_chunked.num_chunks == 0
+
+    # Extract keys - should return empty ChunkedArray with list<string> type
+    keys_result = _extract_map_component(empty_chunked, MapComponent.KEYS)
+    assert len(keys_result) == 0
+    assert keys_result.type == pa.list_(pa.string())
+
+    # Extract values - should return empty ChunkedArray with list<int64> type
+    values_result = _extract_map_component(empty_chunked, MapComponent.VALUES)
+    assert len(values_result) == 0
+    assert values_result.type == pa.list_(pa.int64())
+
+
 if __name__ == "__main__":
     import sys
 
