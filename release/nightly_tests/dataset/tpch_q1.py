@@ -31,7 +31,7 @@ def main(args):
     def benchmark_fn():
         # The TPC-H queries are a widely used set of benchmarks to measure the
         # performance of data processing systems. See
-        # https://examples.citusdata.com/tpch_queries.html.
+        # https://www.tpc.org/tpch/
         from datetime import datetime
 
         ds = (
