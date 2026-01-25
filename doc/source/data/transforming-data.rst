@@ -260,7 +260,7 @@ To enable Polars operations, configure the :class:`~ray.data.DataContext`:
     ctx = ray.data.DataContext.get_current()
     ctx.use_polars_sort = True
 
-When you enable these flags, Ray Data automatically uses Polars for use Polars for tabular dataset sorting operations. which can significantly improve performance for certain workloads. This doesn't affect your UDF code—you can still use any batch format in :meth:`~ray.data.Dataset.map_batches`.
+When you enable this flag, Ray Data automatically uses Polars for tabular dataset sorting operations, which can significantly improve performance for certain workloads. This doesn't affect your UDF code—you can still use any batch format in :meth:`~ray.data.Dataset.map_batches`.
 
 
 .. _stateful_transforms:
