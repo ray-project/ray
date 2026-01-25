@@ -45,7 +45,9 @@ def _get_child_array(
     return None
 
 
-def _make_empty_list_array(arr: pyarrow.Array, component: MapComponent) -> pyarrow.Array:
+def _make_empty_list_array(
+    arr: pyarrow.Array, component: MapComponent
+) -> pyarrow.Array:
     """Create an all-null ListArray matching the input length.
 
     Example: arr of length 3 -> ListArray [null, null, null]
@@ -90,7 +92,9 @@ def _get_result_type(
 ) -> pyarrow.DataType:
     """Infer the result list type from the input map type."""
     if pyarrow.types.is_map(arr_type):
-        inner = arr_type.key_type if component == MapComponent.KEYS else arr_type.item_type
+        inner = (
+            arr_type.key_type if component == MapComponent.KEYS else arr_type.item_type
+        )
         return pyarrow.list_(inner)
     if pyarrow.types.is_list(arr_type) or pyarrow.types.is_large_list(arr_type):
         struct_type = arr_type.value_type
