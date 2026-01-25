@@ -2311,6 +2311,8 @@ toolz==0.12.1
 torch==2.3.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
+torchcodec==0.2.0
+    # via -r python/requirements/ml/data-test-requirements.txt
     #   accelerate
     #   botorch
     #   deepspeed

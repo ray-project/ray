@@ -240,6 +240,7 @@ if setup_spec.type == SetupType.RAY:
             *pyarrow_deps,
             "fsspec",
             "av",  # For LeRobot video decoding (PyAV backend)
+            "torchcodec",  # For LeRobot video decoding (TorchCodec backend - preferred)
             "huggingface_hub",  # For LeRobot dataset downloading
             "datasets",  # For LeRobot dataset metadata
             "torch",  # For LeRobot tensor operations
