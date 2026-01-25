@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any, Dict, List, Union
 
 import numpy as np
@@ -50,6 +51,24 @@ class EmaStats(StatsBase):
         if not self.is_leaf:
             self._values_to_merge = []
         self._ema_coeff = ema_coeff
+
+    def _quiet_nanmean(self, values: List[Any]) -> float:
+        """Compute the nanmean while ignoring warnings if all values are NaN.
+
+        Args:
+            values: The list of values to compute the nanmean of.
+
+        Returns:
+            The nanmean of the values.
+        """
+
+        if torch and isinstance(values[0], torch.Tensor):
+            stacked = torch.stack(list(values))
+            return torch.nanmean(stacked)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Mean of empty slice", RuntimeWarning)
+            return np.nanmean(values)
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -118,10 +137,7 @@ class EmaStats(StatsBase):
         if len(self._values_to_merge) == 0:
             return np.nan
 
-        if torch and isinstance(self._values_to_merge[0], torch.Tensor):
-            stacked = torch.stack(list(self._values_to_merge))
-            return torch.nanmean(stacked)
-        return np.nanmean(self._values_to_merge)
+        return self._quiet_nanmean(self._values_to_merge)
 
     def peek(
         self, compile: bool = True, latest_merged_only: bool = False
@@ -156,11 +172,7 @@ class EmaStats(StatsBase):
                 value = np.nan
             else:
                 # Reduce latest merged values
-                if torch and isinstance(latest_merged[0], torch.Tensor):
-                    stacked = torch.stack(list(latest_merged))
-                    value = torch.nanmean(stacked)
-                else:
-                    value = np.nanmean(latest_merged)
+                value = self._quiet_nanmean(latest_merged)
         else:
             # Normal peek behavior
             if hasattr(self, "_values_to_merge"):
