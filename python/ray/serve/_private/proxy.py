@@ -43,6 +43,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_proxy_handle
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
     get_grpc_response_status,
     set_grpc_code_and_details,
@@ -77,6 +78,7 @@ from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    asyncio_grpc_exception_handler,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
@@ -1244,6 +1246,10 @@ class ProxyActor(ProxyActorInterface):
             if grpc_enabled
             else None
         )
+        if self.grpc_proxy:
+            get_or_create_event_loop().set_exception_handler(
+                asyncio_grpc_exception_handler
+            )
 
         # Start a task to initialize the HTTP server.
         # The result of this task is checked in the `ready` method.
@@ -1276,6 +1282,14 @@ class ProxyActor(ProxyActorInterface):
         self._running_grpc_server_task: Optional[asyncio.Task] = None
 
         _configure_gc_options()
+
+        # Start event loop monitoring for the proxy's main event loop.
+        self._event_loop_monitor = EventLoopMonitor(
+            component=EventLoopMonitor.COMPONENT_PROXY,
+            loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
+            actor_id=ray.get_runtime_context().get_actor_id(),
+        )
+        self._event_loop_monitor.start(event_loop)
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)

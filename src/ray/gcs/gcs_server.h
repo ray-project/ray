@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -38,16 +39,12 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/util/throttler.h"
 
 namespace ray {
-using raylet::ClusterLeaseManager;
-using raylet::NoopLocalLeaseManager;
 
 namespace rpc {
 class ClientCallManager;
@@ -68,6 +65,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
+  std::string node_id;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -110,6 +108,11 @@ class GcsServer {
 
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
+
+  /// Set a callback invoked once the RPC server has bound to a port.
+  void SetPortReadyCallback(std::function<void(int)> cb) {
+    port_ready_callback_ = std::move(cb);
+  }
 
   /// Check if gcs server is started.
   bool IsStarted() const { return is_started_; }
@@ -154,9 +157,6 @@ class GcsServer {
 
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
-
-  /// Initialize cluster lease manager.
-  void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(
@@ -203,11 +203,14 @@ class GcsServer {
   /// Initialize function manager.
   void InitFunctionManager();
 
-  /// Initializes PubSub handler.
+  /// Initialize PubSub handler.
   void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize metrics exporter with the given port.
+  void InitMetricsExporter(int metrics_agent_port);
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -230,8 +233,6 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
-  void TryGlobalGC();
-
   /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
@@ -252,12 +253,8 @@ class GcsServer {
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Local lease manager.
-  NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster lease manager.
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
@@ -295,7 +292,7 @@ class GcsServer {
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
   /// The node id of GCS.
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
@@ -314,9 +311,10 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
-  int task_pending_schedule_detected_ = 0;
-  /// Throttler for global gc
-  std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Flag to ensure InitMetricsExporter is only called once.
+  std::atomic<bool> metrics_exporter_initialized_ = false;
+  // Invoked when the RPC server has bound to a port.
+  std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
 };

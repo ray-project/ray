@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from dataclasses import replace
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 from unittest.mock import MagicMock
 
 import pyarrow as pa
@@ -17,7 +17,8 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -25,12 +26,14 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
     _ActorTaskSelector,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
@@ -41,6 +44,16 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import (
+    DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DataContext,
+)
+from ray.data.tests.util import (
+    create_map_transformer_from_block_fn,
+    run_one_op_task,
+    run_op_tasks_sync,
+)
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -81,7 +94,7 @@ class TestActorPool(unittest.TestCase):
             bundles = make_ref_bundles([[0]])
         else:
             bundles = [bundle]
-        queue = FIFOBundleQueue()
+        queue = HashLinkedQueue()
         for bundle in bundles:
             queue.add(bundle)
         actor_task_selector = self._create_task_selector(pool)
@@ -513,7 +526,7 @@ class TestActorPool(unittest.TestCase):
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = HashLinkedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
@@ -560,7 +573,7 @@ class TestActorPool(unittest.TestCase):
             b.get_preferred_object_locations = lambda: {}
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = HashLinkedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
@@ -670,7 +683,7 @@ def test_min_max_resource_requirements(restore_data_context):
             min_size=1,
             max_size=2,
         ),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_gpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
 
@@ -679,10 +692,36 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    assert (
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-        and max_resource_usage_bound == ExecutionResources.for_limits()
+    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources(
+        gpu=2, object_store_memory=float("inf")
     )
+
+
+def test_min_max_resource_requirements_unbounded(restore_data_context):
+    """Test that unbounded actor pools return infinite max resources."""
+    data_context = ray.data.DataContext.get_current()
+    # ActorPoolStrategy() with no max_size defaults to unbounded (max_size=inf)
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(),
+        ray_remote_args={"num_gpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    # Unbounded pools should return infinite max resources for GPU (which is used),
+    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -791,7 +830,7 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
 
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
-    assert actor_pool_map_op.completed()
+    assert actor_pool_map_op.has_completed()
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
@@ -973,6 +1012,165 @@ def test_actor_init_failure_retry(
                 FailingInitMapper,
                 batch_size=1,
             ).take_all()
+
+
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
+    """Tests that ActorPoolMapOperator runs init_fn on start."""
+
+    from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    def _fail():
+        raise ValueError("init_failed")
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
+    compute_strategy = ActorPoolStrategy(min_size=1)
+
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_sleep, init_fn=_fail),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    with pytest.raises(RayActorError, match=r"init_failed"):
+        op.start(ExecutionOptions())
+
+
+@pytest.mark.parametrize(
+    "max_tasks_in_flight_strategy, max_tasks_in_flight_ctx, max_concurrency, expected_max_tasks_in_flight",
+    [
+        # Compute strategy takes precedence
+        (3, 5, 4, 3),
+        # DataContext.max_tasks_in_flight_per_actor takes precedence
+        (None, 5, 4, 5),
+        # Max tasks in-flight is derived as max_concurrency x 4
+        (
+            None,
+            None,
+            4,
+            4 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+        ),
+    ],
+)
+def test_actor_pool_map_operator_should_add_input(
+    ray_start_regular_shared,
+    max_tasks_in_flight_strategy,
+    max_tasks_in_flight_ctx,
+    max_concurrency,
+    expected_max_tasks_in_flight,
+    restore_data_context,
+):
+    """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+
+    ctx = DataContext.get_current()
+    ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
+
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(20)]))
+
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_strategy,
+    )
+
+    def _failing_transform(
+        block_iter: Iterable[Block], task_context: TaskContext
+    ) -> Iterable[Block]:
+        raise ValueError("expected failure")
+
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_failing_transform),
+        input_op=input_op,
+        data_context=ctx,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+        ray_remote_args={"max_concurrency": max_concurrency},
+    )
+
+    op.start(ExecutionOptions())
+
+    # Cannot add input until actor has started.
+    assert not op.should_add_input()
+    run_op_tasks_sync(op)
+    assert op.should_add_input()
+
+    # Assert that single actor can accept up to N tasks
+    for _ in range(expected_max_tasks_in_flight):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    assert not op.should_add_input()
+
+
+def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
+    """Tests ActorPoolMapOperator's num_active_tasks and completed methods."""
+    num_actors = 2
+    ray.shutdown()
+    ray.init(num_cpus=num_actors)
+
+    signal_actor = create_remote_signal_actor(ray).options(num_cpus=0).remote()
+
+    def _map_transfom_fn(block_iter: Iterable[Block], _) -> Iterable[Block]:
+        ray.get(signal_actor.wait.remote())
+        yield from block_iter
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(num_actors)])
+    )
+    compute_strategy = ActorPoolStrategy(min_size=num_actors, max_size=2 * num_actors)
+
+    # Create an operator with [num_actors, 2 * num_actors] actors.
+    # Resources are limited to num_actors, so the second half will be pending.
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_map_transfom_fn),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+    actor_pool = op._actor_pool
+
+    # Wait for the op to scale up to the min size.
+    op.start(ExecutionOptions())
+    run_op_tasks_sync(op)
+    assert actor_pool.num_running_actors() == num_actors
+    assert op.num_active_tasks() == 0
+
+    # Scale up to the max size, the second half of the actors will be pending.
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
+    assert actor_pool.num_pending_actors() == num_actors
+    # `num_active_tasks` should exclude the metadata tasks for the pending actors.
+    assert op.num_active_tasks() == 0
+
+    # Add inputs.
+    for _ in range(num_actors):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    # Still `num_active_tasks` should only include data tasks.
+    assert op.num_active_tasks() == num_actors
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Let the data tasks complete.
+    signal_actor.send.remote()
+    while len(op._data_tasks) > 0:
+        run_one_op_task(op)
+    assert op.num_active_tasks() == 0
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Mark the inputs done and take all outputs.
+    # The operator should be completed, even if there are pending actors.
+    op.all_inputs_done()
+    while op.has_next():
+        op.get_next()
+    assert actor_pool.num_pending_actors() == num_actors
+    assert op.has_completed()
 
 
 if __name__ == "__main__":

@@ -4,9 +4,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from logging import getLogger
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import ray
+from .base_autoscaling_coordinator import AutoscalingCoordinator
 from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
 )
@@ -14,19 +15,19 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
+from .util import cap_resource_request_to_limits
+from ray._private.ray_constants import env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class _NodeResourceSpec:
-
     cpu: int
     gpu: int
     mem: int
@@ -50,6 +51,38 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
+def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
+    """Get the unique node resource specs and their count in the cluster."""
+    nodes_resource_spec_count = defaultdict(int)
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    if cluster_config and cluster_config.node_group_configs:
+        for node_group_config in cluster_config.node_group_configs:
+            if not node_group_config.resources or node_group_config.max_count == 0:
+                continue
+            node_resource_spec = _NodeResourceSpec.of(
+                cpu=node_group_config.resources.get("CPU", 0),
+                gpu=node_group_config.resources.get("GPU", 0),
+                mem=node_group_config.resources.get("memory", 0),
+            )
+            nodes_resource_spec_count[node_resource_spec] = 0
+
+    # Filter out the head node.
+    node_resources = [
+        node["Resources"]
+        for node in ray.nodes()
+        if node["Alive"] and "node:__internal_head__" not in node["Resources"]
+    ]
+
+    for r in node_resources:
+        node_resource_spec = _NodeResourceSpec.of(
+            cpu=r.get("CPU", 0), gpu=r.get("GPU", 0), mem=r.get("memory", 0)
+        )
+        nodes_resource_spec_count[node_resource_spec] += 1
+
+    return nodes_resource_spec_count
+
+
 class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """Ray Data's second cluster autoscaler implementation.
 
@@ -70,89 +103,85 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """
 
     # Default cluster utilization threshold to trigger scaling up.
-    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.75
-    # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = 0.25
+    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = env_float(
+        "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD",
+        0.75,
+    )
     # Default time window in seconds to calculate the average of cluster utilization.
-    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
+    DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
+        "RAY_DATA_CLUSTER_UTIL_AVG_WINDOW_S",
+        10,
+    )
     # Default number of nodes to add per node type.
-    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = 1
+    DEFAULT_CLUSTER_SCALING_UP_DELTA: int = env_integer(
+        "RAY_DATA_CLUSTER_SCALING_UP_DELTA",
+        1,
+    )
 
     # Min number of seconds between two autoscaling requests.
-    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 10
+    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS: int = env_integer(
+        "RAY_DATA_MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS",
+        10,
+    )
     # The time in seconds after which an autoscaling request will expire.
-    AUTOSCALING_REQUEST_EXPIRE_TIME_S = 180
-    # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
-    AUTOSCALING_REQUEST_GET_TIMEOUT_S = 5
+    AUTOSCALING_REQUEST_EXPIRE_TIME_S: int = env_integer(
+        "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S",
+        180,
+    )
 
     def __init__(
         self,
-        topology: "Topology",
         resource_manager: "ResourceManager",
+        resource_limits: ExecutionResources,
         execution_id: str,
         resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
-        cluster_util_check_interval_s: float = DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S,
+        min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
+        autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
+        get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
+            _get_node_resource_spec_and_count
+        ),
     ):
+        assert cluster_scaling_up_delta > 0
+        assert cluster_util_avg_window_s > 0
+        assert min_gap_between_autoscaling_requests_s >= 0
+
         if resource_utilization_calculator is None:
-            assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
             resource_utilization_calculator = RollingLogicalUtilizationGauge(
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
 
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator()
+
+        self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
-        assert cluster_scaling_up_delta > 0
         self._cluster_scaling_up_delta = cluster_scaling_up_delta
-        assert cluster_util_avg_window_s > 0
-        self._cluster_util_check_interval_s = cluster_util_check_interval_s
-        # Last time when the cluster utilization was checked.
-        self._last_cluster_util_check_time = 0
+        self._min_gap_between_autoscaling_requests_s = (
+            min_gap_between_autoscaling_requests_s
+        )
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         self._requester_id = f"data-{execution_id}"
-        self._autoscaling_coordinator = DefaultAutoscalingCoordinator()
+        self._autoscaling_coordinator = autoscaling_coordinator
+        self._get_node_counts = get_node_counts
+
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
         self._send_resource_request([])
-        super().__init__(topology, resource_manager, execution_id)
-
-    def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
-        """Get the unique node resource specs and their count in the cluster."""
-        # Filter out the head node.
-        node_resources = [
-            node["Resources"]
-            for node in ray.nodes()
-            if node["Alive"] and "node:__internal_head__" not in node["Resources"]
-        ]
-
-        nodes_resource_spec_count = defaultdict(int)
-        for r in node_resources:
-            node_resource_spec = _NodeResourceSpec.of(
-                cpu=r["CPU"], gpu=r.get("GPU", 0), mem=r["memory"]
-            )
-            nodes_resource_spec_count[node_resource_spec] += 1
-
-        return nodes_resource_spec_count
 
     def try_trigger_scaling(self):
         # Note, should call this method before checking `_last_request_time`,
         # in order to update the average cluster utilization.
-        now = time.time()
-        if (
-            now - self._last_cluster_util_check_time
-            >= self._cluster_util_check_interval_s
-        ):
-            # Update observed resource utilization
-            self._last_cluster_util_check_time = now
-
-            self._resource_utilization_calculator.observe()
+        self._resource_utilization_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
-        if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
+        now = time.time()
+        if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
         util = self._resource_utilization_calculator.get()
@@ -170,8 +199,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._send_resource_request([])
             return
 
-        resource_request = []
-        node_resource_spec_count = self._get_node_resource_spec_and_count()
+        # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
+        # to ensure existing nodes' resources are never crowded out by scale-up requests.
+        active_bundles = []
+        pending_bundles = []
         debug_msg = ""
         if logger.isEnabledFor(logging.DEBUG):
             debug_msg = (
@@ -182,13 +213,26 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # TODO(hchen): We scale up all nodes by the same delta for now.
         # We may want to distinguish different node types based on their individual
         # utilization.
+        node_resource_spec_count = self._get_node_counts()
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
-            num_to_request = int(math.ceil(count + self._cluster_scaling_up_delta))
-            resource_request.extend([bundle] * num_to_request)
+            # Bundles for existing nodes -> active (must include)
+            active_bundles.extend([bundle] * count)
+            # Bundles for scale-up delta -> pending (best-effort)
+            delta_count = int(math.ceil(self._cluster_scaling_up_delta))
+            pending_bundles.extend([bundle] * delta_count)
             if logger.isEnabledFor(logging.DEBUG):
+                num_to_request = count + delta_count
                 debug_msg += f" [{bundle}: {count} -> {num_to_request}]"
         logger.debug(debug_msg)
+
+        # Cap the resource request to respect user-configured limits.
+        # Active bundles (existing nodes) are always included; pending bundles
+        # (scale-up requests) are best-effort.
+        resource_request = cap_resource_request_to_limits(
+            active_bundles, pending_bundles, self._resource_limits
+        )
+
         self._send_resource_request(resource_request)
 
     def _send_resource_request(self, resource_request):
@@ -209,11 +253,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS} seconds."
+                f" {self._min_gap_between_autoscaling_requests_s} seconds."
             )
             logger.warning(msg, exc_info=True)
 
     def get_total_resources(self) -> ExecutionResources:
+        """Get total resources available from the autoscaling coordinator."""
         resources = self._autoscaling_coordinator.get_allocated_resources(
             requester_id=self._requester_id
         )

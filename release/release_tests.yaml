@@ -32,8 +32,6 @@
 #    autosuspend_mins: 10
 #    # Optional cloud_id to use instead of the default cloud
 #    cloud_id: cld_12345678
-#    # Alternatively, you can specify a cloud name
-#    cloud_name: anyscale_default_cloud
 #
 #  # Run configuration for the test
 #  run:
@@ -87,7 +85,6 @@
   working_dir: hello_world_tests
 
   cluster:
-    byod: {}
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -169,7 +166,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
@@ -284,8 +280,6 @@
   frequency: manual
   team: ml
 
-  stable: false
-
   cluster:
     byod:
       type: gpu
@@ -334,8 +328,6 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  stable: false
-
   # https://github.com/ray-project/ray/issues/49847
   frequency: manual
   team: ml
@@ -356,8 +348,6 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/dreambooth
-
-  stable: false
 
   # https://github.com/ray-project/ray/issues/49846
   frequency: manual
@@ -495,7 +485,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -541,7 +530,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x16.yaml
 
   run:
@@ -572,7 +560,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -606,7 +593,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -639,7 +625,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -674,7 +659,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -713,7 +697,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -742,7 +725,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -768,13 +750,10 @@
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
-  stable: true
-
   frequency: nightly-3x
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -849,7 +828,6 @@
   team: rllib
 
   cluster:
-    byod: {}
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -961,8 +939,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: false
 
   frequency: weekly
   team: ml
@@ -1162,8 +1138,6 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: true
-
   frequency: weekly
   team: serve
 
@@ -1202,8 +1176,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: true
 
   frequency: weekly
   team: serve
@@ -1390,7 +1362,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: rte_small.yaml
 
   run:
@@ -1420,7 +1391,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1474,7 +1444,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1498,7 +1467,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1554,7 +1522,6 @@
   team: serve
 
   cluster:
-    byod: {}
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1653,7 +1620,6 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1900,7 +1866,6 @@
   team: ml
 
   cluster:
-    byod: {}
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2040,26 +2005,6 @@
     timeout: 1500  # expected 1000 seconds
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
-- name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
-
 ########################
 # Core Nightly Tests
 ########################
@@ -2073,7 +2018,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2101,7 +2045,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2116,30 +2059,6 @@
       cluster:
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
-- name: decision_tree_autoscaling_20_runs
-  python: "3.10"
-  group: core-multi-test
-  working_dir: nightly_tests
-
-  frequency: nightly
-
-  team: core
-  cluster:
-    byod: {}
-    cluster_compute: decision_tree/autoscaling_compute.yaml
-
-  run:
-    timeout: 9600
-    script: python decision_tree/cart_with_tree.py --concurrency=20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: decision_tree/autoscaling_compute_gce.yaml
-
 - name: autoscaling_shuffle_1tb_1000_partitions
   python: "3.10"
   group: core-multi-test
@@ -2149,7 +2068,6 @@
 
   team: core
   cluster:
-    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2174,7 +2092,6 @@
   working_dir: microbenchmark
 
   cluster:
-    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2201,7 +2118,6 @@
   working_dir: microbenchmark
 
   cluster:
-    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2254,10 +2170,11 @@
 
   run:
     timeout: 1800
+    # NIXL currently only works on T4's for <100mb tensors so not enabling.
     script: python experimental/rdt_single_node_microbenchmark.py
 
-- name: rdt_single_node_B200_microbenchmark
-  python: "3.10"
+- name: rdt_single_node_A100_microbenchmark
+  python: "3.11"
   group: core-daily-test
   team: core
   frequency: weekly
@@ -2265,12 +2182,15 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128 # llm image already has nixl
+      runtime_env: # env vars for nixl
+        - UCX_TLS=all
+        - UCX_NET_DEVICES=all
     cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb
+    script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
 
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
 # - name: gpu_object_GPU_multinode
@@ -2325,7 +2245,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2350,7 +2269,6 @@
   team: data
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -2459,7 +2377,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2500,7 +2417,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2543,7 +2459,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2604,7 +2519,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2663,7 +2577,6 @@
   team: core
 
   cluster:
-    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -2683,7 +2596,6 @@
   frequency: nightly-3x
   team: core
   cluster:
-    byod: {}
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -2726,7 +2638,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -2749,7 +2660,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -3073,8 +2983,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#   stable: false
-
 # - name: scheduling_test_many_5s_tasks_many_nodes
 #   group: core-scalability-test
 #   working_dir: benchmarks
@@ -3093,8 +3001,6 @@
 #       num_nodes: 32
 #       timeout: 600
 
-#   stable: false
-
 
 ##################
 # Core Chaos tests
@@ -3108,7 +3014,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3133,7 +3038,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3159,7 +3063,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3211,7 +3114,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3236,7 +3138,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3262,7 +3163,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3314,7 +3214,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3339,7 +3238,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3365,7 +3263,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3417,7 +3314,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3442,7 +3338,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3468,7 +3363,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3607,14 +3501,11 @@
   group: k8s-test
   working_dir: k8s_tests
 
-  stable: false
-
   # Failing since Oct 2024.
   # https://github.com/ray-project/ray/issues/36190
   frequency: manual
   team: serve
   cluster:
-    byod: {}
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -3655,7 +3546,6 @@
   team: clusters
 
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3678,7 +3568,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3701,7 +3590,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3724,7 +3612,6 @@
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3748,7 +3635,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3771,7 +3657,6 @@
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -3791,13 +3676,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3817,13 +3699,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: nightly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3842,13 +3721,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3868,13 +3744,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3894,13 +3767,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: manual
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3920,13 +3790,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   env: gce
   frequency: weekly
   team: clusters
   cluster:
-    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -3950,9 +3817,6 @@
   team: core
 
   cluster:
-    byod:
-      pip:
-        - ray[default]
     cluster_compute: aws.yaml
 
   run:
@@ -4124,6 +3988,66 @@
     long_running: false
     script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
 
+- name: llm_serve_sleep_wakeup
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_sleep_wakeup.py
+
+- name: llm_serve_pause_resume
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_pause_resume.py
+
+- name: llm_serve_rlhf
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python test_llm_serve_rlhf.py
+
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
   python: "3.11"
@@ -4249,7 +4173,7 @@
   python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
-  frequency: weekly
+  frequency: nightly
   team: llm
 
   cluster:
@@ -4451,6 +4375,108 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+
+- name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_multiplexing_forecast.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: model_composition_recsys  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
+      post_build_script: byod_model_composition_recsys.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 1800
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: asynchronous_inference  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/asynchronous-inference
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_asynchronous_inference.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: video_analysis_pipeline  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.10"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/video-analysis
+
+  cluster:
+    byod:
+      type: cpu
+      post_build_script: byod_serve_video_analysis.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    # probably wont work on gce as tests depend on s3 access
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   python: "3.10"
@@ -4713,6 +4739,58 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: llm_batch_inference_text  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

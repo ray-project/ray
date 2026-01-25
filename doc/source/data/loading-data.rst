@@ -17,7 +17,7 @@ Reading files
 
 Ray Data reads files from local disk or cloud storage in a variety of file formats.
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -157,7 +157,7 @@ Reading files from local disk
 To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
 specify paths with the ``local://`` schema. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tip::
 
@@ -190,7 +190,7 @@ To read files in cloud storage, authenticate all nodes with your cloud service p
 Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
 appropriate schema. URIs can point to buckets, folders, or objects.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -302,7 +302,7 @@ Reading files from NFS
 To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
 and specify files on the mounted filesystem. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. testcode::
     :skipif: True
@@ -338,6 +338,33 @@ You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
+
+Downloading files from URIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may have a metadata table with a column of URIs and you want to download the files referenced by the URIs.
+
+You can download data in bulk by leveraging the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
+
+The following example shows how to download a batch of images from URLs listed in a Parquet file:
+
+.. testcode::
+
+    import ray
+    from ray.data.expressions import download
+
+    # Read a Parquet file containing a column of image URLs
+    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
+
+    # Use `with_column` and `download` to download the images in parallel.
+    # This creates a new column 'bytes' with the downloaded file contents.
+    ds = ds.with_column(
+        "bytes",
+        download("image_url"),
+    )
+
+    ds.take(1)
+
 Loading data from other libraries
 =================================
 
@@ -368,11 +395,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=3,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
         Python objects. In the schema, the column name defaults to "item". 
@@ -387,7 +420,19 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
+            shape: (5, 1)
+            ╭───────╮
+            │ item  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 1     │
+            │ 2     │
+            │ 3     │
+            │ 4     │
+            │ 5     │
+            ╰───────╯
+            (Showing 5 of 5 rows)
 
     .. tab-item:: NumPy
 
@@ -400,18 +445,24 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             import numpy as np
             import ray
 
-            array = np.ones((3, 2, 2))
+            array = np.arange(3)
             ds = ray.data.from_numpy(array)
 
             print(ds)
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
-            )
+            shape: (3, 1)
+            ╭───────╮
+            │ data  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 0     │
+            │ 1     │
+            │ 2     │
+            ╰───────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: pandas
 
@@ -433,11 +484,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: object, price: float64}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ object ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: PyArrow
 
@@ -458,11 +515,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
 .. _loading_datasets_from_distributed_df:
 

@@ -3,17 +3,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 compile_pip_requirements(
-    name = "requirements_buildkite",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_buildkite.in",
-    requirements_txt = "requirements_buildkite.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
     name = "requirements_py310",
     data = [":requirements-doc.txt"],
     requirements_in = "requirements_py310.in",
@@ -438,13 +427,8 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "//doc:deployment_serve_llm_example_configs",
-        "//doc:example_configs",
-        "//doc/source/data/examples:data_example_configs",
-        "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
+        # Comprehensive filegroup that auto-discovers all ci/{aws,gce}.yaml configs for ray examples.
+        "//doc:all_examples_ci_configs",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -589,6 +573,21 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_byod_build_context",
+    size = "small",
+    srcs = ["ray_release/tests/test_byod_build_context.py"],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "release_unit",
@@ -906,21 +905,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "build_pipeline",
-    srcs = ["ray_release/scripts/build_pipeline.py"],
-    data = glob(["**/*.yaml"]) + [
-        "ray_release/byod/byod.Dockerfile",
-        "ray_release/byod/byod.custom.Dockerfile",
-        "//python/ray/autoscaler/aws:test_configs",
-        "//python/ray/autoscaler/gcp:test_configs",
-    ],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ":ray_release",
-    ],
-)
-
 py_library(
     name = "custom_byod_build_lib",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
@@ -956,6 +940,16 @@ py_library(
 py_binary(
     name = "custom_image_build_and_test_init",
     srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":ray_release",
+        bk_require("click"),
+    ],
+)
+
+py_binary(
+    name = "list_release_tests",
+    srcs = ["ray_release/scripts/list_release_tests.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":ray_release",
