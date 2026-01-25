@@ -302,14 +302,22 @@ class PandasBlockBuilder(TableBlockBuilder):
 
         pandas = lazy_import_pandas()
 
+        def _convert_column(column_name, column_values):
+            if len(column_values) == 0:
+                return column_values
+            if not _should_convert_to_tensor(column_values, column_name):
+                return column_values
+            # Convert to numpy first
+            converted = convert_to_numpy(column_values)
+            # Only wrap in TensorArray if result is a multi-dimensional tensor
+            # (ndim > 1). This avoids issues with 1D arrays from aggregations.
+            if isinstance(converted, np.ndarray) and converted.ndim > 1:
+                return TensorArray(converted)
+            return converted
+
         return pandas.DataFrame(
             {
-                column_name: (
-                    TensorArray(convert_to_numpy(column_values))
-                    if len(column_values) > 0
-                    and _should_convert_to_tensor(column_values, column_name)
-                    else column_values
-                )
+                column_name: _convert_column(column_name, column_values)
                 for column_name, column_values in columns.items()
             }
         )
@@ -438,17 +446,19 @@ class PandasBlockAccessor(TableBlockAccessor):
             )
         return schema
 
-    def to_pandas(self) -> "pandas.DataFrame":
+    def to_pandas(self, copy: bool = False) -> "pandas.DataFrame":
         from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         ctx = DataContext.get_current()
         table = self._table
         if ctx.enable_tensor_extension_casting:
             table = _cast_tensor_columns_to_ndarrays(table)
+        if copy:
+            table = table.copy()
         return table
 
     def to_numpy(
-        self, columns: Optional[Union[str, List[str]]] = None
+        self, columns: Optional[Union[str, List[str]]] = None, copy: bool = False
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
@@ -469,7 +479,10 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         arrays = []
         for column in columns:
-            arrays.append(self._table[column].to_numpy())
+            arr = self._table[column].to_numpy()
+            if copy:
+                arr = arr.copy()
+            arrays.append(arr)
 
         if should_be_single_ndarray:
             arrays = arrays[0]
@@ -481,10 +494,20 @@ class PandasBlockAccessor(TableBlockAccessor):
         import pyarrow as pa
 
         from ray.data._internal.tensor_extensions.pandas import TensorDtype
+        from ray.data.util.data_batch_conversion import (
+            _cast_ndarray_columns_to_tensor_extension,
+        )
+
+        ctx = DataContext.get_current()
+        table = self._table
+
+        # Convert tensor columns to TensorArray before Arrow conversion
+        if ctx.enable_tensor_extension_casting:
+            table = _cast_ndarray_columns_to_tensor_extension(table)
 
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         # column to the resulting table.
-        arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
+        arrow_table = pa.Table.from_pandas(table, preserve_index=False)
 
         # NOTE: Pandas by default coerces all-null column types (including None,
         #       NaN, etc) into "double" type by default, which is incorrect in a
@@ -496,8 +519,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         #       containing non-null values and carrying appropriate type later.
         null_coerced_columns = {}
 
-        for idx, col_name in enumerate(self._table.columns):
-            col = self._table[col_name]
+        for idx, col_name in enumerate(table.columns):
+            col = table[col_name]
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context

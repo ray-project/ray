@@ -44,6 +44,7 @@ def batch_blocks(
             ),
             batch_format=batch_format,
             stats=stats,
+            ensure_copy=ensure_copy,
         )
 
         if collate_fn is not None:

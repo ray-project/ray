@@ -1457,6 +1457,9 @@ def column_needs_tensor_extension(s: pd.Series) -> bool:
         Whether the provided Series needs a tensor extension representation.
     """
     # NOTE: This is an O(1) check.
-    return (
-        s.dtype.type is np.object_ and not s.empty and isinstance(s.iloc[0], np.ndarray)
-    )
+    # Only convert if first element is a multi-dimensional array (ndim > 1).
+    # 1D arrays (like aggregation results) stay as regular object columns.
+    if s.dtype.type is not np.object_ or s.empty:
+        return False
+    first = s.iloc[0]
+    return isinstance(first, np.ndarray) and first.ndim > 1
