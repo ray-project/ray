@@ -56,6 +56,8 @@ def process_horizon_batch(
     batch, delta_timestamps: dict[str, list[float]], episode_dict: dict
 ) -> dict:
     """Sort batch by timestamp and build temporal horizons for specified keys."""
+    if delta_timestamps is None:
+        return batch
 
     sorted_batch = batch.sort_values(by="timestamp").reset_index(drop=True)
     ep_start = 0
