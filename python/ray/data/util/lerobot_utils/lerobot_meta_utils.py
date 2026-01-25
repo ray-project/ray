@@ -154,6 +154,10 @@ def load_nested_dataset(
             if features is not None:
                 table = table.cast(features.arrow_schema)
 
+            # Remove embedded HuggingFace metadata that may contain old 'List' feature types
+            # This prevents Dataset.__init__ from trying to parse outdated feature definitions
+            table = table.replace_schema_metadata(None)
+
             return Dataset(table)
 
         arrow_dataset = pa_ds.dataset(paths, format="parquet")
@@ -162,6 +166,9 @@ def load_nested_dataset(
 
         if features is not None:
             table = table.cast(features.arrow_schema)
+
+        # Remove embedded HuggingFace metadata that may contain old 'List' feature types
+        table = table.replace_schema_metadata(None)
 
         return Dataset(table)
 
