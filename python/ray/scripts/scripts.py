@@ -1474,6 +1474,8 @@ def kill_actor(
                 raise click.ClickException(
                     f"Failed to request graceful termination: {e}"
                 )
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(f"Failed to kill actor: {e}")
 
