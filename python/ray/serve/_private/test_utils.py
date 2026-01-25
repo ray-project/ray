@@ -919,19 +919,9 @@ def get_metric_dictionaries(
         return True
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
-    serve_samples = [
-        sample
-        for sample in timeseries.metric_samples.values()
-        if "ray_serve_" in sample.name
-    ]
-    print(
-        "metrics", "\n".join([f"Labels: {sample.labels}\n" for sample in serve_samples])
-    )
-
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:
             metric_dicts.append(sample.labels)
 
-    print(metric_dicts)
     return metric_dicts
