@@ -1320,27 +1320,29 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
 
-def test_kill_actor_by_name_via_cli(ray_start_cluster):
-    """Test force-killing a named actor via CLI. Covers both regular and detached actors."""
-
-    cluster = ray_start_cluster
-    address = cluster.address
+def test_kill_actor_by_name_via_cli(ray_start_regular):
+    """Test killing a named actor via CLI (both force and graceful termination). Covers regular and detached actors."""
+    address = ray_start_regular["address"]
     runner = CliRunner()
 
-    @ray.remote
+    @ray.remote(max_restarts=-1)
     class Actor:
         def ping(self):
             return "pong"
 
-    def check_killed(actorhandle):
-        try:
-            ray.get(actorhandle.ping.remote(), timeout=1)
-            return False
-        except Exception:
-            return True
+        def crash(self):
+            raise RuntimeError("intentional")
 
-    # Regular named actor
+    # Regular named actor with namespace
+    # Kill without --no-restart flag
     actor = Actor.options(name="test_actor", namespace="ns").remote()
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "test_actor", "namespace": "ns"}
+    ]
+    try:
+        ray.get(actor.crash.remote())
+    except ray.exceptions.RayTaskError:
+        pass
     assert ray.get(actor.ping.remote()) == "pong"
 
     result = runner.invoke(
@@ -1356,13 +1358,35 @@ def test_kill_actor_by_name_via_cli(ray_start_cluster):
         ],
     )
     _die_on_error(result)
-    wait_for_condition(lambda: check_killed(actor), timeout=10)
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "test_actor", "namespace": "ns"}
+    ]
+    assert ray.get(actor.ping.remote()) == "pong"
+    # Kill with --no-restart flag
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+            "--no-restart",
+        ],
+    )
+    _die_on_error(result)
+    assert ray.util.list_named_actors(all_namespaces=True) == []
 
     # Detached named actor
     detached_actor = Actor.options(
         name="detached_test_actor", namespace="ns", lifetime="detached"
     ).remote()
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "detached_test_actor", "namespace": "ns"}
+    ]
     result = runner.invoke(
         scripts.kill_actor,
         [
@@ -1373,25 +1397,21 @@ def test_kill_actor_by_name_via_cli(ray_start_cluster):
             "--namespace",
             "ns",
             "--force",
+            "--no-restart",
         ],
     )
     _die_on_error(result)
-    wait_for_condition(lambda: check_killed(detached_actor), timeout=10)
+    assert ray.util.list_named_actors(all_namespaces=True) == []
 
-    # Graceful shutdown named actor
-    @ray.remote
-    class GracefulActor:
-        def ping(self):
-            return "pong"
+    # Test graceful termination of named actor
+    def check_killed(actorhandle):
+        try:
+            ray.get(actorhandle.ping.remote(), timeout=1)
+            return False
+        except Exception:
+            return True
 
-        def __ray_terminate__(self):
-            import ray.actor
-
-            ray.actor.exit_actor()
-
-    graceful_actor = GracefulActor.options(
-        name="graceful_actor", namespace="ns"
-    ).remote()
+    graceful_actor = Actor.options(name="graceful_actor", namespace="ns").remote()
     assert ray.get(graceful_actor.ping.remote()) == "pong"
 
     result = runner.invoke(
@@ -1407,6 +1427,7 @@ def test_kill_actor_by_name_via_cli(ray_start_cluster):
     )
     _die_on_error(result)
     wait_for_condition(lambda: check_killed(graceful_actor), timeout=10)
+    assert ray.util.list_named_actors(all_namespaces=True) == []
 
 
 if __name__ == "__main__":

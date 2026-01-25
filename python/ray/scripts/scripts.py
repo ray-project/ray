@@ -1385,7 +1385,7 @@ def stop(force: bool, grace_period: int):
     "--name",
     required=False,
     type=str,
-    help="Named actor to kill. Mutually exclusive with --actor-id.",
+    help="Named actor to kill.",
 )
 @click.option(
     "--namespace",
@@ -1394,16 +1394,17 @@ def stop(force: bool, grace_period: int):
     help="Namespace for named actor (when using --name).",
 )
 @click.option(
-    "-f",
     "--force",
     is_flag=True,
-    help="If set, kill the actor forcefully. Otherwise attempt graceful termination.",
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
 )
 @click.option(
     "--no-restart",
     is_flag=True,
-    default=True,
-    help="If set, the actor will not be restarted after being killed.",
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
 )
 def kill_actor(
     address: Optional[str],
@@ -1415,8 +1416,8 @@ def kill_actor(
     """Kill an actor by name.
     Args:
         address: Override the address to connect to.
-        name: Named actor to kill. Mutually exclusive with --actor-id.
-        namespace: Namespace for named actor (when using --name).
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
         force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
         no_restart: If set, the actor will not be restarted after being killed.
 
@@ -1425,7 +1426,10 @@ def kill_actor(
         or raises a click.ClickException on failure.
 
     Examples:
-      ray kill-actor --name my_actor --namespace default
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
     """
     # Validate input: require a name
     if not name:
@@ -1438,7 +1442,13 @@ def kill_actor(
 
     # Connect to the cluster (no driver logging)
     if not ray.is_initialized():
-        ray.init(address=address, log_to_driver=True)
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
 
     try:
         try:
@@ -1456,22 +1466,16 @@ def kill_actor(
             except Exception as e:
                 raise click.ClickException(f"Failed to force kill actor: {e}")
 
-        term = getattr(actor_handle, "__ray_terminate__", None)
-        if term is None:
-            raise click.ClickException(
-                "Actor does not support graceful termination. Use --force to force kill."
-            )
-
-        try:
-            term.remote()
-            click.echo(f"Requested graceful termination for actor: {name}")
-        except Exception as e:
-            raise click.ClickException(f"Failed to request graceful termination: {e}")
-    finally:
-        try:
-            ray.shutdown()
-        except Exception as e:
-            raise e
+        else:
+            try:
+                actor_handle.__ray_terminate__.remote()
+                click.echo(f"Requested graceful termination for actor: {name}")
+            except Exception as e:
+                raise click.ClickException(
+                    f"Failed to request graceful termination: {e}"
+                )
+    except Exception as e:
+        raise click.ClickException(f"Failed to kill actor: {e}")
 
 
 @cli.command()
