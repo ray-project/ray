@@ -65,6 +65,7 @@ OBS_SPACES = {
         {
             "sensors": Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32),
             "position": Box(low=-10.0, high=10.0, shape=(3,), dtype=np.float32),
+            "mode": Discrete(4),
         }
     ),
 }
@@ -125,14 +126,11 @@ class TestDQNRLModule:
             obs_list = [obs_space.sample() for _ in range(batch_size)]
             next_obs_list = [obs_space.sample() for _ in range(batch_size)]
 
-            obs_batch = tree.map_structure(lambda *x: np.stack(x, axis=0), *obs_list)
-            next_obs_batch = tree.map_structure(
-                lambda *x: np.stack(x, axis=0), *next_obs_list
+            obs_batch = tree.map_structure(
+                lambda *x: np.stack(x, axis=0, dtype=np.float32), *obs_list
             )
-
-            obs_batch = tree.map_structure(lambda x: x.astype(np.float32), obs_batch)
             next_obs_batch = tree.map_structure(
-                lambda x: x.astype(np.float32), next_obs_batch
+                lambda *x: np.stack(x, axis=0, dtype=np.float32), *next_obs_list
             )
 
             batch = {
