@@ -25,7 +25,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -45,7 +45,7 @@ class BazelRule:
         assert self.timeout in (None, "short", "moderate", "long", "eternal")
 
     @property
-    def actual_timeout_s(self) -> float:
+    def actual_timeout_s(self) -> int:
         # See https://bazel.build/reference/be/common-definitions
         # Timeout takes priority over size
         if self.timeout == "short":
@@ -198,7 +198,7 @@ def extract_rules_from_xml(element: ET.Element) -> List[BazelRule]:
 
 def group_rules_by_time_needed(
     rules: List[BazelRule],
-) -> List[Tuple[float, List[BazelRule]]]:
+) -> List[Tuple[int, List[BazelRule]]]:
     """
     Return a list of tuples of (timeout in seconds, list of rules)
     sorted descending.
@@ -211,8 +211,32 @@ def group_rules_by_time_needed(
     return sorted(grouped_rules.items(), key=lambda x: x[0], reverse=True)
 
 
+def allocate_slots_to_shards(
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]],
+    count: int,
+) -> List[Dict[int, int]]:
+    """
+    Allocate test slots to shards using least-loaded strategy.
+
+    This only determines how many tests of each size go to each shard,
+    without assigning specific tests. This preserves load balancing while
+    allowing tests to be assigned in name order later.
+    """
+    shard_times = [0] * count
+    shard_slots = [defaultdict(int) for _ in range(count)]
+
+    for timeout, rules in rules_grouped_by_time:
+        for _ in range(len(rules)):
+            # Always pick the least-loaded shard
+            best_idx = min(range(count), key=lambda i: shard_times[i])
+            shard_slots[best_idx][timeout] += 1
+            shard_times[best_idx] += timeout
+
+    return shard_slots
+
+
 def get_rules_for_shard_naive(
-    rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
     """Create shards by assigning the same number of rules to each shard."""
     all_rules = []
@@ -222,98 +246,47 @@ def get_rules_for_shard_naive(
     return [rule.name for rule in shard]
 
 
-def add_rule_to_best_shard(
-    rule_to_add: BazelRule, shards: List[List[BazelRule]], optimum: float
-):
-    """Adds a rule to the best shard.
-
-    The best shard is determined in the following fashion:
-    1. Pick first shard which is below optimum,
-    2. If no shard is below optimum, pick the shard closest
-        to optimum.
-    """
-    first_shard_index_below_optimum = None
-    shard_index_right_above_optimum = None
-    shard_index_right_above_optimum_time = None
-    for i, shard in enumerate(shards):
-        # Total time the shard needs to run so far
-        shard_time = sum(rule.actual_timeout_s for rule in shard)
-        # Total time the shard would need to run with the rule_to_add
-        shard_time_with_item = shard_time + rule_to_add.actual_timeout_s
-
-        if shard_time_with_item < optimum:
-            # If there's a shard below optimum, just use that
-            first_shard_index_below_optimum = i
-            break
-        elif (
-            shard_index_right_above_optimum is None
-            or shard_index_right_above_optimum_time > shard_time_with_item
-        ):
-            # Otherwise, pick the shard closest to optimum
-            shard_index_right_above_optimum = i
-            shard_index_right_above_optimum_time = shard_time_with_item
-    if first_shard_index_below_optimum is not None:
-        best_shard_index = first_shard_index_below_optimum
-    else:
-        best_shard_index = shard_index_right_above_optimum
-
-    shards[best_shard_index].append(rule_to_add)
-
-
 def get_rules_for_shard_optimal(
-    rules_grouped_by_time: List[Tuple[float, List[BazelRule]]], index: int, count: int
+    rules_grouped_by_time: List[Tuple[int, List[BazelRule]]], index: int, count: int
 ) -> List[str]:
     """Creates shards by trying to make sure each shard takes around the same time.
 
-    We use a simple heuristic here (as this problem is NP-complete):
-    1. Determine how long one shard would take if they were ideally balanced
-       (this may be impossible to attain, but that's fine).
-    2. Allocate the next biggest item into the first shard that is below the optimum.
-    3. If there's no shard below optimium, choose the shard closest to optimum.
+    Uses a two-phase approach:
+    1. Allocate slots to shards using least-loaded strategy (determines capacity)
+    2. Fill slots with tests in name order (preserves test clustering)
 
-    This works very well for our usecase and is fully deterministic.
+    This ensures no empty shards while keeping tests of the same size contiguous,
+    making it easier to locate specific tests.
 
     ``rules_grouped_by_time`` is expected to be a list of tuples of
     (timeout in seconds, list of rules) sorted by timeout descending.
     """
-    # For sanity checks later.
+    # Phase 1: Determine slot allocation for all shards
+    shard_slots = allocate_slots_to_shards(rules_grouped_by_time, count)
+
+    # Phase 2: Assign tests to all shards by name order within each timeout group
+    all_shard_rules: List[List[BazelRule]] = [[] for _ in range(count)]
+    for timeout, rules in rules_grouped_by_time:
+        # Sort rules by name for deterministic, contiguous assignment
+        sorted_rules = sorted(rules, key=lambda r: r.name)
+        for i in range(count):
+            # Calculate which tests belong to each shard
+            # Tests are assigned contiguously: shard 0 gets first N, shard 1 gets next M
+            start_idx = sum(shard_slots[j][timeout] for j in range(i))
+            end_idx = start_idx + shard_slots[i][timeout]
+            all_shard_rules[i].extend(sorted_rules[start_idx:end_idx])
+
+    # Collect all rules for sanity checks
     all_rules = []
     for _, rules in rules_grouped_by_time:
         all_rules.extend(rules)
 
-    # Instantiate the shards, each represented by a list.
-    shards: List[List[BazelRule]] = [list() for _ in range(count)]
-
-    # The theoretical optimum we are aiming for. Note that this may be unattainable
-    # as it doesn't take into account that tests are discrete and cannot be split.
-    # This is however fine, because it should only serve as a guide which shard to
-    # add the next test to.
-    optimum = (
-        sum(timeout * len(rules) for timeout, rules in rules_grouped_by_time) / count
-    )
-
-    def get_next_longest_rule() -> BazelRule:
-        """
-        Get the next longest (taking up the most time) BazelRule from the
-        ``rules_grouped_by_time`` list.
-        """
-        item = None
-        for _, items in rules_grouped_by_time:
-            if items:
-                return items.pop()
-        return item
-
-    rule_to_add = get_next_longest_rule()
-    while rule_to_add:
-        add_rule_to_best_shard(rule_to_add, shards, optimum)
-        rule_to_add = get_next_longest_rule()
-
-    # Sanity checks.
-    num_all_rules = sum(len(shard) for shard in shards)
+    # Sanity checks
+    num_all_rules = sum(len(shard) for shard in all_shard_rules)
 
     # Make sure that there are no duplicate rules.
     all_rules_set = set()
-    for shard in shards:
+    for shard in all_shard_rules:
         all_rules_set = all_rules_set.union(set(shard))
     assert len(all_rules_set) == num_all_rules, (
         f"num of unique rules {len(all_rules_set)} "
@@ -321,23 +294,21 @@ def get_rules_for_shard_optimal(
     )
 
     # Make sure that all rules have been included in the shards.
-    assert all_rules_set == set(all_rules_set), (
+    assert all_rules_set == set(all_rules), (
         f"unique rules after sharding {len(all_rules_set)} "
-        f"doesn't match unique rules after sharding {num_all_rules}"
+        f"doesn't match unique rules after sharding {len(all_rules)}"
     )
 
     print(
-        f"get_rules_for_shard statistics:\n\tOptimum: {optimum} seconds\n"
+        "get_rules_for_shard statistics:\n"
         + "\n".join(
-            (
-                f"\tShard {i}: {len(shard)} rules, "
-                f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
-            )
-            for i, shard in enumerate(shards)
+            f"\tShard {i}: {len(shard)} rules, "
+            f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
+            for i, shard in enumerate(all_shard_rules)
         ),
         file=sys.stderr,
     )
-    return sorted([rule.name for rule in shards[index]])
+    return sorted([rule.name for rule in all_shard_rules[index]])
 
 
 def main(

@@ -48,14 +48,13 @@ class RayDockerContainer(DockerContainer):
         wheel_name = (
             f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_{self.architecture}.whl"
         )
-        constraints_file = "requirements_compiled.txt"
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{image_repo}:{tag}"
         pip_freeze = f"{self.image_type}:{tag}_pip-freeze.txt"
 
         cmds = [
             "./ci/build/build-ray-docker.sh "
-            f"{wheel_name} {base_image} {constraints_file} {ray_image} {pip_freeze}"
+            f"{wheel_name} {base_image} {ray_image} {pip_freeze}"
         ]
         if self._should_upload():
             cmds += [

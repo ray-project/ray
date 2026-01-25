@@ -192,6 +192,8 @@ python/ray/_private/services.py
     DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
+    DOC101: Function `determine_plasma_store_config`: Docstring contains fewer arguments than in function signature.
+    DOC103: Function `determine_plasma_store_config`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [temp_dir: str].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.
@@ -490,12 +492,7 @@ python/ray/autoscaler/_private/commands.py
     DOC101: Function `_should_create_new_head`: Docstring contains fewer arguments than in function signature.
     DOC111: Function `_should_create_new_head`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Function `_should_create_new_head`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [provider: NodeProvider].
-    DOC101: Function `attach_cluster`: Docstring contains fewer arguments than in function signature.
     DOC111: Function `attach_cluster`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `attach_cluster`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [no_config_cache: bool].
-    DOC101: Function `exec_cluster`: Docstring contains fewer arguments than in function signature.
-    DOC111: Function `exec_cluster`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `exec_cluster`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [no_config_cache: bool, with_output: bool].
     DOC201: Function `exec_cluster` does not have a return section in docstring
     DOC101: Function `rsync`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `rsync`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_runner: ModuleType, no_config_cache: bool].
@@ -1650,8 +1647,6 @@ python/ray/serve/deployment.py
     DOC201: Function `deployment_to_schema` does not have a return section in docstring
 --------------------
 python/ray/serve/handle.py
-    DOC101: Method `DeploymentHandle.options`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `DeploymentHandle.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_prefer_local_routing: Union[bool, DEFAULT], method_name: Union[str, DEFAULT], multiplexed_model_id: Union[str, DEFAULT], stream: Union[bool, DEFAULT], use_new_handle_api: Union[bool, DEFAULT]].
     DOC201: Method `DeploymentHandle.options` does not have a return section in docstring
     DOC106: Method `DeploymentHandle.remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC201: Method `DeploymentHandle.remote` does not have a return section in docstring
@@ -1955,7 +1950,7 @@ python/ray/train/v2/tests/test_worker_group.py
 --------------------
 python/ray/train/v2/torch/torch_trainer.py
     DOC104: Method `TorchTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, metadata, resume_from_checkpoint
+    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, validation_config, metadata, resume_from_checkpoint
 --------------------
 python/ray/train/v2/torch/train_loop_utils.py
     DOC111: Function `prepare_model`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list

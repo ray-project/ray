@@ -5,6 +5,7 @@ import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
 from collections import Counter
@@ -26,7 +27,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
+from ray.llm._internal.batch.stages.common import (
+    maybe_convert_ndarray_to_list,
+    truncate_str,
+)
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -694,10 +698,28 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "params": str(request.params),
                 "__inference_error__": None,
             }
-        except _VLLM_FATAL_ERRORS:
-            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
-            # The engine is dead and all subsequent requests would fail.
-            raise
+        except _VLLM_FATAL_ERRORS as e:
+            # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
+            # engine subprocess is dead, but the Ray actor is still alive.
+            #
+            # Simply re-raising would cause task retries to go to the SAME
+            # actor (actor methods are bound to specific instances), creating
+            # an infinite retry loop on the broken actor.
+            #
+            # The fix: exit the actor so Ray can restart it with a fresh
+            # engine. Ray Data's max_restarts=-1 (default) will create a
+            # replacement actor, and task retries will go to healthy actors.
+            #
+            # NOTE: We use os._exit(1) instead of ray.actor.exit_actor() because:
+            # - os._exit(1) -> SYSTEM_ERROR -> raises RaySystemError -> task IS retried
+            # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> raises ActorDiedError
+            #   -> task is NOT retried (ActorDiedError is not a RaySystemError)
+            #
+            # See: https://github.com/ray-project/ray/issues/59522
+            logger.error(
+                f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
+            )
+            os._exit(1)
         except Exception as e:
             if not self.should_continue_on_error:
                 raise
@@ -708,10 +730,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
-            # Include snippet of failed prompt
-            prompt = row.get("prompt", "")
-            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
-                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
+            # Include snippet of failed prompt for debuggability
+            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
@@ -840,8 +860,17 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
+        # Select distributed executor backend:
+        # - "uni": Single-process executor for single-GPU inference. Avoids unnecessary
+        #   process spawning and IPC overhead which is noticeable for small models
+        #   or short decode lengths.
+        # - "ray": Ray-based executor for multi-GPU (TP/PP > 1) with better resource
+        #   cleanup, unification with multi-node pipeline parallelism, and advanced control
+        #   over the placement group.
+        engine_kwargs.setdefault(
+            "distributed_executor_backend",
+            "uni" if num_bundles_per_replica == 1 else "ray",
+        )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that
