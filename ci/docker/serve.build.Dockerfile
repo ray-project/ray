@@ -20,7 +20,7 @@ RUN <<EOF
 set -euo pipefail
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
-    -r $HOME/python_depset.lock
+    -r /home/ray/python_depset.lock
 
 # pip install -U --ignore-installed \
 #   -c python/requirements_compiled.txt \
