@@ -362,6 +362,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             map_transformer = _wrap_transformer_with_limit(
                 map_transformer, per_block_limit
             )
+
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators.task_pool_map_operator import (
                 TaskPoolMapOperator,
@@ -553,7 +554,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
-        self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(
             task_index,
@@ -562,8 +562,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
-
-            # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
@@ -586,12 +584,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
-        self._data_tasks[task_index] = DataOpTask(
+        data_task = DataOpTask(
             task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
         )
+        self._metrics.on_task_submitted(
+            task_index, inputs, task_id=data_task.get_task_id()
+        )
+        self._data_tasks[task_index] = data_task
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
