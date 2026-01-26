@@ -1,4 +1,3 @@
-import json
 import logging
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
@@ -96,12 +95,6 @@ class TrainStateManager:
             framework=backend_config.framework,
             config=backend_config.to_dict(),
         )
-
-        try:
-            json.dumps(train_loop_config)
-        except (TypeError, ValueError):
-            train_loop_config = {"message": "Non-JSON serializable train_loop_config"}
-            logger.debug("train_loop_config is not JSON serializable")
 
         run_settings = RunSettings(
             train_loop_config=train_loop_config,

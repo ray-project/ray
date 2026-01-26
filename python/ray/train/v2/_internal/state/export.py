@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Mapping
 
 from google.protobuf.struct_pb2 import Struct
 
@@ -67,6 +68,50 @@ _TRAINING_FRAMEWORK_MAP = {
 logger = logging.getLogger(__name__)
 
 # Helper conversion functions
+def _to_human_readable_json(obj, *, max_depth=10):
+    """
+    Convert arbitrary Python objects into a human-readable, JSON-serializable string.
+    """
+
+    def sanitize(value, depth):
+        if depth <= 0:
+            return "<truncated>"
+
+        # JSON-native types
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+
+        # Dict-like
+        if isinstance(value, Mapping):
+            return {str(k): sanitize(v, depth - 1) for k, v in value.items()}
+
+        # List / tuple / set
+        if isinstance(value, (list, tuple, set)):
+            return [sanitize(v, depth - 1) for v in value]
+
+        # Objects with __dict__
+        if hasattr(value, "__dict__"):
+            return {
+                "__type__": value.__class__.__name__,
+                "attributes": sanitize(vars(value), depth - 1),
+            }
+
+        # Fallback: string representation
+        return str(value)
+
+    try:
+        sanitized = sanitize(obj, max_depth)
+    except Exception as e:
+        logger.debug(f"Failed to convert value to JSON for export: {e}")
+        sanitized = "N/A"
+
+    return json.dumps(
+        sanitized,
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
     """Convert resources dictionary to protobuf TrainResources."""
     return ProtoTrainRunAttempt.TrainResources(resources=resources)
@@ -227,13 +272,9 @@ def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettin
     )
 
     if run_settings.train_loop_config is not None:
-        try:
-            proto.train_loop_config = json.dumps(run_settings.train_loop_config)
-        except (TypeError, ValueError):
-            proto.train_loop_config = json.dumps(
-                {"message": "Non-JSON serializable train_loop_config"}
-            )
-            logger.debug("train_loop_config is not JSON serializable")
+        proto.train_loop_config = _to_human_readable_json(
+            run_settings.train_loop_config
+        )
 
     return proto
 

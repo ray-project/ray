@@ -4,6 +4,7 @@ import os
 import pytest
 
 import ray
+from ray.train.v2._internal.state.export import _to_human_readable_json
 from ray.train.v2._internal.state.schema import (
     RunAttemptStatus,
     RunStatus,
@@ -121,30 +122,55 @@ def test_export_train_run_attempt(enable_export_api_write):
     assert data[0]["event_data"]["status"] == "RUNNING"
 
 
-def test_export_train_run_non_json_serializable_train_loop_config(
-    enable_export_api_write,
-):
-    """Test that non-JSON-serializable train_loop_config values are exported safely."""
-    state_actor = get_or_create_state_actor()
+def test_to_human_readable_json_complex_dict():
+    class UserObj:
+        def __init__(self):
+            self.a = 1
+            self.b = "hello"
 
-    class Toy:
-        pass
+    class StrFallback:
+        __slots__ = ()
 
-    run = create_mock_train_run(RunStatus.RUNNING)
-    run.run_settings.train_loop_config = {"toy": Toy()}
+        def __str__(self) -> str:
+            return "fallback"
 
-    ray.get(state_actor.create_or_update_train_run.remote(run))
-
-    data = _get_exported_data()
-    assert len(data) == 1
-    assert data[0]["source_type"] == "EXPORT_TRAIN_RUN"
-
-    run_settings = data[0]["event_data"]["run_settings"]
-    # Export converts train_loop_config into a JSON string; for non-serializable configs,
-    # it stores a sentinel message instead of raising.
-    assert json.loads(run_settings["train_loop_config"]) == {
-        "message": "Non-JSON serializable train_loop_config"
+    obj = {
+        "user_obj": UserObj(),
+        "nested_dict": {"level1": {"level2": 2}},
+        "str_fallback": StrFallback(),
+        "list": [UserObj(), {"x": 3}, StrFallback(), 4],
+        "json_native_types": {
+            "str": "t",
+            "int": 1,
+            "float": 1.5,
+            "bool": True,
+            "none": None,
+        },
     }
+
+    expected = {
+        "user_obj": {
+            "__type__": "UserObj",
+            "attributes": {"a": 1, "b": "hello"},
+        },
+        "nested_dict": {"level1": {"level2": 2}},
+        "str_fallback": "fallback",
+        "list": [
+            {"__type__": "UserObj", "attributes": {"a": 1, "b": "hello"}},
+            {"x": 3},
+            "fallback",
+            4,
+        ],
+        "json_native_types": {
+            "str": "t",
+            "int": 1,
+            "float": 1.5,
+            "bool": True,
+            "none": None,
+        },
+    }
+
+    assert json.loads(_to_human_readable_json(obj)) == expected
 
 
 def test_export_oneof_datasets_to_split(enable_export_api_write):
@@ -283,6 +309,7 @@ def test_export_optional_fields(enable_export_api_write):
     ray.get(events)
 
     data = _get_exported_data()
+
     assert len(data) == 4
 
     # Verify train run without optional fields
