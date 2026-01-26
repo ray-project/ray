@@ -46,6 +46,8 @@ class NixlTensorTransport(TensorTransportManager):
         self._tensor_desc_cache: Dict[Tuple[int, int], Tuple[Any, int]] = {}
         # Mapping from object ID to the NIXL managed meta.
         self._managed_meta_nixl: Dict[str, Any] = {}
+        # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be accessed from the user's python thread or the _ray_system thread.
+        self._cache_lock = threading.Lock()
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -132,18 +134,18 @@ class NixlTensorTransport(TensorTransportManager):
                     torch.cuda.synchronize(dev)
 
             nixl_agent = self.get_nixl_agent()
-
-            for tensor in gpu_object:
-                key = (tensor.data_ptr(), tensor.nbytes)
-                if key in self._tensor_desc_cache:
-                    reg_desc, ref_count = self._tensor_desc_cache[key]
-                    self._tensor_desc_cache[key] = (reg_desc, ref_count + 1)
-                else:
-                    reg_desc = nixl_agent.register_memory([tensor])
-                    self._tensor_desc_cache[key] = (reg_desc, 1)
-            xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
-            serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
-            agent_meta = nixl_agent.get_agent_metadata()
+            with self._cache_lock:
+                for tensor in gpu_object:
+                    key = (tensor.data_ptr(), tensor.nbytes)
+                    if key in self._tensor_desc_cache:
+                        reg_desc, ref_count = self._tensor_desc_cache[key]
+                        self._tensor_desc_cache[key] = (reg_desc, ref_count + 1)
+                    else:
+                        reg_desc = nixl_agent.register_memory([tensor])
+                        self._tensor_desc_cache[key] = (reg_desc, 1)
+                xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
+                serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
+                agent_meta = nixl_agent.get_agent_metadata()
         else:
             serialized_descs, agent_meta = None, None
 
@@ -153,7 +155,8 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
-        self._managed_meta_nixl[obj_id] = ret
+        with self._cache_lock:
+            self._managed_meta_nixl[obj_id] = ret
         return ret
 
     def get_communicator_metadata(
@@ -264,19 +267,20 @@ class NixlTensorTransport(TensorTransportManager):
     ):
         from ray._private.worker import global_worker
 
-        assert isinstance(tensor_transport_meta, NixlTransportMetadata)
-        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-        self._managed_meta_nixl.pop(obj_id, None)
-        tensors = gpu_object_store.get_object(obj_id)
-        for tensor in tensors:
-            key = (tensor.data_ptr(), tensor.nbytes)
-            if key in self._tensor_desc_cache:
-                reg_desc, ref_count = self._tensor_desc_cache[key]
-                ref_count -= 1
-                self._tensor_desc_cache[key] = (reg_desc, ref_count)
-                if ref_count == 0:
-                    self._tensor_desc_cache.pop(key)
-                    self.get_nixl_agent().deregister_memory(reg_desc)
+        with self._cache_lock:
+            assert isinstance(tensor_transport_meta, NixlTransportMetadata)
+            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+            self._managed_meta_nixl.pop(obj_id, None)
+            tensors = gpu_object_store.get_object(obj_id)
+            for tensor in tensors:
+                key = (tensor.data_ptr(), tensor.nbytes)
+                if key in self._tensor_desc_cache:
+                    reg_desc, ref_count = self._tensor_desc_cache[key]
+                    ref_count -= 1
+                    self._tensor_desc_cache[key] = (reg_desc, ref_count)
+                    if ref_count == 0:
+                        self._tensor_desc_cache.pop(key)
+                        self.get_nixl_agent().deregister_memory(reg_desc)
 
     def abort_transport(
         self,
@@ -292,20 +296,22 @@ class NixlTensorTransport(TensorTransportManager):
         """Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is."""
         from ray._private.worker import global_worker
 
-        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-        duplicate_obj_id = gpu_object_store.get_duplicate_objects(
-            src_obj_id, src_gpu_object, tensor_transport="NIXL"
-        )
-        if duplicate_obj_id is not None:
-            meta = self._managed_meta_nixl[duplicate_obj_id]
-            self._managed_meta_nixl[src_obj_id] = meta
-            for tensor in src_gpu_object:
-                key = (tensor.data_ptr(), tensor.nbytes)
-                if key in self._tensor_desc_cache:
-                    reg_desc, ref_count = self._tensor_desc_cache[key]
-                    self._tensor_desc_cache[key] = (reg_desc, ref_count + 1)
-            return meta
-        return None
+        with self._cache_lock:
+            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+            duplicate_obj_id = gpu_object_store.get_duplicate_objects(
+                src_obj_id, src_gpu_object, tensor_transport="NIXL"
+            )
+            if duplicate_obj_id is not None:
+                meta = self._managed_meta_nixl[duplicate_obj_id]
+                self._managed_meta_nixl[src_obj_id] = meta
+                for tensor in src_gpu_object:
+                    key = (tensor.data_ptr(), tensor.nbytes)
+                    if key in self._tensor_desc_cache:
+                        reg_desc, ref_count = self._tensor_desc_cache[key]
+                        self._tensor_desc_cache[key] = (reg_desc, ref_count + 1)
+                return meta
+            return None
 
     def get_num_managed_meta_nixl(self) -> int:
-        return len(self._managed_meta_nixl)
+        with self._cache_lock:
+            return len(self._managed_meta_nixl)
