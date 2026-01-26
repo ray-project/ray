@@ -397,7 +397,8 @@ def test_report_validation_fn_success_after_retry():
                 validation=ValidationTaskConfig(
                     ray_remote_kwargs={
                         "max_retries": 1,
-                        "retry_exceptions": [ValueError],
+                        # Note that lists of exception types like [ValueError] are not json serializable.
+                        "retry_exceptions": True,
                     },
                 ),
             )
