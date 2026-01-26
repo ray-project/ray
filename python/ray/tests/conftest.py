@@ -40,6 +40,7 @@ from ray._private.test_utils import (
     get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
+    kill_processes,
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
@@ -290,7 +291,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._common.utils.get_default_ray_temp_dir()
+    temp_dir = ray._common.utils.get_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -327,7 +328,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._common.utils.get_default_ray_temp_dir()
+            temp_dir = ray._common.utils.get_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -408,6 +409,13 @@ def start_redis(db_dir):
 
 
 def kill_all_redis_server():
+    """
+    Find all redis server processes running on this host via cmdline
+    and kill them.
+    Note: killed redis process will raise ResourceWarning
+          when the python Subprocess tracking the
+          underlying process is garbage collected.
+    """
     import psutil
 
     # Find Redis server processes
@@ -455,9 +463,7 @@ def _setup_redis(request, with_sentinel=False):
         else:
             del os.environ["RAY_external_storage_namespace"]
 
-        for proc in processes:
-            proc.process.kill()
-        kill_all_redis_server()
+        kill_processes(processes)
 
 
 @pytest.fixture

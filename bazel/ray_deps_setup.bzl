@@ -224,6 +224,8 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    # WARNING: Upgrading the OTEL version caused a major regression in actor creation/task throughput.
+    # Verify that this regression is fixed before upgrading the below two OTEL versions.
     auto_http_archive(
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
