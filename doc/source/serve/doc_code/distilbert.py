@@ -1,6 +1,7 @@
 # __example_code_start__
-from fastapi import FastAPI
 from transformers import pipeline
+from fastapi import FastAPI
+import torch
 
 from ray import serve
 from ray.serve.handle import DeploymentHandle
@@ -21,7 +22,7 @@ class APIIngress:
 
 
 @serve.deployment(
-    # ray_actor_options={"num_gpus": 1},
+    ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
 class DistilBertModel:
@@ -30,7 +31,8 @@ class DistilBertModel:
             "sentiment-analysis",
             model="distilbert-base-uncased",
             framework="pt",
-            device="cuda",
+            # Transformers requires you to pass device with index
+            device=torch.device("cuda:0"),
         )
 
     def classify(self, sentence: str):
@@ -45,17 +47,15 @@ if __name__ == "__main__":
     import requests
     import ray
 
-    ray.init(runtime_env={"pip": ["transformers==4.51.3", "accelerate==1.7.0"]})
-    handle = serve.run(entrypoint)
-    # Warmup call to ensure deployment scales up from min_replicas=0
-    handle.classify.remote("warmup").result()
+    ray.init(runtime_env={"pip": ["transformers==4.27.1", "accelerate==0.17.1"]})
+    serve.run(entrypoint)
 
     prompt = (
         "This was a masterpiece. Not completely faithful to the books, but "
-        "enthralling from beginning to end. Might be my favorite of the three."
+        "enthralling  from beginning to end. Might be my favorite of the three."
     )
-    prompt_query = "%20".join(prompt.split(" "))
-    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt_query}")
+    input = "%20".join(prompt.split(" "))
+    resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
     print(resp.status_code, resp.json())
 
     assert resp.status_code == 200
