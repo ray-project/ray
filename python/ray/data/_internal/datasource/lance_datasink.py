@@ -1,5 +1,4 @@
 import pickle
-from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -66,8 +65,12 @@ def _write_fragment(
     import pandas as pd
     from lance.fragment import DEFAULT_MAX_BYTES_PER_FILE, write_fragments
 
+    stream = list(stream)
+    if not stream:
+        return []
+
     if schema is None:
-        first = next(stream)
+        first = stream[0]
         if isinstance(first, pd.DataFrame):
             schema = pa.Schema.from_pandas(first).remove_metadata()
         else:
@@ -75,8 +78,6 @@ def _write_fragment(
         if len(schema.names) == 0:
             # Empty table.
             schema = None
-
-        stream = chain([first], stream)
 
     def record_batch_converter():
         for block in stream:
@@ -101,9 +102,9 @@ def _write_fragment(
         table_id,
     )
 
-    reader = pa.RecordBatchReader.from_batches(schema, record_batch_converter())
-    fragments = call_with_retry(
-        lambda: write_fragments(
+    def _write_once():
+        reader = pa.RecordBatchReader.from_batches(schema, record_batch_converter())
+        return write_fragments(
             reader,
             uri,
             schema=schema,
@@ -113,9 +114,9 @@ def _write_fragment(
             data_storage_version=data_storage_version,
             storage_options=storage_options,
             storage_options_provider=storage_options_provider,
-        ),
-        **retry_params,
-    )
+        )
+
+    fragments = call_with_retry(_write_once, **retry_params)
     return [(fragment, schema) for fragment in fragments]
 
 
@@ -149,7 +150,7 @@ class _BaseLanceDatasink(Datasink):
             from lance_namespace import DescribeTableRequest
 
             self.table_id = table_id
-            has_namespace_storage_options = False
+            has_namespace_storage_options = True
 
             if mode == "append":
                 describe_request = DescribeTableRequest(id=table_id)
@@ -157,7 +158,6 @@ class _BaseLanceDatasink(Datasink):
                 self.uri = describe_response.location
                 if describe_response.storage_options:
                     merged_storage_options.update(describe_response.storage_options)
-                    has_namespace_storage_options = True
             elif mode == "overwrite":
                 try:
                     describe_request = DescribeTableRequest(id=table_id)
@@ -165,7 +165,6 @@ class _BaseLanceDatasink(Datasink):
                     self.uri = describe_response.location
                     if describe_response.storage_options:
                         merged_storage_options.update(describe_response.storage_options)
-                        has_namespace_storage_options = True
                 except Exception:
                     uri, ns_storage_options = _declare_table_with_fallback(
                         namespace, table_id
@@ -173,7 +172,6 @@ class _BaseLanceDatasink(Datasink):
                     self.uri = uri
                     if ns_storage_options:
                         merged_storage_options.update(ns_storage_options)
-                        has_namespace_storage_options = True
             else:
                 uri, ns_storage_options = _declare_table_with_fallback(
                     namespace, table_id
@@ -181,11 +179,14 @@ class _BaseLanceDatasink(Datasink):
                 self.uri = uri
                 if ns_storage_options:
                     merged_storage_options.update(ns_storage_options)
-                    has_namespace_storage_options = True
 
             self._has_namespace_storage_options = has_namespace_storage_options
         else:
             self.table_id = None
+            if uri is None:
+                raise ValueError(
+                    "Must provide either 'uri' or ('namespace_impl' and 'table_id')."
+                )
             self.uri = uri
             self._has_namespace_storage_options = False
 
