@@ -3736,7 +3736,7 @@ def read_lerobot(
         ...     "lerobot/aloha_mobile_cabinet",
         ...     root="",
         ... ) # doctest: +SKIP
-        >>> ds.schema()
+        >>> ds.schema() # doctest: +SKIP
         Column         Type
         ------         ----
         episode_index  int64
@@ -3761,7 +3761,7 @@ def read_lerobot(
         ...     root="/path/to/local/cache",
         ...     video_backend="pyav",
         ...     video_batch_size=64
-        ... )
+        ... ) # doctest: +SKIP
 
     Args:
         repo_id: This is the repo id that will be used to fetch the dataset. Locally, the dataset
