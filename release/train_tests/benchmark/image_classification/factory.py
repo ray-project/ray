@@ -350,7 +350,7 @@ class ImageClassificationFactory(BenchmarkFactory):
                     self.benchmark_config, data_dirs
                 )
             elif data_format == ImageClassificationConfig.ImageFormat.S3_URL:
-                # NOTE: This format downloads images via boto3 in map_batches,
+                # NOTE: This format downloads images via ray data expressions,
                 # which is less efficient than native Ray Data S3 reading (JPEG format or Parquet format).
                 # Use this primarily for testing the S3 URL download pattern.
                 from image_classification.s3_url.factory import (
