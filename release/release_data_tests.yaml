@@ -724,7 +724,9 @@
 # TPCH Queries
 ##############
 
+
 - name: "tpch_q1_{{scaling}}"
+  working_dir: nightly_tests/dataset/tpch
   python: "3.10"
   matrix:
     setup:
