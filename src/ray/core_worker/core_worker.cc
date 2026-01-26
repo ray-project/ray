@@ -3689,12 +3689,15 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                                         rpc::ChannelType channel_type,
-                                         const std::string &key_id,
-                                         const NodeID &subscriber_id) {
-  RAY_CHECK_OK(
-      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id));
+Status CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                                           rpc::ChannelType channel_type,
+                                           const std::string &key_id,
+                                           const NodeID &subscriber_id) {
+  Status status =
+      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+  if (!status.ok()) {
+    return status;
+  }
 
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
@@ -3708,27 +3711,7 @@ void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
         << static_cast<int>(sub_message.sub_message_one_of_case())
         << " has received. If you see this message, please report to Ray Github.";
   }
-}
-
-void CoreWorker::ProcessPubsubCommands(const Commands &commands,
-                                       const NodeID &subscriber_id) {
-  for (const auto &command : commands) {
-    if (command.has_unsubscribe_message()) {
-      object_info_publisher_->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
-    } else if (command.has_subscribe_message()) {
-      ProcessSubscribeMessage(command.subscribe_message(),
-                              command.channel_type(),
-                              command.key_id(),
-                              subscriber_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please "
-                        "report to Ray "
-                        "Github.";
-    }
-  }
+  return Status::OK();
 }
 
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
@@ -3746,8 +3729,35 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
-  ProcessPubsubCommands(request.commands(), subscriber_id);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  Status status = Status::OK();
+  for (const auto &command : request.commands()) {
+    if (command.has_unsubscribe_message()) {
+      object_info_publisher_->UnregisterSubscription(
+          command.channel_type(), subscriber_id, command.key_id());
+    } else if (command.has_subscribe_message()) {
+      Status iteration_status = ProcessSubscribeMessage(command.subscribe_message(),
+                                                        command.channel_type(),
+                                                        command.key_id(),
+                                                        subscriber_id);
+      if (iteration_status.IsInvalidArgument()) {
+        // Terminate the worker if the subscribe message is invalid.
+        send_reply_callback(iteration_status, nullptr, nullptr);
+        return;
+      }
+
+      if (!iteration_status.ok()) {
+        // Preserves the last error status.
+        status = iteration_status;
+      }
+    } else {
+      RAY_LOG(FATAL) << "Invalid command has received, "
+                     << static_cast<int>(command.command_message_one_of_case())
+                     << ". If you see this message, please "
+                        "report to Ray "
+                        "Github.";
+    }
+  }
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleUpdateObjectLocationBatch(

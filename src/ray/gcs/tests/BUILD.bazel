@@ -12,6 +12,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "pubsub_handler_test",
+    size = "small",
+    srcs = ["pubsub_handler_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:fake_periodical_runner",
+        "//src/ray/gcs:gcs_pubsub_handler",
+        "//src/ray/pubsub:gcs_publisher",
+        "//src/ray/pubsub:publisher",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_placement_group_manager_mock_test",
     size = "small",
     srcs = [

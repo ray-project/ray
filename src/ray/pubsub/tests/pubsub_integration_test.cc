@@ -72,6 +72,7 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
       } else if (command.has_subscribe_message()) {
+        // Register subscription for a valid channel type should succeed.
         RAY_CHECK_OK(publisher_->RegisterSubscription(
             command.channel_type(),
             subscriber_id,

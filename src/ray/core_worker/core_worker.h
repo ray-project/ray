@@ -1210,6 +1210,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
+  // A single endpoint to process different types of pubsub commands.
+  // Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  // messages.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -1600,15 +1603,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
-  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type,
-                               const std::string &key_id,
-                               const NodeID &subscriber_id);
-
-  /// A single endpoint to process different types of pubsub commands.
-  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
-  /// messages.
-  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+  Status ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
+                                 rpc::ChannelType channel_type,
+                                 const std::string &key_id,
+                                 const NodeID &subscriber_id);
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,

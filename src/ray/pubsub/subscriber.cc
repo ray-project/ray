@@ -439,7 +439,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
           }
           if (!status.ok()) {
             RAY_CHECK(!status.IsInvalidArgument())
-                << "Request to subscribe to the GCS failed due to bad arguments: "
+                << "Request to subscribe to the publisher failed due to bad arguments: "
                 << status.message();
             // This means the publisher has failed.
             // The publisher dead detection & command clean up will be done

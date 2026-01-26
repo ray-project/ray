@@ -709,6 +709,7 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->Publish(GeneratePubMessage(oid, 0));
@@ -731,6 +732,7 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
 
   const auto oid = ObjectID::FromRandom();
 
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->Publish(GeneratePubMessage(oid));
@@ -763,6 +765,7 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
+    // Register subscription for a valid channel type should succeed.
     RAY_CHECK_OK(publisher_->RegisterSubscription(
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
     publisher_->Publish(GeneratePubMessage(oid));
@@ -806,6 +809,7 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   // There will be one object per node.
   for (int i = 0; i < num_nodes; i++) {
     const auto oid = oids[i];
+    // Register subscription for a valid channel type should succeed.
     RAY_CHECK_OK(publisher_->RegisterSubscription(
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
     publisher_->Publish(GeneratePubMessage(oid));
@@ -850,6 +854,7 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
 
   // There will be one object per node.
   for (int i = 0; i < num_nodes; i++) {
+    // Register subscription for a valid channel type should succeed.
     RAY_CHECK_OK(publisher_->RegisterSubscription(
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   }
@@ -890,6 +895,7 @@ TEST_F(PublisherTest, TestBatch) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
+    // Register subscription for a valid channel type should succeed.
     RAY_CHECK_OK(publisher_->RegisterSubscription(
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
     publisher_->Publish(GeneratePubMessage(oid));
@@ -914,6 +920,7 @@ TEST_F(PublisherTest, TestBatch) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
+    // Register subscription for a valid channel type should succeed.
     RAY_CHECK_OK(publisher_->RegisterSubscription(
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
     publisher_->Publish(GeneratePubMessage(oid));
@@ -946,6 +953,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
   // This information should be cleaned up as the subscriber is dead.
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   // Timeout is reached. The connection should've been refreshed. Since the subscriber is
@@ -966,6 +974,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   // New subscriber is registsered for some reason. Since there's no new long polling
   // connection for the timeout, it should be removed.
   long_polling_connection_replied = false;
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   current_time_ += subscriber_timeout_ms_;
@@ -986,6 +995,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   /// Test the case where there was a registration, but no connection.
   ///
   auto oid = ObjectID::FromRandom();
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->Publish(GeneratePubMessage(oid));
@@ -1010,6 +1020,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
 
   /// Test the case where there's no connection coming at all when there was a
   /// registration.
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->Publish(GeneratePubMessage(oid));
@@ -1035,6 +1046,7 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   ASSERT_EQ(long_polling_connection_replied, false);
@@ -1074,6 +1086,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   ASSERT_EQ(long_polling_connection_replied, false);
@@ -1092,6 +1105,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
 
   // Test when connect wasn't done.
   long_polling_connection_replied = false;
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->UnregisterSubscriber(subscriber_id_);
@@ -1104,8 +1118,10 @@ TEST_F(PublisherTest, TestRegistrationIdempotency) {
   const auto oid = ObjectID::FromRandom();
 
   // Double register and assert publish
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->ConnectToSubscriber(
@@ -1135,7 +1151,7 @@ TEST_F(PublisherTest, TestRegistrationIdempotency) {
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 
   // Register and connect. Then unregister a couple times and make sure there's no
-  // publish.
+  // publish. Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->ConnectToSubscriber(
@@ -1158,6 +1174,7 @@ TEST_F(PublisherTest, TestSubscriberLostAPublish) {
   send_reply_callback = [](Status, std::function<void()>, std::function<void()>) {};
 
   // Subscriber registers and connects and publisher publishes.
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->ConnectToSubscriber(request_,
@@ -1216,6 +1233,7 @@ TEST_F(PublisherTest, TestPublishFailure) {
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
+  // Register subscription for a valid channel type should succeed.
   RAY_CHECK_OK(publisher_->RegisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
   publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_EVICTION, oid.Binary());

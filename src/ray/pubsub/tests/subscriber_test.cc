@@ -1007,7 +1007,7 @@ TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusCausesCheck) {
 
   ASSERT_DEATH(
       owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")),
-      "Request to subscribe to the GCS failed due to bad arguments");
+      "Request to subscribe to the publisher failed due to bad arguments");
 }
 
 }  // namespace pubsub

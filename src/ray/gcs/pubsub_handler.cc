@@ -71,6 +71,7 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     iter = sender_to_subscribers_.insert({sender_id, {}}).first;
   }
 
+  Status status = Status::OK();
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
       gcs_publisher_.GetPublisher().UnregisterSubscription(
@@ -79,13 +80,18 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
-      Status status = gcs_publisher_.GetPublisher().RegisterSubscription(
+      Status iteration_status = gcs_publisher_.GetPublisher().RegisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
-      if (!status.ok()) {
-        send_reply_callback(status, nullptr, nullptr);
+      if (iteration_status.IsInvalidArgument()) {
+        send_reply_callback(iteration_status, nullptr, nullptr);
         return;
+      }
+
+      if (!iteration_status.ok()) {
+        // Preserves the last error status.
+        status = iteration_status;
       }
       iter->second.insert(subscriber_id);
     } else {
@@ -94,7 +100,7 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
                      << ". If you see this message, please file an issue to Ray Github.";
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void InternalPubSubHandler::AsyncRemoveSubscriberFrom(const std::string &sender_id) {
