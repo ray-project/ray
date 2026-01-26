@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
@@ -87,8 +87,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from pending checkpoint to (training result, validation task config or boolean)
-        self._pending_training_results = {}
+        # Map from pending checkpoint to validation.
+        self._pending_training_results: Dict[
+            Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
+        ] = {}
 
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
@@ -178,7 +180,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
     def get_pending_training_results(
         self,
-    ) -> Dict[Checkpoint, Union[_TrainingResult, ValidationTaskConfig]]:
+    ) -> Dict[Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]]:
         """Get the pending training results which includes their validation specs."""
         return self._pending_training_results
 
