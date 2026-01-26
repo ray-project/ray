@@ -6,6 +6,9 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 ARG ENABLE_TRACING
 ARG PYDANTIC_VERSION
 ARG PYTHON
+ARG PYTHON_DEPSET="python/deplocks/ci/serve_ci_depset_py${PYTHON}.lock"
+
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-ice"]
 
@@ -16,10 +19,13 @@ RUN <<EOF
 
 set -euo pipefail
 
-pip install -U --ignore-installed \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
+
+# pip install -U --ignore-installed \
+#   -c python/requirements_compiled.txt \
+#   -r python/requirements.txt \
+#   -r python/requirements/test-requirements.txt
 
 # TODO(can): upgrade tensorflow for python 3.12
 if [[ "${PYTHON-}" != "3.12" ]]; then
