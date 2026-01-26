@@ -580,38 +580,16 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         return table if not self.partition_cols else table.drop(self.partition_cols)
 
     def _ensure_parent_directory(self, file_path: str) -> None:
-        """Create parent directory for file if it doesn't exist.
-
-        Note: Cloud filesystems often don't require explicit directory creation
-        (they use flat namespaces), so errors are logged but not raised.
-        """
+        """Create parent directory for file if needed."""
         parent_dir = safe_dirname(file_path)
         if parent_dir:
             try:
                 self.filesystem.create_dir(parent_dir, recursive=True)
-            except FileExistsError:
-                # Directory already exists - this is fine
-                pass
-            except Exception as e:
-                # Cloud filesystems often don't require/support directory creation
-                logger.debug(
-                    f"Could not create directory {parent_dir} (may be expected "
-                    f"for cloud storage): {e}"
-                )
+            except (FileExistsError, Exception):
+                pass  # OK - directory exists or cloud storage doesn't need it
 
     def on_write_complete(self, write_result: WriteResult[DeltaWriteResult]) -> None:
-        """Phase 2: Commit all files in single ACID transaction.
-
-        Collects results from all workers, validates file actions, and commits
-        to the Delta transaction log.
-
-        Note:
-            APPEND and OVERWRITE modes use atomic transactions.
-            UPSERT mode uses two separate transactions (delete then append) and is
-            NOT fully atomic. If a failure occurs between delete and append, data
-            loss may occur. For atomic upsert operations, consider using deltalake's
-            native merge() API directly.
-        """
+        """Phase 2: Commit all files in single ACID transaction."""
         all_file_actions, upsert_keys = self._collect_write_results(write_result)
         existing_table = try_get_deltatable(self.table_uri, self.storage_options)
 
@@ -679,15 +657,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         file_actions: List["AddAction"],
         upsert_keys: Optional[pa.Table],
     ) -> None:
-        """Commit files to existing table based on write mode.
-
-        All modes use atomic transactions via create_write_transaction.
-        """
+        """Commit files to existing table based on write mode."""
         if self.mode == SaveMode.UPSERT:
             self._commit_upsert(table, file_actions, upsert_keys)
         else:
-            # APPEND and OVERWRITE both use atomic create_write_transaction
-            # The transaction_mode is set correctly in _commit_to_existing_table
             self._commit_to_existing_table(table, file_actions)
 
     def _commit_upsert(
@@ -696,26 +669,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         file_actions: List["AddAction"],
         upsert_keys: Optional[pa.Table],
     ) -> None:
-        """Commit upsert using copy-on-write pattern: delete matching rows, then append.
-
-        WARNING: This operation is NOT fully atomic. It performs two separate
-        Delta transactions:
-        1. Delete rows from existing table that match upsert keys
-        2. Append all new data files
-
-        If the process crashes between these operations, the delete will be committed
-        but the append will not, causing data loss. For atomic upsert operations,
-        use deltalake's native merge() API directly.
-
-        Args:
-            table: Existing DeltaTable to upsert into.
-            file_actions: AddAction objects for new files to append.
-            upsert_keys: PyArrow table with key columns from new data.
-        """
+        """Commit upsert: delete matching rows, then append. NOT fully atomic."""
         logger.warning(
-            "UPSERT mode uses two separate transactions (delete then append) and is "
-            "not fully atomic. If a failure occurs between operations, data loss may "
-            "occur. For atomic upsert, use deltalake's native merge() API directly."
+            "UPSERT uses two transactions (delete then append) and is not atomic. "
+            "For atomic upsert, use deltalake's native merge() API."
         )
         import functools
 
@@ -765,39 +722,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         )
 
     def _quote_identifier(self, name: str) -> str:
-        """Quote a column name for use in SQL predicates.
-
-        Uses backticks to handle reserved words, spaces, and special characters.
-        Escapes any backticks within the name by doubling them.
-
-        Delta Lake SQL syntax: https://github.com/delta-io/delta-rs/issues/2167
-
-        Args:
-            name: Column name to quote.
-
-        Returns:
-            Quoted column name safe for SQL predicates.
-        """
-        # Escape any backticks in the name by doubling them
-        escaped = name.replace("`", "``")
-        return f"`{escaped}`"
+        """Quote column name with backticks for SQL predicates."""
+        return f"`{name.replace('`', '``')}`"
 
     def _build_delete_predicate(
         self, keys_table: pa.Table, upsert_cols: List[str]
     ) -> Optional[str]:
-        """Build SQL-like delete predicate from key values.
-
-        Creates a predicate like: (`col1` = 'val1' AND `col2` = 'val2') OR ...
-        Column names are quoted with backticks to handle reserved words and
-        special characters.
-
-        Args:
-            keys_table: Table with unique key values.
-            upsert_cols: Column names to match on.
-
-        Returns:
-            SQL predicate string for delete operation, or None if no keys.
-        """
+        """Build SQL delete predicate: (`col1` = 'val1' AND `col2` = 'val2') OR ..."""
         if len(keys_table) == 0:
             return None
 
@@ -845,11 +776,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         return " OR ".join(conditions)
 
     def _format_sql_value(self, value: Any) -> str:
-        """Format a Python value for SQL predicate.
-
-        Handles NULL, bool, string, numeric (including NaN/Inf), datetime,
-        date, and other types. Returns SQL-compatible string representation.
-        """
+        """Format a Python value for SQL predicate."""
         import datetime
         import math
 
@@ -857,31 +784,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return "NULL"
         if isinstance(value, bool):
             return "TRUE" if value else "FALSE"
-        if isinstance(value, str):
-            escaped = value.replace("'", "''")
-            return f"'{escaped}'"
-        if isinstance(value, float):
-            # Handle special float values
-            if math.isnan(value):
-                # NaN != NaN in SQL, so this predicate won't match anything
-                # Caller should filter out NaN values before building predicates
-                raise ValueError(
-                    "Cannot format NaN value for SQL predicate. "
-                    "NaN values should be filtered before building delete predicates."
-                )
-            if math.isinf(value):
-                raise ValueError(
-                    f"Cannot format infinite value ({value}) for SQL predicate."
-                )
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                raise ValueError(f"Cannot format {value} for SQL predicate")
             return str(value)
-        if isinstance(value, int):
-            return str(value)
-        if isinstance(value, datetime.datetime):
-            # ISO 8601 format for timestamps
+        if isinstance(value, (datetime.datetime, datetime.date)):
             return f"'{value.isoformat()}'"
-        if isinstance(value, datetime.date):
-            return f"'{value.isoformat()}'"
-        # Default: stringify and escape
         escaped = str(value).replace("'", "''")
         return f"'{escaped}'"
 
@@ -943,49 +851,17 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 raise ValueError(f"File is empty: {full_path}")
 
     def _create_empty_table(self) -> None:
-        """Create empty Delta table with specified schema.
-
-        Creates a Delta table with no data files, useful for defining table structure
-        before writing data. Requires explicit schema to be provided.
-
-        deltalake create_table_with_add_actions: https://delta-io.github.io/delta-rs/python/api/deltalake.transaction.html#deltalake.transaction.create_table_with_add_actions
-        """
-        from deltalake.transaction import create_table_with_add_actions
-
+        """Create empty Delta table with specified schema."""
         if not self.schema:
-            raise ValueError(
-                "Cannot create empty Delta table without explicit schema. Provide schema parameter to write_delta()."
-            )
-
-        delta_schema = convert_schema_to_delta(self.schema)
-        create_table_with_add_actions(
-            table_uri=self.table_uri,
-            schema=delta_schema,
-            add_actions=[],
-            mode=self.mode.value,
-            partition_by=self.partition_cols or None,
-            name=self.write_kwargs.get("name"),
-            description=self.write_kwargs.get("description"),
-            configuration=self.write_kwargs.get("configuration"),
-            storage_options=self.storage_options,
-            commit_properties=self.write_kwargs.get("commit_properties"),
-            post_commithook_properties=self.write_kwargs.get(
-                "post_commithook_properties"
-            ),
-        )
+            raise ValueError("Cannot create empty table without explicit schema")
+        self._create_table_with_files([])
 
     def _create_table_with_files(self, file_actions: List["AddAction"]) -> None:
-        """Create new Delta table and commit files in single transaction.
-
-        Creates a new Delta table with the specified schema and commits all file
-        metadata in a single atomic transaction.
-
-        deltalake create_table_with_add_actions: https://delta-io.github.io/delta-rs/python/api/deltalake.transaction.html#deltalake.transaction.create_table_with_add_actions
-        """
+        """Create new Delta table and commit files atomically."""
         from deltalake.transaction import create_table_with_add_actions
 
-        table_schema = self._infer_schema(file_actions)
-        delta_schema = convert_schema_to_delta(table_schema)
+        schema = self.schema if not file_actions else self._infer_schema(file_actions)
+        delta_schema = convert_schema_to_delta(schema)
 
         create_table_with_add_actions(
             table_uri=self.table_uri,
@@ -1078,23 +954,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
 
     def _infer_schema(self, add_actions: List["AddAction"]) -> pa.Schema:
-        """Infer schema from first Parquet file and partition columns.
-
-        Reads schema from first written Parquet file, then adds partition columns
-        if they're not already present. Partition column types are inferred from
-        partition values.
-
-        Args:
-            add_actions: List of AddAction objects with file metadata.
-
-        Returns:
-            Inferred PyArrow schema.
-
-        Raises:
-            ValueError: If schema cannot be inferred.
-
-        PyArrow ParquetFile: https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetFile.html
-        """
+        """Infer schema from first Parquet file and partition columns."""
         if self.schema:
             return self.schema
 
