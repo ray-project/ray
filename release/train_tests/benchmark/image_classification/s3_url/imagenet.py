@@ -233,7 +233,6 @@ def create_s3_url_dataset(
     Returns:
         Ray dataset with "image" and "label" columns
     """
-    # List files from S3
     file_records = list_s3_image_files(data_dir)
 
     # Create dataset from file records
