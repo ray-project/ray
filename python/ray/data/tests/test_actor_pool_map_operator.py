@@ -1001,6 +1001,165 @@ def test_actor_init_failure_retry(
             ).take_all()
 
 
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
+    """Tests that ActorPoolMapOperator runs init_fn on start."""
+
+    from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    def _fail():
+        raise ValueError("init_failed")
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    )
+    compute_strategy = ActorPoolStrategy(min_size=1)
+
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_sleep, init_fn=_fail),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    with pytest.raises(RayActorError, match=r"init_failed"):
+        op.start(ExecutionOptions())
+
+
+@pytest.mark.parametrize(
+    "max_tasks_in_flight_strategy, max_tasks_in_flight_ctx, max_concurrency, expected_max_tasks_in_flight",
+    [
+        # Compute strategy takes precedence
+        (3, 5, 4, 3),
+        # DataContext.max_tasks_in_flight_per_actor takes precedence
+        (None, 5, 4, 5),
+        # Max tasks in-flight is derived as max_concurrency x 4
+        (
+            None,
+            None,
+            4,
+            4 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+        ),
+    ],
+)
+def test_actor_pool_map_operator_should_add_input(
+    ray_start_regular_shared,
+    max_tasks_in_flight_strategy,
+    max_tasks_in_flight_ctx,
+    max_concurrency,
+    expected_max_tasks_in_flight,
+    restore_data_context,
+):
+    """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+
+    ctx = DataContext.get_current()
+    ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
+
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(20)]))
+
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_strategy,
+    )
+
+    def _failing_transform(
+        block_iter: Iterable[Block], task_context: TaskContext
+    ) -> Iterable[Block]:
+        raise ValueError("expected failure")
+
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_failing_transform),
+        input_op=input_op,
+        data_context=ctx,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+        ray_remote_args={"max_concurrency": max_concurrency},
+    )
+
+    op.start(ExecutionOptions())
+
+    # Cannot add input until actor has started.
+    assert not op.should_add_input()
+    run_op_tasks_sync(op)
+    assert op.should_add_input()
+
+    # Assert that single actor can accept up to N tasks
+    for _ in range(expected_max_tasks_in_flight):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    assert not op.should_add_input()
+
+
+def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
+    """Tests ActorPoolMapOperator's num_active_tasks and completed methods."""
+    num_actors = 2
+    ray.shutdown()
+    ray.init(num_cpus=num_actors)
+
+    signal_actor = create_remote_signal_actor(ray).options(num_cpus=0).remote()
+
+    def _map_transfom_fn(block_iter: Iterable[Block], _) -> Iterable[Block]:
+        ray.get(signal_actor.wait.remote())
+        yield from block_iter
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(num_actors)])
+    )
+    compute_strategy = ActorPoolStrategy(min_size=num_actors, max_size=2 * num_actors)
+
+    # Create an operator with [num_actors, 2 * num_actors] actors.
+    # Resources are limited to num_actors, so the second half will be pending.
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_map_transfom_fn),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+    actor_pool = op._actor_pool
+
+    # Wait for the op to scale up to the min size.
+    op.start(ExecutionOptions())
+    run_op_tasks_sync(op)
+    assert actor_pool.num_running_actors() == num_actors
+    assert op.num_active_tasks() == 0
+
+    # Scale up to the max size, the second half of the actors will be pending.
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
+    assert actor_pool.num_pending_actors() == num_actors
+    # `num_active_tasks` should exclude the metadata tasks for the pending actors.
+    assert op.num_active_tasks() == 0
+
+    # Add inputs.
+    for _ in range(num_actors):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    # Still `num_active_tasks` should only include data tasks.
+    assert op.num_active_tasks() == num_actors
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Let the data tasks complete.
+    signal_actor.send.remote()
+    while len(op._data_tasks) > 0:
+        run_one_op_task(op)
+    assert op.num_active_tasks() == 0
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Mark the inputs done and take all outputs.
+    # The operator should be completed, even if there are pending actors.
+    op.all_inputs_done()
+    while op.has_next():
+        op.get_next()
+    assert actor_pool.num_pending_actors() == num_actors
+    assert op.has_completed()
+
+
 if __name__ == "__main__":
     import sys
 
