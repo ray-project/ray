@@ -74,7 +74,7 @@ def main(args):
         # Report arguments for the benchmark.
         return vars(args)
 
-    run_tpch_benchmark("tpch_q1", benchmark_fn, args)
+    run_tpch_benchmark("tpch_q1", benchmark_fn)
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ def load_table(
     return ds
 
 
-def run_tpch_benchmark(name: str, benchmark_fn, args):
+def run_tpch_benchmark(name: str, benchmark_fn):
     benchmark = Benchmark()
     benchmark.run_fn(name, benchmark_fn)
     benchmark.write_result()
