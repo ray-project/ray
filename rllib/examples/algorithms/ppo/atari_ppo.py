@@ -104,7 +104,7 @@ config = (
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
-        rollout_fragment_length=64,
+        rollout_fragment_length=32,
         env_to_module_connector=_make_env_to_module_connector,
     )
     .learners(
