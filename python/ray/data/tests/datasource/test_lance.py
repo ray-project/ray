@@ -10,6 +10,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import Schema
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -147,7 +148,7 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
-    ).write_lance(data_path, mode="append")
+    ).write_lance(data_path, mode=SaveMode.APPEND)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 20
@@ -157,7 +158,7 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_lance(data_path, schema=schema, mode="overwrite")
+    ).write_lance(data_path, schema=schema, mode=SaveMode.OVERWRITE)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
@@ -242,6 +243,46 @@ def test_lance_read_with_version(data_path):
         [5, "f"],
         [6, "g"],
     ]
+
+
+@pytest.fixture
+def mock_lance_write(monkeypatch):
+    captured = {}
+
+    class _FakeLanceDatasink:
+        def __init__(self, path, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+
+    def _fake_write_datasink(self, datasink, **kwargs):
+        captured["datasink"] = datasink
+        captured["write_kwargs"] = kwargs
+
+    monkeypatch.setattr(ray.data.dataset, "LanceDatasink", _FakeLanceDatasink)
+    monkeypatch.setattr(ray.data.Dataset, "write_datasink", _fake_write_datasink)
+
+    return captured, _FakeLanceDatasink
+
+
+def test_write_lance_passes_namespace_args(mock_lance_write):
+    captured, fake_lance_datasink_cls = mock_lance_write
+    table_id = ["db", "table"]
+    namespace_impl = "dir"
+    namespace_properties = {"path": "/tmp/ns"}
+
+    ds = ray.data.range(1)
+    ds.write_lance(
+        "/tmp/lance-namespace-test",
+        table_id=table_id,
+        namespace_impl=namespace_impl,
+        namespace_properties=namespace_properties,
+    )
+
+    assert captured["path"] == "/tmp/lance-namespace-test"
+    assert captured["kwargs"]["table_id"] == table_id
+    assert captured["kwargs"]["namespace_impl"] == namespace_impl
+    assert captured["kwargs"]["namespace_properties"] == namespace_properties
+    assert isinstance(captured["datasink"], fake_lance_datasink_cls)
 
 
 if __name__ == "__main__":
