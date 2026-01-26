@@ -243,7 +243,7 @@ class ActorPoolMapOperator(MapOperator):
     def internal_input_queue_num_bytes(self) -> int:
         return (
             self._bundle_queue.estimate_size_bytes()
-            + self._block_ref_bundler.size_bytes()
+            + self._block_ref_bundler.estimate_size_bytes()
         )
 
     def start(self, options: ExecutionOptions):
