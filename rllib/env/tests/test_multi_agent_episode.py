@@ -3099,7 +3099,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         episode = self._create_simple_episode(
             observations, len_lookback_buffer=2, agent_t_started={"a0": 2, "a1": 2}
         )
-        print(f"{episode.env_t_started=}, {episode.env_t=} {episode.env_t_to_agent_t=}")
         # ---
         slice_ = episode[1:3]
         check(len(slice_), 2)
