@@ -70,9 +70,9 @@ class _CheckpointManager:
         self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
         # Cache of flattened metrics per training result.
-        # Stores the output of flatten_dict() for each Checkpoint to avoid
+        # Stores the metric for each Checkpoint to avoid
         # recomputing it on every iteration when sorting checkpoints.
-        self._flat_metrics_pre_computed: Dict[Checkpoint, Dict[str, Any]] = {}
+        self._flat_metrics_pre_computed: Dict[Checkpoint, Any] = {}
 
         if (
             self._checkpoint_config.num_to_keep is not None
@@ -121,11 +121,11 @@ class _CheckpointManager:
                 checkpoint=checkpoint_result.checkpoint,
                 metrics=metrics,
             )
-            self._flat_metrics_pre_computed[checkpoint_result.checkpoint] = metrics
-        else:
-            self._flat_metrics_pre_computed[checkpoint_result.checkpoint] = flat_metrics
 
         if score_attr is not None and score_attr in flat_metrics:
+            self._flat_metrics_pre_computed[
+                checkpoint_result.checkpoint
+            ] = flat_metrics[score_attr]
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(
@@ -182,8 +182,10 @@ class _CheckpointManager:
         if checkpoint_score_attribute:
             try:
                 checkpoint_result = (
-                    score if score is not None else flatten_dict(checkpoint.metrics)
-                )[checkpoint_score_attribute]
+                    score
+                    if score is not None
+                    else flatten_dict(checkpoint.metrics)[checkpoint_score_attribute]
+                )
             except KeyError:
                 valid_keys = list(flatten_dict(checkpoint.metrics).keys())
                 logger.error(

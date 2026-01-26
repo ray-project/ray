@@ -74,12 +74,21 @@ def test_limited_checkpoints(checkpoint_paths: List[str]):
     ],
 )
 @pytest.mark.parametrize("keep", list(range(1, 3)))
+@pytest.mark.parametrize("score_attr", [True, False])
 def test_precomputed_metrics_only_keep_latest_n_checkpoints(
     metrics_fn,
     keep,
+    score_attr,
     checkpoint_paths: List[str],
 ):
-    manager = _CheckpointManager(checkpoint_config=CheckpointConfig(num_to_keep=keep))
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=keep,
+            checkpoint_score_attribute=list(flatten_dict(metrics_fn(0)).keys())[0]
+            if score_attr
+            else None,
+        )
+    )
 
     for i in range(10):
         manager.register_checkpoint(
@@ -89,8 +98,11 @@ def test_precomputed_metrics_only_keep_latest_n_checkpoints(
             )
         )
         expected_stored_count = min(i + 1, keep)
+        if score_attr:
+            assert len(manager._flat_metrics_pre_computed) == expected_stored_count
+        else:
+            assert len(manager._flat_metrics_pre_computed) == 0
 
-        assert len(manager._flat_metrics_pre_computed.keys()) == expected_stored_count
         assert len(manager.best_checkpoint_results) == expected_stored_count
 
 
