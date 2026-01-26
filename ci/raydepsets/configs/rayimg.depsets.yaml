@@ -125,6 +125,7 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
 
   # First layer of the ray release images. Contains all base layer python dependencies
   # and is a subset of the base extra test deps defined above (release image depset)
