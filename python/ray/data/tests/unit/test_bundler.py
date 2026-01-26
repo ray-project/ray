@@ -165,6 +165,102 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
         assert orig is expected
 
 
+def test_peek_next():
+    """Test that peek_next returns the next bundle without removing it."""
+    bundler = RebundleQueue(ExactMultipleSize(2))
+    bundles, _ = _make_ref_bundles_for_unit_test([[[1]], [[2]], [[3]]])
+
+    # Peek on empty queue returns None
+    assert bundler.peek_next() is None
+
+    # Add bundles until we have a ready bundle
+    bundler.add(bundles[0])
+    assert bundler.peek_next() is None  # Not enough rows yet
+
+    bundler.add(bundles[1])
+    assert bundler.has_next()
+
+    # Peek should return the bundle without removing it
+    peeked = bundler.peek_next()
+    assert peeked is not None
+    assert peeked.num_rows() == 2
+
+    # Peek again should return the same bundle
+    peeked2 = bundler.peek_next()
+    assert peeked2 is peeked
+
+    # Metrics should be unchanged after peek
+    initial_rows = bundler.num_rows()
+    initial_len = len(bundler)
+    bundler.peek_next()
+    assert bundler.num_rows() == initial_rows
+    assert len(bundler) == initial_len
+
+    # get_next should return the same bundle
+    got = bundler.get_next()
+    assert got.num_rows() == peeked.num_rows()
+
+
+def test_clear():
+    """Test that clear resets the bundler to empty state."""
+    bundler = RebundleQueue(ExactMultipleSize(2))
+    bundles, _ = _make_ref_bundles_for_unit_test([[[1]], [[2]], [[3]], [[4]]])
+
+    # Add some bundles
+    for bundle in bundles:
+        bundler.add(bundle)
+
+    # Verify bundler has content
+    assert bundler.has_next()
+    assert bundler.num_rows() > 0
+    assert len(bundler) > 0
+    assert bundler.estimate_size_bytes() > 0
+
+    # Clear the bundler
+    bundler.clear()
+
+    # Verify bundler is empty
+    assert not bundler.has_next()
+    assert bundler.num_rows() == 0
+    assert len(bundler) == 0
+    assert bundler.num_blocks() == 0
+    assert bundler.estimate_size_bytes() == 0
+    assert bundler.peek_next() is None
+
+    # Verify we can add bundles again after clear
+    new_bundles, _ = _make_ref_bundles_for_unit_test([[[10]], [[20]]])
+    for bundle in new_bundles:
+        bundler.add(bundle)
+
+    assert bundler.has_next()
+    out = bundler.get_next()
+    assert out.num_rows() == 2
+
+
+def test_add_updates_metrics():
+    """Test that add correctly updates queue metrics."""
+    bundler = RebundleQueue(ExactMultipleSize(10))  # High target so nothing gets built
+    bundles, _ = _make_ref_bundles_for_unit_test([[[1, 2]], [[3, 4, 5]]])
+
+    # Initially empty
+    assert bundler.num_rows() == 0
+    assert bundler.num_blocks() == 0
+    assert bundler.estimate_size_bytes() == 0
+
+    # Add first bundle
+    bundler.add(bundles[0])
+    assert bundler.num_rows() == 2
+    assert bundler.num_blocks() == 1
+    assert bundler.estimate_size_bytes() == bundles[0].size_bytes()
+
+    # Add second bundle
+    bundler.add(bundles[1])
+    assert bundler.num_rows() == 5
+    assert bundler.num_blocks() == 2
+    expected_bytes = bundles[0].size_bytes() + bundles[1].size_bytes()
+    assert bundler.estimate_size_bytes() == expected_bytes
+
+
 if __name__ == "__main__":
     import sys
 
