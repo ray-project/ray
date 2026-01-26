@@ -4293,6 +4293,7 @@ def read_delta(
         raise ValueError("Only a single Delta Lake table path is supported.")
 
     # Create Delta datasource
+    # Note: parallelism and ray_remote_args are passed to read_datasource, not the datasource
     datasource = DeltaDatasource(
         path=path,
         version=version,
@@ -4300,8 +4301,7 @@ def read_delta(
         partition_filters=partition_filters,
         filesystem=filesystem,
         columns=columns,
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
+        partitioning=partitioning,
         partition_filter=partition_filter,
         shuffle=shuffle,
         include_paths=include_paths,

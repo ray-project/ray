@@ -147,6 +147,11 @@ class DeltaDatasource(Datasource):
                 except Exception:
                     pass  # Fall back to default filesystem resolution
 
+        # Extract ParquetDatasource-specific kwargs from arrow_parquet_args
+        # ParquetDatasource expects dataset_kwargs and to_batch_kwargs, not arbitrary kwargs
+        dataset_kwargs = self.arrow_parquet_args.get("dataset_kwargs")
+        to_batch_kwargs = self.arrow_parquet_args.get("to_batch_kwargs")
+
         parquet_datasource = ParquetDatasource(
             file_paths,
             columns=self.columns,
@@ -156,7 +161,8 @@ class DeltaDatasource(Datasource):
             partition_filter=self.partition_filter,
             shuffle=self.shuffle,
             include_paths=self.include_paths,
-            **self.arrow_parquet_args,
+            dataset_kwargs=dataset_kwargs,
+            to_batch_kwargs=to_batch_kwargs,
         )
 
         return parquet_datasource.get_read_tasks(parallelism, per_task_row_limit)
