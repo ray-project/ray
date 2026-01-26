@@ -99,7 +99,7 @@ class _FileDatasink(Datasink[None]):
             self.filesystem.get_file_info(self.path).type is not FileType.NotFound
         )
         if dir_exists:
-            if self.mode == SaveMode.ERROR:
+            if self.mode in {SaveMode.ERROR, SaveMode.CREATE}:
                 raise ValueError(
                     f"Path {self.path} already exists. "
                     "If this is unexpected, use mode='ignore' to ignore those files"
