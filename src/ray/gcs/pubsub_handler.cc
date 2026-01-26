@@ -73,13 +73,17 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
 
   Status status = Status::OK();
   for (const auto &command : request.commands()) {
+    RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
+        << absl::StrFormat("Unexpected pubsub command has been received: %s",
+                           command.DebugString());
+
     if (command.has_unsubscribe_message()) {
       gcs_publisher_.GetPublisher().UnregisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
-    } else if (command.has_subscribe_message()) {
+    } else {  // subscribe_message case
       Status iteration_status = gcs_publisher_.GetPublisher().RegisterSubscription(
           command.channel_type(),
           subscriber_id,
@@ -94,10 +98,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
         status = iteration_status;
       }
       iter->second.insert(subscriber_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please file an issue to Ray Github.";
     }
   }
   send_reply_callback(status, nullptr, nullptr);

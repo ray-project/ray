@@ -65,24 +65,22 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
     const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
     for (const auto &command : request->commands()) {
+      RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
+          << absl::StrFormat("Unexpected pubsub command has been received: %s",
+                             command.DebugString());
       if (command.has_unsubscribe_message()) {
         publisher_->UnregisterSubscription(command.channel_type(),
                                            subscriber_id,
                                            command.key_id().empty()
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
-      } else if (command.has_subscribe_message()) {
+      } else {  // subscribe_message case
         // Register subscription for a valid channel type should succeed.
         RAY_CHECK_OK(publisher_->RegisterSubscription(
             command.channel_type(),
             subscriber_id,
             command.key_id().empty() ? std::nullopt
                                      : std::make_optional(command.key_id())));
-      } else {
-        RAY_LOG(FATAL)
-            << "Invalid command has received, "
-            << static_cast<int>(command.command_message_one_of_case())
-            << ". If you see this message, please file an issue to Ray Github.";
       }
     }
     reactor->Finish(grpc::Status::OK);

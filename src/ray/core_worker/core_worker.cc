@@ -3704,17 +3704,18 @@ Status CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
     return status;
   }
 
+  RAY_CHECK(sub_message.has_worker_object_eviction_message() ||
+            sub_message.has_worker_ref_removed_message() ||
+            sub_message.has_worker_object_locations_message())
+      << absl::StrFormat("Unexpected subscribe command has been received: %s",
+                         sub_message.DebugString());
+
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
   } else if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
-  } else if (sub_message.has_worker_object_locations_message()) {
+  } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
-  } else {
-    RAY_LOG(FATAL)
-        << "Invalid command has received: "
-        << static_cast<int>(sub_message.sub_message_one_of_case())
-        << " has received. If you see this message, please report to Ray Github.";
   }
   return Status::OK();
 }
@@ -3736,10 +3737,14 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   Status status = Status::OK();
   for (const auto &command : request.commands()) {
+    RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
+        << absl::StrFormat("Unexpected pubsub command has been received: %s",
+                           command.DebugString());
+
     if (command.has_unsubscribe_message()) {
       object_info_publisher_->UnregisterSubscription(
           command.channel_type(), subscriber_id, command.key_id());
-    } else if (command.has_subscribe_message()) {
+    } else {  // subscribe_message case
       Status iteration_status = ProcessSubscribeMessage(command.subscribe_message(),
                                                         command.channel_type(),
                                                         command.key_id(),
@@ -3754,12 +3759,6 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
         // Preserves the last error status.
         status = iteration_status;
       }
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please "
-                        "report to Ray "
-                        "Github.";
     }
   }
   send_reply_callback(status, nullptr, nullptr);
