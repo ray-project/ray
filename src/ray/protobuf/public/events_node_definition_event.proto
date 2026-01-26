@@ -27,4 +27,11 @@ message NodeDefinitionEvent {
   string node_ip_address = 2;
   map<string, string> labels = 3;
   google.protobuf.Timestamp start_timestamp = 4;
+  string hostname = 5;
+  // The user-provided identifier or name for this node.
+  string node_name = 6;
+  // The instance ID of the node if running on a cloud provider.
+  string instance_id = 7;
+  // The instance type name if running on a cloud provider (e.g., m5.xlarge on AWS).
+  string instance_type_name = 8;
 }

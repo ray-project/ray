@@ -1,10 +1,12 @@
 import logging
 import typing
-import uuid
 from typing import Dict, List, Optional
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.streaming_executor_state import (
+    format_op_state_summary,
+)
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
@@ -49,10 +51,6 @@ class TqdmSubProgressBar(ProgressBar):
 class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using tqdm."""
 
-    # If the name/description of the progress bar exceeds this length,
-    # it will be truncated.
-    MAX_NAME_LENGTH = 100
-
     def __init__(
         self,
         dataset_id: str,
@@ -63,7 +61,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
         self._dataset_id = dataset_id
 
         self._sub_progress_bars: List[BaseProgressBar] = []
-        self._op_display: Dict[uuid.UUID, TqdmSubProgressBar] = {}
+        self._op_display: Dict["OpState", TqdmSubProgressBar] = {}
 
         num_progress_bars = 0
 
@@ -89,7 +87,6 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             )
 
             # create operator progress bar
-            uid = uuid.uuid4()
             if sub_progress_bar_enabled:
                 pg = TqdmSubProgressBar(
                     name=f"- {op.name}",
@@ -99,8 +96,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
                     max_name_length=self.MAX_NAME_LENGTH,
                 )
                 num_progress_bars += 1
-                state.progress_manager_uuid = uid
-                self._op_display[uid] = pg
+                self._op_display[state] = pg
                 self._sub_progress_bars.append(pg)
 
             if not contains_sub_progress_bars:
@@ -157,9 +153,10 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        pg = self._op_display.get(opstate.progress_manager_uuid)
+        pg = self._op_display.get(opstate)
         if pg is not None:
             pg.update_absolute(
-                opstate.output_row_count, opstate.op.num_output_rows_total()
+                opstate.op.metrics.row_outputs_taken, opstate.op.num_output_rows_total()
             )
-            pg.set_description(opstate.summary_str(resource_manager))
+            summary_str = format_op_state_summary(opstate, resource_manager)
+            pg.set_description(f"- {opstate.op.name}: {summary_str}")

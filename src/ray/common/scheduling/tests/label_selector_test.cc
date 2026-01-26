@@ -179,4 +179,33 @@ TEST(LabelSelectorTest, ToProto) {
       << "Not all expected constraints were found in the proto.";
 }
 
+TEST(LabelSelectorTest, Deduplication) {
+  LabelSelector selector;
+
+  selector.AddConstraint("region", "us-west");
+  ASSERT_EQ(selector.GetConstraints().size(), 1);
+
+  // Add the exact same constraint again.
+  selector.AddConstraint("region", "us-west");
+  ASSERT_EQ(selector.GetConstraints().size(), 1);
+
+  // Add a constraint with the same key but different value.
+  selector.AddConstraint("region", "us-east");
+  ASSERT_EQ(selector.GetConstraints().size(), 2);
+
+  // Add a constraint with a different key but same value.
+  selector.AddConstraint("location", "us-east");
+  ASSERT_EQ(selector.GetConstraints().size(), 3);
+
+  // Add a constraint with a different key and value.
+  selector.AddConstraint("instance", "spot");
+  ASSERT_EQ(selector.GetConstraints().size(), 4);
+
+  // Add a duplicate using the LabelConstraint object directly.
+  LabelConstraint duplicate_constraint(
+      "instance", LabelSelectorOperator::LABEL_IN, {"spot"});
+  selector.AddConstraint(duplicate_constraint);
+  ASSERT_EQ(selector.GetConstraints().size(), 4);
+}
+
 }  // namespace ray

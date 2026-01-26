@@ -9,7 +9,7 @@ from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.util import log_once
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 

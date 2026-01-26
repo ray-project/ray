@@ -20,7 +20,6 @@ class ResourceUtilizationGauge(abc.ABC):
 
 
 class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
-
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
 

@@ -1186,7 +1186,10 @@ class Reconciler:
                     termination_request=terminate_request,
                     details=f"allocation canceled: {terminate_request.details}",
                 )
-            elif terminate_request.instance_status == IMInstance.ALLOCATED:
+            elif terminate_request.instance_status in (
+                IMInstance.ALLOCATED,
+                IMInstance.RAY_INSTALLING,
+            ):
                 # The instance is not yet running, so we can't request to stop/drain Ray.
                 # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
                 im_instance_to_terminate = im_instances_by_instance_id[instance_id]

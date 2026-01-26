@@ -159,7 +159,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
 def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 
-    from ray.data.tests.test_huggingface import hfds_assert_equals
+    from ray.data.tests.datasource.test_huggingface import hfds_assert_equals
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)

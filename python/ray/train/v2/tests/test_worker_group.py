@@ -389,8 +389,23 @@ def test_flush_worker_result_queue(queue_backlog_length):
         )
         assert not status.finished
 
-    status = wg.poll_status()
-    assert status.finished
+    # Wait for the workers to finish the training fn and for any pending
+    # training_report(s) to be flushed/consumed.
+    timeout_s = 5
+    deadline = time.monotonic() + timeout_s
+    while True:
+        status = wg.poll_status()
+        if status.finished:
+            break
+        assert (
+            time.monotonic() < deadline
+        ), f"Timed out waiting for worker group to finish. Last status: {status}"
+        time.sleep(0.01)
+
+    assert all(
+        worker_status.training_report is None
+        for worker_status in status.worker_statuses.values()
+    )
 
     wg.shutdown()
 

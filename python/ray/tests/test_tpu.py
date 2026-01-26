@@ -29,7 +29,7 @@ def test_empty_get_current_pod_name_returns_none():
 @pytest.mark.parametrize(
     "test_case",
     [
-        # (number_chips_per_host, accl_type, expected_worker_count)
+        # (number_chips_per_host, parsed accl_type, expected_worker_count)
         (4, "v2-4", 1),
         (4, "v3-32", 4),
         (4, "v4-8", 1),
@@ -41,9 +41,11 @@ def test_empty_get_current_pod_name_returns_none():
         (4, "v5p-4", 1),
         (4, "v5p-8", 1),
         (4, "v5p-16", 2),
-        (8, "v6e-4", 1),
+        (4, "v6e-4", 1),
         (8, "v6e-8", 1),
         (8, "v6e-16", 2),
+        (4, "v7x-8", 1),
+        (4, "v7x-16", 2),
     ],
 )
 @patch("glob.glob")
@@ -99,6 +101,9 @@ def test_num_tpu_chips(mock_glob):
         ("v6e-16", "4x4", True),
         ("v6e-64", "8x8", True),
         ("v6e-4", "4x16", False),
+        ("tpu7x-16", "2x2x2", True),
+        ("tpu7x-64", "2x4x4", True),
+        ("v7x-8", "4x4", False),
     ],
 )
 @patch("glob.glob")
@@ -148,6 +153,7 @@ def test_get_current_node_tpu_topology_from_metadata():
         ("8x16", "TPU-V6E", "v6e-128", False),
         ("", "TPU-V3", None, False),
         ("4x", "TPU-V3", None, True),
+        ("2x2x2", "TPU-V7X", "v7x-16", False),
     ],
 )
 def test_infer_tpu_pod_type_from_topology(
@@ -341,11 +347,13 @@ def test_slice_placement_group_partial_failure_cleanup(
         ("TPU-v4", "v4"),
         ("TPU-V6E", "v6e"),
         ("TPU-v5p", "v5p"),
+        ("TPU-V7X", "v7x"),
         # Only the TPU version - no parsing necessary.
         ("v4", "v4"),
         ("v3", "v3"),
         ("v6e", "v6e"),
         ("v5litepod", "v5litepod"),
+        ("v7x", "v7x"),
     ],
 )
 def test_get_tpu_version_valid(accelerator_type, expected_version):

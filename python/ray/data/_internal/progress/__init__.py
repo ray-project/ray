@@ -1,6 +1,8 @@
 import logging
+import sys
 import typing
 
+import ray
 from ray.util.debug import log_once
 
 if typing.TYPE_CHECKING:
@@ -42,6 +44,21 @@ def get_progress_manager(
 
     rich_enabled = ctx.enable_rich_progress_bars
     use_ray_tqdm = ctx.use_ray_tqdm
+    worker = ray._private.worker
+    in_ray_worker = worker.global_worker.mode == worker.WORKER_MODE
+
+    if not sys.stdout.isatty() and not (use_ray_tqdm and in_ray_worker):
+        from ray.data._internal.progress.logging_progress import (
+            LoggingExecutionProgressManager,
+        )
+
+        if log_once("ray_data_logging_progress_activated"):
+            logger.info(
+                "Progress will be logged because stdout is a non-interactive terminal."
+            )
+        return LoggingExecutionProgressManager(
+            dataset_id, topology, show_op_progress, verbose_progress
+        )
 
     if not rich_enabled or use_ray_tqdm:
         from ray.data._internal.progress.tqdm_progress import (
@@ -72,7 +89,9 @@ def get_progress_manager(
                 NoopExecutionProgressManager,
             )
 
-            print("[dataset]: Run `pip install rich` to enable progress reporting.")
+            logger.warning(
+                "[dataset]: Run `pip install rich` to enable progress reporting."
+            )
             return NoopExecutionProgressManager(
                 dataset_id, topology, show_op_progress, verbose_progress
             )

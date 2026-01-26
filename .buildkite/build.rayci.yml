@@ -16,9 +16,10 @@ steps:
     tags: release_wheels
 
   - name: ray-dashboard-build
-    label: "wanda: dashboard"
+    label: "wanda: dashboard (x86_64)"
     wanda: ci/docker/ray-dashboard.wanda.yaml
     env:
+      ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
       MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
@@ -50,7 +51,6 @@ steps:
     tags:
       - release_wheels
       - linux_wheels
-      - oss
     depends_on:
       - ray-core-build
       - ray-java-build
@@ -161,6 +161,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
     key: ray_extra_images
@@ -187,6 +188,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":tapioca: build: ray-llm py{{matrix}} docker (x86_64)"
     tags:

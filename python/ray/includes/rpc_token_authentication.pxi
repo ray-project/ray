@@ -3,6 +3,7 @@ from libcpp.memory cimport shared_ptr
 from ray.includes.rpc_token_authentication cimport (
     CAuthenticationMode,
     GetAuthenticationMode,
+    IsK8sTokenAuthEnabled,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
     CAuthenticationTokenValidator,
@@ -18,23 +19,31 @@ logger = logging.getLogger(__name__)
 class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
-    K8S = CAuthenticationMode.K8S
 
 
 def get_authentication_mode():
     """Get the current authentication mode.
 
     Returns:
-        AuthenticationMode enum value (DISABLED or TOKEN or K8S)
+        AuthenticationMode enum value (DISABLED or TOKEN)
     """
     return GetAuthenticationMode()
+
+
+def is_k8s_token_auth_enabled():
+    """Returns whether Kubernetes token authentication is enabled.
+
+    Returns:
+        bool: True if Kubernetes token auth is enabled, false otherwise.
+    """
+    return IsK8sTokenAuthEnabled()
 
 
 def validate_authentication_token(provided_metadata: str) -> bool:
     """Validate provided authentication token.
 
     For TOKEN mode, compares against the expected token.
-    For K8S mode, validates against the Kubernetes API.
+    If K8S auth is enabled, validates against the Kubernetes API.
 
     Args:
         provided_metadata: Full authorization header value (e.g., "Bearer <token>")
@@ -44,7 +53,7 @@ def validate_authentication_token(provided_metadata: str) -> bool:
     """
     cdef shared_ptr[const CAuthenticationToken] expected_ptr
 
-    if get_authentication_mode() == CAuthenticationMode.TOKEN:
+    if get_authentication_mode() == CAuthenticationMode.TOKEN and not is_k8s_token_auth_enabled():
         expected_ptr = CAuthenticationTokenLoader.instance().GetToken(False)
         if not expected_ptr:
             return False

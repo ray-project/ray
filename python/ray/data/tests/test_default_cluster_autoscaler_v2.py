@@ -109,9 +109,12 @@ class TestClusterAutoscaling:
         }
 
         # Patch cluster config to return None
-        with patch("ray.nodes", return_value=node_table), patch(
-            "ray._private.state.state.get_cluster_config",
-            return_value=None,
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
         ):
             assert _get_node_resource_spec_and_count() == expected
 
@@ -119,7 +122,6 @@ class TestClusterAutoscaling:
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("mem_util", [0.5, 0.75])
     def test_try_scale_up_cluster(self, cpu_util, gpu_util, mem_util):
-
         # Test _try_scale_up_cluster
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -132,6 +134,7 @@ class TestClusterAutoscaling:
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
@@ -214,10 +217,7 @@ class TestClusterAutoscaling:
                 result = _get_node_resource_spec_and_count()
                 assert result == expected
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request"
-    )
-    def test_try_scale_up_cluster_from_zero(self, _send_resource_request):
+    def test_try_scale_up_cluster_from_zero(self):
         """Test that the autoscaler can scale up from zero worker nodes."""
         scale_up_threshold = 0.75
         scale_up_delta = 1
@@ -227,49 +227,77 @@ class TestClusterAutoscaling:
         # Mock the node resource spec with zero counts
         resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
         resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000)
+        fake_coordinator = FakeAutoscalingCoordinator()
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
             resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {
                 resource_spec1: 0,
                 resource_spec2: 0,
             },
         )
-        _send_resource_request.assert_called_with([])
 
         autoscaler.try_trigger_scaling()
 
         # Should request scale_up_delta nodes of each type
-        expected_resource_request = []
+        # Verify via get_total_resources which returns what was allocated
+        resources_allocated = autoscaler.get_total_resources()
+        expected_resources = ExecutionResources(
+            cpu=resource_spec1.cpu * scale_up_delta
+            + resource_spec2.cpu * scale_up_delta,
+            gpu=resource_spec1.gpu * scale_up_delta
+            + resource_spec2.gpu * scale_up_delta,
+            memory=resource_spec1.mem * scale_up_delta
+            + resource_spec2.mem * scale_up_delta,
+        )
+        assert resources_allocated == expected_resources
 
-        expected_resource_request.extend(
-            [
-                {
-                    "CPU": resource_spec1.cpu,
-                    "GPU": resource_spec1.gpu,
-                    "memory": resource_spec1.mem,
-                }
-            ]
-            * scale_up_delta
+    def test_low_utilization_sends_current_allocation(self):
+        """Test that low utilization sends current allocation.
+
+        Test scenario:
+        1. Dataset has already been allocated resources (1 nodes)
+        2. Utilization is low (0%, below default threshold)
+        3. Should send current allocation to preserve resource footprint
+        """
+        utilization: ExecutionResources = ...
+
+        class FakeUtilizationGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=FakeUtilizationGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+            get_node_counts=lambda: {node_resource_spec: 0},
         )
 
-        expected_resource_request.extend(
-            [
-                {
-                    "CPU": resource_spec2.cpu,
-                    "GPU": resource_spec2.gpu,
-                    "memory": resource_spec2.mem,
-                }
-            ]
-            * scale_up_delta
-        )
+        # Trigger scaling with high utilization. The cluster autoscaler should request
+        # one node.
+        utilization = ExecutionResources(cpu=1)
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
-        _send_resource_request.assert_called_with(expected_resource_request)
+        # Trigger scaling with low utilization. The cluster autoscaler should re-request
+        # one node rather than no resources.
+        utilization = ExecutionResources(cpu=0)
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
@@ -311,6 +339,232 @@ class TestClusterAutoscaling:
             ):
                 result = _get_node_resource_spec_and_count()
                 assert result == expected
+
+    def test_get_node_resource_spec_and_count_missing_all_resources(self):
+        """Regression test for nodes with empty resources (ie missing CPU, GPU, and memory keys entirely)."""
+
+        # Simulate a node with no standard resources defined
+        node_empty_resources = {
+            "Alive": True,
+            "Resources": {
+                "dummy_resource": 1,
+            },
+        }
+
+        node_table = [
+            {
+                "Resources": self._head_node,
+                "Alive": True,
+            },
+            node_empty_resources,
+        ]
+
+        # Expect everything to default to 0
+        expected = {_NodeResourceSpec.of(cpu=0, gpu=0, mem=0): 1}
+
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
+        ):
+            result = _get_node_resource_spec_and_count()
+            assert result == expected
+
+    @pytest.mark.parametrize(
+        "resource_limits,node_spec,existing_nodes,scale_up_increment,expected_nodes",
+        [
+            # CPU limit: 8 CPUs allows 2 nodes (8 CPUs), not 3 (12 CPUs)
+            (
+                ExecutionResources.for_limits(cpu=8),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000),
+                2,
+                1,
+                2,
+            ),
+            # GPU limit: 2 GPUs allows 2 nodes (2 GPUs), not 3 (3 GPUs)
+            (
+                ExecutionResources.for_limits(gpu=2),
+                _NodeResourceSpec.of(cpu=4, gpu=1, mem=1000),
+                2,
+                1,
+                2,
+            ),
+            # Memory limit: 4000 allows 2 nodes (4000 mem), not 3 (6000 mem)
+            (
+                ExecutionResources.for_limits(memory=4000),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000),
+                2,
+                1,
+                2,
+            ),
+            # No limits: all 3 nodes (2 existing + 1 delta) should be requested
+            (
+                ExecutionResources.inf(),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000),
+                2,
+                1,
+                3,
+            ),
+        ],
+    )
+    def test_try_scale_up_respects_resource_limits(
+        self,
+        resource_limits,
+        node_spec,
+        existing_nodes,
+        scale_up_increment,
+        expected_nodes,
+    ):
+        """Test that cluster autoscaling respects user-configured resource limits."""
+        scale_up_threshold = 0.75
+        # High utilization to trigger scaling
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=resource_limits,
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=scale_up_increment,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_spec: existing_nodes},
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_allocated = autoscaler.get_total_resources()
+        assert resources_allocated.cpu == node_spec.cpu * expected_nodes
+        assert resources_allocated.gpu == node_spec.gpu * expected_nodes
+        assert resources_allocated.memory == node_spec.mem * expected_nodes
+
+    def test_try_scale_up_respects_resource_limits_heterogeneous_nodes(self):
+        """Test that smaller bundles are included even when larger bundles exceed limits.
+
+        This tests a scenario where:
+        1. Initial cluster (1 small node, 4 CPUs) is within the budget (10 CPUs)
+        2. Scaling up is triggered due to high utilization
+        3. The autoscaler wants to add both large and small nodes
+        4. Only small nodes are requested because large nodes would exceed the limit
+        """
+        # CPU limit of 10 allows the initial state (4 CPUs) plus room for growth
+        resource_limits = ExecutionResources.for_limits(cpu=10)
+
+        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4000)
+        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+
+        scale_up_threshold = 0.75
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        # Initial cluster: 1 small node (4 CPUs) - within the 10 CPU budget
+        # Node types available: large (8 CPUs) and small (4 CPUs)
+        def get_heterogeneous_nodes():
+            return {
+                large_node_spec: 0,  # 0 existing large nodes
+                small_node_spec: 1,  # 1 existing small node (4 CPUs)
+            }
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=resource_limits,
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=1,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=get_heterogeneous_nodes,
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_allocated = autoscaler.get_total_resources()
+        # With delta=1:
+        #   - Active bundles: 1 small (4 CPUs) - existing nodes, always included
+        #   - Pending bundles: 1 small (4 CPUs) + 1 large (8 CPUs) - scale-up delta
+        # After capping to 10 CPUs:
+        #   - Active: 4 CPUs (always included)
+        #   - Sorted pending: [small (4), large (8)]
+        #   - Add small: 4 + 4 = 8 CPUs ✓
+        #   - Add large: 8 + 8 = 16 CPUs ✗ (exceeds limit)
+        # Result: 2 small bundles (8 CPUs)
+        # Ray autoscaler would see: need 2 small nodes, have 1 → spin up 1 more
+        assert resources_allocated.cpu == 8, (
+            f"Expected 8 CPUs (2 small node bundles), got {resources_allocated.cpu}. "
+            "Smaller bundles should be included even when larger ones exceed limits."
+        )
+        assert resources_allocated.gpu == 0
+        assert resources_allocated.memory == 4000
+
+    def test_try_scale_up_existing_nodes_prioritized_over_delta(self):
+        """Test that existing node bundles are prioritized over scale-up delta bundles.
+
+        This tests a scenario where:
+        - Large existing node: 1 node at 6 CPUs (currently allocated)
+        - Small node type available: can add nodes at 2 CPUs each
+        - User limit: 8 CPUs
+        - Scale-up delta: 2 (want to add 2 small nodes)
+
+        The existing large node (6 CPUs) should always be included, and only
+        scale-up bundles that fit within the remaining budget should be added.
+        Without this prioritization, smaller scale-up bundles could crowd out
+        the representation of existing nodes.
+        """
+        resource_limits = ExecutionResources.for_limits(cpu=8)
+
+        large_node_spec = _NodeResourceSpec.of(cpu=6, gpu=0, mem=3000)
+        small_node_spec = _NodeResourceSpec.of(cpu=2, gpu=0, mem=1000)
+
+        scale_up_threshold = 0.75
+        utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
+        fake_coordinator = FakeAutoscalingCoordinator()
+
+        # Existing cluster: 1 large node (6 CPUs)
+        # Scale-up delta: 2 (want to add 2 of each node type)
+        def get_node_counts():
+            return {
+                large_node_spec: 1,  # 1 existing large node (6 CPUs)
+                small_node_spec: 0,  # 0 existing small nodes
+            }
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=resource_limits,
+            execution_id="test_execution_id",
+            cluster_scaling_up_delta=2,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=get_node_counts,
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_allocated = autoscaler.get_total_resources()
+        # Active bundles: 1 large (6 CPUs) - must be included
+        # Pending bundles: 2 large (12 CPUs) + 2 small (4 CPUs) = delta requests
+        # After capping to 8 CPUs:
+        #   - Active: 6 CPUs (always included)
+        #   - Remaining budget: 2 CPUs
+        #   - Sorted pending: [small (2), small (2), large (6), large (6)]
+        #   - Add small: 6 + 2 = 8 CPUs ✓
+        #   - Add another small: 8 + 2 = 10 CPUs ✗
+        # Result: 1 large (active) + 1 small (delta) = 8 CPUs
+        assert resources_allocated.cpu == 8, (
+            f"Expected 8 CPUs (1 existing large + 1 delta small), got {resources_allocated.cpu}. "
+            "Existing node bundles should always be included before scale-up delta."
+        )
+        # Verify we have the large node's resources (it must be included)
+        assert resources_allocated.memory >= large_node_spec.mem, (
+            f"Existing large node (mem={large_node_spec.mem}) should be included. "
+            f"Got total memory={resources_allocated.memory}"
+        )
 
 
 if __name__ == "__main__":
