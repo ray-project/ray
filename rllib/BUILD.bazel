@@ -468,7 +468,6 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -491,7 +490,6 @@ py_test(
         "exclusive",
         "gpu",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
