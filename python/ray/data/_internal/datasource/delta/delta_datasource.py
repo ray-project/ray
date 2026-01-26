@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import pyarrow.fs as pa_fs
 
-from ray.data._internal.datasource.delta.utilities import to_pyarrow_schema
+from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
 from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.file_meta_provider import FileMetadataProvider

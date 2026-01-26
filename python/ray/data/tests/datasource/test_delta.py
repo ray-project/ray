@@ -446,7 +446,7 @@ def test_delta_empty_path_validation():
 
 def test_delta_partition_column_validation():
     """Test partition column name validation."""
-    from ray.data._internal.datasource.delta.partition_utils import (
+    from ray.data._internal.datasource.delta.utils import (
         validate_partition_column_names,
     )
 
@@ -475,7 +475,7 @@ def test_delta_partition_column_validation():
 
 def test_delta_partition_value_validation():
     """Test partition value validation."""
-    from ray.data._internal.datasource.delta.partition_utils import (
+    from ray.data._internal.datasource.delta.utils import (
         validate_partition_value,
     )
 
@@ -496,7 +496,7 @@ def test_delta_partition_value_validation():
 
 def test_delta_file_path_validation():
     """Test file path validation."""
-    from ray.data._internal.datasource.delta.file_utils import validate_file_path
+    from ray.data._internal.datasource.delta.utils import validate_file_path
 
     # Valid paths
     validate_file_path("year=2024/file.parquet")
@@ -520,7 +520,7 @@ def test_delta_file_path_validation():
 
 def test_delta_schema_conversion():
     """Test schema conversion utilities."""
-    from ray.data._internal.datasource.delta.schema_utils import (
+    from ray.data._internal.datasource.delta.utils import (
         convert_schema_to_delta,
         infer_partition_type,
         types_compatible,
@@ -557,7 +557,7 @@ def test_delta_schema_conversion():
 
 def test_delta_storage_options_auto_detection():
     """Test storage options auto-detection."""
-    from ray.data._internal.datasource.delta.utilities import get_storage_options
+    from ray.data._internal.datasource.delta.utils import get_storage_options
 
     # Local paths don't add any options
     opts = get_storage_options("/local/path")
@@ -570,7 +570,7 @@ def test_delta_storage_options_auto_detection():
 
 def test_delta_to_pyarrow_schema():
     """Test to_pyarrow_schema utility."""
-    from ray.data._internal.datasource.delta.utilities import to_pyarrow_schema
+    from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
 
     # Already a PyArrow schema
     schema = pa.schema([("id", pa.int64())])

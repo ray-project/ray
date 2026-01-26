@@ -10,33 +10,25 @@ import pyarrow.fs as pa_fs
 import pyarrow.parquet as pq
 
 from ray.data._internal.arrow_ops.transform_pyarrow import concat as concat_arrow_tables
-from ray.data._internal.datasource.delta.config import (
+from ray.data._internal.datasource.delta.utils import (
     UPSERT_JOIN_COLS,
     DeltaWriteResult,
-)
-from ray.data._internal.datasource.delta.file_utils import (
+    build_partition_path,
     compute_parquet_statistics,
+    convert_schema_to_delta,
     get_file_info_with_retry,
+    get_storage_options,
+    infer_partition_type,
     join_delta_path,
     safe_dirname,
+    schemas_compatible,
+    to_pyarrow_schema,
+    try_get_deltatable,
+    types_compatible,
     validate_file_path,
-)
-from ray.data._internal.datasource.delta.partition_utils import (
-    build_partition_path,
     validate_partition_column_names,
     validate_partition_columns_in_table,
     validate_partition_value,
-)
-from ray.data._internal.datasource.delta.schema_utils import (
-    convert_schema_to_delta,
-    infer_partition_type,
-    schemas_compatible,
-    types_compatible,
-)
-from ray.data._internal.datasource.delta.utilities import (
-    get_storage_options,
-    to_pyarrow_schema,
-    try_get_deltatable,
 )
 from ray.data._internal.datasource.parquet_datasink import (
     WRITE_FILE_MAX_ATTEMPTS,
