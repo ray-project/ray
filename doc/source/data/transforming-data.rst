@@ -257,6 +257,9 @@ You can enable ``Polars`` globally to optimize certain Ray Data operations. Ray 
 To enable ``Polars`` operations, configure the :class:`~ray.data.DataContext`:
 
 .. testcode::
+    
+    import ray
+
     ctx = ray.data.DataContext.get_current()
     ctx.use_polars_sort = True
 
