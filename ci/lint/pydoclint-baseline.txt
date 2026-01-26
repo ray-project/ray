@@ -192,6 +192,8 @@ python/ray/_private/services.py
     DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
+    DOC101: Function `determine_plasma_store_config`: Docstring contains fewer arguments than in function signature.
+    DOC103: Function `determine_plasma_store_config`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [temp_dir: str].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.
@@ -1948,7 +1950,7 @@ python/ray/train/v2/tests/test_worker_group.py
 --------------------
 python/ray/train/v2/torch/torch_trainer.py
     DOC104: Method `TorchTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, metadata, resume_from_checkpoint
+    DOC105: Method `TorchTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, torch_config, scaling_config, run_config, datasets, dataset_config, validation_config, metadata, resume_from_checkpoint
 --------------------
 python/ray/train/v2/torch/train_loop_utils.py
     DOC111: Function `prepare_model`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
