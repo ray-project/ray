@@ -963,7 +963,11 @@ def run_manual_tests():
     print("=" * 70)
 
     test_suite = TestReadLerobot()
-    test_suite.setup_class()
+    try:
+        test_suite.setup_class()
+    except pytest.skip.Exception as e:
+        print(f"\n⚠️  SKIPPED read_lerobot tests: {e}")
+        return True
 
     tests = [
         (
