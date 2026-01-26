@@ -371,7 +371,9 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
         return delta_schema.to_pyarrow()
     if hasattr(delta_schema, "to_arrow"):
         return delta_schema.to_arrow()
-    raise AttributeError(f"Cannot convert {type(delta_schema).__name__} to PyArrow schema")
+    raise AttributeError(
+        f"Cannot convert {type(delta_schema).__name__} to PyArrow schema"
+    )
 
 
 def get_storage_options(
