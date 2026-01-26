@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from dataclasses import replace
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 from unittest.mock import MagicMock
 
 import pyarrow as pa
@@ -17,6 +17,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -25,12 +26,14 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
     _ActorTaskSelector,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
@@ -41,6 +44,16 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import (
+    DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DataContext,
+)
+from ray.data.tests.util import (
+    create_map_transformer_from_block_fn,
+    run_one_op_task,
+    run_op_tasks_sync,
+)
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
