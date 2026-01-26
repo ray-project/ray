@@ -241,11 +241,15 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
+    env = {
+        "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+    },
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
         "test_metrics.py",
         "test_metrics_2.py",
+        "test_metrics_3.py",
     ],
     tags = [
         "exclusive",
