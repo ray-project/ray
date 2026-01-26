@@ -168,8 +168,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         upsert_cols = self._upsert_kwargs.get(_UPSERT_COLS_ID, [])
         if not upsert_cols:
             # Use table's identifier fields as fallback
-            for field_id in self._table_metadata.schema().identifier_field_ids:
-                col_name = self._table_metadata.schema().find_column_name(field_id)
+            schema = self._table_metadata.schema()
+            for field_id in schema.identifier_field_ids:
+                col_name = schema.find_column_name(field_id)
                 if col_name:
                     upsert_cols.append(col_name)
         return upsert_cols
