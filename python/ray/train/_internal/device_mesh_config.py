@@ -133,7 +133,7 @@ class DeviceMeshConfig:
         Raises:
             ValueError: If world_size doesn't match the expected total from config.
         """
-        other_dims = self._other_dims_product()
+        other_dims = self._other_dims_product
 
         if self.dp.replicate == "auto":
             if world_size % other_dims != 0:
