@@ -62,8 +62,6 @@ class GcsPlacementGroup {
         placement_group_spec.placement_group_id());
     placement_group_table_data_.set_name(placement_group_spec.name());
     placement_group_table_data_.set_state(rpc::PlacementGroupTableData::PENDING);
-    placement_group_table_data_.mutable_bundles()->CopyFrom(
-        placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
     placement_group_table_data_.set_creator_job_id(placement_group_spec.creator_job_id());
     placement_group_table_data_.set_creator_actor_id(

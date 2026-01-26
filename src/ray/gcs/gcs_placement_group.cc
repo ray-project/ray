@@ -60,9 +60,22 @@ std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetB
     const {
   // Fill the cache if it wasn't.
   if (cached_bundle_specs_.empty()) {
-    const auto &bundles = placement_group_table_data_.bundles();
-    for (const auto &bundle : bundles) {
-      cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
+    // If no active bundles selected, return the highest priority scheduling strategy.
+    if (placement_group_table_data_.bundles().empty() &&
+        placement_group_table_data_.scheduling_strategy_size() > 0) {
+      const auto &primary_bundles =
+          placement_group_table_data_.scheduling_strategy(0).bundles();
+      for (const auto &bundle : primary_bundles) {
+        cached_bundle_specs_.push_back(
+            std::make_shared<const BundleSpecification>(bundle));
+      }
+    } else {
+      // Return the active bundles for scheduling.
+      const auto &bundles = placement_group_table_data_.bundles();
+      for (const auto &bundle : bundles) {
+        cached_bundle_specs_.push_back(
+            std::make_shared<const BundleSpecification>(bundle));
+      }
     }
   }
   return cached_bundle_specs_;

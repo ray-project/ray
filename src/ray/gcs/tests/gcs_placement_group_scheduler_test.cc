@@ -1257,6 +1257,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
   auto placement_group =
       std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+
+  // Populate 'bundles' field for test so it can be mutated.
+  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+
   placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
   placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
 
