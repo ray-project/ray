@@ -35,6 +35,7 @@ from ray.data._internal.datasource.parquet_datasink import (
     WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
 )
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -133,6 +134,22 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Get storage options with auto-detection for cloud storage
         self.storage_options = get_storage_options(
             self.table_uri, write_kwargs.get("storage_options")
+        )
+
+    def __getstate__(self) -> dict:
+        """Exclude non-serializable state during pickling."""
+        state = self.__dict__.copy()
+        state.pop("filesystem", None)  # Re-created on deserialization
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore state and re-create filesystem on unpickling."""
+        self.__dict__.update(state)
+        # Re-create filesystem from path
+        data_context = DataContext.get_current()
+        _, self.filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        self.filesystem = RetryingPyFileSystem.wrap(
+            self.filesystem, retryable_errors=data_context.retried_io_errors
         )
 
     def _validate_mode(self, mode: Any) -> SaveMode:
@@ -269,9 +286,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         _check_import(self, module="deltalake", package="deltalake")
 
-        # Capture write_uuid from TaskContext (with safe access to kwargs)
+        # Capture write_uuid from TaskContext (set by plan_write_op)
         ctx_kwargs = getattr(ctx, "kwargs", None) or {}
-        self._write_uuid = ctx_kwargs.get("write_uuid")
+        self._write_uuid = ctx_kwargs.get(WRITE_UUID_KWARG_NAME)
 
         all_actions = []
         upsert_keys_tables = []
