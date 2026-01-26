@@ -18,9 +18,6 @@ from ray._common.network_utils import build_address
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
-    LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
-)
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -803,21 +800,21 @@ class ServeController:
         TODO(https://github.com/ray-project/ray/issues/60359): Replace this
         with proper controller-managed actor lifecycle management.
         """
-        from ray.util.state import list_actors
+        # Import lazily to avoid triggering ray.llm observability setup
+        # which adds CoreContextFilter to root logger (breaks Ray Client mode)
+        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+            LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
+        )
 
         try:
-            actors = list_actors(
-                address=ray.get_runtime_context().gcs_address,
-                filters=[("state", "=", "ALIVE")],
-                limit=10000,
-            )
+            actors = ray.util.list_named_actors(all_namespaces=True)
         except Exception:
             logger.debug("Failed to list actors for cleanup", exc_info=True)
             return
 
         for actor in actors:
             name = actor.get("name")
-            namespace = actor.get("ray_namespace")
+            namespace = actor.get("namespace")
             if (
                 name
                 and namespace
