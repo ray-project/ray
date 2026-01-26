@@ -115,7 +115,7 @@ class GPUTestActor:
     def put_shared_tensor_lists(self):
         """Create two tensor lists that share a common tensor."""
         t1 = torch.tensor([1, 2, 3]).to("cuda")
-        t2 = torch.tensor([4, 5, 6]).to("cuda")  # Shared tensor
+        t2 = torch.tensor([4, 5, 6]).to("cuda")
         t3 = torch.tensor([7, 8, 9]).to("cuda")
 
         list1 = [t1, t2]
@@ -124,7 +124,6 @@ class GPUTestActor:
         ref1 = ray.put(list1, _tensor_transport="nixl")
         ref2 = ray.put(list2, _tensor_transport="nixl")
 
-        # Return refs and the shared tensor's cache key info
         return ref1, ref2
 
     @ray.method(concurrency_group="_ray_system")
