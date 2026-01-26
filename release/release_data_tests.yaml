@@ -726,7 +726,6 @@
 
 
 - name: "tpch_q1_{{scaling}}"
-  working_dir: nightly_tests/dataset/tpch
   python: "3.10"
   matrix:
     setup:
@@ -737,7 +736,7 @@
 
   run:
     timeout: 5400
-    script: python tpch_q1.py --sf 100
+    script: python tpch/tpch_q1.py --sf 100
 
 
 #################################################
