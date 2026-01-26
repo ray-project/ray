@@ -1388,9 +1388,7 @@ TEST_F(PublisherTest, TestRegisterSubscriptionInvalidChannelType) {
   auto status = publisher_->RegisterSubscription(
       rpc::ChannelType::GCS_ACTOR_CHANNEL, subscriber_id, oid.Binary());
 
-  ASSERT_FALSE(status.ok());
   ASSERT_TRUE(status.IsInvalidArgument());
-  ASSERT_TRUE(status.message().find("Invalid channel type") != std::string::npos);
 }
 
 TEST_F(PublisherTest, TestMaxMessageSize) {

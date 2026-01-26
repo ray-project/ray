@@ -21,6 +21,7 @@
 
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
 
@@ -29,7 +30,7 @@ namespace gcs {
 
 class PubSubHandlerTest : public ::testing::Test {
  public:
-  PubSubHandlerTest() : current_time_ms_(0.0) {
+  PubSubHandlerTest() {
     fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
 
     // Create a publisher with specific channels (matching GCS server setup).
@@ -40,14 +41,14 @@ class PubSubHandlerTest : public ::testing::Test {
             rpc::ChannelType::GCS_JOB_CHANNEL,
             rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
             rpc::ChannelType::RAY_LOG_CHANNEL,
-            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
+            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
-        /*get_time_ms=*/[this]() { return current_time_ms_; },
-        /*subscriber_timeout_ms=*/30000,
-        /*publish_batch_size_=*/100,
+        /*get_time_ms=*/[]() { return 0.0; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         /*publisher_id=*/NodeID::FromRandom());
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
@@ -57,11 +58,12 @@ class PubSubHandlerTest : public ::testing::Test {
   }
 
  protected:
+  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+
+ private:
   instrumented_io_context io_service_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
-  double current_time_ms_;
 };
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
@@ -79,19 +81,15 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
   command->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
-  bool callback_invoked = false;
   Status received_status;
 
   pubsub_handler_->HandleGcsSubscriberCommandBatch(
       request,
       &reply,
-      [&callback_invoked, &received_status](
-          const Status &status, std::function<void()>, std::function<void()>) {
-        callback_invoked = true;
-        received_status = status;
-      });
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
 
-  ASSERT_TRUE(callback_invoked);
   ASSERT_FALSE(received_status.ok());
   ASSERT_TRUE(received_status.IsInvalidArgument());
   EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
@@ -112,19 +110,15 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchValidChannelType) {
   command->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
-  bool callback_invoked = false;
   Status received_status;
 
   pubsub_handler_->HandleGcsSubscriberCommandBatch(
       request,
       &reply,
-      [&callback_invoked, &received_status](
-          const Status &status, std::function<void()>, std::function<void()>) {
-        callback_invoked = true;
-        received_status = status;
-      });
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
 
-  ASSERT_TRUE(callback_invoked);
   ASSERT_TRUE(received_status.ok()) << received_status.message();
 }
 

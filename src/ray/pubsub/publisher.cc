@@ -394,6 +394,11 @@ Status Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                        const UniqueID &subscriber_id,
                                        const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  if (subscription_index_it == subscription_index_map_.end()) {
+    return Status::InvalidArgument("Invalid channel type: " +
+                                   rpc::ChannelType_Name(channel_type));
+  }
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
@@ -406,11 +411,6 @@ Status Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
              .first;
   }
   SubscriberState *subscriber = it->second.get();
-  auto subscription_index_it = subscription_index_map_.find(channel_type);
-  if (subscription_index_it == subscription_index_map_.end()) {
-    return Status::InvalidArgument("Invalid channel type: " +
-                                   rpc::ChannelType_Name(channel_type));
-  }
   subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
   return Status::OK();
 }
