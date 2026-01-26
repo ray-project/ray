@@ -23,6 +23,11 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   pip install numpy==1.23.5
 fi
 
+# Install FFmpeg for torchcodec (LeRobot video decoding)
+sudo apt-get update
+sudo apt-get install -y ffmpeg libavcodec-dev libavformat-dev \
+    libavutil-dev libswscale-dev libswresample-dev
+
 # Install MongoDB
 sudo apt-get purge -y mongodb*
 sudo apt-get install -y mongodb
