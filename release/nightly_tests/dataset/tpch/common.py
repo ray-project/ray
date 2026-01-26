@@ -1,9 +1,4 @@
 import argparse
-import sys
-import os
-
-# Allow importing benchmark from parent directory
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pyarrow as pa
 import pyarrow.compute as pc
