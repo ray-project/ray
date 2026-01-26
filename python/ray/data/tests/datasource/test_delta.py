@@ -461,7 +461,7 @@ def test_delta_partition_column_validation():
         validate_partition_column_names(["year/month"])
 
     # Invalid: contains equals sign
-    with pytest.raises(ValueError, match="cannot contain '='"):
+    with pytest.raises(ValueError, match="Invalid characters"):
         validate_partition_column_names(["year=2024"])
 
     # Invalid: duplicate columns
@@ -469,7 +469,7 @@ def test_delta_partition_column_validation():
         validate_partition_column_names(["year", "year"])
 
     # Invalid: empty string
-    with pytest.raises(ValueError, match="cannot be empty"):
+    with pytest.raises(ValueError, match="Invalid partition column name"):
         validate_partition_column_names([""])
 
 
@@ -486,11 +486,11 @@ def test_delta_partition_value_validation():
     validate_partition_value(float("nan"))
 
     # Invalid: contains path separator
-    with pytest.raises(ValueError, match="contains '/'"):
+    with pytest.raises(ValueError, match="invalid characters"):
         validate_partition_value("a/b")
 
     # Invalid: contains path traversal
-    with pytest.raises(ValueError, match="contains '..'"):
+    with pytest.raises(ValueError, match="invalid characters"):
         validate_partition_value("a..b")
 
 

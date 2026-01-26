@@ -821,22 +821,24 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             formatted_vals = ", ".join(self._format_sql_value(v) for v in values)
             return f"{quoted_col} IN ({formatted_vals})"
 
-        # For compound keys, build OR of ANDed conditions
-        # Limit to avoid extremely long predicates that cause data corruption
+        # For compound keys, deduplicate first then build OR of ANDed conditions
+        # Use group_by to get unique compound key combinations
+
+        unique_keys = keys_table.group_by(upsert_cols).aggregate([])
+
         max_keys = 1000
-        if len(keys_table) > max_keys:
+        if len(unique_keys) > max_keys:
             raise ValueError(
-                f"Upsert has {len(keys_table)} compound keys, exceeding limit of "
-                f"{max_keys}. Batch your upserts into smaller chunks to avoid "
-                "data corruption from incomplete deletes."
+                f"Upsert has {len(unique_keys)} unique compound keys, exceeding "
+                f"limit of {max_keys}. Batch your upserts into smaller chunks."
             )
 
         conditions = []
-        for i in range(len(keys_table)):
+        for i in range(len(unique_keys)):
             row_conditions = []
             for col in upsert_cols:
                 quoted_col = self._quote_identifier(col)
-                val = keys_table.column(col)[i].as_py()
+                val = unique_keys.column(col)[i].as_py()
                 row_conditions.append(f"{quoted_col} = {self._format_sql_value(val)}")
             conditions.append(f"({' AND '.join(row_conditions)})")
 
