@@ -22,11 +22,6 @@ set -euo pipefail
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r /home/ray/python_depset.lock
 
-# pip install -U --ignore-installed \
-#   -c python/requirements_compiled.txt \
-#   -r python/requirements.txt \
-#   -r python/requirements/test-requirements.txt
-
 # TODO(can): upgrade tensorflow for python 3.12
 if [[ "${PYTHON-}" != "3.12" ]]; then
   pip install -U -c python/requirements_compiled.txt \
