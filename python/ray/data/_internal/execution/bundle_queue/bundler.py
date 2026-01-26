@@ -231,6 +231,8 @@ class RebundleQueue(BaseBundleQueue):
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
+        # discard the original bundle
+        self._consumed_bundles_list.popleft()
         return ready_bundle
 
     def get_next_with_original(self) -> Tuple[RefBundle, List[RefBundle]]:
