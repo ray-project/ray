@@ -45,23 +45,31 @@ class GPUTestActor:
         return sum
 
     def gc(self):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
         obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+        nixl_transport = get_tensor_transport_manager("NIXL")
+
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
         assert gpu_manager.is_managed_object(obj_id)
-        nixl_meta = gpu_manager.gpu_object_store._managed_meta_nixl[obj_id]
-        assert nixl_meta is not None
-        assert gpu_manager.gpu_object_store._managed_meta_counts_nixl[nixl_meta] == 1
+        assert obj_id in nixl_transport._managed_meta_nixl
+        # Tensor-level ref counting: the tensor should have ref_count=1
+        key = (tensor.data_ptr(), tensor.nbytes)
+        assert key in nixl_transport._tensor_desc_cache
+        assert nixl_transport._tensor_desc_cache[key][1] == 1  # ref_count
 
         del ref
 
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
         assert not gpu_manager.is_managed_object(obj_id)
-        assert obj_id not in gpu_manager.gpu_object_store._managed_meta_nixl
-        assert nixl_meta not in gpu_manager.gpu_object_store._managed_meta_counts_nixl
+        assert obj_id not in nixl_transport._managed_meta_nixl
+        assert key not in nixl_transport._tensor_desc_cache
         return "Success"
 
     @ray.method(tensor_transport="nixl")

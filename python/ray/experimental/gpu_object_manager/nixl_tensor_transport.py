@@ -46,8 +46,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._tensor_desc_cache: Dict[Tuple[int, int], Tuple[Any, int]] = {}
         # Mapping from object ID to the NIXL managed meta.
         self._managed_meta_nixl: Dict[str, Any] = {}
-        # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be accessed from the user's python thread or the _ray_system thread.
-        self._cache_lock = threading.Lock()
+        # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
+        # accessed from the user's python thread or the _ray_system thread.
+        self._cache_lock = threading.RLock()
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -109,32 +110,32 @@ class NixlTensorTransport(TensorTransportManager):
     ) -> NixlTransportMetadata:
         import torch
 
-        device = None
-        tensor_meta = []
-        duplicate_meta = self.record_and_get_meta_if_duplicate(obj_id, gpu_object)
-        if duplicate_meta is not None:
-            return duplicate_meta
+        with self._cache_lock:
+            device = None
+            tensor_meta = []
+            duplicate_meta = self.record_and_get_meta_if_duplicate(obj_id, gpu_object)
+            if duplicate_meta is not None:
+                return duplicate_meta
 
-        if gpu_object:
-            # We assume all tensors in one GPU object have the same device type, but we
-            # don't assume they're all on the same device.
-            devices = set()
-            device = gpu_object[0].device
-            for t in gpu_object:
-                if t.device.type != device.type:
-                    raise ValueError(
-                        "All tensors in an RDT object must have the same device type."
-                    )
-                tensor_meta.append((t.shape, t.dtype))
-                devices.add(t.device)
-            if device.type == "cuda":
-                # We have to synchronize before memory registration to assure the object
-                # has been created because nixl doesn't guarantee it will.
-                for dev in devices:
-                    torch.cuda.synchronize(dev)
+            if gpu_object:
+                # We assume all tensors in one GPU object have the same device type,
+                # but we don't assume they're all on the same device.
+                devices = set()
+                device = gpu_object[0].device
+                for t in gpu_object:
+                    if t.device.type != device.type:
+                        raise ValueError(
+                            "All tensors in an RDT object must have the same device type."
+                        )
+                    tensor_meta.append((t.shape, t.dtype))
+                    devices.add(t.device)
+                if device.type == "cuda":
+                    # We have to synchronize before memory registration to assure the
+                    # object has been created because nixl doesn't guarantee it will.
+                    for dev in devices:
+                        torch.cuda.synchronize(dev)
 
-            nixl_agent = self.get_nixl_agent()
-            with self._cache_lock:
+                nixl_agent = self.get_nixl_agent()
                 for tensor in gpu_object:
                     key = (tensor.data_ptr(), tensor.nbytes)
                     if key in self._tensor_desc_cache:
@@ -146,18 +147,17 @@ class NixlTensorTransport(TensorTransportManager):
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
-        else:
-            serialized_descs, agent_meta = None, None
+            else:
+                serialized_descs, agent_meta = None, None
 
-        ret = NixlTransportMetadata(
-            tensor_meta=tensor_meta,
-            tensor_device=device,
-            nixl_serialized_descs=serialized_descs,
-            nixl_agent_meta=agent_meta,
-        )
-        with self._cache_lock:
+            ret = NixlTransportMetadata(
+                tensor_meta=tensor_meta,
+                tensor_device=device,
+                nixl_serialized_descs=serialized_descs,
+                nixl_agent_meta=agent_meta,
+            )
             self._managed_meta_nixl[obj_id] = ret
-        return ret
+            return ret
 
     def get_communicator_metadata(
         self,
