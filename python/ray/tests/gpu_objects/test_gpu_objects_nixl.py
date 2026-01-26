@@ -80,8 +80,52 @@ class GPUTestActor:
         return gpu_object_manager.gpu_object_store.get_num_objects()
 
     def get_num_managed_meta_nixl(self):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return gpu_object_manager.gpu_object_store.get_num_managed_meta_nixl()
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        return get_tensor_transport_manager("NIXL").get_num_managed_meta_nixl()
+
+    def get_tensor_desc_cache_size(self):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        return len(get_tensor_transport_manager("NIXL")._tensor_desc_cache)
+
+    def is_tensor_in_desc_cache(self, tensor):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        key = (tensor.data_ptr(), tensor.nbytes)
+        return key in get_tensor_transport_manager("NIXL")._tensor_desc_cache
+
+    def get_tensor_ref_count(self, tensor):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        key = (tensor.data_ptr(), tensor.nbytes)
+        cache = get_tensor_transport_manager("NIXL")._tensor_desc_cache
+        if key in cache:
+            return cache[key][1]  # ref_count is the second element
+        return 0
+
+    def put_shared_tensor_lists(self):
+        """Create two tensor lists that share a common tensor."""
+        t1 = torch.tensor([1, 2, 3]).to("cuda")
+        t2 = torch.tensor([4, 5, 6]).to("cuda")  # Shared tensor
+        t3 = torch.tensor([7, 8, 9]).to("cuda")
+
+        list1 = [t1, t2]
+        list2 = [t2, t3]
+
+        ref1 = ray.put(list1, _tensor_transport="nixl")
+        ref2 = ray.put(list2, _tensor_transport="nixl")
+
+        # Return refs and the shared tensor's cache key info
+        return ref1, ref2
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self, signal_actor):
@@ -275,6 +319,36 @@ def test_nixl_borrow_after_abort(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
     nixl_ref = actors[0].echo.remote(torch.tensor([4, 5, 6]), "cuda")
     assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_shared_tensor_deduplication(ray_start_regular):
+    """
+    Test that tensors shared across multiple lists are properly deduplicated.
+
+    Creates list1 = [T1, T2] and list2 = [T2, T3] where T2 is shared.
+    Verifies that:
+    1. T2 has ref_count=2 after both lists are registered
+    2. After deallocating list1, T2 is still pinned (ref_count=1)
+    3. After deallocating list2, T2 is deregistered (ref_count=0)
+    """
+    actor = GPUTestActor.remote()
+
+    ref1, ref2 = ray.get(actor.put_shared_tensor_lists.remote())
+
+    assert ray.get(actor.get_tensor_desc_cache_size.remote()) == 3
+
+    del ref1
+    wait_for_condition(
+        lambda: ray.get(actor.get_tensor_desc_cache_size.remote()) == 2,
+        timeout=5,
+    )
+
+    del ref2
+    wait_for_condition(
+        lambda: ray.get(actor.get_tensor_desc_cache_size.remote()) == 0,
+        timeout=5,
+    )
 
 
 if __name__ == "__main__":
