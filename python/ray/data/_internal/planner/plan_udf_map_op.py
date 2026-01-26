@@ -197,10 +197,8 @@ def plan_streaming_repartition_op(
 
     if op._strict:
         ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
-        min_rows_per_bundle = None
     else:
         ref_bundler = None
-        min_rows_per_bundle = op.target_num_rows_per_block
 
     operator = MapOperator.create(
         map_transformer,
@@ -208,7 +206,6 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=min_rows_per_bundle,
         ref_bundler=ref_bundler,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
