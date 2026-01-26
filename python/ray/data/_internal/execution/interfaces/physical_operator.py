@@ -374,6 +374,10 @@ class PhysicalOperator(Operator):
     def input_dependencies(self) -> List["PhysicalOperator"]:
         return super().input_dependencies  # type: ignore
 
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["PhysicalOperator"]) -> None:
+        self._input_dependencies = value
+
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
         return super().output_dependencies  # type: ignore

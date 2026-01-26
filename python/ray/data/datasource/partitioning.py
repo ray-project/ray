@@ -310,7 +310,9 @@ class PathPartitionParser:
 
             # Extract boolean result from array-like types
             # Check for specific array types to avoid issues with strings (which are iterable)
-            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
+            if isinstance(result, (pa.Array, pa.ChunkedArray)):
+                return bool(result[0].as_py())
+            if isinstance(result, np.ndarray):
                 return bool(result[0])
 
             # Import pandas here to avoid circular dependencies

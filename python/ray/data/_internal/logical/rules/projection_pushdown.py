@@ -145,15 +145,15 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     # Check if remote args (num_cpus, num_gpus, etc.) are compatible
     if not are_remote_args_compatible(
-        upstream_project._ray_remote_args or {},
-        downstream_project._ray_remote_args or {},
+        upstream_project.ray_remote_args or {},
+        downstream_project.ray_remote_args or {},
     ):
         # Resources don't match - cannot fuse
         return downstream_project
 
     # Check if compute strategies are compatible
     fused_compute = FuseOperators._fuse_compute_strategy(
-        upstream_project._compute, downstream_project._compute
+        upstream_project.compute, downstream_project.compute
     )
     if fused_compute is None:
         # Compute strategies incompatible - cannot fuse
@@ -261,10 +261,10 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
 
     return Project(
-        upstream_project.input_dependency,
+        input_op=upstream_project.input_dependency,
         exprs=new_exprs,
         compute=fused_compute,
-        ray_remote_args=downstream_project._ray_remote_args,
+        ray_remote_args=downstream_project.ray_remote_args,
     )
 
 
@@ -404,10 +404,10 @@ class ProjectionPushdown(Rule):
 
                 # Has transformations: Keep Project on top of optimized Read
                 return Project(
-                    projected_input_op,
+                    input_op=projected_input_op,
                     exprs=current_project.exprs,
-                    compute=current_project._compute,
-                    ray_remote_args=current_project._ray_remote_args,
+                    compute=current_project.compute,
+                    ray_remote_args=current_project.ray_remote_args,
                 )
 
         return current_project

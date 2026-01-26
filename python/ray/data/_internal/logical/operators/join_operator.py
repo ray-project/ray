@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -34,59 +35,53 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
+@dataclass(frozen=True, repr=False)
 class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for join."""
 
-    def __init__(
-        self,
-        left_input_op: LogicalOperator,
-        right_input_op: LogicalOperator,
-        join_type: str,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
-        *,
-        num_partitions: int,
-        left_columns_suffix: Optional[str] = None,
-        right_columns_suffix: Optional[str] = None,
-        partition_size_hint: Optional[int] = None,
-        aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-            join_type: The kind of join that should be performed, one of ("inner",
-               "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-               "left_anti", "right_anti").
-            left_key_columns: The columns from the left Dataset that should be used as
-              keys of the join operation.
-            right_key_columns: The columns from the right Dataset that should be used as
-              keys of the join operation.
-            partition_size_hint: Hint to joining operator about the estimated
-              avg expected size of the resulting partition (in bytes)
-            num_partitions: Total number of expected blocks outputted by this
-                operator.
-        """
+    left_input_op: Optional[LogicalOperator] = None
+    right_input_op: Optional[LogicalOperator] = None
+    join_type: Optional[Union[str, JoinType]] = None
+    left_key_columns: Optional[Tuple[str]] = None
+    right_key_columns: Optional[Tuple[str]] = None
+    num_partitions: Optional[int] = None
+    left_columns_suffix: Optional[str] = None
+    right_columns_suffix: Optional[str] = None
+    partition_size_hint: Optional[int] = None
+    aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
 
-        try:
-            join_type_enum = JoinType(join_type)
-        except ValueError:
-            raise ValueError(
-                f"Invalid join type: '{join_type}'. "
-                f"Supported join types are: {', '.join(jt.value for jt in JoinType)}."
+    def __post_init__(self) -> None:
+        assert self.left_key_columns is not None
+        assert self.right_key_columns is not None
+        assert self.join_type is not None
+
+        if not self.input_dependencies:
+            assert self.left_input_op is not None
+            assert self.right_input_op is not None
+            assert self.num_partitions is not None
+            object.__setattr__(
+                self,
+                "input_dependencies",
+                (self.left_input_op, self.right_input_op),
             )
 
-        super().__init__(left_input_op, right_input_op, num_outputs=num_partitions)
+        if self.num_outputs is None and self.num_partitions is not None:
+            object.__setattr__(self, "num_outputs", self.num_partitions)
 
-        self._left_key_columns = left_key_columns
-        self._right_key_columns = right_key_columns
-        self._join_type = join_type_enum
+        if self.name is None:
+            object.__setattr__(self, "name", self.__class__.__name__)
 
-        self._left_columns_suffix = left_columns_suffix
-        self._right_columns_suffix = right_columns_suffix
+        if not isinstance(self.join_type, JoinType):
+            try:
+                join_type_enum = JoinType(self.join_type)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid join type: '{self.join_type}'. "
+                    f"Supported join types are: {', '.join(jt.value for jt in JoinType)}."
+                )
+            object.__setattr__(self, "join_type", join_type_enum)
 
-        self._partition_size_hint = partition_size_hint
-        self._aggregator_ray_remote_args = aggregator_ray_remote_args
+        super().__post_init__()
 
     @staticmethod
     def _validate_schemas(
@@ -165,8 +160,8 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         # Get column sets for each side
         left_columns = set(left_schema.names)
         right_columns = set(right_schema.names)
-        left_join_keys = set(self._left_key_columns)
-        right_join_keys = set(self._right_key_columns)
+        left_join_keys = set(self.left_key_columns)
+        right_join_keys = set(self.right_key_columns)
 
         # Get pushdown rules for this join type
         can_push_left, can_push_right = self._get_pushdown_rules()
@@ -206,7 +201,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             JoinType.RIGHT_ANTI: (False, True),
             JoinType.FULL_OUTER: (False, False),
         }
-        return pushdown_rules.get(self._join_type, (False, False))
+        return pushdown_rules.get(self.join_type, (False, False))
 
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, Optional, Tuple
 
-from .operator import Operator
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 
@@ -10,27 +10,38 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+@dataclass(frozen=True, repr=False)
+class LogicalOperator:
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
     physical operator.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_dependencies: List["LogicalOperator"],
-        num_outputs: Optional[int] = None,
-    ):
-        super().__init__(
-            name,
-            input_dependencies,
-        )
-        for x in input_dependencies:
+    name: Optional[str] = None
+    input_dependencies: Tuple["LogicalOperator", ...] = field(default_factory=tuple)
+    num_outputs: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.input_dependencies is None:
+            object.__setattr__(self, "input_dependencies", ())
+        if not isinstance(self.input_dependencies, tuple):
+            object.__setattr__(
+                self, "input_dependencies", tuple(self.input_dependencies)
+            )
+        for x in self.input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-        self._num_outputs: Optional[int] = num_outputs
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self.name}]"
+        return out_str
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -41,33 +52,47 @@ class LogicalOperator(Operator):
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
         `PhysicalOperator.num_outputs_total()` during execution.
         """
-        if self._num_outputs is not None:
-            return self._num_outputs
-        elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].estimated_num_outputs()
+        if self.num_outputs is not None:
+            return self.num_outputs
+        elif len(self.input_dependencies) == 1:
+            return self.input_dependencies[0].estimated_num_outputs()
         return None
 
-    # Override the following 3 methods to correct type hints.
-
-    @property
-    def input_dependencies(self) -> List["LogicalOperator"]:
-        return super().input_dependencies  # type: ignore
-
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
-
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
-        return super().post_order_iter()  # type: ignore
+        """Depth-first traversal of this operator and its input dependencies."""
+        for op in self.input_dependencies:
+            yield from op.post_order_iter()
+        yield self
 
     def _apply_transform(
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
-        return super()._apply_transform(transform)  # type: ignore
+        transformed_input_ops = []
+        has_changes = False
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                has_changes = True
+
+        target = self
+        if has_changes:
+            target = replace(self, input_dependencies=tuple(transformed_input_ops))
+
+        return transform(target)
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
-        return vars(self)
+        args: Dict[str, Any] = {}
+        for key, value in vars(self).items():
+            if key.startswith("_"):
+                args[key] = value
+            else:
+                args[f"_{key}"] = value
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args.setdefault("_output_dependencies", [])
+        return args
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""
@@ -90,6 +115,12 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self.name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
 
 class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
