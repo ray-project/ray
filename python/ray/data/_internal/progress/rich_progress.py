@@ -4,7 +4,6 @@ import math
 import sys
 import time
 import typing
-import uuid
 from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
@@ -22,6 +21,9 @@ from rich.text import Text
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.streaming_executor_state import (
+    format_op_state_summary,
+)
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
@@ -120,10 +122,6 @@ class RichSubProgressBar(BaseProgressBar):
 class RichExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using rich."""
 
-    # If the name/description of the progress bar exceeds this length,
-    # it will be truncated.
-    MAX_NAME_LENGTH = 100
-
     def __init__(
         self,
         dataset_id: str,
@@ -146,7 +144,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         )
 
         self._op_display: Dict[
-            uuid.UUID, Tuple[Optional[TaskID], Optional[Progress], Optional[Text]]
+            "OpState", Tuple[Optional[TaskID], Optional[Progress], Optional[Text]]
         ] = {}
 
         self._layout_table = Table.grid(padding=(0, 1, 0, 0), expand=True)
@@ -187,7 +185,6 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             )
 
             if sub_progress_bar_enabled:
-                uid = uuid.uuid4()
                 progress = self._make_progress_bar(_TREE_BRANCH, " ", 10)
                 stats = Text(f"{_TREE_VERTICAL_INDENT}Initializing...", no_wrap=True)
                 total = state.op.num_output_rows_total()
@@ -201,8 +198,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                 )
                 rows.append(progress)
                 rows.append(stats)
-                state.progress_manager_uuid = uid
-                self._op_display[uid] = (tid, progress, stats)
+                self._op_display[state] = (tid, progress, stats)
 
             if not contains_sub_progress_bars:
                 continue
@@ -324,10 +320,9 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
 
     def _can_update_operator(self, op_state: "OpState") -> bool:
-        uid = op_state.progress_manager_uuid
-        if uid is None or uid not in self._op_display:
+        if op_state not in self._op_display:
             return False
-        tid, progress, stats = self._op_display[uid]
+        tid, progress, stats = self._op_display[op_state]
         if tid is None or not progress or not stats or tid not in progress.task_ids:
             return False
         return True
@@ -339,16 +334,15 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             return
         if self._start_time is None:
             self._start_time = time.time()
-        uid = op_state.progress_manager_uuid
-        tid, progress, stats = self._op_display[uid]
+        tid, progress, stats = self._op_display[op_state]
 
         # progress
-        current_rows = op_state.output_row_count
+        current_rows = op_state.op.metrics.row_outputs_taken
         total_rows = op_state.op.num_output_rows_total()
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
         # stats
-        stats_str = op_state.summary_str_raw(resource_manager)
+        stats_str = format_op_state_summary(op_state, resource_manager)
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
 
 

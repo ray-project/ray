@@ -16,12 +16,12 @@
 ! always lint
 ! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
-! data dask serve ml tune train llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc python_dependencies tools
+! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
+! linux_wheels macos_wheels docker doc python_dependencies min_build tools
 ! release_tests spark_on_ray
 
 python/ray/air/
-@ ml train tune data linux_wheels
+@ ml train train_gpu tune data linux_wheels
 ;
 
 python/ray/llm/
@@ -39,7 +39,7 @@ ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
 ci/docker/data9.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
-@ data ml train
+@ data
 ;
 
 python/ray/workflow/
@@ -51,19 +51,20 @@ python/ray/tune/
 ;
 
 python/ray/train/
-@ ml train linux_wheels
+@ ml train train_gpu linux_wheels
 ;
 
 .buildkite/ml.rayci.yml
-.buildkite/pipeline.test.yml
-ci/docker/ml.build.Dockerfile
-.buildkite/pipeline.gpu.yml
-.buildkite/pipeline.gpu_large.yml
 ci/docker/ml.build.wanda.yaml
+ci/docker/mllightning2gpu.build.wanda.yaml
+ci/docker/ml.build.Dockerfile
 ci/ray_ci/ml.tests.yml
+@ ml train train_gpu tune
+;
+
 ci/docker/min.build.Dockerfile
 ci/docker/min.build.wanda.yaml
-@ ml train tune
+@ min_build
 ;
 
 rllib/
@@ -87,7 +88,7 @@ python/setup.py
 python/requirements.txt
 python/requirements_compiled.txt
 python/requirements/
-@ ml tune train serve workflow data
+@ ml tune train serve workflow data min_build
 @ python dashboard linux_wheels macos_wheels java
 @ python_dependencies
 ;

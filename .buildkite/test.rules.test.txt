@@ -9,12 +9,12 @@ ci/pipeline/test_conditional_testing.py: tools
 
 # === Ray Libraries ===
 
-python/ray/data/__init__.py: data ml train
-python/ray/air/__init__.py: ml train tune data linux_wheels
+python/ray/data/__init__.py: data
+python/ray/air/__init__.py: ml train train_gpu tune data linux_wheels
 python/ray/llm/llm.py: llm
 python/ray/workflow/workflow.py: workflow
 python/ray/tune/tune.py: ml train tune linux_wheels
-python/ray/train/train.py: ml train linux_wheels
+python/ray/train/train.py: ml train train_gpu linux_wheels
 python/ray/serve/serve.py: serve linux_wheels java
 python/ray/dashboard/dashboard.py: dashboard linux_wheels python
 
@@ -31,18 +31,23 @@ rllib/rllib.py: rllib rllib_gpu rllib_directly
 # === Python Core ===
 
 python/core.py: ml tune train data python dashboard linux_wheels macos_wheels java
-python/setup.py: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies
-python/requirements/test-requirements.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies
+python/setup.py: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
+python/requirements/test-requirements.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/_raylet.pyx: ml tune train data python dashboard linux_wheels macos_wheels java
 
 # === Buildkite Configs ===
 
-.buildkite/ml.rayci.yml: ml train tune
+.buildkite/ml.rayci.yml: ml train train_gpu tune
 .buildkite/core.rayci.yml: python core_cpp
 .buildkite/others.rayci.yml: java
 .buildkite/lint.rayci.yml: tools
 .buildkite/macos.rayci.yml: macos_wheels
 .buildkite/base.rayci.yml: docker linux_wheels tools
+
+# === Min installation ===
+
+ci/docker/min.build.Dockerfile: min_build
+ci/docker/min.build.wanda.yaml: min_build
 
 # === Java/C++ ===
 
