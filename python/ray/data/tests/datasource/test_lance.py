@@ -244,6 +244,45 @@ def test_lance_read_with_version(data_path):
     ]
 
 
+@pytest.mark.parametrize(
+    "table_id,namespace_impl,namespace_properties",
+    [
+        (["db", "table"], "rest", {"endpoint": "http://localhost:9000"}),
+        (["catalog", "schema", "table"], "dir", {"path": "/tmp/ns"}),
+    ],
+)
+def test_write_lance_passes_namespace_args(
+    monkeypatch, table_id, namespace_impl, namespace_properties
+):
+    captured = {}
+
+    class _FakeLanceDatasink:
+        def __init__(self, path, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+
+    def _fake_write_datasink(self, datasink, **kwargs):
+        captured["datasink"] = datasink
+        captured["write_kwargs"] = kwargs
+
+    monkeypatch.setattr(ray.data.dataset, "LanceDatasink", _FakeLanceDatasink)
+    monkeypatch.setattr(ray.data.Dataset, "write_datasink", _fake_write_datasink)
+
+    ds = ray.data.range(1)
+    ds.write_lance(
+        "/tmp/lance-namespace-test",
+        table_id=table_id,
+        namespace_impl=namespace_impl,
+        namespace_properties=namespace_properties,
+    )
+
+    assert captured["path"] == "/tmp/lance-namespace-test"
+    assert captured["kwargs"]["table_id"] == table_id
+    assert captured["kwargs"]["namespace_impl"] == namespace_impl
+    assert captured["kwargs"]["namespace_properties"] == namespace_properties
+    assert isinstance(captured["datasink"], _FakeLanceDatasink)
+
+
 if __name__ == "__main__":
     import sys
 
