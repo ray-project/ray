@@ -721,6 +721,27 @@ class gRPCRequest:
     user_request_proto: Any
 
 
+@dataclass
+class gRPCStreamingRequest:
+    """Sent from the GRPC proxy to replicas for client/bidirectional streaming.
+
+    This class carries metadata about the streaming session. The actual request
+    messages are delivered through a separate channel/callback mechanism.
+    """
+
+    # Session ID for tracking this streaming session
+    session_id: str
+
+    # Name of the proxy actor to call back for receiving messages
+    proxy_actor_name: str
+
+    # The streaming type (stream_unary or stream_stream)
+    streaming_type: str
+
+    # The first request message (optional, for convenience)
+    first_request_proto: Optional[Any] = None
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
