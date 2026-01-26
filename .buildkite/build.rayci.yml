@@ -8,20 +8,20 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
 
   - name: ray-dashboard-build
     label: "wanda: dashboard (x86_64)"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    env_file: rayci.env
     env:
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
 
   - name: ray-java-build
@@ -30,10 +30,10 @@ steps:
     tags:
       - release_wheels
       - java
+    env_file: rayci.env
     env:
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
 
   - name: ray-wheel-build
     label: "wanda: wheel py{{matrix}} (x86_64)"
@@ -43,11 +43,11 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
@@ -80,11 +80,11 @@ steps:
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "3.10"  # Used for upstream images; output is Python-agnostic
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - oss
@@ -92,11 +92,11 @@ steps:
   - name: ray-cpp-wheel-build
     label: "wanda: cpp wheel (x86_64)"
     wanda: ci/docker/ray-cpp-wheel.wanda.yaml
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "3.10"  # Used for upstream images; wheel is Python-agnostic
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
