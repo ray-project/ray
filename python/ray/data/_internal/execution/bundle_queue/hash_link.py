@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, Iterator, Optional
 
 from typing_extensions import override
 
-from .base import BaseBundleQueue, SupportsRemoval
+from .base import QueueWithRemoval
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -19,7 +19,7 @@ class _Node:
     prev: Optional[_Node] = None
 
 
-class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
+class HashLinkedQueue(QueueWithRemoval):
     """A bundle queue that supports these operations quickly:
     - contains(bundle)
     - remove(bundle)
@@ -56,30 +56,14 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-    def add_to_front(self, bundle: RefBundle):
-        """Add a bundle to the front(head) of the queue"""
-        self._on_enqueue(bundle)
-        new_node = _Node(value=bundle, next=self._head, prev=None)
-        # Case 1: The queue is empty.
-        if self._head is None:
-            assert self._tail is None
-            self._head = new_node
-            self._tail = new_node
-        # Case 2: The queue has at least one element.
-        else:
-            self._head.prev = new_node  # Link old head back to new node
-            self._head = new_node  # Update head pointer
-
-        self._bundle_to_nodes[bundle].appendleft(new_node)
-
     @override
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         # Case 1: The queue is empty.
         if not self._head:
             raise IndexError("You can't pop from an empty queue")
 
         bundle = self._head.value
-        self.remove(bundle)
+        self._remove_inner(bundle)
 
         return bundle
 
@@ -95,7 +79,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
         return self._head.value
 
     @override
-    def remove(self, bundle: RefBundle) -> RefBundle:
+    def _remove_inner(self, bundle: RefBundle) -> RefBundle:
         # Case 1: The queue is empty.
         if bundle not in self._bundle_to_nodes:
             raise ValueError(f"The bundle {bundle} is not in the queue.")
@@ -125,18 +109,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval):
             node.prev.next = node.next
             node.next.prev = node.prev
 
-        self._on_dequeue(node.value)
-
-        assert self._nbytes >= 0, (
-            "Expected the total size of objects in the queue to be non-negative, but "
-            f"got {self._nbytes} bytes instead."
-        )
-
         return node
-
-    @override
-    def finalize(self, key: Optional[int] = None):
-        pass
 
     def __iter__(self) -> Iterator[RefBundle]:
         curr = self._head

@@ -81,30 +81,28 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return num_rows
 
     def internal_input_queue_num_blocks(self) -> int:
-        return sum(
-            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
-        )
+        return sum(buf.num_blocks() for buf in self._input_buffers)
 
     def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
+        return sum(buf.estimate_size_bytes() for buf in self._input_buffers)
 
     def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
+        return self._output_buffer.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
+        return self._output_buffer.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
         for input_buffer in self._input_buffers:
-            while input_buffer:
-                bundle = input_buffer.popleft()
+            while input_buffer.has_next():
+                bundle = input_buffer.get_next()
                 self._metrics.on_input_dequeued(bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.popleft()
+        while self._output_buffer.has_next():
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:

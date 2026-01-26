@@ -171,14 +171,14 @@ class AllToAllOperator(
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""
-        while self._input_buffer:
-            bundle = self._input_buffer.pop()
+        while self._input_buffer.has_next():
+            bundle = self._input_buffer.get_next()
             self._metrics.on_input_dequeued(bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.pop()
+        while self._output_buffer.has_next():
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def all_inputs_done(self) -> None:
@@ -193,8 +193,8 @@ class AllToAllOperator(
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        while self._input_buffer:
-            refs = self._input_buffer.get_last()
+        while self._input_buffer.has_next():
+            refs = self._input_buffer.get_next()
             self._metrics.on_input_dequeued(refs)
 
         for ref in self._output_buffer:

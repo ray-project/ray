@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-class OrderedBundleQueue(BaseBundleQueue):
+class ReorderingBundleQueue(BaseBundleQueue):
     """A queue that supports adding in index order."""
 
     def __init__(self):

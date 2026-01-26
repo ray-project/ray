@@ -27,18 +27,22 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     AbstractAllToAll,
-    RandomShuffle,
-    Repartition,
-)
-from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
     MapBatches,
+    RandomShuffle,
+    Repartition,
     StreamingRepartition,
 )
 from ray.util.annotations import DeveloperAPI
+
+__all__ = [
+    "FuseOperators",
+    "are_remote_args_compatible",
+]
+
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]

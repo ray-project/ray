@@ -31,8 +31,8 @@ from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     EstimateSize,
     FIFOBundleQueue,
-    OrderedBundleQueue,
     RebundleQueue,
+    ReorderingBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
@@ -409,7 +409,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         super().start(options)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
-            self._output_queue = OrderedBundleQueue()
+            self._output_queue = ReorderingBundleQueue()
         else:
             self._output_queue = FIFOBundleQueue()
 

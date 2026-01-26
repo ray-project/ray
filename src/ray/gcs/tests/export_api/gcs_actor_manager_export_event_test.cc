@@ -29,8 +29,8 @@
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
-#include "ray/gcs/gcs_actor.h"
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -65,11 +65,6 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
     if (pending_it != actors.end()) {
       actors.erase(pending_it);
     }
-  }
-
-  size_t GetPendingActorsCount() const { return 0; }
-  bool CancelInFlightActorScheduling(const std::shared_ptr<gcs::GcsActor> &actor) {
-    return false;
   }
 
   MOCK_CONST_METHOD0(DebugString, std::string());
