@@ -445,6 +445,21 @@ def _get_gcs_credentials() -> Dict[str, str]:
 # =============================================================================
 
 
+def _to_json_serializable(val: Any) -> Any:
+    """Convert value to JSON-serializable type."""
+    from decimal import Decimal
+
+    if val is None:
+        return None
+    if isinstance(val, Decimal):
+        return str(val)  # Preserve precision as string
+    if isinstance(val, float) and not math.isfinite(val):
+        return None
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return val
+
+
 def compute_parquet_statistics(table: pa.Table) -> str:
     """Compute Delta Lake statistics JSON for a table."""
     stats: Dict[str, Any] = {"numRecords": table.num_rows}
@@ -460,30 +475,13 @@ def compute_parquet_statistics(table: pa.Table) -> str:
         if null_count is not None and null_count >= 0:
             null_counts[name] = null_count
 
-        if is_numeric_type(col_type):
-            min_val, max_val = pc.min(col).as_py(), pc.max(col).as_py()
-            if isinstance(min_val, float) and not math.isfinite(min_val):
-                min_val = None
-            if isinstance(max_val, float) and not math.isfinite(max_val):
-                max_val = None
+        if is_numeric_type(col_type) or is_string_type(col_type) or is_temporal_type(col_type):
+            min_val = _to_json_serializable(pc.min(col).as_py())
+            max_val = _to_json_serializable(pc.max(col).as_py())
             if min_val is not None:
                 min_vals[name] = min_val
             if max_val is not None:
                 max_vals[name] = max_val
-        elif is_string_type(col_type) or is_temporal_type(col_type):
-            min_val, max_val = pc.min(col).as_py(), pc.max(col).as_py()
-            if min_val is not None:
-                min_vals[name] = (
-                    min_val.isoformat()
-                    if hasattr(min_val, "isoformat")
-                    else str(min_val)
-                )
-            if max_val is not None:
-                max_vals[name] = (
-                    max_val.isoformat()
-                    if hasattr(max_val, "isoformat")
-                    else str(max_val)
-                )
 
     if min_vals:
         stats["minValues"] = min_vals
