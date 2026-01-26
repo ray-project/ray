@@ -235,7 +235,6 @@ def create_s3_url_dataset(
     """
     file_records = list_s3_image_files(data_dir)
 
-    # Create dataset from file records
     ds = ray.data.from_items(file_records)
 
     # Apply row limit if specified
