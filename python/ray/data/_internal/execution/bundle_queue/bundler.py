@@ -150,11 +150,11 @@ class RebundleQueue(BaseBundleQueue):
 
         merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
         self._ready_bundles.append(merged_bundle)
-        self._on_enqueue(merged_bundle)
+        self._on_enqueue_bundle(merged_bundle)
 
         # Clear the pending queue since all bundles have been processed
         for bundle in self._pending_bundles:
-            self._on_dequeue(bundle)
+            self._on_dequeue_bundle(bundle)
         self._pending_bundles.clear()
         self._total_pending_rows = 0
 
@@ -196,7 +196,7 @@ class RebundleQueue(BaseBundleQueue):
             if remaining_bundle is not None:
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
-                self._on_enqueue(remaining_bundle)
+                self._on_enqueue_bundle(remaining_bundle)
 
             return True
 
@@ -211,7 +211,7 @@ class RebundleQueue(BaseBundleQueue):
     def add(self, bundle: RefBundle, **kwargs: Any):
         self._total_pending_rows += bundle.num_rows() or 0
         self._pending_bundles.append(bundle)
-        self._on_enqueue(bundle)
+        self._on_enqueue_bundle(bundle)
         self._curr_consumed_bundles.append(bundle)
         if self._try_build_ready_bundle():
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
@@ -232,7 +232,7 @@ class RebundleQueue(BaseBundleQueue):
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
-        self._on_dequeue(ready_bundle)
+        self._on_dequeue_bundle(ready_bundle)
         consumed_bundle = self._consumed_bundles_list.popleft()
         return ready_bundle, consumed_bundle
 
