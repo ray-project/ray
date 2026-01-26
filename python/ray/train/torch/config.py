@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -74,7 +74,7 @@ class TorchConfig(BackendConfig):
     def framework(self):
         return TrainingFramework.TORCH
 
-    def to_dict(self) -> Dict[str, str | int]:
+    def to_dict(self) -> Dict[str, Any]:
         config_dict = {
             "backend": self.backend,
             "init_method": self.init_method,

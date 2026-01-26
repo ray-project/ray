@@ -68,7 +68,7 @@ _TRAINING_FRAMEWORK_MAP = {
 logger = logging.getLogger(__name__)
 
 # Helper conversion functions
-def _to_human_readable_json(obj, *, max_depth=10):
+def _to_human_readable_json(obj, *, max_depth=10) -> str:
     """
     Convert arbitrary Python objects into a human-readable, JSON-serializable string.
     """
@@ -171,8 +171,9 @@ def to_proto_backend_config(
     backend_config: BackendConfig,
 ) -> ProtoTrainRun.BackendConfig:
     """Convert BackendConfig to protobuf format."""
+    human_readable_config = json.loads(_to_human_readable_json(backend_config.config))
     config = Struct()
-    config.update(backend_config.config)
+    config.update(human_readable_config)
 
     return ProtoTrainRun.BackendConfig(
         framework=_TRAINING_FRAMEWORK_MAP[backend_config.framework],
