@@ -250,7 +250,7 @@ program might run into out-of-memory (OOM) errors.
 If you encounter an OOM errors, try decreasing your ``batch_size``.
 
 Enabling ``Polars`` operations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can enable ``Polars`` globally to optimize certain Ray Data operations. Ray Data uses ``Polars`` internally for better performance when processing data.
 
