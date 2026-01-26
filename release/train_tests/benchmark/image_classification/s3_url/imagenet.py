@@ -237,7 +237,6 @@ def create_s3_url_dataset(
 
     ds = ray.data.from_items(file_records)
 
-    # Apply row limit if specified
     if limit_rows is not None and limit_rows > 0:
         ds = ds.limit(limit_rows)
 
