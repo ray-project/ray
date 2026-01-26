@@ -17,6 +17,10 @@ from ray.data.block import BlockAccessor
 def _make_ref_bundles_for_unit_test(raw_bundles: List[List[List[Any]]]) -> tuple:
     """Create RefBundles with fake object refs for unit testing (no Ray required).
 
+    Args:
+        raw_bundles: A list of bundles, where each bundle is a list of blocks,
+            and each block is a list of values.
+
     Returns:
         A tuple of (list of RefBundles, block_data_map) where block_data_map
         maps fake object refs to their actual DataFrame data.
