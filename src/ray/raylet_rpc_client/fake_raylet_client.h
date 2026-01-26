@@ -172,9 +172,9 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ClientCallback<CancelResourceReserveReply> &callback) override {
-    num_return_requested += 1;
+    num_return_requested += bundle_specs.size();
     return_callbacks.push_back(callback);
   }
 
