@@ -724,7 +724,6 @@
 # TPCH Queries
 ##############
 
-
 - name: "tpch_q1_{{scaling}}"
   python: "3.10"
   matrix:
