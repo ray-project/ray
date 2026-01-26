@@ -4,12 +4,16 @@ from ray.data._internal.logical.interfaces import (
     Plan,
     Rule,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     Aggregate,
     Repartition,
     Sort,
+    StreamingRepartition,
 )
-from ray.data._internal.logical.operators.map_operator import StreamingRepartition
+
+__all__ = [
+    "CombineShuffles",
+]
 
 
 class CombineShuffles(Rule):
