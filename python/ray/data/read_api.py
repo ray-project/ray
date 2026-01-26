@@ -3735,7 +3735,7 @@ def read_lerobot(
         >>> ds = ray.data.read_lerobot(
         ...     "lerobot/aloha_mobile_cabinet",
         ...     root="",
-        ... )
+        ... ) # doctest: +SKIP
         >>> ds.schema()
         Column         Type
         ------         ----
@@ -3752,7 +3752,7 @@ def read_lerobot(
         >>> ds = ray.data.read_lerobot(
         ...     "lerobot/pusht",
         ...     root="/path/to/local/cache"
-        ... )
+        ... )  # doctest: +SKIP
 
         Customize video loading:
 
