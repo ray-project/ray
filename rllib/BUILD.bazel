@@ -878,9 +878,9 @@ py_test(
     main = "examples/algorithms/ppo/cartpole_ppo.py",
     tags = [
         "exclusive",
+        "gpu",
         "learning_tests",
         "team:rllib",
-        "gpu",
     ],
 )
 
@@ -899,9 +899,9 @@ py_test(
     main = "examples/algorithms/ppo/atari_ppo.py",
     tags = [
         "exclusive",
+        "gpu",
         "learning_tests",
         "team:rllib",
-        "gpu",
     ],
 )
 
@@ -921,8 +921,8 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "team:rllib",
         "multi_gpu",
+        "team:rllib",
     ],
 )
 
@@ -960,9 +960,9 @@ py_test(
     main = "examples/algorithms/ppo/mujoco_ppo.py",
     tags = [
         "exclusive",
+        "gpu",
         "learning_tests",
         "team:rllib",
-        "gpu",
     ],
 )
 
@@ -981,9 +981,9 @@ py_test(
     main = "examples/algorithms/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
+        "gpu",
         "learning_tests",
         "team:rllib",
-        "gpu",
     ],
 )
 
@@ -1003,8 +1003,8 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "team:rllib",
         "multi_gpu",
+        "team:rllib",
     ],
 )
 
