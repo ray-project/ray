@@ -166,6 +166,7 @@ class RebundleQueue(BaseBundleQueue):
         Returns `True` if ready bundle built, otherwise `False`
         """
 
+        built_ready_bundle: bool = False
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
             self._total_pending_rows
         ):
@@ -195,6 +196,7 @@ class RebundleQueue(BaseBundleQueue):
                 self._pending_bundles.append(last_pending_bundle)
 
             self._merge_bundles()
+            built_ready_bundle = True
 
             if remaining_bundle is not None:
                 # Add back remaining sliced bundle that was not included to build
@@ -203,14 +205,12 @@ class RebundleQueue(BaseBundleQueue):
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
                 self._on_enqueue_bundle(remaining_bundle)
 
-            return True
-
         # If we're flushing and have leftover bundles, convert them to a ready bundle
         if flush_remaining and self._pending_bundles:
             self._merge_bundles()
-            return True
+            built_ready_bundle = True
 
-        return False
+        return built_ready_bundle
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):

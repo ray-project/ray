@@ -82,15 +82,25 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
 
     for bundle in bundles:
         bundler.add(bundle)
-        while bundler.has_next():
-            out_bundle = bundler.get_next()
-            out_bundles.append(out_bundle)
+
+    # NOTE: The check for num bundles/blocks is harder to reason about since we rebundle bundles together
+    og_total_size_bytes = bundler.estimate_size_bytes()
+    og_total_num_rows = bundler.num_rows()
+    assert sum(bundle.size_bytes() for bundle in bundles) == og_total_size_bytes
+    assert sum(bundle.num_rows() for bundle in bundles) == og_total_num_rows
+
+    all_original_bundles = []
+    while bundler.has_next():
+        out_bundle, original_bundles = bundler.get_next_with_original()
+        out_bundles.append(out_bundle)
+        all_original_bundles.extend(original_bundles)
 
     bundler.finalize()
 
     while bundler.has_next():
-        out_bundle = bundler.get_next()
+        out_bundle, original_bundles = bundler.get_next_with_original()
         out_bundles.append(out_bundle)
+        all_original_bundles.extend(original_bundles)
 
     # Verify number of output bundles
     assert len(out_bundles) == len(
@@ -124,6 +134,8 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
 
     # Verify block content - extract all values from output bundles
     output_values = []
+    total_num_rows = 0
+    total_size_bytes = 0
     for bundle in out_bundles:
         for (block_ref, _), block_slice in zip(bundle.blocks, bundle.slices):
             # Look up the actual block data from our map (no ray.get needed)
@@ -133,6 +145,11 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
                 # and the block slicing is happened in map operator for streaming repartition
                 data = data[block_slice.start_offset : block_slice.end_offset]
             output_values.extend(data)
+        total_num_rows += bundle.num_rows()
+        total_size_bytes += bundle.size_bytes()
+
+    assert og_total_size_bytes == total_size_bytes
+    assert og_total_num_rows == total_num_rows
 
     # Expected values are all input values flattened in order
     expected_values = [
@@ -141,6 +158,11 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
     assert (
         output_values == expected_values
     ), f"Output values {output_values} don't match expected {expected_values}"
+
+    # Verify get_next_with_original tracks all original bundles
+    assert len(all_original_bundles) == len(bundles)
+    for orig, expected in zip(all_original_bundles, bundles):
+        assert orig is expected
 
 
 if __name__ == "__main__":

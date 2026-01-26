@@ -1,5 +1,4 @@
 import itertools
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
@@ -170,7 +169,7 @@ class RefBundle:
             elif metadata.num_rows != block_slice.num_rows:
                 # Partial block - estimate size based on rows
                 per_row = metadata.size_bytes / metadata.num_rows
-                total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
+                total += max(1, round(per_row * block_slice.num_rows))
             else:
                 total += metadata.size_bytes
         return total
