@@ -33,7 +33,7 @@ class RebundlingStrategy(abc.ABC):
 
         Args:
             total_pending_rows: The number of rows in a batch of pending bundles that will be merged to form
-                a ready bundle, excluding the last_pending_bundle.
+                a ready bundle, including the last_pending_bundle.
             last_pending_bundle: The last pending bundles in that batch ^. The term *last* means the bundle that caused
                 `can_build_ready_bundle(num_pending_rows)` to be `True` for the first time.
 
@@ -143,12 +143,11 @@ class RebundleQueue(BaseBundleQueue):
         self._consumed_bundles_list: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
 
-    def _merge_bundles(self, pending_to_ready_bundles: Deque[RefBundle]):
+    def _merge_bundles(self):
+        """Combine *ALL* pending_bundles into a single, ready bundle."""
         from ray.data._internal.execution.interfaces import RefBundle
 
-        assert len(pending_to_ready_bundles) == len(self._pending_bundles)
-
-        merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
+        merged_bundle = RefBundle.merge_ref_bundles(self._pending_bundles)
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue_bundle(merged_bundle)
 
@@ -170,8 +169,7 @@ class RebundleQueue(BaseBundleQueue):
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
             self._total_pending_rows
         ):
-            pending_to_ready_bundles = list(self._pending_bundles)
-            last_pending_bundle = pending_to_ready_bundles.pop()
+            last_pending_bundle = self._pending_bundles.pop()
 
             # We now know `pending_bundle` is the bundle that enabled us to
             # build a ready bundle. Therefore, we may need to slice the bundle.
@@ -186,14 +184,21 @@ class RebundleQueue(BaseBundleQueue):
             remaining_bundle: Optional[RefBundle] = None
             if rows_needed < last_pending_bundle.num_rows():
                 sliced_bundle, remaining_bundle = last_pending_bundle.slice(rows_needed)
-                pending_to_ready_bundles.append(sliced_bundle)
+                # The original bundle was enqueued in add(). We need to dequeue it
+                # and enqueue the sliced portion, since _merge_bundles will dequeue
+                # sliced_bundle (which has different metrics than the original).
+                self._on_dequeue_bundle(last_pending_bundle)
+                self._on_enqueue_bundle(sliced_bundle)
+                self._pending_bundles.append(sliced_bundle)
             else:
                 assert rows_needed == last_pending_bundle.num_rows()
-                pending_to_ready_bundles.append(last_pending_bundle)
+                self._pending_bundles.append(last_pending_bundle)
 
-            self._merge_bundles(pending_to_ready_bundles)
+            self._merge_bundles()
 
             if remaining_bundle is not None:
+                # Add back remaining sliced bundle that was not included to build
+                # a ready bundle.
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
                 self._on_enqueue_bundle(remaining_bundle)
@@ -202,7 +207,7 @@ class RebundleQueue(BaseBundleQueue):
 
         # If we're flushing and have leftover bundles, convert them to a ready bundle
         if flush_remaining and self._pending_bundles:
-            self._merge_bundles(self._pending_bundles)
+            self._merge_bundles()
             return True
 
         return False
