@@ -36,7 +36,6 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
-from ray.serve.autoscaling_policy import apply_app_level_autoscaling_config
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -2570,7 +2569,6 @@ class TestAutoscale:
             asm.record_request_metrics_for_replica(replica_report)
 
 
-@apply_app_level_autoscaling_config
 def simple_app_level_policy(contexts):
     """Simple policy that scales all deployments to 3 replicas."""
     decisions = {}
@@ -2579,7 +2577,6 @@ def simple_app_level_policy(contexts):
     return decisions, {}
 
 
-@apply_app_level_autoscaling_config
 def stateful_app_level_policy(contexts):
     """Stateful application level policy that increments a counter in policy_state.
     Used in tests to verify that application level autoscaling policy state
@@ -2602,7 +2599,6 @@ def stateful_app_level_policy(contexts):
     return decisions, new_state
 
 
-@apply_app_level_autoscaling_config
 def app_level_policy_with_decorator(contexts):
     """App-level policy used to verify that the decorator applies delay logic."""
     decisions = {}
@@ -2617,7 +2613,6 @@ def app_level_policy_with_decorator(contexts):
     return decisions, {}
 
 
-@apply_app_level_autoscaling_config
 def partial_app_level_policy(contexts):
     """Policy that returns decisions for only a subset of deployments."""
     decisions = {}

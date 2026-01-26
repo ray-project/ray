@@ -10,7 +10,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -177,7 +176,6 @@ def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     return None
 
 
-@PublicAPI(stability="alpha")
 def apply_autoscaling_config(
     policy_func: Callable[
         [AutoscalingContext], Tuple[Union[int, float], Dict[str, Any]]
@@ -208,7 +206,6 @@ def apply_autoscaling_config(
     return wrapped_policy
 
 
-@PublicAPI(stability="alpha")
 def apply_app_level_autoscaling_config(
     policy_func: Callable[
         [Dict[DeploymentID, AutoscalingContext]],
@@ -279,8 +276,6 @@ def _core_replica_queue_length_policy(ctx: AutoscalingContext) -> Tuple[float, D
     return desired_num_replicas, {}
 
 
-@apply_autoscaling_config
-@PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[int, Dict[str, Any]]:

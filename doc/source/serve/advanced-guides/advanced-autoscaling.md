@@ -646,14 +646,12 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 
 ### Applying standard autoscaling parameters to custom policies  
   
-By default, custom autoscaling policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`. These parameters are only enforced by the default autoscaling policy.  
-
-To apply these parameters to your custom policy, use the `@apply_autoscaling_config` decorator. This ensures consistent behavior by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+Ray Serve automatically applies the following standard autoscaling parameters from your [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to custom policies:
 - `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
 - `upscaling_factor`, `downscaling_factor`
 - `min_replicas`, `max_replicas`
 
-The following example shows how to use the decorator:
+The following example shows a custom autoscaling policy with standard autoscaling parameters applied.
 
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
@@ -668,9 +666,9 @@ The following example shows how to use the decorator:
 ```
 
 ::::{note}
-The decorator applies the configuration logic **after** the custom policy function returns. Your policy function should return the "raw" desired number of replicas. The decorator then modifies this value based on the `autoscaling_config` settings.
+Your policy function should return the "raw" desired number of replicas. Ray Serve applies the `autoscaling_config` settings (delays, factors, and bounds) on top of your decision.
 
-Your policy can return an `int` or a `float` "raw desired" replica count. The decorated policy return an integer decision number after applying the `autoscaling_config` settings.
+Your policy can return an `int` or a `float` "raw desired" replica count. Ray Serve returns an integer decision number.
 ::::
 
 
@@ -763,25 +761,17 @@ When you specify both a deployment-level policy and an application-level policy,
 
 
 #### Applying standard autoscaling parameters to application-level policies
-Custom application level policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`.
-To apply these parameters to your application level policy, use the `@apply_app_level_autoscaling_config` decorator. This ensures consistent behavior by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+Ray Serve automatically applies standard autoscaling parameters (delays, factors, and min/max bounds) to application-level policies on a per-deployment basis.
+These parameters include:
 - `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
 - `upscaling_factor`, `downscaling_factor`
 - `min_replicas`, `max_replicas`
 
-The following example shows how to add the `@apply_app_level_autoscaling_config` decorator to your application level policy:
-```{literalinclude} ../doc_code/autoscaling_policy.py
-:language: python
-:start-after: __begin app_level_policy_with_decorator_
-:end-before: __end app_level_policy_with_decorator_
-```
 The YAML configuration file shows the default parameters applied to the application level policy.
 ```{literalinclude} ../doc_code/application_level_autoscaling_with_defaults.yaml
 :language: yaml
 ```
-The decorator ensures that these standard parameters are applied consistently on top of your application level policy's decisions.
-
-Your application level policy can return per deployment desired replicas as `int` or `float` values. With the decorator, Ray Serve applies the autoscaling config parameters per deployment and returns integer decisions.
+Your application level policy can return per deployment desired replicas as `int` or `float` values. Ray Serve applies the autoscaling config parameters per deployment and returns integer decisions.
 :::{warning}
 ### Gotchas and limitations
 

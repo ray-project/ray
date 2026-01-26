@@ -36,10 +36,6 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.autoscaling_policy import (
-    apply_app_level_autoscaling_config,
-    apply_autoscaling_config,
-)
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
@@ -1535,7 +1531,7 @@ def test_autoscaling_status_changes(serve_instance):
     print("Statuses are as expected.")
 
 
-@apply_autoscaling_config
+# Serve applies autoscaling config to custom policies at registration time.
 def custom_autoscaling_policy(ctx: AutoscalingContext):
     if ctx.total_num_requests > 50:
         return 3, {}
@@ -1599,7 +1595,6 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
-@apply_app_level_autoscaling_config
 def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
     decisions: Dict[DeploymentID, int] = {}
     for deployment_id, ctx in ctxs.items():

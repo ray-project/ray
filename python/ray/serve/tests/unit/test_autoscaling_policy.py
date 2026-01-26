@@ -14,6 +14,10 @@ from ray.serve.autoscaling_policy import (
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
+wrapped_replica_queue_length_autoscaling_policy = apply_autoscaling_config(
+    replica_queue_length_autoscaling_policy
+)
+
 
 def create_context_with_overrides(
     base_ctx: AutoscalingContext, **kwargs
@@ -331,7 +335,7 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # 1 * 10
         assert new_num_replicas == 10
@@ -341,7 +345,7 @@ class TestReplicaQueueLengthPolicy:
         if use_upscaling_factor:
             config.upscaling_factor = 0.5
 
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
@@ -387,13 +391,13 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         # Downscaling to 0 first stops at 1
         assert new_num_replicas == 1
         # Need to trigger this the second time to go to zero
         ctx.target_num_replicas = 1
         ctx.current_num_replicas = 1
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 0
 
         # With smoothing factor < 1, the desired number of replicas shouldn't
@@ -413,7 +417,7 @@ class TestReplicaQueueLengthPolicy:
                 current_num_replicas=num_replicas,
                 target_num_replicas=num_replicas,
             )
-            num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+            num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
         assert num_replicas == 0
 
@@ -455,11 +459,11 @@ class TestReplicaQueueLengthPolicy:
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 1
         # Run the basic upscale/downscale flow
         _run_upscale_downscale_flow(
-            replica_queue_length_autoscaling_policy,
+            wrapped_replica_queue_length_autoscaling_policy,
             config,
             ctx,
             overload_requests=overload_requests,
@@ -502,7 +506,7 @@ class TestReplicaQueueLengthPolicy:
         )
 
         # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 100
 
         # New target is 100, but no new replicas finished spinning up during this
@@ -513,7 +517,7 @@ class TestReplicaQueueLengthPolicy:
             current_num_replicas=1,
             target_num_replicas=100,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 100
 
         # Two new replicas spun up during this timestep.
@@ -523,7 +527,7 @@ class TestReplicaQueueLengthPolicy:
             current_num_replicas=3,
             target_num_replicas=100,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 123
 
         # A lot of queries got drained and a lot of replicas started up, but
@@ -534,7 +538,7 @@ class TestReplicaQueueLengthPolicy:
             current_num_replicas=4,
             target_num_replicas=123,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 123
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
@@ -592,7 +596,9 @@ class TestReplicaQueueLengthPolicy:
                     current_num_replicas=1,
                     target_num_replicas=1,
                 )
-                new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+                new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(
+                    ctx=ctx
+                )
                 if delay_s > 0:
                     assert new_num_replicas == 1, trial
                 else:
@@ -604,7 +610,9 @@ class TestReplicaQueueLengthPolicy:
                     current_num_replicas=2,
                     target_num_replicas=2,
                 )
-                new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+                new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(
+                    ctx=ctx
+                )
                 if delay_s > 0:
                     assert new_num_replicas == 2, trial
                 else:
@@ -645,7 +653,7 @@ class TestReplicaQueueLengthPolicy:
             last_scale_down_time=None,
         )
 
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == ongoing_requests / target_requests
 
     def test_callable_and_direct_values(self):

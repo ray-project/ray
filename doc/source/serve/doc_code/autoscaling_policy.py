@@ -94,14 +94,7 @@ def coordinated_scaling_policy(
 # __end_application_level_autoscaling_policy__
 
 # __begin app_level_policy_with_decorator_
-from typing import Dict, Tuple, Any
-from ray.serve.autoscaling_policy import apply_app_level_autoscaling_config
-from ray.serve.config import AutoscalingContext
-from ray.serve._private.common import DeploymentID
-
-@apply_app_level_autoscaling_config
-def coordinated_scaling_policy_with_defaults(contexts: Dict[DeploymentID, AutoscalingContext]) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
-    return coordinated_scaling_policy(contexts)
+# Ray Serve automatically applies delays, factors, and bounds to application-level policies.
 # __end app_level_policy_with_decorator_
 
 
@@ -145,19 +138,15 @@ def stateful_application_level_policy(
 # __end_stateful_application_level_policy__
 # __begin_apply_autoscaling_config_example__
 from typing import Any, Dict
-from ray.serve.autoscaling_policy import apply_autoscaling_config
 from ray.serve.config import AutoscalingContext
 
 
-@apply_autoscaling_config
 def queue_length_based_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> tuple[int, Dict[str, Any]]:
     # This policy calculates the "raw" desired replicas based on queue length.
-    # The decorator automatically applies:
-    # - Scaling factors (upscaling_factor, downscaling_factor)
-    # - Delays (upscale_delay_s, downscale_delay_s/downscale_to_zero_delay_s)
-    # - Min/Max replica bounds (min_replicas, max_replicas)
+    # Ray Serve automatically applies scaling factors, delays, and bounds from
+    # the deployment's autoscaling_config on top of this decision.
 
     queue_length = ctx.total_num_requests
 
