@@ -15,6 +15,15 @@ from huggingface_hub import snapshot_download
 import ray
 from ray.data import Dataset
 
+try:
+    from torchcodec.decoders import VideoDecoder  # noqa: F401
+
+    _TORCHCODEC_AVAILABLE = True
+    _TORCHCODEC_IMPORT_ERROR = ""
+except Exception as exc:
+    _TORCHCODEC_AVAILABLE = False
+    _TORCHCODEC_IMPORT_ERROR = str(exc)
+
 # Note: Using installed Ray from the virtual environment
 # If you need to test local Ray changes, build Ray from source first
 # ray_python_dir = Path(__file__).parent.parent.parent
@@ -28,6 +37,11 @@ class TestReadLerobot:
     @classmethod
     def setup_class(cls):
         """Initialize Ray for testing."""
+        if not _TORCHCODEC_AVAILABLE:
+            pytest.skip(
+                "torchcodec is required for LeRobot video decoding; "
+                f"import failed: {_TORCHCODEC_IMPORT_ERROR}"
+            )
         if not ray.is_initialized():
             ray.init(ignore_reinit_error=True)
 
