@@ -12,6 +12,7 @@ class RayServeException(Exception):
     pass
 
 
+@PublicAPI(stability="stable")
 class gRPCStatusError(RayServeException):
     """Internal exception that wraps an exception with user-set gRPC status code.
 
