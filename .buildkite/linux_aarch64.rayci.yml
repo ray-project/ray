@@ -11,9 +11,9 @@ steps:
 
   - name: manylinux-aarch64
     wanda: ci/docker/manylinux.wanda.yaml
+    env_file: rayci.env
     env:
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     instance_type: builder-arm64
 
   - name: ray-java-build-aarch64
@@ -22,10 +22,10 @@ steps:
     tags:
       - release_wheels
       - java
+    env_file: rayci.env
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     instance_type: builder-arm64
 
   - name: raycpubase-aarch64
@@ -119,16 +119,17 @@ steps:
   - name: ray-dashboard-build-aarch64
     label: "wanda: dashboard (aarch64)"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    env_file: rayci.env
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
     instance_type: builder-arm64
 
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{matrix}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    env_file: rayci.env
     matrix:
       - "3.10"
       - "3.11"
@@ -138,13 +139,13 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags: release_wheels
     instance_type: builder-arm64
 
   - name: ray-wheel-build-aarch64
     label: "wanda: wheel py{{matrix}} (aarch64)"
     wanda: ci/docker/ray-wheel.wanda.yaml
+    env_file: rayci.env
     matrix:
       - "3.10"
       - "3.11"
@@ -154,7 +155,6 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
@@ -187,11 +187,11 @@ steps:
   - name: ray-cpp-core-build-aarch64
     label: "wanda: cpp core (aarch64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "3.10"  # Used for upstream images; output is Python-agnostic
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - oss
@@ -200,11 +200,11 @@ steps:
   - name: ray-cpp-wheel-build-aarch64
     label: "wanda: cpp wheel (aarch64)"
     wanda: ci/docker/ray-cpp-wheel.wanda.yaml
+    env_file: rayci.env
     env:
       PYTHON_VERSION: "3.10"  # Used for upstream images; wheel is Python-agnostic
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
-      MANYLINUX_VERSION: "260103.868e54c"
     tags:
       - release_wheels
       - linux_wheels
