@@ -703,7 +703,7 @@ def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
     return results
 
 
-def print_summary(results: List[Dict], spilled_bytes_total: int = 0):
+def print_summary(results: List[Dict], spilled_bytes_total: Optional[int] = None):
     """Print summary of benchmark results using tabulate."""
     if not results:
         logger.warning("No results to display.")
@@ -755,9 +755,12 @@ def print_summary(results: List[Dict], spilled_bytes_total: int = 0):
         "total_rows_processed": total_rows,
         "total_time_s": round(total_time, 2),
         "avg_rows_per_second": round(avg_rows_per_second, 2),
-        "spilled_bytes_total": spilled_bytes_total,
-        "spilled_gb_total": round(spilled_bytes_total / (1024 * 1024 * 1024), 2),
     }
+    if spilled_bytes_total is not None:
+        summary["spilled_bytes_total"] = spilled_bytes_total
+        summary["spilled_gb_total"] = round(
+            spilled_bytes_total / (1024 * 1024 * 1024), 2
+        )
     logger.info(f"Summary: {summary}")
 
 
@@ -847,7 +850,7 @@ def main():
     results = run_benchmark(config)
 
     # Collect object store spill metrics
-    spilled_bytes_total = 0
+    spilled_bytes_total = None
     try:
         memory_info = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address)
@@ -860,7 +863,7 @@ def main():
     print_summary(results, spilled_bytes_total)
 
     if results:
-        return {
+        result = {
             "results": results,
             "data_loader": config.data_loader,
             "transform_types": config.transform_types,
@@ -870,8 +873,10 @@ def main():
             "num_batches": config.num_batches,
             "device": config.device,
             "pin_memory": config.pin_memory,
-            "spilled_bytes_total": spilled_bytes_total,
         }
+        if spilled_bytes_total is not None:
+            result["spilled_bytes_total"] = spilled_bytes_total
+        return result
 
 
 if __name__ == "__main__":
