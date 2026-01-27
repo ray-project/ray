@@ -923,7 +923,6 @@ class gRPCProxy(GenericProxy):
             streaming_request = gRPCStreamingRequest(
                 session_id=session_id,
                 proxy_actor_name=proxy_actor_name,
-                streaming_type=proxy_request.streaming_type.value,
             )
 
             # Serialize the streaming request

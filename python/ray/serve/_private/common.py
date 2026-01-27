@@ -735,9 +735,6 @@ class gRPCStreamingRequest:
     # Name of the proxy actor to call back for receiving messages
     proxy_actor_name: str
 
-    # The streaming type (stream_unary or stream_stream)
-    streaming_type: str
-
 
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"

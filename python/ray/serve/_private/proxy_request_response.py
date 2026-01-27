@@ -207,14 +207,6 @@ class gRPCProxyRequest(ProxyRequest):
         )
 
     @property
-    def has_output_stream(self) -> bool:
-        """Returns True if this request has a streaming output (server/bidi streaming)."""
-        return self.streaming_type in (
-            gRPCStreamingType.UNARY_STREAM,
-            gRPCStreamingType.STREAM_STREAM,
-        )
-
-    @property
     def request_iterator(self) -> Optional[AsyncIterator[Any]]:
         """Returns the request iterator for client/bidi streaming, or None."""
         return self._request_iterator
