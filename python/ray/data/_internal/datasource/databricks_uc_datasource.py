@@ -99,13 +99,12 @@ class DatabricksUCDatasource(Datasource):
             }
         )
 
-        # Use fresh token for statement creation
-        response = requests.post(
+        response = _request_with_401_retry(
+            requests.post,
             url_base,
-            headers=_build_headers(self._credential_provider),
+            self._credential_provider,
             data=payload,
         )
-        response.raise_for_status()
         statement_id = response.json()["statement_id"]
 
         state = response.json()["status"]["state"]

@@ -2841,8 +2841,9 @@ def read_databricks_tables(
         credential_provider: (Optional) A custom credential provider for
             authentication. Must be a subclass of ``DatabricksCredentialProvider``
             implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
-            If provided, takes precedence over environment variables. The provider's
-            ``get_host()`` is checked before ``DATABRICKS_HOST`` env var.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and environment variables are ignored.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
