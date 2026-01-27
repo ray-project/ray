@@ -86,7 +86,7 @@ class StreamSplitDataIterator(DataIterator):
             )
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
-                cur_epoch, self._output_split_idx, 0
+                cur_epoch, self._output_split_idx, self._id_in_split, 0
             )
             while True:
                 block_ref_and_md: Optional[RefBundle] = ray.get(future)
@@ -103,6 +103,7 @@ class StreamSplitDataIterator(DataIterator):
                     future = self._coord_actor.get.remote(
                         cur_epoch,
                         self._output_split_idx,
+                        self._id_in_split,
                         prefetched_bytes,
                     )
                     yield RefBundle(
@@ -330,7 +331,10 @@ class SplitCoordinator:
         Must be called while holding self._lock.
         """
         # Bytes buffered in the coordinator.
-        total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
+        total = 0
+        for bundle_queues in self._next_bundle.values():
+            for bundle_queue in bundle_queues:
+                total += sum(bundle.size_bytes() for bundle in bundle_queue)
         # Bytes prefetched by each client's BatchIterator.
         total += sum(self._client_prefetched_bytes.values())
         return total
@@ -384,7 +388,9 @@ class SplitCoordinator:
         with self._lock:
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
-                self._unfinished_clients_in_epoch = self._n
+                self._unfinished_clients_in_epoch = (
+                    self._n_splits * self._replicas_per_split
+                )
                 try:
                     self._output_iterator = next(self._next_epoch)
                 except Exception as e:

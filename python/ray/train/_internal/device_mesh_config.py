@@ -163,7 +163,7 @@ class DeviceMeshConfig:
         if self.dp.replicate != "auto":
             return self.dp.replicate
 
-        return world_size // self._other_dims_product()
+        return world_size // self._other_dims_product
 
     def get_axis_size(self, axis: Axis, world_size: int) -> int:
         """Get the size of a given axis.
