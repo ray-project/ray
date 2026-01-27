@@ -6,7 +6,9 @@ from typing import Any, Callable, Optional, TypeVar, Union, cast, overload
 from ray.util import log_once
 from ray.util.annotations import _mark_annotated
 
-# TypeVar for preserving function/class signatures through decorators
+# TypeVar for preserving function/class signatures through decorators.
+# Note: These decorators also accept properties, but we use Callable for the
+# common case. Properties work at runtime but won't get full type inference.
 F = TypeVar("F", bound=Callable[..., Any])
 
 logger = logging.getLogger(__name__)
@@ -154,7 +156,6 @@ def Deprecated(
 
         # A deprecated class method or function.
         # Patch with the warning/error at the beginning.
-        @wraps(obj)
         def _ctor(*args, **kwargs):
             if log_once(old or obj.__name__):
                 deprecation_warning(
@@ -166,6 +167,12 @@ def Deprecated(
                 )
             # Call the deprecated method/function.
             return obj(*args, **kwargs)
+
+        # Only apply @wraps for actual callables, not properties/descriptors.
+        # Setting __wrapped__ on a property causes inspect.unwrap() to return
+        # the property, which breaks inspect.signature() in the tracing helper.
+        if callable(obj):
+            _ctor = wraps(obj)(_ctor)
 
         # Return the patched class method/function.
         return cast(F, _ctor)

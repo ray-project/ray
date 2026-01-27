@@ -5,6 +5,9 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, cast, overload
 
+# TypeVar for preserving function/class signatures through decorators.
+# Note: These decorators also accept properties, but we use Callable for the
+# common case. Properties work at runtime but won't get full type inference.
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -203,10 +206,15 @@ def Deprecated(*args, **kwargs):
             return obj
         else:
             # class method or function.
-            @wraps(obj)
             def wrapper(*args, **kwargs):
                 warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
                 return obj(*args, **kwargs)
+
+            # Only apply @wraps for actual callables, not properties/descriptors.
+            # Setting __wrapped__ on a property causes inspect.unwrap() to return
+            # the property, which breaks inspect.signature() in the tracing helper.
+            if callable(obj):
+                wrapper = wraps(obj)(wrapper)
 
             return cast(F, wrapper)
 
