@@ -435,6 +435,14 @@ py_test(
 )
 
 py_test(
+    name = "test_device_mesh_config",
+    size = "small",
+    srcs = ["tests/test_device_mesh_config.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
