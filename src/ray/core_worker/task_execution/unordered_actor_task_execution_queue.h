@@ -66,7 +66,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void RunRequest(TaskToExecute request);
 
-  void RunRequestWithResolvedDependencies(TaskToExecute &request);
+  void RunRequestWithResolvedDependencies(TaskToExecute request);
 
   /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.

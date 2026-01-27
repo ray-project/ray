@@ -98,19 +98,21 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       // queue the current attempt.
       run_task = false;
 
-      if (queued_actor_tasks_.contains(task_id)) {
+
+      auto it = queued_actor_tasks_.find(task_id);
+      if (it != queued_actor_tasks_.end()) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
-        RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(), task.AttemptNumber());
-        if (queued_actor_tasks_[task_id].AttemptNumber() > task.AttemptNumber()) {
+        RAY_CHECK_NE(it->second.AttemptNumber(), task.AttemptNumber());
+        if (it->second.AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
           task_to_cancel = std::move(task);
         } else {
-          task_to_cancel = queued_actor_tasks_[task_id];
-          queued_actor_tasks_[task_id] = std::move(task);
+          task_to_cancel = std::move(it->second);
+          queued_actor_tasks_.emplace(task_id, std::move(task));
         }
       } else {
-        queued_actor_tasks_[task_id] = std::move(task);
+        queued_actor_tasks_.emplace(task_id, std::move(task));
       }
     } else {
       pending_task_id_to_is_canceled.emplace(task_id, false);
@@ -141,14 +143,14 @@ bool UnorderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
-    TaskToExecute &request) {
+    TaskToExecute request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
     // Process async actor task.
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                    request.FunctionDescriptor());
-    fiber->EnqueueFiber([this, request, task_id]() mutable {
+    fiber->EnqueueFiber([this, request = std::move(request), task_id]() mutable {
       AcceptRequestOrRejectIfCanceled(task_id, request);
     });
   } else {
@@ -159,7 +161,7 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     if (pool == nullptr) {
       AcceptRequestOrRejectIfCanceled(task_id, request);
     } else {
-      pool->Post([this, request, task_id]() mutable {
+      pool->Post([this, request = std::move(request), task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
       });
     }
@@ -191,7 +193,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
           /* include_task_info */ false));
 
       request.MarkDependenciesResolved();
-      RunRequestWithResolvedDependencies(request);
+      RunRequestWithResolvedDependencies(std::move(request));
     });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -202,7 +204,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
     request.MarkDependenciesResolved();
-    RunRequestWithResolvedDependencies(request);
+    RunRequestWithResolvedDependencies(std::move(request));
   }
 }
 
@@ -228,9 +230,10 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   std::optional<TaskToExecute> request_to_run;
   {
     absl::MutexLock lock(&mu_);
-    if (queued_actor_tasks_.contains(task_id)) {
-      request_to_run = queued_actor_tasks_[task_id];
-      queued_actor_tasks_.erase(task_id);
+    auto it = queued_actor_tasks_.find(task_id);
+    if (it != queued_actor_tasks_.end()) {
+      request_to_run = std::move(it->second);
+      queued_actor_tasks_.erase(it);
     } else {
       pending_task_id_to_is_canceled.erase(task_id);
     }

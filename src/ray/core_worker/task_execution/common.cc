@@ -21,8 +21,6 @@
 namespace ray {
 namespace core {
 
-TaskToExecute::TaskToExecute() {}
-
 TaskToExecute::TaskToExecute(
     std::function<void(const TaskSpecification &)> execute_callback,
     std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
@@ -67,7 +65,7 @@ ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
 void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReference> &args,
                                             std::function<void()> on_args_ready) {
   auto tag = next_tag_++;
-  in_flight_waits_[tag] = on_args_ready;
+  in_flight_waits_.emplace(tag, std::move(on_args_ready));
   async_wait_for_args_(args, tag);
 }
 
