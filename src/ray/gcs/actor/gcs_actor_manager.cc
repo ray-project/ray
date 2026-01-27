@@ -1518,28 +1518,26 @@ void GcsActorManager::RestartActor(
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
+    // Emit lifecycle event immediately after state transition so tests and
+    // observers see the restart without waiting for async table writes.
+    actor->WriteActorExportEvent(false, restart_reason);
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
 
-        {[this, actor, actor_id, mutable_actor_table_data, done_callback, restart_reason](
+        {[this, actor, actor_id, mutable_actor_table_data, done_callback](
              Status actor_table_status) {
            gcs_table_storage_->ActorTaskSpecTable().Put(
                actor_id,
                *actor->GetMutableTaskSpec(),
-               {[this,
-                 actor,
-                 actor_id,
-                 mutable_actor_table_data,
-                 done_callback,
-                 restart_reason](Status actor_task_spec_table_status) {
+               {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+                    Status actor_task_spec_table_status) {
                   if (done_callback) {
                     done_callback();
                   }
                   gcs_publisher_->PublishActor(
                       actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-                  actor->WriteActorExportEvent(false, restart_reason);
                 },
                 io_context_});
          },
