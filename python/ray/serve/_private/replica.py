@@ -991,19 +991,27 @@ class ReplicaBase(ABC):
             streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
         )
 
+        # Create a cancel event that will be set when the client cancels
+        cancel_event = asyncio.Event()
+
         # Create an async iterator that fetches messages from the proxy
         async def request_message_iterator():
             while True:
                 result_bytes = await proxy_actor.receive_grpc_messages.remote(
                     streaming_request.session_id
                 )
-                has_more, message_bytes = pickle.loads(result_bytes)
+                has_more, message_bytes, is_cancelled = pickle.loads(result_bytes)
+                if is_cancelled:
+                    # Set the cancel event so is_cancelled() returns True
+                    cancel_event.set()
                 if not has_more:
                     break
                 yield pickle.loads(message_bytes)
 
-        # Create the gRPCInputStream wrapper
-        input_stream = gRPCInputStream(request_message_iterator())
+        # Create the gRPCInputStream wrapper with the cancel event
+        input_stream = gRPCInputStream(
+            request_message_iterator(), cancel_event=cancel_event
+        )
 
         method_info = self._user_callable_wrapper.get_user_method_info(
             request_metadata.call_method
