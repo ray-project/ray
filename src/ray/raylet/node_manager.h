@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,12 +43,13 @@
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
-#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -55,7 +57,6 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
-#include "ray/util/throttler.h"
 
 namespace ray::raylet {
 
@@ -78,6 +79,12 @@ struct NodeManagerConfig {
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
+  /// The port to connect the metrics agent (dashboard agent grpc port).
+  int metrics_agent_port;
+  /// The port at which metrics are exposed.
+  int metrics_export_port;
+  /// The port for the dashboard agent to listen on.
+  int dashboard_agent_listen_port;
   /// The lowest port number that workers started will bind on.
   /// If this is set to 0, workers will bind on random ports.
   int min_worker_port;
@@ -167,7 +174,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::atomic_bool &shutting_down,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
-      local_stream_socket socket);
+      local_stream_socket socket,
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -187,6 +195,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
+
+  /// Return the runtime env agent port.
+  int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
+
+  /// Return the metrics agent port.
+  int GetMetricsAgentPort() const { return metrics_agent_port_; }
+
+  /// Return the metrics export port.
+  int GetMetricsExportPort() const { return metrics_export_port_; }
+
+  /// Return the dashboard agent listen port.
+  int GetDashboardAgentListenPort() const { return dashboard_agent_listen_port_; }
 
   /// Returns debug string for class.
   ///
@@ -217,9 +237,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  /// Trigger global GC across the cluster to free up references to actors or
-  /// object ids.
-  void TriggerGlobalGC();
+  /// Setup global GC to be triggered at the next gc check, so that references to actors
+  /// or object ids can be freed up across the cluster.
+  void SetShouldGlobalGC();
 
   /// Mark the specified objects as failed with the given error type.
   ///
@@ -318,6 +338,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::KillLocalActorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
+                             rpc::CancelLocalTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -344,7 +368,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -429,9 +453,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                std::vector<rpc::ObjectReference> &object_refs,
+                int64_t get_request_id);
 
   /// Cancel all ongoing get requests from the client.
   ///
@@ -494,7 +520,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
                               pid_t pid,
-                              const StartupToken &worker_startup_token,
                               std::function<void(Status, int)> send_reply_callback = {});
   // Register a new driver into worker pool.
   Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
@@ -676,6 +701,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                            rpc::GetWorkerPIDsReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetAgentPIDs` request.
+  void HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                          rpc::GetAgentPIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
   /// we disconnect and kill the worker process.
@@ -683,9 +713,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// This is an optimization to avoid processing all messages sent by the worker
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
-
-  /// Trigger local GC on each worker of this raylet.
-  void DoLocalGC(bool triggered_by_global_gc = false);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -727,7 +754,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                         const std::string &disconnect_detail,
                         const rpc::RayException *creation_task_exception = nullptr);
 
-  bool TryLocalGC();
+  /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
+  void TriggerLocalOrGlobalGCIfNeeded();
 
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
@@ -756,9 +784,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
+                                                       const NodeManagerConfig &config);
+
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+
+  int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                 const NodeManagerConfig &config);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -820,6 +854,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
+  int runtime_env_agent_port_{0};
+  int metrics_agent_port_{0};
+  int metrics_export_port_{0};
+  int dashboard_agent_listen_port_{0};
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
@@ -838,19 +876,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
 
-  /// Whether to trigger global GC in the next resource usage report. This will broadcast
-  /// a global GC message to all raylets except for this one.
+  /// Whether to trigger global GC at the next gc check.
+  /// This will broadcast a global GC message to all raylets except for this one.
   bool should_global_gc_ = false;
 
-  /// Whether to trigger local GC in the next resource usage report. This will trigger gc
-  /// on all local workers of this raylet.
-  bool should_local_gc_ = false;
+  /// Set by global gc triggers to trigger local gc when this is checked (every
+  /// raylet_check_gc_period_milliseconds)
+  /// This will trigger gc on all local workers of this raylet.
+  bool local_gc_triggered_by_global_gc_ = false;
 
-  /// When plasma storage usage is high, we'll run gc to reduce it.
-  double high_plasma_storage_usage_ = 1.0;
+  /// Interval at which local gc will be triggered regardless of global gc
+  const uint64_t local_gc_interval_ns_;
 
-  /// the timestampe local gc run
-  uint64_t local_gc_run_time_ns_;
+  /// If plasma store usage percentage exceeds this number, we'll trigger global gc to
+  /// reduce it.
+  double plasma_store_usage_trigger_gc_threshold_;
 
   /// Throttler for local gc
   Throttler local_gc_throttler_;
@@ -861,8 +901,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
 
-  /// Seconds to initialize a local gc
-  const uint64_t local_gc_interval_ns_;
+  ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

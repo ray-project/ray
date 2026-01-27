@@ -84,15 +84,15 @@ from ray.rllib.core.models.configs import MLPEncoderConfig, MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 parser = add_rllib_example_script_args()
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     # Define the data paths for our CartPole large dataset.
     base_path = Path(__file__).parents[2]
     assert base_path.is_dir(), base_path
-    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
     assert data_path.is_dir(), data_path
     print(f"data_path={data_path}")
 
@@ -239,6 +239,7 @@ if __name__ == "__main__":
             evaluation_num_env_runners=1,
             evaluation_duration=5,
             evaluation_parallel_to_training=True,
+            evaluation_config=BCConfig.overrides(explore=False),
         )
     )
 
@@ -254,7 +255,6 @@ if __name__ == "__main__":
         / COMPONENT_LEARNER_GROUP
         / COMPONENT_LEARNER
         / COMPONENT_RL_MODULE
-        / "default_policy"
     )
 
     # Create a new PPO config.
@@ -278,18 +278,34 @@ if __name__ == "__main__":
                 load_state_path=rl_module_checkpoint,
             )
         )
+        .evaluation(
+            evaluation_interval=1,
+            evaluation_num_env_runners=1,
+            evaluation_duration=5,
+            evaluation_parallel_to_training=True,
+            evaluation_config=PPOConfig.overrides(explore=False),
+        )
     )
 
     # Quick test, whether initial performance in the loaded (now PPO) model is ok.
     ppo = base_config.build()
+    ppo.restore_from_path(
+        rl_module_checkpoint,
+        component=(
+            f"{COMPONENT_LEARNER_GROUP}"
+            f"/{COMPONENT_LEARNER}"
+            f"/{COMPONENT_RL_MODULE}"
+        ),
+    )
     eval_results = ppo.evaluate()
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
     # Check, whether training 2 times causes catastrophic forgetting.
-    ppo.train()
-    train_results = ppo.train()
-    R = train_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+    for _ in range(3):
+        ppo.train()
+    eval_results = ppo.evaluate()
+    R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 250.0, f"PPO performance (training) bad! R={R} (expected 250.0+)."
     print(f"PPO return after 2x training: {R}")
 

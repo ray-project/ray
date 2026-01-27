@@ -28,6 +28,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     tags = ["team:core"],
     deps = [
         "//src/ray/common:test_utils",
@@ -55,6 +59,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     tags = [
         "exclusive",
         "no_tsan",
@@ -97,6 +105,19 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_client_injectable_test",
+    size = "small",
+    srcs = [
+        "gcs_client_injectable_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs_rpc_client:gcs_client",
         "@com_google_googletest//:gtest_main",
     ],
 )

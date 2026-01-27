@@ -21,7 +21,7 @@ def tmp_working_dir():
 
         requirements_file = path / "requirements.txt"
         with requirements_file.open(mode="w") as f:
-            f.write("requests==2.3.0")
+            f.write("requests==2.32.3")
 
         yield str(requirements_file)
 
@@ -46,30 +46,32 @@ def test_uv_install_in_virtualenv(shutdown_only):
 
 # Package installation succeeds.
 def test_package_install_with_uv(shutdown_only):
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.32.3"]}})
     def f():
         import requests
 
         return requests.__version__
 
-    assert ray.get(f.remote()) == "2.3.0"
+    assert ray.get(f.remote()) == "2.32.3"
 
 
 # Package installation succeeds, with compatibility enabled.
 def test_package_install_with_uv_and_validation(shutdown_only):
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_check": True}})
+    @ray.remote(
+        runtime_env={"uv": {"packages": ["requests==2.32.3"], "uv_check": True}}
+    )
     def f():
         import requests
 
         return requests.__version__
 
-    assert ray.get(f.remote()) == "2.3.0"
+    assert ray.get(f.remote()) == "2.32.3"
 
 
 # Package installation fails due to conflict versions.
 def test_package_install_has_conflict_with_uv(shutdown_only):
-    # moto require requests>=2.5
-    conflict_packages = ["moto==3.0.5", "requests==2.4.0"]
+    # Make it simply impossible to resolve.
+    conflict_packages = ["requests<2.32.2", "requests==2.32.2"]
 
     @ray.remote(runtime_env={"uv": {"packages": conflict_packages}})
     def f():
@@ -84,14 +86,14 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
 # Specify uv version and check.
 def test_uv_with_version_and_check(shutdown_only):
     @ray.remote(
-        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+        runtime_env={"uv": {"packages": ["requests==2.32.3"], "uv_version": "==0.4.0"}}
     )
     def f():
         import pkg_resources
         import requests
 
         assert pkg_resources.get_distribution("uv").version == "0.4.0"
-        assert requests.__version__ == "2.3.0"
+        assert requests.__version__ == "2.32.3"
 
     ray.get(f.remote())
 
@@ -106,23 +108,23 @@ def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
 
         return requests.__version__
 
-    assert ray.get(f.remote()) == "2.3.0"
+    assert ray.get(f.remote()) == "2.32.3"
 
 
 # Install different versions of the same package across different tasks, used to check
 # uv cache doesn't break runtime env requirement.
 def test_package_install_with_different_versions(shutdown_only):
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.32.3"]}})
     def f():
         import requests
 
-        assert requests.__version__ == "2.3.0"
+        assert requests.__version__ == "2.32.3"
 
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.2.0"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.32.2"]}})
     def g():
         import requests
 
-        assert requests.__version__ == "2.2.0"
+        assert requests.__version__ == "2.32.2"
 
     ray.get(f.remote())
     ray.get(g.remote())
@@ -132,23 +134,23 @@ def test_package_install_with_different_versions(shutdown_only):
 def test_package_install_with_cache_enabled(shutdown_only):
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": []}
+            "uv": {"packages": ["requests==2.32.3"], "uv_pip_install_options": []}
         }
     )
     def f():
         import requests
 
-        assert requests.__version__ == "2.3.0"
+        assert requests.__version__ == "2.32.3"
 
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": []}
+            "uv": {"packages": ["requests==2.32.2"], "uv_pip_install_options": []}
         }
     )
     def g():
         import requests
 
-        assert requests.__version__ == "2.2.0"
+        assert requests.__version__ == "2.32.2"
 
     ray.get(f.remote())
     ray.get(g.remote())
@@ -159,7 +161,7 @@ def test_package_install_with_multiple_options(shutdown_only):
     @ray.remote(
         runtime_env={
             "uv": {
-                "packages": ["requests==2.3.0"],
+                "packages": ["requests==2.32.3"],
                 "uv_pip_install_options": ["--no-cache", "--color=auto"],
             }
         }
@@ -167,12 +169,12 @@ def test_package_install_with_multiple_options(shutdown_only):
     def f():
         import requests
 
-        assert requests.__version__ == "2.3.0"
+        assert requests.__version__ == "2.32.3"
 
     @ray.remote(
         runtime_env={
             "uv": {
-                "packages": ["requests==2.2.0"],
+                "packages": ["requests==2.32.2"],
                 "uv_pip_install_options": ["--no-cache", "--color=auto"],
             }
         }
@@ -180,7 +182,7 @@ def test_package_install_with_multiple_options(shutdown_only):
     def g():
         import requests
 
-        assert requests.__version__ == "2.2.0"
+        assert requests.__version__ == "2.32.2"
 
     ray.get(f.remote())
     ray.get(g.remote())

@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import uuid
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -24,6 +25,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
 )
 
 import numpy as np
@@ -39,6 +41,9 @@ from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataCo
 from ray.util.annotations import DeveloperAPI
 
 import psutil
+
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
     import pandas
@@ -123,7 +128,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    ray._private.arrow_utils._check_pyarrow_version()
+    ray.data._internal.utils.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(
@@ -460,9 +465,9 @@ def _consumption_api(
     datasource_metadata: Optional[str] = None,
     extra_condition: Optional[str] = None,
     delegate: Optional[str] = None,
-    pattern="Examples:",
-    insert_after=False,
-):
+    pattern: str = "Examples:",
+    insert_after: bool = False,
+) -> Callable[[F], F]:
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
     """
@@ -485,7 +490,7 @@ def _consumption_api(
             condition += extra_condition + ", "
         message = condition + "then this operation" + base
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=message,
@@ -498,6 +503,22 @@ def _consumption_api(
     return wrap
 
 
+@overload
+def ConsumptionAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def ConsumptionAPI(
+    *,
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+) -> Callable[[F], F]:
+    ...
+
+
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
@@ -507,12 +528,12 @@ def ConsumptionAPI(*args, **kwargs):
     return _consumption_api(*args, **kwargs)
 
 
-def _all_to_all_api(*args, **kwargs):
+def _all_to_all_api() -> Callable[[F], F]:
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=(
@@ -526,6 +547,11 @@ def _all_to_all_api(*args, **kwargs):
         return obj
 
     return wrap
+
+
+@overload
+def AllToAllAPI(obj: F) -> F:
+    ...
 
 
 def AllToAllAPI(*args, **kwargs):
@@ -1667,6 +1693,41 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
     return tuple(map(list, zip(*data)))
 
 
+def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort DataFrame by columns and rows, and also handle unhashable types."""
+    df = df.copy()
+
+    def to_sortable(x):
+        if isinstance(x, (list, np.ndarray)):
+            return tuple(to_sortable(i) for i in x)
+        if isinstance(x, dict):
+            return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        return x
+
+    sort_cols = []
+    temp_cols = []
+    # Sort by all columns to ensure deterministic order.
+    columns = sorted(df.columns)
+
+    for col in columns:
+        if df[col].dtype == "object":
+            # Create a temporary column for sorting to handle unhashable types.
+            # Use UUID to avoid collisions with existing column names.
+            temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
+            df[temp_col] = df[col].map(to_sortable)
+            sort_cols.append(temp_col)
+            temp_cols.append(temp_col)
+        else:
+            sort_cols.append(col)
+
+    sorted_df = df.sort_values(sort_cols)
+
+    if temp_cols:
+        sorted_df = sorted_df.drop(columns=temp_cols)
+
+    return sorted_df
+
+
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check if two DataFrames have the same rows.
 
@@ -1674,18 +1735,18 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    if len(actual) == len(expected) == 0:
+    if len(actual) != len(expected):
+        return False
+
+    if len(actual) == 0:
         return True
 
-    try:
-        pd.testing.assert_frame_equal(
-            actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
-            expected.sort_values(sorted(expected.columns)).reset_index(drop=True),
-            check_dtype=False,
-        )
-        return True
-    except AssertionError:
-        return False
+    pd.testing.assert_frame_equal(
+        _sort_df(actual).reset_index(drop=True),
+        _sort_df(expected).reset_index(drop=True),
+        check_dtype=False,
+    )
+    return True
 
 
 def merge_resources_to_ray_remote_args(

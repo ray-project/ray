@@ -12,10 +12,15 @@ This example creates a minimal KubeRay cluster using GKE.
 Run this and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
 ```bash
-gcloud container clusters create cloud-bucket-cluster \
+PROJECT_ID=my-project-id # Replace my-project-id with your GCP project ID
+CLUSTER_NAME=cloud-bucket-cluster
+ZONE=us-west1-b
+
+gcloud container clusters create $CLUSTER_NAME \
+    --addons=RayOperator \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
-    --zone=us-west1-b --machine-type e2-standard-8 \
-    --workload-pool=my-project-id.svc.id.goog # Replace my-project-id with your GCP project ID
+    --zone=$ZONE --machine-type e2-standard-8 \
+    --workload-pool=${PROJECT_ID}.svc.id.goog 
 ```
 
 
@@ -26,53 +31,41 @@ For more information on how to find your project ID, see <https://support.google
 Now get credentials for the cluster to use with `kubectl`:
 
 ```bash
-gcloud container clusters get-credentials cloud-bucket-cluster --zone us-west1-b --project my-project-id
-```
-
-## Create an IAM Service Account
-
-```bash
-gcloud iam service-accounts create my-iam-sa
+gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE --project $PROJECT_ID
 ```
 
 ## Create a Kubernetes Service Account
 
 ```bash
-kubectl create serviceaccount my-ksa
+NAMESPACE=default
+KSA=my-ksa
+kubectl create serviceaccount $KSA -n $NAMESPACE
 ```
 
-## Link the Kubernetes Service Account to the IAM Service Account and vice versa
+## Configure the GCS Bucket
 
-In the following two commands, replace `default` with your namespace if you are not using the default namespace.
-
+Create a GCS bucket that Ray uses as the remote filesystem.
 ```bash
-gcloud iam service-accounts add-iam-policy-binding my-iam-sa@my-project-id.iam.gserviceaccount.com \
-    --role roles/iam.workloadIdentityUser \
-    --member "serviceAccount:my-project-id.svc.id.goog[default/my-ksa]"
+BUCKET=my-bucket
+gcloud storage buckets create gs://$BUCKET --uniform-bucket-level-access
 ```
 
+Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy.
+See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
 ```bash
-kubectl annotate serviceaccount my-ksa \
-    --namespace default \
-    iam.gke.io/gcp-service-account=my-iam-sa@my-project-id.iam.gserviceaccount.com
+PROJECT_ID=<your project ID>
+PROJECT_NUMBER=<your project number>
+gcloud storage buckets add-iam-policy-binding gs://${BUCKET} --member "principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/${NAMESPACE}/sa/${KSA}"  --role "roles/storage.objectUser"
 ```
 
-## Create a Google Cloud Storage Bucket and allow the Google Cloud Service Account to access it
-
-Please follow the documentation at <https://cloud.google.com/storage/docs/creating-buckets> to create a bucket using the Google Cloud Console or the `gsutil` command line tool.
-
-This example gives the principal `my-iam-sa@my-project-id.iam.gserviceaccount.com` "Storage Admin" permissions on the bucket. Enable the permissions in the Google Cloud Console ("Permissions" tab under "Buckets" > "Bucket Details") or with the following command:
-
-```bash
-gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:roles/storage.admin gs://my-bucket
-```
+See [Authenticate to Google Cloud APIs from GKE workloads](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) for more details.
 
 ## Create a minimal RayCluster YAML manifest
 
 You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts are the following lines:
@@ -119,7 +112,7 @@ ray.init(address="auto")
 @ray.remote
 def check_gcs_read_write():
     client = storage.Client()
-    bucket = client.get_bucket(GCP_GCS_BUCKET)
+    bucket = client.bucket(GCP_GCS_BUCKET)
     blob = bucket.blob(GCP_GCS_FILE)
 
     # Write to the bucket

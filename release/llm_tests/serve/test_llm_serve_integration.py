@@ -186,7 +186,6 @@ def test_transcription_model(model_name):
     time.sleep(1)
 
 
-@pytest.mark.asyncio(scope="function")
 @pytest.fixture
 def remote_model_app(request):
     """
@@ -267,6 +266,30 @@ class TestRemoteCode:
 
         # Wait for the application to be running (timeout after 5 minutes)
         wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_nested_engine_kwargs_structured_outputs():
+    """Regression test for https://github.com/ray-project/ray/pull/60380"""
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            structured_outputs_config={
+                "backend": "xgrammar",
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
 
 
 if __name__ == "__main__":

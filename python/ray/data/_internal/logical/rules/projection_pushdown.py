@@ -6,7 +6,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -18,6 +18,10 @@ from ray.data.expressions import (
     Expr,
     StarExpr,
 )
+
+__all__ = [
+    "ProjectionPushdown",
+]
 
 
 def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
@@ -132,6 +136,29 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
+    # Check resource compatibility before attempting fusion
+    # This ensures with_column respects resource boundaries like map_batches does
+    from ray.data._internal.logical.rules.operator_fusion import (
+        FuseOperators,
+        are_remote_args_compatible,
+    )
+
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible
+    if not are_remote_args_compatible(
+        upstream_project._ray_remote_args or {},
+        downstream_project._ray_remote_args or {},
+    ):
+        # Resources don't match - cannot fuse
+        return downstream_project
+
+    # Check if compute strategies are compatible
+    fused_compute = FuseOperators._fuse_compute_strategy(
+        upstream_project._compute, downstream_project._compute
+    )
+    if fused_compute is None:
+        # Compute strategies incompatible - cannot fuse
+        return downstream_project
+
     upstream_has_star: bool = upstream_project.has_star_expr()
 
     # TODO add validations that
@@ -236,6 +263,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     return Project(
         upstream_project.input_dependency,
         exprs=new_exprs,
+        compute=fused_compute,
         ray_remote_args=downstream_project._ray_remote_args,
     )
 
@@ -324,18 +352,61 @@ class ProjectionPushdown(Rule):
                     current_project.exprs
                 )
 
-                # Apply projection of columns to the read op
-                return input_op.apply_projection(
-                    required_columns, output_column_rename_map
-                )
+                # Determine columns to project
+                if required_columns is None:
+                    # All columns case - need to determine available columns
+                    if not output_column_rename_map:
+                        # No renames and all columns - pass through as None
+                        projection_map = None
+                    else:
+                        # Has renames - get the list of columns to apply renames to
+                        current_projection = input_op.get_projection_map()
+
+                        if current_projection is not None:
+                            # Use output column names from existing projection (for chained renames)
+                            columns = list(current_projection.values())
+                        else:
+                            # No existing projection - get all columns from schema
+                            schema = input_op.infer_schema()
+                            if schema is not None:
+                                columns = schema.names
+                            else:
+                                # Cannot determine available columns - this shouldn't happen in practice
+                                # for properly implemented datasources. Rather than guessing, raise an error.
+                                raise RuntimeError(
+                                    f"Cannot apply rename operation: schema unavailable for input operator "
+                                    f"{input_op}. This may indicate a legacy datasource that doesn't properly "
+                                    f"expose schema information."
+                                )
+
+                        # Build projection_map: apply renames to all columns
+                        projection_map = {
+                            col: output_column_rename_map.get(col, col)
+                            for col in columns
+                        }
+                else:
+                    # Specific columns selected - build projection_map with renames applied
+                    projection_map = {
+                        col: output_column_rename_map.get(col, col)
+                        for col in required_columns
+                    }
+
+                # Apply projection to the read op
+                return input_op.apply_projection(projection_map)
             else:
-                # Otherwise just apply projection without renaming
-                projected_input_op = input_op.apply_projection(required_columns, None)
+                # Complex expressions - apply projection without full rename
+                projection_map = (
+                    None
+                    if required_columns is None
+                    else {col: col for col in required_columns}
+                )
+                projected_input_op = input_op.apply_projection(projection_map)
 
                 # Has transformations: Keep Project on top of optimized Read
                 return Project(
                     projected_input_op,
                     exprs=current_project.exprs,
+                    compute=current_project._compute,
                     ray_remote_args=current_project._ray_remote_args,
                 )
 

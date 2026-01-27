@@ -85,6 +85,7 @@ class CoreWorkerTest : public ::testing::Test {
            std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
            std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
            bool *is_retryable_error,
+           std::string *actor_repr_name,
            std::string *application_error,
            const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
            const std::string name_of_concurrency_group_to_execute,
@@ -92,7 +93,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
-           const rpc::TensorTransport &tensor_transport) -> Status {
+           const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
 
@@ -155,8 +156,9 @@ class CoreWorkerTest : public ::testing::Test {
         fake_owned_object_size_gauge_,
         false);
 
+    // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
-        io_service_, reference_counter_.get(), nullptr);
+        io_service_, reference_counter_ != nullptr, nullptr);
 
     auto future_resolver = std::make_unique<FutureResolver>(
         memory_store_,
@@ -170,7 +172,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
-        "test_session");
+        "test_session",
+        NodeID::Nil());
 
     task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
@@ -190,7 +193,8 @@ class CoreWorkerTest : public ::testing::Test {
         mock_gcs_client_,
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
-        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -215,6 +219,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        mock_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -224,17 +229,19 @@ class CoreWorkerTest : public ::testing::Test {
         actor_creator_,
         JobID::Nil(),
         lease_request_rate_limiter,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_),
+        [](const ObjectID &object_id) { return std::nullopt; },
+        io_service_,
         fake_scheduler_placement_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
+        *raylet_client_pool,
+        mock_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,
         /*tensor_transport_getter=*/
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);
@@ -347,9 +354,15 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -397,7 +410,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -417,7 +436,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
   // Verify that the callback hasn't been called yet since the object doesn't exist
   ASSERT_FALSE(io_service_.poll_one());
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   io_service_.run_one();
 
@@ -452,9 +471,15 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -502,9 +527,15 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -562,14 +593,17 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
                                 /*metadata=*/nullptr,
                                 std::vector<rpc::ObjectReference>(),
                                 /*copy_data=*/true);
-  reference_counter.AddOwnedObject(inlined_dependency_id,
-                                   /*contained_ids=*/{},
-                                   rpc_address,
-                                   "call_site",
-                                   /*object_size=*/100,
-                                   /*is_reconstructable=*/false,
-                                   /*add_local_ref=*/true);
-  memory_store.Put(memory_store_object, inlined_dependency_id);
+  reference_counter.AddOwnedObject(
+      inlined_dependency_id,
+      /*contained_ids=*/{},
+      rpc_address,
+      "call_site",
+      /*object_size=*/100,
+      /*lineage_eligibility=*/LineageReconstructionEligibility::INELIGIBLE_PUT,
+      /*add_local_ref=*/true);
+  memory_store.Put(memory_store_object,
+                   inlined_dependency_id,
+                   reference_counter.HasReference(inlined_dependency_id));
   return inlined_dependency_id;
 }
 }  // namespace
@@ -654,7 +688,6 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
-      ref_counter,
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
@@ -664,11 +697,11 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;
   for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
-  absl::flat_hash_set<ObjectID> idset(ids.begin(), ids.end());
+  const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
 
-  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, &results).ok());
+  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);
@@ -697,7 +730,13 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -800,7 +839,13 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -888,8 +933,13 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", object_size, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     object_size,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
   // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
   // bumps the sequence id by 1
   reference_counter_->AddObjectLocation(object_id, node_id);
@@ -990,8 +1040,13 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActo
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+  reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                     {},
+                                     owner_address,
+                                     "test",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::WaitForActorRefDeletedRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -1062,8 +1117,13 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
 
-  reference_counter_->AddOwnedObject(
-      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+  reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                     {},
+                                     owner_address,
+                                     "test",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::TaskSpec task_spec_msg;
   task_spec_msg.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
@@ -1072,11 +1132,6 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   actor_creation_spec->set_max_actor_restarts(0);
   actor_creation_spec->set_max_task_retries(0);
   TaskSpecification task_spec(task_spec_msg);
-
-  gcs::StatusCallback register_callback;
-  EXPECT_CALL(*mock_gcs_client_->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
-      .WillOnce(::testing::SaveArg<1>(&register_callback));
 
   actor_creator_->AsyncRegisterActor(task_spec, nullptr);
 
@@ -1111,7 +1166,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
       });
 
   ASSERT_EQ(callback_count, 0);
-  register_callback(Status::OK());
+  mock_gcs_client_->mock_actor_accessor->async_register_actor_callback_(Status::OK());
   // Triggers the callbacks passed to AsyncWaitForActorRegisterFinish
   ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
 

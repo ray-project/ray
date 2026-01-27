@@ -31,10 +31,25 @@
 #  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
-from typing import List, Optional, Set
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
 
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
+
+
+@dataclass(frozen=True)
+class RoutePattern:
+    """Represents a route pattern with optional HTTP method restrictions.
+
+    Attributes:
+        methods: List of HTTP methods (e.g., ["GET", "POST"]), or None if the route
+                 accepts all methods (e.g., WebSocket routes, ASGI apps).
+        path: The route path pattern (e.g., "/", "/users/{user_id}").
+    """
+
+    methods: Optional[List[str]]
+    path: str
 
 
 def _get_route_name(
@@ -91,7 +106,7 @@ def get_asgi_route_name(app: ASGIApp, scope: Scope) -> Optional[str]:
     return route_name
 
 
-def extract_route_patterns(app: ASGIApp) -> List[str]:
+def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
     """Extracts all route patterns from an ASGI app.
 
     This function recursively traverses the app's routes (including mounted apps)
@@ -102,9 +117,15 @@ def extract_route_patterns(app: ASGIApp) -> List[str]:
         app: The ASGI application (typically FastAPI or Starlette)
 
     Returns:
-        List of route patterns, e.g., ["/", "/api/{user_id}", "/items/{item_id}"]
+        List of RoutePattern objects. Examples:
+        - RoutePattern(methods=["GET", "POST"], path="/"): GET and POST to root
+        - RoutePattern(methods=["GET"], path="/users/{id}"): GET to users endpoint
+        - RoutePattern(methods=None, path="/websocket"): No method restrictions
     """
-    patterns: Set[str] = set()
+    # Use a dict to store path -> set of methods mapping
+    # This allows us to track which methods apply to each path
+    # Use None as a sentinel value to indicate "no method restrictions"
+    path_methods: Dict[str, Optional[Set[str]]] = {}
 
     def _extract_from_routes(routes: List[Route], prefix: str = "") -> None:
         for route in routes:
@@ -115,11 +136,22 @@ def extract_route_patterns(app: ASGIApp) -> List[str]:
                 if hasattr(route, "routes") and route.routes:
                     _extract_from_routes(route.routes, route_path)
                 else:
-                    # Mount without sub-routes
-                    patterns.add(route_path)
+                    # Mount without sub-routes - no method restrictions
+                    if route_path not in path_methods:
+                        path_methods[route_path] = None
             else:
-                # Regular route
-                patterns.add(route_path)
+                # Regular route - extract methods if available
+                if hasattr(route, "methods") and route.methods:
+                    # Route has specific methods
+                    if route_path not in path_methods:
+                        path_methods[route_path] = set()
+                    # Only add methods if we haven't already marked this path as "all methods"
+                    if path_methods[route_path] is not None:
+                        path_methods[route_path].update(route.methods)
+                else:
+                    # Route has no method restrictions (accepts all methods)
+                    # Mark this path as accepting all methods (None)
+                    path_methods[route_path] = None
 
     try:
         if hasattr(app, "routes"):
@@ -128,13 +160,30 @@ def extract_route_patterns(app: ASGIApp) -> List[str]:
             # Handle root_path if present
             if hasattr(app, "root_path") and app.root_path:
                 root_path = app.root_path.rstrip("/")
-                patterns = {
-                    root_path + "/" + p.lstrip("/") if p != "/" else root_path + p
-                    for p in patterns
-                }
+                adjusted_path_methods = {}
+                for path, methods in path_methods.items():
+                    adjusted_path = (
+                        root_path + "/" + path.lstrip("/")
+                        if path != "/"
+                        else root_path + path
+                    )
+                    adjusted_path_methods[adjusted_path] = methods
+                path_methods = adjusted_path_methods
     except Exception:
         # If extraction fails for any reason, return empty list
         # This shouldn't break the system
         return []
 
-    return sorted(patterns)
+    # Convert path_methods dict to list of RoutePattern objects
+    patterns: List[RoutePattern] = []
+    for path, methods in path_methods.items():
+        if methods is None:
+            # No method restrictions
+            patterns.append(RoutePattern(methods=None, path=path))
+        else:
+            # Convert set to sorted list for consistent ordering
+            methods_list = sorted(methods)
+            patterns.append(RoutePattern(methods=methods_list, path=path))
+
+    # Sort by path for consistent ordering
+    return sorted(patterns, key=lambda x: x.path)

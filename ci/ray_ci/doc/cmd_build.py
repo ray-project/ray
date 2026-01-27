@@ -1,12 +1,10 @@
 import os
 import subprocess
+import sys
 
 import click
 
 from ci.ray_ci.doc.build_cache import BuildCache
-from ci.ray_ci.utils import ci_init, logger
-
-from ray_release.configs.global_config import get_global_config
 
 
 @click.command()
@@ -18,36 +16,31 @@ def main(ray_checkout_dir: str) -> None:
     """
     This script builds ray doc and upload build artifacts to S3.
     """
-    ci_init()
     # Add the safe.directory config to the global git config so that the doc build
     subprocess.run(
         ["git", "config", "--global", "--add", "safe.directory", ray_checkout_dir],
         check=True,
     )
 
-    logger.info("Building ray doc.")
+    print("--- Building ray doc.", file=sys.stderr)
     _build(ray_checkout_dir)
 
     dry_run = False
-    if (
-        os.environ.get("BUILDKITE_PIPELINE_ID")
-        not in get_global_config()["ci_pipeline_postmerge"]
-    ):
+    if os.environ.get("RAYCI_STAGE", "") != "postmerge":
         dry_run = True
-        logger.info(
-            "Not uploading build artifacts because this is not a postmerge pipeline."
+        print(
+            "Not uploading build artifacts because this is not a postmerge pipeline.",
+            file=sys.stderr,
+        )
+    elif os.environ.get("BUILDKITE_BRANCH") != "master":
+        dry_run = True
+        print(
+            "Not uploading build artifacts because this is not the master branch.",
+            file=sys.stderr,
         )
 
-    if os.environ.get("BUILDKITE_BRANCH") != "master":
-        dry_run = True
-        logger.info(
-            "Not uploading build artifacts because this is not the master branch."
-        )
-
-    logger.info("Uploading build artifacts to S3.")
+    print("--- Uploading build artifacts to S3.", file=sys.stderr)
     BuildCache(os.path.join(ray_checkout_dir, "doc")).upload(dry_run=dry_run)
-
-    return
 
 
 def _build(ray_checkout_dir):

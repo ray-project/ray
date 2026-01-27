@@ -86,4 +86,51 @@ inline ray::stats::Histogram GetSchedulerPlacementTimeMsHistogramMetric() {
   };
 }
 
+inline ray::stats::Gauge GetIoContextEventLoopLagMsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"io_context_event_loop_lag_ms",
+      /*description=*/"The latency of a task from post to execution",
+      /*unit=*/"ms",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Count GetOperationCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"operation_count",
+      /*description=*/"operation count",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationRunTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_run_time_ms",
+      /*description=*/"operation execution time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationQueueTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_queue_time_ms",
+      /*description=*/"operation queuing time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Gauge GetOperationActiveCountGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"operation_active_count",
+      /*description=*/"active operation number",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
 }  // namespace ray

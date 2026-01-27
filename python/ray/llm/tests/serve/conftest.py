@@ -14,8 +14,10 @@ from ray import serve
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
+    DetokenizeRequest,
     EmbeddingCompletionRequest,
     ScoreRequest,
+    TokenizeCompletionRequest,
     TranscriptionRequest,
 )
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
@@ -149,6 +151,27 @@ def mock_score_request():
     )
 
 
+@pytest.fixture
+def mock_tokenize_request(return_token_strs):
+    """Fixture for creating tokenize requests for mock testing."""
+    return TokenizeCompletionRequest(
+        model=MOCK_MODEL_ID,
+        prompt="Hello, world!",
+        add_special_tokens=False,
+        return_token_strs=return_token_strs,
+    )
+
+
+@pytest.fixture
+def mock_detokenize_request():
+    """Fixture for creating detokenize requests for mock testing."""
+    # Use character codes for "Hello" as tokens
+    return DetokenizeRequest(
+        model=MOCK_MODEL_ID,
+        tokens=[72, 101, 108, 108, 111],  # "Hello" in ASCII
+    )
+
+
 def get_test_model_path(yaml_file: str) -> pathlib.Path:
     current_file_dir = pathlib.Path(__file__).absolute().parent
     test_model_path = current_file_dir / yaml_file
@@ -211,3 +234,33 @@ def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundl
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
         yield client, model_id
+
+
+@pytest.fixture
+def testing_multiple_models(shutdown_ray_and_serve, disable_placement_bundles):
+    """Fixture for testing with multiple models configured."""
+    test_model_paths = [
+        get_test_model_path("mock_vllm_model.yaml"),
+        get_test_model_path("mock_vllm_model_2.yaml"),
+    ]
+    args = LLMServingArgs(
+        llm_configs=[str(path.absolute()) for path in test_model_paths]
+    )
+    router_app = build_openai_app(args)
+    serve._run(router_app, name="router", _blocking=False)
+
+    client = openai.Client(
+        base_url="http://localhost:8000/v1", api_key="not_an_actual_key"
+    )
+
+    # Block until the deployment is ready
+    # Wait at most 200s [3 min]
+    for _i in range(20):
+        try:
+            model_ids = [model.id for model in client.models.list().data]
+            if len(model_ids) >= 2:
+                break
+        except Exception as e:
+            print("Error", e)
+        time.sleep(10)
+    yield client, model_ids

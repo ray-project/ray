@@ -1,10 +1,9 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
-from ray.data import Dataset
 from ray.train._internal.state.schema import (
     ActorStatusEnum,
     RunStatusEnum,
@@ -14,6 +13,9 @@ from ray.train._internal.state.schema import (
 )
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ class TrainRunStateManager:
         run_name: str,
         run_status: str,
         controller_actor_id: str,
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         worker_group: WorkerGroup,
         start_time_ms: float,
         resources: List[Dict[str, float]],

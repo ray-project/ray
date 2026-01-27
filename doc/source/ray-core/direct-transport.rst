@@ -12,12 +12,12 @@ For example, passing a CUDA ``torch.Tensor`` from one Ray task to another would 
 *Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors.
 This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
 
-- Keeping GPU data in GPU memory until a transfer is needed
+- Keeping GPU data in GPU memory until a transfer is necessary
 - Avoiding expensive serialization and copies to and from the Ray object store
 - Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
-   RDT is currently in **alpha**. Not all Ray Core APIs are supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
+   RDT is currently in **alpha** and doesn't support all Ray Core APIs yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
 
 Getting started
 ===============
@@ -140,7 +140,7 @@ For example:
 
 The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the result of an RDT object. However, :func:`ray.get <ray.get>` will by default use the same tensor transport as the one specified in the :func:`@ray.method <ray.method>` decorator. For collective-based transports, this will not work if the caller is not part of the collective group.
 
-Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_tensor_transport`` in :func:`ray.get <ray.get>`.
+Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_use_object_store`` in :func:`ray.get <ray.get>`.
 
 .. literalinclude:: doc_code/direct_transport_gloo.py
    :language: python
@@ -251,6 +251,7 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+
 Summary
 -------
 
@@ -290,12 +291,6 @@ For collective-based tensor transports (Gloo and NCCL):
 * Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
-* If a system-level error occurs during a collective operation, the collective group will be destroyed and the actors will no longer be able to communicate via the collective group. Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
-
-   * Errors internal to the third-party transport, e.g., NCCL network errors
-   * Actor and node failure
-   * Tensors returned by the user that are located on an unsupported device, e.g., a CPU tensor when using NCCL
-   * Any unexpected system bugs
 
 
 Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
@@ -304,6 +299,73 @@ Due to a known issue, for NIXL, we currently do not support storing different GP
    :language: python
    :start-after: __nixl_limitations_start__
    :end-before: __nixl_limitations_end__
+
+Error handling
+==============
+
+* Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
+
+* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed to prevent any hanging.
+
+* If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the dependent task or on the ray.get on the NIXL ref.
+
+* System-level errors include:
+   * Errors internal to the third-party transport, e.g., NCCL network errors
+   * Actor or node failures
+   * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
+   * Ray RDT object fetch timeouts (can be overridden by setting the ``RAY_rdt_fetch_fail_timeout_milliseconds`` environment variable)
+   * Any unexpected system bugs
+
+
+Advanced: Registering a new tensor transport
+--------------------------------------------
+
+Ray allows users to register new tensor transports at runtime for use with RDT.
+To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
+defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
+Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport,
+and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
+to use the transport with, and actors only have access to transports registered before their creation.
+
+.. code-block:: python
+
+   import sys
+   import ray
+   from ray.experimental import (
+      register_tensor_transport,
+      TensorTransportManager,
+      TensorTransportMetadata,
+      CommunicatorMetadata,
+   )
+
+   @dataclass
+   class CustomTransportMetadata(TensorTransportMetadata):
+      pass
+
+   @dataclass
+   class CustomCommunicatorMetadata(CommunicatorMetadata):
+      pass
+
+   class CustomTransport(TensorTransportManager):
+      ...
+
+
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
+
+
+Note that there are currently some limitations with custom transports:
+
+- Actor restarts aren't supported. Your actor doesn't have access to the custom
+  transport after the restart.
+- You must create your actor on the same process you registered the custom tensor
+  transport on. For example, you can't use your custom transport with an actor if
+  you registered the custom transport on the driver and created the actor inside
+  a task.
+- Actors only have access to custom transports registered before their creation.
+- If you have an out-of-order actor and the process where you submit the actor
+  task is different from where you created the actor, Ray can't guarantee it has
+  registered your custom transport on the actor at task submission time.
+
 
 Advanced: RDT Internals
 =======================
