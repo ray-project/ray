@@ -106,8 +106,8 @@ class KinesisDatasource(UnboundDatasource):
         response = client.list_shards(StreamName=self.stream_name)
         shard_ids = [shard["ShardId"] for shard in response["Shards"]]
 
-        if parallelism > 0:
-            shard_ids = shard_ids[:parallelism]
+        # Note: parallelism controls concurrent tasks, not shard limit
+        # All shards should be read - parallelism is handled by Ray's execution engine
 
         # Create schema
         schema = create_standard_schema(include_binary_data=False)
@@ -152,8 +152,26 @@ class KinesisDatasource(UnboundDatasource):
 
             if enhanced_fan_out and consumer_name:
                 # Enhanced Fan-Out mode
+                # Get or create consumer and retrieve proper ConsumerARN
+                stream_arn = client.describe_stream(StreamName=stream_name)["StreamDescription"]["StreamARN"]
+
+                # Check if consumer exists
+                try:
+                    consumer_response = client.describe_stream_consumer(
+                        StreamARN=stream_arn,
+                        ConsumerName=consumer_name,
+                    )
+                    consumer_arn = consumer_response["ConsumerDescription"]["ConsumerARN"]
+                except client.exceptions.ResourceNotFoundException:
+                    # Consumer doesn't exist, create it
+                    register_response = client.register_stream_consumer(
+                        StreamARN=stream_arn,
+                        ConsumerName=consumer_name,
+                    )
+                    consumer_arn = register_response["Consumer"]["ConsumerARN"]
+
                 response = client.subscribe_to_shard(
-                    ConsumerARN=f"arn:aws:kinesis:{credentials.region_name}:{stream_name}:{consumer_name}",
+                    ConsumerARN=consumer_arn,
                     ShardId=shard_id,
                     StartingPosition={"Type": start_sequence},
                 )

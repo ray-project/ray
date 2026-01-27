@@ -517,13 +517,11 @@ class KafkaStreamingDatasource(UnboundDatasource):
         Returns:
             List of ReadTask objects for Kafka topics.
         """
-        topics_to_process = (
-            self.topics[:parallelism] if parallelism > 0 else self.topics
-        )
-
+        # Process all topics - parallelism is handled by Ray's execution engine
+        # Each topic gets its own read task, allowing parallel processing
         schema = KafkaBoundedDatasource._create_schema(binary_format=False)
         return [
-            self._create_topic_read_task(topic, schema) for topic in topics_to_process
+            self._create_topic_read_task(topic, schema) for topic in self.topics
         ]
 
     def _create_topic_read_task(self, topic: str, schema: pa.Schema) -> ReadTask:
@@ -559,19 +557,18 @@ class KafkaStreamingDatasource(UnboundDatasource):
             config = {
                 "bootstrap_servers": bootstrap_servers,
                 "enable_auto_commit": False,
-                "auto_offset_reset": auto_offset_reset,
+                        "auto_offset_reset": auto_offset_reset,
                 "group_id": group_id,
                 "session_timeout_ms": 30000,
                 "max_poll_records": min(max_records, 500),
-                "value_deserializer": lambda v: v.decode("utf-8") if v else None,
-                "key_deserializer": lambda k: k.decode("utf-8") if k else None,
+                "value_deserializer": lambda v: v.decode("utf-8", errors="replace") if v else None,
+                "key_deserializer": lambda k: k.decode("utf-8", errors="replace") if k else None,
             }
             _add_authentication_to_config(config, auth_config)
 
             with KafkaConsumer(topic, **config) as consumer:
                 # Seek to numeric offset if specified
                 if start_offset and start_offset.isdigit():
-
                     partitions = consumer.assignment()
                     if not partitions:
                         consumer.poll(timeout_ms=1000)

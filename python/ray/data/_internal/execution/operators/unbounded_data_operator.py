@@ -870,6 +870,21 @@ class UnboundedDataOperator(PhysicalOperator):
                 self._create_read_tasks()
             raise StopIteration("No tasks ready")
 
+        # Find the index of the completed task to sync _task_start_times
+        completed_task = ready[0]
+        if hasattr(self, "_task_start_times") and self._task_start_times:
+            try:
+                completed_index = self._current_read_tasks.index(completed_task)
+                # Remove the start time for the completed task
+                self._task_start_times.pop(completed_index)
+            except (ValueError, IndexError):
+                # Task not found or index out of range - log but continue
+                logger.warning(
+                    f"Could not find completed task in start times list. "
+                    f"Current tasks: {len(self._current_read_tasks)}, "
+                    f"Start times: {len(self._task_start_times)}"
+                )
+
         # Update remaining tasks - remove the completed one
         self._current_read_tasks = remaining
 
