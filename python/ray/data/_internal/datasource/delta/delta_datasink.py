@@ -450,11 +450,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 "Use SaveMode.OVERWRITE to create a new table."
             )
 
-        # Handle empty writes
+        # Handle empty writes (no files written)
         if not all_file_actions:
             if self._table_existed_at_start and existing_table is not None:
-                # For OVERWRITE mode with empty dataset, clear the table
                 if self.mode == SaveMode.OVERWRITE:
+                    # Clear existing table with empty commit
                     commit_to_existing_table(
                         existing_table,
                         [],
@@ -466,11 +466,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         self.filesystem,
                     )
                     return
-                # For IGNORE mode, do nothing if table exists
                 if self.mode == SaveMode.IGNORE:
+                    # Do nothing if table exists
                     return
             # Create empty table if schema provided and table doesn't exist
-            # But skip if table existed at start (IGNORE mode semantics)
+            # Skip if table existed at start (IGNORE mode semantics)
             if self.schema and not existing_table and not self._table_existed_at_start:
                 create_table_with_files(
                     self.table_uri,
@@ -490,16 +490,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
 
             if existing_table:
-                # Include existing table schema in reconciliation
                 table_schema = to_pyarrow_schema(existing_table.schema())
                 reconciled_schema = unify_schemas(
                     [table_schema] + all_schemas, promote_types=True
                 )
             else:
-                # For new tables, reconcile all worker schemas
                 reconciled_schema = unify_schemas(all_schemas, promote_types=True)
 
-            # Update schema with reconciled result for commit
             if reconciled_schema:
                 self.schema = reconciled_schema
 
