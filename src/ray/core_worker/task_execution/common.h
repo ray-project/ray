@@ -63,12 +63,12 @@ struct TaskExecutionResult {
   TaskExecutionResult() = default;
 
   // Disable copy constructor.
-	TaskExecutionResult(const TaskExecutionResult&) = delete;
-	TaskExecutionResult& operator=(const TaskExecutionResult&) = delete;
+  TaskExecutionResult(const TaskExecutionResult &) = delete;
+  TaskExecutionResult &operator=(const TaskExecutionResult &) = delete;
 
   // Disable move constructor.
-	TaskExecutionResult(TaskExecutionResult&&) = delete;
-	TaskExecutionResult& operator=(TaskExecutionResult&&) = delete;
+  TaskExecutionResult(TaskExecutionResult &&) = delete;
+  TaskExecutionResult &operator=(TaskExecutionResult &&) = delete;
 
   // Human-readable name for the actor in this process.
   // This is only expected to be populated for actor creation tasks.
