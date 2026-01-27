@@ -32,11 +32,14 @@ namespace core {
 /// worker.
 class TaskToExecute {
  public:
-  TaskToExecute();
   TaskToExecute(
       std::function<void(const TaskSpecification &)> execute_callback,
       std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
       TaskSpecification task_spec);
+
+  // Disable copy constructors because the contained callbacks can only be called once.
+  TaskExecutionResult(const TaskExecutionResult &) = delete;
+  TaskExecutionResult &operator=(const TaskExecutionResult &) = delete;
 
   void Execute();
   void Cancel(const Status &status);
@@ -51,6 +54,9 @@ class TaskToExecute {
   const TaskSpecification &TaskSpec() const;
 
  private:
+  // Callbacks to execute the task or reply that it has been canceled and will not be
+  // executed.
+  // Only one invocation of these callbacks should ever be called.
   std::function<void(const TaskSpecification &)> execute_callback_;
   std::function<void(const TaskSpecification &, const Status &)> cancel_callback_;
 
