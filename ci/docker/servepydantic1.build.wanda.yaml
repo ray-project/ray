@@ -9,5 +9,6 @@ build_args:
   - PYDANTIC_VERSION=1.10.12
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
   - PYTHON=3.10
+  - IMAGE_TYPE=pydantic1
 tags:
   - cr.ray.io/rayproject/servepydantic1build

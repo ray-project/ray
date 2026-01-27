@@ -9,5 +9,6 @@ build_args:
   - ENABLE_TRACING=1
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
   - PYTHON=3.10
+  - IMAGE_TYPE=tracing
 tags:
   - cr.ray.io/rayproject/servetracingbuild

@@ -15,7 +15,7 @@ aioboto3==12.1.0 \
     --hash=sha256:9f9e07261ddf3d6fec04dd8d5f5a55e0cb3250089f4282f7a60054495ad9699b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 aiobotocore==2.8.0 \
     --hash=sha256:32e632fea387acd45416c2bbc03828ee2c2a66a7dc4bd3a9bcb808dea249c469 \
     --hash=sha256:f160497cef21cfffc1a8d4219eeb27bb7b243389c2d021a812b9c0e3fb8e2bd1
@@ -157,7 +157,7 @@ aiohttp==3.13.3 \
     --hash=sha256:fee0c6bc7db1de362252affec009707a17478a00ec69f797d23ca256e36d5940
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   ray
@@ -202,7 +202,7 @@ anyio==3.7.1 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   httpx
     #   starlette
@@ -213,6 +213,13 @@ astunparse==1.6.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
+async-timeout==4.0.3 ; python_full_version < '3.12' \
+    --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
+    --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   aiohttp
+    #   redis
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -536,7 +543,7 @@ click==8.1.7 \
     --hash=sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   celery
     #   click-didyoumean
     #   click-plugins
@@ -672,6 +679,12 @@ dm-tree==0.1.9 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
     #   tensorflow-probability
+exceptiongroup==1.3.1 ; python_full_version < '3.11' \
+    --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
+    --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
+    # via
+    #   anyio
+    #   pytest
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
@@ -683,7 +696,7 @@ fastapi==0.121.0 \
     --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   ray
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
@@ -773,6 +786,7 @@ filelock==3.17.0 \
     #   ray
     #   torch
     #   transformers
+    #   triton
     #   virtualenv
 flatbuffers==25.9.23 \
     --hash=sha256:255538574d6cb6d0a79a17ec8bc0d30985913b87513a01cce8bcdb6b4c44d0e2 \
@@ -907,7 +921,7 @@ gradio==5.50.0 \
     --hash=sha256:d06770d57cdda9b703ef9cf767ac93a890a0e12d82679a310eef74203a3673f4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 gradio-client==1.14.0 \
     --hash=sha256:9a2f5151978411e0f8b55a2d38cddd0a94491851149d14db4af96f5a09774825
     # via
@@ -1044,7 +1058,7 @@ grpcio==1.76.0 \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   ray
     #   tensorboard
     #   tensorflow
@@ -1174,7 +1188,7 @@ httpx==0.28.1 \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   gradio-client
     #   safehttpx
@@ -1755,7 +1769,7 @@ numpy==2.2.6 \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   cupy-cuda12x
     #   dm-tree
     #   gradio
@@ -2074,7 +2088,7 @@ packaging==24.2 \
     --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   gradio-client
     #   huggingface-hub
@@ -2144,7 +2158,7 @@ pandas==2.3.3 \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   ray
 pillow==10.4.0 \
@@ -2382,7 +2396,7 @@ protobuf==5.29.5 \
     --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   google-api-core
     #   googleapis-common-protos
     #   opentelemetry-proto
@@ -2391,16 +2405,18 @@ protobuf==5.29.5 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
-py-spy==0.4.1 \
-    --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
-    --hash=sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a \
-    --hash=sha256:532d3525538254d1859b49de1fbe9744df6b8865657c9f0e444bf36ce3f19226 \
-    --hash=sha256:6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29 \
-    --hash=sha256:809094208c6256c8f4ccadd31e9a513fe2429253f48e20066879239ba12cd8cc \
-    --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
-    --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
-    --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
-    # via ray
+py-spy==0.4.0 ; python_full_version < '3.12' \
+    --hash=sha256:47cdda4c34d9b6cb01f3aaeceb2e88faf57da880207fe72ff6ff97e9bb6cc8a9 \
+    --hash=sha256:77d8f637ade38367d944874776f45b703b7ac5938b1f7be8891f3a5876ddbb96 \
+    --hash=sha256:806602ce7972782cc9c1e383f339bfc27bfb822d42485e6a3e0530ae5040e1f0 \
+    --hash=sha256:87573e64dbfdfc89ba2e0f5e2f525aa84e0299c7eb6454b47ea335fde583a7a0 \
+    --hash=sha256:8bf2f3702cef367a489faa45177b41a6c31b2a3e5bd78c978d44e29340152f5a \
+    --hash=sha256:c5f06ffce4c9c98b7fc9f5e67e5e7db591173f1351837633f3f23d9378b1d18a \
+    --hash=sha256:eee3d0bde85ca5cf4f01f012d461180ca76c24835a96f7b5c4ded64eb6a008ab \
+    --hash=sha256:f2cf3f7130e7d780471faa5957441d3b4e0ec39a79b2c00f4c33d494f7728428
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   ray
 pyarrow==19.0.1 \
     --hash=sha256:008a4009efdb4ea3d2e18f05cd31f9d43c388aad29c636112c2966605ba33466 \
     --hash=sha256:0148bb4fc158bfbc3d6dfe5001d93ebeed253793fff4435167f6ce1dc4bddeae \
@@ -2471,7 +2487,7 @@ pydantic==2.12.3 \
     --hash=sha256:6986454a854bc3bc6e5443e1369e06a3a456af9d339eda45510f517d9ea5c6bf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   fastapi
     #   gradio
     #   ray
@@ -2611,7 +2627,7 @@ pygments==2.18.0 \
 pymysql==1.1.2 \
     --hash=sha256:4961d3e165614ae65014e361811a724e2044ad3ea3739de9903ae7c21f539f03 \
     --hash=sha256:e6b1d89711dd51f8f74b1631fe08f039e7d76cf67a42a323d3178f0f25762ed9
-    # via -r python/requirements/serve-requirements.txt
+    # via -r python/requirements/serve/serve-requirements.txt
 pyopenssl==25.0.0 \
     --hash=sha256:424c247065e46e76a37411b9ab1782541c23bb658bf003772c3405fbaa128e90 \
     --hash=sha256:cd2cef799efa3936bb08e8ccb9433a575722b9dd986023f1cabc4ae64e9dac16
@@ -2623,14 +2639,14 @@ pytest==7.4.4 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   pytest-asyncio
 pytest-asyncio==0.17.2 \
     --hash=sha256:6d895b02432c028e6957d25fc936494e78c6305736e785d9fee408b1efbc7ff4 \
     --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 python-dateutil==2.8.2 \
     --hash=sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
@@ -2733,7 +2749,7 @@ pyyaml==6.0.3 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio
     #   huggingface-hub
     #   ray
@@ -2744,7 +2760,7 @@ redis==4.5.4 \
     --hash=sha256:73ec35da4da267d6847e47f68730fdd5f62e2ca69e3ef5885c6a78a9374c3893
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -2840,7 +2856,7 @@ requests==2.32.5 \
     --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   google-api-core
     #   huggingface-hub
     #   ray
@@ -3232,13 +3248,13 @@ sqlalchemy==2.0.32 \
     --hash=sha256:e567a8793a692451f706b363ccf3c45e056b67d90ead58c3bc9471af5d212202
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 starlette==0.49.1 \
     --hash=sha256:481a43b71e24ed8c43b11ea02f5353d77840e01480881b8cb5a26b8cae64a8cb \
     --hash=sha256:d92ce9f07e4a3caa3ac13a79523bd18e3bc0042bb8ff2d759a8e7dd0e1859875
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   fastapi
     #   gradio
     #   ray
@@ -3287,10 +3303,15 @@ tensorflow==2.20.0 \
     --hash=sha256:c25edad45e8cb9e76366f7a8c835279f9169028d610f3b52ce92d332a1b05438 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
-    # via -r python/requirements/serve-requirements.txt
-tensorflow-probability==0.25.0 \
-    --hash=sha256:f3f4d6431656c0122906888afe1b67b4400e82bd7f254b45b92e6c5b84ea8e3e
-    # via -r python/requirements/serve-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/serve/serve-requirements.txt
+    #   tf-keras
+tensorflow-probability==0.24.0 \
+    --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
@@ -3303,6 +3324,12 @@ textual==4.0.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   memray
+tf-keras==2.20.0 \
+    --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
+    --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 tokenizers==0.15.2 \
     --hash=sha256:0143e7d9dcd811855c1ce1ab9bf5d96d29bf5e528fd6c7824d0465741e8c10fd \
     --hash=sha256:02272fe48280e0293a04245ca5d919b2c94a48b408b55e858feae9618138aeda \
@@ -3417,6 +3444,12 @@ tokenizers==0.15.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   transformers
+tomli==2.0.1 ; python_full_version < '3.11' \
+    --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
+    --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 tomlkit==0.13.0 \
     --hash=sha256:08ad192699734149f5b97b45f1f18dad7eb1b6d16bc72ad0c2335772650d7b72 \
     --hash=sha256:7075d3042d03b80f603482d69bf0c8f345c2b30e41699fd8883227f89972b264
@@ -3446,7 +3479,7 @@ torch==2.3.0 \
     --hash=sha256:f9b98bf1a3c8af2d4c41f0bf1433920900896c446d1ddc128290ff146d1eb4bd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   torchvision
 torchvision==0.18.0 \
     --hash=sha256:2115a1906c015f5da9ceedc40a983313b0fd6e2c8a17108a92991706f51f6987 \
@@ -3471,7 +3504,7 @@ torchvision==0.18.0 \
     --hash=sha256:eb9d83c0e1dbb54ecb0fb04c87f786333e3a6fb8b9c400aca7c31081f9aa5707
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
@@ -3484,7 +3517,15 @@ transformers==4.36.2 \
     --hash=sha256:d8068e897e47793281501e547d2bbdfc5b8556409c2cb6c3d9e2ca77d4c0b4ec
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
+triton==2.3.0 ; python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:038e06a09c06a164fef9c48de3af1e13a63dc1ba3c792871e61a8e79720ea440 \
+    --hash=sha256:218d742e67480d9581bafb73ed598416cc8a56f6316152e5562ee65e33de01c0 \
+    --hash=sha256:381ec6b3dac06922d3e4099cfc943ef032893b25415de295e82b1a82b0359d2c \
+    --hash=sha256:3c3d9607f85103afdb279938fc1dd2a66e4f5999a58eb48a346bd42738f986dd \
+    --hash=sha256:5ce4b8ff70c48e47274c66f269cce8861cf1dc347ceeb7a67414ca151b1822d8 \
+    --hash=sha256:6d8f636e0341ac348899a47a057c3daea99ea7db31528a225a3ba4ded28ccc65
+    # via torch
 typer==0.15.1 \
     --hash=sha256:7994fb7b8155b64d3402518560648446072864beefd44aa2dc36972a5972e847 \
     --hash=sha256:a0588c0a7fa68a1978a069818657778f86abe6ff5ea6abf472f940a08bfe4f0a
@@ -3496,8 +3537,9 @@ typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   aiosignal
+    #   exceptiongroup
     #   fastapi
     #   gradio
     #   gradio-client
@@ -3712,7 +3754,7 @@ websockets==15.0.1 \
     --hash=sha256:fcd5cf9e305d7b8338754470cf69cf81f420459dbae8a3b40cee57417f4614a7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve-requirements.txt
+    #   -r python/requirements/serve/serve-requirements.txt
     #   gradio-client
     #   uvicorn
 werkzeug==2.3.8 \

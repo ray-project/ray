@@ -28,3 +28,4 @@ torch
 torchvision
 transformers
 aioboto3
+tf_keras
