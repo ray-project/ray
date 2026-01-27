@@ -62,26 +62,6 @@ class MockChunk:
 # =============================================================================
 
 
-class MockCredentialProvider(DatabricksCredentialProvider):
-    """A mock credential provider that tracks method calls."""
-
-    def __init__(self, token: str = "test_token", host: str = "test_host"):
-        self._token = token
-        self._host = host
-        self.invalidate_count = 0
-        self.token_fetch_count = 0
-
-    def get_token(self) -> str:
-        self.token_fetch_count += 1
-        return self._token
-
-    def get_host(self) -> str:
-        return self._host
-
-    def invalidate(self) -> None:
-        self.invalidate_count += 1
-
-
 class RefreshableCredentialProvider(DatabricksCredentialProvider):
     """A credential provider that simulates token refresh on invalidate."""
 
@@ -130,12 +110,6 @@ def databricks_env():
         {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"},
     ):
         yield
-
-
-@pytest.fixture
-def mock_credential_provider():
-    """Fixture that provides a mock credential provider."""
-    return MockCredentialProvider()
 
 
 @pytest.fixture
@@ -508,29 +482,12 @@ class TestDatabricksUCDatasourceCredentials:
 class TestDatabricksUCDatasource401Retry:
     """Tests for 401 retry behavior."""
 
-    def test_401_during_initial_post(self, requests_mocker):
+    def test_401_during_initial_post(
+        self, requests_mocker, refreshable_credential_provider
+    ):
         """Test that 401 during initial POST triggers credential invalidation and retry."""
         post_call_count = [0]
         post_headers_captured = []
-
-        class PostRetryProvider(DatabricksCredentialProvider):
-            """Provider that simulates token refresh after 401."""
-
-            def __init__(self):
-                self.current_token = "expired_token"
-                self.invalidate_count = 0
-
-            def get_token(self) -> str:
-                return self.current_token
-
-            def get_host(self) -> str:
-                return "test_host"
-
-            def invalidate(self) -> None:
-                self.invalidate_count += 1
-                self.current_token = "refreshed_token"
-
-        provider = PostRetryProvider()
 
         def post_side_effect(url, *args, **kwargs):
             post_call_count[0] += 1
@@ -557,7 +514,7 @@ class TestDatabricksUCDatasource401Retry:
             catalog="test_catalog",
             schema="test_schema",
             query="SELECT 1",
-            credential_provider=provider,
+            credential_provider=refreshable_credential_provider,
         )
 
         # Verify retry occurred
@@ -566,35 +523,16 @@ class TestDatabricksUCDatasource401Retry:
         )
 
         # Verify invalidate was called
-        assert provider.invalidate_count == 1
+        assert refreshable_credential_provider.invalidate_count == 1
 
         # Verify first request used expired token, retry used refreshed token
         assert "expired_token" in post_headers_captured[0]
         assert "refreshed_token" in post_headers_captured[1]
 
-    def test_401_during_polling(self, requests_mocker):
+    def test_401_during_polling(self, requests_mocker, refreshable_credential_provider):
         """Test that 401 during polling triggers credential invalidation and retry."""
         poll_call_count = [0]
         poll_headers_captured = []
-
-        class PollingRetryProvider(DatabricksCredentialProvider):
-            """Provider that simulates token refresh after 401."""
-
-            def __init__(self):
-                self.current_token = "expired_token"
-                self.invalidate_count = 0
-
-            def get_token(self) -> str:
-                return self.current_token
-
-            def get_host(self) -> str:
-                return "test_host"
-
-            def invalidate(self) -> None:
-                self.invalidate_count += 1
-                self.current_token = "refreshed_token"
-
-        provider = PollingRetryProvider()
 
         requests_mocker["post"].return_value = mock.Mock(
             status_code=200,
@@ -628,7 +566,7 @@ class TestDatabricksUCDatasource401Retry:
             catalog="test_catalog",
             schema="test_schema",
             query="SELECT 1",
-            credential_provider=provider,
+            credential_provider=refreshable_credential_provider,
         )
 
         # Verify retry occurred
@@ -637,35 +575,18 @@ class TestDatabricksUCDatasource401Retry:
         )
 
         # Verify invalidate was called once
-        assert provider.invalidate_count == 1
+        assert refreshable_credential_provider.invalidate_count == 1
 
         # Verify first request used expired token, retry used refreshed token
         assert "expired_token" in poll_headers_captured[0]
         assert "refreshed_token" in poll_headers_captured[1]
 
-    def test_401_during_chunk_fetch(self, requests_mocker):
+    def test_401_during_chunk_fetch(
+        self, requests_mocker, refreshable_credential_provider
+    ):
         """Test that 401 during chunk fetch triggers credential invalidation and retry."""
         chunk_fetch_count = [0]
         chunk_fetch_headers = []
-
-        class ChunkFetchRetryProvider(DatabricksCredentialProvider):
-            """Provider that simulates token refresh after 401."""
-
-            def __init__(self):
-                self.current_token = "expired_token"
-                self.invalidate_count = 0
-
-            def get_token(self) -> str:
-                return self.current_token
-
-            def get_host(self) -> str:
-                return "test_host"
-
-            def invalidate(self) -> None:
-                self.invalidate_count += 1
-                self.current_token = "refreshed_token"
-
-        provider = ChunkFetchRetryProvider()
 
         # Create Arrow data for external URL response
         table = pa.Table.from_pydict({"col1": [1, 2, 3]})
@@ -731,7 +652,7 @@ class TestDatabricksUCDatasource401Retry:
             catalog="test_catalog",
             schema="test_schema",
             query="SELECT 1",
-            credential_provider=provider,
+            credential_provider=refreshable_credential_provider,
         )
 
         # Get read tasks and execute the read function to trigger chunk fetch
@@ -748,7 +669,7 @@ class TestDatabricksUCDatasource401Retry:
         )
 
         # Verify invalidate was called during chunk fetch
-        assert provider.invalidate_count == 1
+        assert refreshable_credential_provider.invalidate_count == 1
 
         # Verify first chunk fetch used expired token, retry used refreshed token
         assert "expired_token" in chunk_fetch_headers[0]
