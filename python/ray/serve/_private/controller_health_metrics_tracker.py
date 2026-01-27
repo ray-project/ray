@@ -1,6 +1,5 @@
 import asyncio
 import math
-import resource
 import sys
 import time
 from collections import deque
@@ -104,27 +103,21 @@ class ControllerHealthMetricsTracker:
         default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
     )
 
-    # Latest values
-    last_loop_duration_s: float = 0.0
+    # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
     last_dsm_update_duration_s: float = 0.0
     last_asm_update_duration_s: float = 0.0
     last_proxy_update_duration_s: float = 0.0
     last_node_update_duration_s: float = 0.0
-    last_handle_metrics_delay_ms: float = 0.0
-    last_replica_metrics_delay_ms: float = 0.0
     num_control_loops: int = 0
 
     def record_loop_duration(self, duration: float):
-        self.last_loop_duration_s = duration
         self.loop_durations.append(duration)
 
     def record_handle_metrics_delay(self, delay_ms: float):
-        self.last_handle_metrics_delay_ms = delay_ms
         self.handle_metrics_delays.append(delay_ms)
 
     def record_replica_metrics_delay(self, delay_ms: float):
-        self.last_replica_metrics_delay_ms = delay_ms
         self.replica_metrics_delays.append(delay_ms)
 
     def collect_metrics(self) -> ControllerHealthMetrics:
@@ -159,12 +152,19 @@ class ControllerHealthMetricsTracker:
 
         # Get memory usage in MB
         # Note: ru_maxrss is in bytes on macOS but kilobytes on Linux
-        rusage = resource.getrusage(resource.RUSAGE_SELF)
-        process_memory_mb = (
-            rusage.ru_maxrss / (1024 * 1024)  # Convert bytes to MB on macOS
-            if sys.platform == "darwin"
-            else rusage.ru_maxrss / 1024  # Convert KB to MB on Linux
-        )
+        # The resource module is Unix-only, so we handle Windows gracefully
+        try:
+            import resource
+
+            rusage = resource.getrusage(resource.RUSAGE_SELF)
+            process_memory_mb = (
+                rusage.ru_maxrss / (1024 * 1024)  # Convert bytes to MB on macOS
+                if sys.platform == "darwin"
+                else rusage.ru_maxrss / 1024  # Convert KB to MB on Linux
+            )
+        except ImportError:
+            # resource module not available on Windows
+            process_memory_mb = 0.0
 
         return ControllerHealthMetrics(
             timestamp=now,

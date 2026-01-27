@@ -457,7 +457,7 @@ class TestCollectHealthMetrics:
 
         # Verify tracker state
         assert len(tracker.loop_durations) == 5
-        assert tracker.last_loop_duration_s == 0.5
+        assert tracker.loop_durations[-1] == 0.5
 
         # Collect metrics and verify DurationStats
         metrics = tracker.collect_metrics()
@@ -568,13 +568,12 @@ class TestControllerHealthMetricsTracker:
         tracker = ControllerHealthMetricsTracker()
 
         tracker.record_loop_duration(0.5)
-        assert tracker.last_loop_duration_s == 0.5
         assert len(tracker.loop_durations) == 1
-        assert tracker.loop_durations[0] == 0.5
+        assert tracker.loop_durations[-1] == 0.5
 
         tracker.record_loop_duration(0.3)
-        assert tracker.last_loop_duration_s == 0.3
         assert len(tracker.loop_durations) == 2
+        assert tracker.loop_durations[-1] == 0.3
 
     def test_rolling_window_size(self):
         """Test that rolling window doesn't exceed max size."""
@@ -593,16 +592,16 @@ class TestControllerHealthMetricsTracker:
         tracker = ControllerHealthMetricsTracker()
 
         tracker.record_handle_metrics_delay(100.0)
-        assert tracker.last_handle_metrics_delay_ms == 100.0
         assert len(tracker.handle_metrics_delays) == 1
+        assert tracker.handle_metrics_delays[-1] == 100.0
 
     def test_record_replica_metrics_delay(self):
         """Test recording replica metrics delays."""
         tracker = ControllerHealthMetricsTracker()
 
         tracker.record_replica_metrics_delay(50.0)
-        assert tracker.last_replica_metrics_delay_ms == 50.0
         assert len(tracker.replica_metrics_delays) == 1
+        assert tracker.replica_metrics_delays[-1] == 50.0
 
     def test_multiple_delay_records(self):
         """Test recording multiple metrics delays."""
@@ -614,8 +613,8 @@ class TestControllerHealthMetricsTracker:
 
         assert len(tracker.handle_metrics_delays) == 10
         assert len(tracker.replica_metrics_delays) == 10
-        assert tracker.last_handle_metrics_delay_ms == 90.0
-        assert tracker.last_replica_metrics_delay_ms == 45.0
+        assert tracker.handle_metrics_delays[-1] == 90.0
+        assert tracker.replica_metrics_delays[-1] == 45.0
 
 
 if __name__ == "__main__":
