@@ -1,154 +1,66 @@
-"""Unbound datasource base classes and utilities.
+"""Unbounded datasource base class and utilities for Ray Data.
 
-This module provides the core abstract base class and utilities for all unbounded
-online data sources in Ray Data. These are different from Ray Data's "streaming
-execution" - they represent sources of unbounded data like Kafka topics, Kinesis
-streams, etc.
+This module provides the foundation for streaming data sources that represent
+unbounded data streams (Kafka, Kinesis, Flink, etc.). This is distinct from
+Ray Data's "streaming execution" engine - it handles ingestion of unbounded data.
 
-Example:
-    Create a custom unbound datasource by inheriting from UnboundDatasource:
-
-    >>> class MyUnboundDatasource(UnboundDatasource):
-    ...     def _get_read_tasks_for_partition(self, partition_info, parallelism):
-    ...         # Implementation here
-    ...         pass
-    >>> datasource = MyUnboundDatasource("my_source")
-    >>> read_tasks = datasource.get_read_tasks(parallelism=4)
+The UnboundDatasource base class provides a simple interface that subclasses
+must implement to create streaming datasources.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import pyarrow as pa
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import DeveloperAPI, PublicAPI
-
-
-@DeveloperAPI
-class UnboundPosition:
-    """Represents a position in an unbound source."""
-
-    def __init__(self, value: Union[str, int], position_type: str = "offset"):
-        """Initialize an unbound position.
-        Args:
-            value: Position value (string or integer)
-            position_type: Type of position (offset, timestamp, sequence)
-        """
-        self.value = value
-        self.position_type = position_type
-
-    def __eq__(self, other: object) -> bool:
-        """Compare positions for equality."""
-        if not isinstance(other, UnboundPosition):
-            return False
-        return self.position_type == other.position_type and self.value == other.value
-
-    def __str__(self) -> str:
-        """String representation of the position."""
-        return f"{self.position_type}:{self.value}"
-
-    @classmethod
-    def from_string(cls, position_str: str) -> "UnboundPosition":
-        """Parse position from string representation."""
-        if ":" in position_str:
-            position_type, value = position_str.split(":", 1)
-            return cls(value, position_type)
-        else:
-            return cls(position_str, "offset")
-
-
-@DeveloperAPI
-class UnboundMetrics:
-    """Simple metrics for unbound sources."""
-
-    def __init__(self):
-        """Initialize unbound metrics."""
-        self.records_read = 0
-        self.bytes_read = 0
-        self.read_errors = 0
-        self.start_time = datetime.now()
-
-    def record_read(self, record_count: int, byte_count: int) -> None:
-        """Record successful read."""
-        self.records_read += record_count
-        self.bytes_read += byte_count
-
-    def record_error(self) -> None:
-        """Record read error."""
-        self.read_errors += 1
-
-    def get_throughput(self) -> Dict[str, float]:
-        """Calculate throughput metrics."""
-        duration = (datetime.now() - self.start_time).total_seconds()
-        if duration > 0:
-            return {
-                "records_per_second": self.records_read / duration,
-                "bytes_per_second": self.bytes_read / duration,
-                "error_rate": self.read_errors / max(1, self.records_read),
-            }
-        return {"records_per_second": 0, "bytes_per_second": 0, "error_rate": 0}
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get basic statistics."""
-        return {
-            "records_read": self.records_read,
-            "bytes_read": self.bytes_read,
-            "read_errors": self.read_errors,
-        }
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
 class UnboundDatasource(Datasource, ABC):
-    """Abstract base class for unbounded online data sources.
+    """Abstract base class for unbounded (streaming) data sources.
 
-    This class provides the foundation for streaming data sources that represent
-    unbounded data streams (like Kafka, Kinesis, Flink). Note that this is distinct
-    from Ray Data's "streaming execution" engine - this handles the ingestion of
-    unbounded online data.
-
-    Subclasses must implement the abstract method:
-        - `_get_read_tasks_for_partition`: Create read tasks for data partitions
+    This class provides the foundation for streaming datasources that represent
+    unbounded data streams. Subclasses must implement `_get_read_tasks_for_partition`
+    to define how to create read tasks for their specific data source.
 
     Example:
         .. testcode::
             :skipif: True
 
-            from ray.data.block import BlockMetadata
             from ray.data.datasource.unbound_datasource import (
                 UnboundDatasource,
                 create_unbound_read_task,
             )
+            from ray.data.block import BlockMetadata
 
             class MyDatasource(UnboundDatasource):
-                def _get_read_tasks_for_partition(self, partition_info, parallelism):
-                    # Create read task with proper metadata
-                    metadata = BlockMetadata(
-                        num_rows=None,
-                        size_bytes=None,
-                        schema=None,
-                        input_files=None,
-                        exec_stats=None,
-                    )
-                    return [create_unbound_read_task(lambda: [], metadata)]
+                def __init__(self):
+                    super().__init__("my_source")
 
-            ds = MyDatasource("my_source")
+                def _get_read_tasks_for_partition(self, partition_info, parallelism):
+                    def read_fn():
+                        yield []  # Yield data blocks
+
+                    metadata = BlockMetadata(
+                        num_rows=None, size_bytes=None,
+                        input_files=None, exec_stats=None
+                    )
+                    return [create_unbound_read_task(read_fn, metadata)]
+
+            ds = MyDatasource()
             tasks = ds.get_read_tasks(parallelism=2)
-            assert len(tasks) == 1
     """
 
     def __init__(self, source_type: str):
-        """Initialize unbound datasource.
+        """Initialize unbounded datasource.
 
         Args:
-            source_type: Type of unbound source (kafka, kinesis, flink)
+            source_type: Type of source (e.g., "kafka", "kinesis", "flink").
         """
-        self.source_type = source_type
-        self.metrics = UnboundMetrics()
-
-    # Abstract methods that must be implemented by subclasses
+        self._source_type = source_type
 
     @abstractmethod
     def _get_read_tasks_for_partition(
@@ -156,40 +68,39 @@ class UnboundDatasource(Datasource, ABC):
         partition_info: Dict[str, Any],
         parallelism: int,
     ) -> List[ReadTask]:
-        """Create read tasks for a specific partition.
+        """Create read tasks for data partitions.
+
+        Subclasses must implement this to define how to create read tasks
+        for their specific data source.
 
         Args:
-            partition_info: Information about the partition to read
-            parallelism: Desired parallelism level
+            partition_info: Source-specific partition information.
+            parallelism: Desired number of parallel tasks.
 
         Returns:
-            List of ReadTask objects for this partition
+            List of ReadTask objects.
         """
         pass
 
-    # Concrete implementations
-
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         """Get read tasks for this datasource.
 
         Args:
-            parallelism: Desired parallelism level
+            parallelism: Desired parallelism level.
+            per_task_row_limit: Optional limit on rows per task (unused for unbounded).
 
         Returns:
-            List of read tasks
+            List of read tasks.
         """
-        # Default implementation that subclasses can override
-        # Get partition information - this is source-specific
-        partition_info = {"default_partition": True}
-
-        # Create read tasks for the partition
-        return self._get_read_tasks_for_partition(partition_info, parallelism)
+        return self._get_read_tasks_for_partition({}, parallelism)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Estimate in-memory data size.
 
         Returns:
-            None for unbound sources (unbounded)
+            None for unbounded sources (size unknown).
         """
         return None
 
@@ -197,25 +108,16 @@ class UnboundDatasource(Datasource, ABC):
         """Get name of this datasource.
 
         Returns:
-            Name of the datasource
+            Datasource name.
         """
-        return f"{self.source_type.title()}Unbound"
-
-    def get_schema(self, **kwargs) -> Optional[pa.Schema]:
-        """Get schema for this datasource.
-
-        Returns:
-            PyArrow schema or None if schema cannot be determined
-        """
-        # For unbound sources, schema may not be determinable upfront
-        return None
+        return self._source_type
 
     @property
     def supports_distributed_reads(self) -> bool:
         """Whether this datasource supports distributed reads.
 
         Returns:
-            True - unbound datasources support distributed reads
+            True - unbounded datasources support distributed reads.
         """
         return True
 
@@ -226,43 +128,20 @@ def create_unbound_read_task(
     metadata: BlockMetadata,
     schema: Optional[pa.Schema] = None,
 ) -> ReadTask:
-    """Factory function to create unbound read tasks.
+    """Create a ReadTask for unbounded datasources.
 
     Args:
-        read_fn: Function that reads and yields blocks
-        metadata: Block metadata for this task
-        schema: Optional PyArrow schema
+        read_fn: Function that yields blocks (PyArrow tables).
+        metadata: Block metadata (estimated).
+        schema: Optional PyArrow schema.
 
     Returns:
-        ReadTask configured for unbound reading.
+        ReadTask configured for unbounded reading.
     """
-    return ReadTask(read_fn, metadata, schema)
-
-
-@PublicAPI(stability="alpha")
-def infer_schema_from_records(records: List[Dict[str, Any]]) -> Optional[pa.Schema]:
-    """Infer PyArrow schema from record samples.
-
-    Args:
-        records: Sample records to infer schema from
-
-    Returns:
-        Inferred PyArrow schema or None if inference fails
-    """
-    if not records:
-        return None
-
-    try:
-        table = pa.Table.from_pylist(records)
-        return table.schema
-    except Exception:
-        return None
+    return ReadTask(read_fn=read_fn, metadata=metadata, schema=schema)
 
 
 __all__ = [
     "UnboundDatasource",
-    "UnboundPosition",
-    "UnboundMetrics",
     "create_unbound_read_task",
-    "infer_schema_from_records",
 ]
