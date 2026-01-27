@@ -19,8 +19,12 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
             if not isinstance(op, MapOperator):
                 continue
 
+            # Physical operators are out of scope here; use existing private attrs.
+            original_ray_remote_args_fn = op._ray_remote_args_fn
+
             def ray_remote_args_fn(
-                op: MapOperator = op, original_ray_remote_args_fn=op._ray_remote_args_fn
+                op: MapOperator = op,
+                original_ray_remote_args_fn=original_ray_remote_args_fn,
             ) -> Dict[str, Any]:
                 assert isinstance(op, MapOperator), op
 

@@ -13,7 +13,7 @@ def test_push_based_shuffle_schedule():
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
         op_cls = PushBasedShuffleTaskScheduler
-        schedule = op_cls._compute_shuffle_schedule(
+        schedule = op_cls.compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
         # All input blocks will be processed.
