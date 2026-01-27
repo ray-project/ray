@@ -477,7 +477,11 @@ def compute_parquet_statistics(table: pa.Table) -> str:
         if null_count is not None and null_count >= 0:
             null_counts[name] = null_count
 
-        if is_numeric_type(col_type) or is_string_type(col_type) or is_temporal_type(col_type):
+        if (
+            is_numeric_type(col_type)
+            or is_string_type(col_type)
+            or is_temporal_type(col_type)
+        ):
             min_val = _to_json_serializable(pc.min(col).as_py())
             max_val = _to_json_serializable(pc.max(col).as_py())
             if min_val is not None:
