@@ -10,7 +10,7 @@ from ray.data._internal.execution.operators.hash_aggregate import HashAggregateO
 from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import Count, Sum
 from ray.data.block import BlockMetadata

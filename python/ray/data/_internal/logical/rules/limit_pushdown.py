@@ -91,21 +91,41 @@ class LimitPushdownRule(Rule):
             child₂ -> Limit ->┤ Union ──► Limit   (original)
                                │
             …    -> Limit  ->│
+
+        Example (skip duplicate limit on a branch that already has it):
+            before:
+                child -> Limit(n) -> Union -> Limit(n)
+            after:
+                child -> Limit(n) -> Union -> Limit(n)   (no extra branch limit inserted)
         """
         union_op = limit_op.input_dependency
         assert isinstance(union_op, Union)
 
-        # 1. Detach the original Union from its children.
-        original_children = list(union_op.input_dependencies)
-        for child in original_children:
-            if union_op in child._output_dependencies:
-                child._output_dependencies.remove(union_op)
+        def _branch_has_limit(op: LogicalOperator, limit: int) -> bool:
+            current = op
+            while (
+                isinstance(current, AbstractOneToOne)
+                and not current.can_modify_num_rows()
+                and current.input_dependencies
+            ):
+                if isinstance(current, Limit):
+                    return current._limit == limit
+                # Safe to use input_dependency: current is an AbstractOneToOne here.
+                current = current.input_dependency
 
-        # 2. Insert a branch-local Limit and push it further upstream.
+            return isinstance(current, Limit) and current._limit == limit
+
+        # Insert a branch-local Limit and push it further upstream.
         branch_tails: List[LogicalOperator] = []
-        for child in original_children:
+        for child in union_op.input_dependencies:
+            # Avoid inserting a duplicate Limit on a branch that already has the same
+            # limit upstream of row-preserving ops.
+            if _branch_has_limit(child, limit_op._limit):
+                branch_tails.append(child)
+                continue
             raw_limit = Limit(child, limit_op._limit)  # child → limit
-            if isinstance(child, Union):
+
+            if isinstance(raw_limit.input_dependency, Union):
                 # This represents the limit operator appended after the union.
                 pushed_tail = self._push_limit_into_union(raw_limit)
             else:
@@ -113,16 +133,8 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        # 3. Re-attach the Union so that it consumes the *tails*.
         new_union = Union(*branch_tails)
-        for tail in branch_tails:
-            tail._output_dependencies.append(new_union)
-
-        # 4. Re-wire the original (global) Limit to consume the *new* Union.
-        limit_op._input_dependencies = [new_union]
-        new_union._output_dependencies = [limit_op]
-
-        return limit_op
+        return Limit(new_union, limit_op._limit)
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
