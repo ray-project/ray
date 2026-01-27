@@ -4,9 +4,16 @@ This module provides credential abstraction for Databricks authentication,
 supporting static tokens with extensibility for future credential sources.
 """
 
+import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Default environment variable names for Databricks credentials
+DEFAULT_TOKEN_ENV_VAR = "DATABRICKS_TOKEN"
+DEFAULT_HOST_ENV_VAR = "DATABRICKS_HOST"
 
 
 class DatabricksCredentialProvider(ABC):
@@ -105,15 +112,15 @@ class StaticCredentialProvider(DatabricksCredentialProvider):
 class EnvironmentCredentialProvider(DatabricksCredentialProvider):
     """A credential provider that reads from environment variables.
 
-    Reads DATABRICKS_TOKEN and DATABRICKS_HOST from environment variables.
-    If DATABRICKS_HOST is not set and running in Databricks runtime,
+    Reads token and host from environment variables.
+    If host env var is not set and running in Databricks runtime,
     automatically detects the host.
 
     Args:
         token_env_var: Environment variable name for the token.
-            Defaults to "DATABRICKS_TOKEN".
+            Defaults to DEFAULT_TOKEN_ENV_VAR ("DATABRICKS_TOKEN").
         host_env_var: Environment variable name for the host.
-            Defaults to "DATABRICKS_HOST".
+            Defaults to DEFAULT_HOST_ENV_VAR ("DATABRICKS_HOST").
 
     Raises:
         ValueError: If token or host cannot be resolved.
@@ -121,8 +128,8 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
 
     def __init__(
         self,
-        token_env_var: str = "DATABRICKS_TOKEN",
-        host_env_var: str = "DATABRICKS_HOST",
+        token_env_var: str = DEFAULT_TOKEN_ENV_VAR,
+        host_env_var: str = DEFAULT_HOST_ENV_VAR,
     ):
         self._token_env_var = token_env_var
         self._host_env_var = host_env_var
@@ -163,8 +170,8 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
                         .getContext()
                     )
                     return ctx.tags().get("browserHostName").get()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to detect Databricks host from runtime: {e}")
         return None
 
     def get_token(self) -> str:

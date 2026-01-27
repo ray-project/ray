@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import time
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 from urllib.parse import urljoin
 
 import numpy as np
@@ -25,12 +25,42 @@ logger = logging.getLogger(__name__)
 _STATEMENT_EXEC_POLL_TIME_S = 1
 
 
-def _build_headers(credential_provider: DatabricksCredentialProvider) -> dict:
+def _build_headers(credential_provider: DatabricksCredentialProvider) -> dict[str, str]:
     """Build request headers with fresh token from credential provider."""
     return {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {credential_provider.get_token()}",
     }
+
+
+def _request_with_401_retry(
+    request_fn: Callable[..., requests.Response],
+    url: str,
+    credential_provider: DatabricksCredentialProvider,
+    **kwargs,
+) -> requests.Response:
+    """Make an HTTP request with one retry on 401 after invalidating credentials.
+
+    Args:
+        request_fn: Request function (e.g., requests.get or requests.post)
+        url: Request URL
+        credential_provider: Credential provider for authentication
+        **kwargs: Additional arguments passed to requests
+
+    Returns:
+        Response object (after calling raise_for_status)
+    """
+    response = request_fn(url, headers=_build_headers(credential_provider), **kwargs)
+
+    if response.status_code == 401:
+        logger.info("Received 401 response, invalidating credentials and retrying.")
+        credential_provider.invalidate()
+        response = request_fn(
+            url, headers=_build_headers(credential_provider), **kwargs
+        )
+
+    response.raise_for_status()
+    return response
 
 
 @PublicAPI(stability="alpha")
@@ -84,23 +114,11 @@ class DatabricksUCDatasource(Datasource):
         try:
             while state in ["PENDING", "RUNNING"]:
                 time.sleep(_STATEMENT_EXEC_POLL_TIME_S)
-                # Use fresh token for each poll request
-                response = requests.get(
+                response = _request_with_401_retry(
+                    requests.get,
                     urljoin(url_base, statement_id) + "/",
-                    headers=_build_headers(self._credential_provider),
+                    self._credential_provider,
                 )
-                # Retry once on 401 after invalidating credentials
-                if response.status_code == 401:
-                    logger.info(
-                        "Received 401 during polling, invalidating credentials "
-                        "and retrying."
-                    )
-                    self._credential_provider.invalidate()
-                    response = requests.get(
-                        urljoin(url_base, statement_id) + "/",
-                        headers=_build_headers(self._credential_provider),
-                    )
-                response.raise_for_status()
                 state = response.json()["status"]["state"]
         except KeyboardInterrupt:
             # User cancel the command, so we cancel query execution.
@@ -185,24 +203,11 @@ class DatabricksUCDatasource(Datasource):
                         url_base, f"{statement_id}/result/chunks/{chunk_index}"
                     )
 
-                    # Build fresh headers for each chunk request
-                    headers = _build_headers(credential_provider_for_tasks)
-                    resolve_response = requests.get(
-                        resolve_external_link_url, headers=headers
+                    resolve_response = _request_with_401_retry(
+                        requests.get,
+                        resolve_external_link_url,
+                        credential_provider_for_tasks,
                     )
-
-                    # Retry once on 401 after invalidating credentials
-                    if resolve_response.status_code == 401:
-                        logger.info(
-                            "Received 401 response, invalidating credentials and retrying."
-                        )
-                        credential_provider_for_tasks.invalidate()
-                        headers = _build_headers(credential_provider_for_tasks)
-                        resolve_response = requests.get(
-                            resolve_external_link_url, headers=headers
-                        )
-
-                    resolve_response.raise_for_status()
                     external_url = resolve_response.json()["external_links"][0][
                         "external_link"
                     ]
