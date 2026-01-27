@@ -4,8 +4,8 @@ import os
 import re
 import tempfile
 import uuid
-from dataclasses import dataclass
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Optional
 from unittest import mock
 
@@ -15,7 +15,6 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
-from ray.data._internal.util import rows_same
 from ray.data._internal.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
     StaticCredentialProvider,
@@ -23,8 +22,8 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
+from ray.data._internal.util import rows_same
 from ray.tests.conftest import *  # noqa
-
 
 # =============================================================================
 # Dataclasses for mock objects

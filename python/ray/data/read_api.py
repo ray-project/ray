@@ -1,6 +1,5 @@
 import collections
 import logging
-import os
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -2863,13 +2862,12 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_uc_datasource import (
-        DatabricksUCDatasource,
-    )
-
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
         resolve_credential_provider,
+    )
+    from ray.data._internal.datasource.databricks_uc_datasource import (
+        DatabricksUCDatasource,
     )
 
     resolved_provider = resolve_credential_provider(

@@ -9,11 +9,11 @@ import numpy as np
 import pyarrow
 import requests
 
-from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
 )
+from ray.data.block import BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
