@@ -1,4 +1,4 @@
-# Get started with 2D Parallelism (Tensor + Data Parallelism) using DeepSpeed AutoTP + ZeRO and Ray Train
+# Get started with 2D Parallelism (Tensor + Data Parallelism) using DeepSpeed and Ray Train
 
 **Time to complete:** 20 min
 
