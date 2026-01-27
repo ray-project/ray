@@ -1868,7 +1868,7 @@ cdef void execute_task(
                         exc_name = exc_type.__name__
                         # Convert StopIteration to RuntimeError per PEP 479
                         # preserving original cause and name of the original exception
-                        if exc_name == "StopIteration" or exc_name == "StopAsyncIteration":
+                        if isinstance(task_exception_instance, (StopIteration, StopAsyncIteration)):
                             original_exception = task_exception_instance
                             task_exception_instance = RuntimeError(
                                 "generator raised " + exc_name
