@@ -97,7 +97,7 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
   exporter_options.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   // Add authentication token to metadata if auth is enabled
-  if (rpc::RequiresTokenAuthentication()) {
+  if (rpc::GetAuthenticationMode() == rpc::AuthenticationMode::TOKEN) {
     auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
     if (token && !token->empty()) {
       exporter_options.metadata.insert(

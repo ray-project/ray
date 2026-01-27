@@ -3,17 +3,6 @@ This file serves as a documentation example and CI test for basic LLM batch infe
 
 """
 
-# Dependency setup
-import subprocess
-import sys
-
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
-subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
-)
-subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
-
-
 # __basic_llm_example_start__
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig, build_processor
@@ -179,8 +168,8 @@ embedding_config = vLLMEngineProcessorConfig(
     ),
     batch_size=32,
     concurrency=1,
-    apply_chat_template=False,
-    detokenize=False,
+    chat_template_stage=False,  # Skip chat templating for embeddings
+    detokenize_stage=False,     # Skip detokenization for embeddings
 )
 
 # Example usage for embeddings
