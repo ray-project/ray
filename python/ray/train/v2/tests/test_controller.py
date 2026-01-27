@@ -8,10 +8,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
-from ray.train.v2._internal.execution.callback import (
-    CallbackErrorAction,
-    ControllerCallback,
-)
+from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
@@ -363,7 +360,7 @@ async def test_controller_abort(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_controller_callback_error_during_state_update_is_handled():
-    """A controller callback hook can request surfacing an error via CallbackManager.
+    """A controller callback hook failure is surfaced via CallbackManager.
 
     This should not crash the control loop; it should transition into shutdown and
     eventually into an errored terminal state. Callback failures during terminal
@@ -377,11 +374,6 @@ async def test_controller_callback_error_during_state_update_is_handled():
             current_state: TrainControllerState,
         ):
             raise ValueError("Intentional error in state update callback")
-
-        def on_callback_hook_exception(
-            self, hook_name: str, error: Exception, **context
-        ):
-            return (CallbackErrorAction.RAISE, ControllerError(error))
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
