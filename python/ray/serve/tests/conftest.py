@@ -56,6 +56,9 @@ def ray_shutdown():
 
 @pytest.fixture
 def ray_cluster():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
     yield cluster
     serve.shutdown()
@@ -65,6 +68,9 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
     # modifies the dictionary that's passed in.
     params = deepcopy(request.param)
@@ -139,6 +145,11 @@ def _shared_serve_instance():
     # To run locally, please use this instead.
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
+
+    # Ensure Ray is not already running before starting this session-scoped instance
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
