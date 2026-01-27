@@ -34,10 +34,13 @@ def test_ordered_queue_add_and_get_in_order():
 
     # Can only get from key 0 until it's finalized
     assert queue.get_next() is bundle0
+    # Nothing else to dequeue for 1
+    assert not queue.has_next()
     queue.finalize(key=0)
 
     # Now can get from key 1
     assert queue.get_next() is bundle1
+    assert not queue.has_next()
     queue.finalize(key=1)
 
     assert len(queue) == 0
