@@ -200,7 +200,8 @@ def get_browser_request_middleware(
         # This specific method is not allowed, return `405` status.
         if request.method not in allowed_methods:
             return aiohttp_module.web.Response(
-                status=405, text=f"'{request.method}' method not allowed for browser traffic."
+                status=405,
+                text=f"'{request.method}' method not allowed for browser traffic.",
             )
 
         return await handler(request)
