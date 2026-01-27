@@ -29,3 +29,4 @@ torchvision
 transformers
 aioboto3
 tf_keras
+numexpr
