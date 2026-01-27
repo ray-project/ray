@@ -630,13 +630,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         are tracked in worker processes. Orphaned files may remain and require
         manual cleanup.
         """
-        # Get write_id safely handling None, empty, or short strings
-        if self._write_uuid and len(self._write_uuid) >= 8:
-            write_id = self._write_uuid[:8]
-        elif self._write_uuid:
-            write_id = self._write_uuid
-        else:
-            write_id = "unknown"
+        write_id = (
+            self._write_uuid[:8]
+            if self._write_uuid and len(self._write_uuid) >= 8
+            else self._write_uuid or "unknown"
+        )
 
         logger.error(
             f"Delta write failed for {self.table_uri} (write_id={write_id}): {error}. "
