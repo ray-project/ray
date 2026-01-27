@@ -1642,6 +1642,169 @@ class TestEncoderSerialization:
         assert exc_info.value.preprocessor_type == "NonExistentEncoder"
 
 
+def test_one_hot_encoder_drop_first():
+    """Test OneHotEncoder with drop='first' parameter."""
+    import pandas as pd
+
+    import ray
+
+    df = pd.DataFrame({"X": ["cat", "dog", "cat", "bird", "dog"]})
+    ds = ray.data.from_pandas(df)
+
+    encoder = OneHotEncoder(columns=["X"], drop="first")
+    encoder.fit(ds)
+
+    # With 3 categories (bird, cat, dog) and drop='first',
+    # 'bird' should be dropped, leaving 'cat' and 'dog'
+    assert encoder.stats_["unique_values(X)"] == {"bird": 0, "cat": 1, "dog": 2}
+
+    transformed = encoder.transform(ds)
+    result_df = transformed.to_pandas()
+
+    # Each row should have 2 features (dropped 'bird')
+    assert all(len(x) == 2 for x in result_df["X"])
+
+    # Verify encoding: cat=[1,0], dog=[0,1], bird=[0,0]
+    assert result_df["X"].iloc[0].tolist() == [1, 0]  # cat
+    assert result_df["X"].iloc[1].tolist() == [0, 1]  # dog
+    assert result_df["X"].iloc[2].tolist() == [1, 0]  # cat
+    assert result_df["X"].iloc[3].tolist() == [0, 0]  # bird (all zeros since dropped)
+    assert result_df["X"].iloc[4].tolist() == [0, 1]  # dog
+
+
+def test_one_hot_encoder_drop_if_binary():
+    """Test OneHotEncoder with drop='if_binary' parameter."""
+    import pandas as pd
+
+    import ray
+
+    # Test with binary categories
+    df_binary = pd.DataFrame({"X": ["yes", "no", "yes", "no"]})
+    ds_binary = ray.data.from_pandas(df_binary)
+
+    encoder = OneHotEncoder(columns=["X"], drop="if_binary")
+    encoder.fit(ds_binary)
+
+    transformed = encoder.transform(ds_binary)
+    result_df = transformed.to_pandas()
+
+    # With 2 categories and drop='if_binary', should drop first (leaving 1 feature)
+    assert all(len(x) == 1 for x in result_df["X"])
+
+    # Test with non-binary categories
+    df_multi = pd.DataFrame({"X": ["a", "b", "c", "a"]})
+    ds_multi = ray.data.from_pandas(df_multi)
+
+    encoder_multi = OneHotEncoder(columns=["X"], drop="if_binary")
+    encoder_multi.fit(ds_multi)
+
+    transformed_multi = encoder_multi.transform(ds_multi)
+    result_multi = transformed_multi.to_pandas()
+
+    # With 3 categories and drop='if_binary', should NOT drop (all 3 features)
+    assert all(len(x) == 3 for x in result_multi["X"])
+
+
+def test_one_hot_encoder_drop_with_unknown_category():
+    """Test OneHotEncoder drop parameter with unknown categories during transform."""
+    import pandas as pd
+
+    import ray
+
+    train_df = pd.DataFrame({"X": ["cat", "dog", "bird"]})
+    train_ds = ray.data.from_pandas(train_df)
+
+    encoder = OneHotEncoder(columns=["X"], drop="first")
+    encoder.fit(train_ds)
+
+    # Transform with an unknown category
+    test_df = pd.DataFrame({"X": ["cat", "fish", "dog"]})
+    test_ds = ray.data.from_pandas(test_df)
+
+    transformed = encoder.transform(test_ds)
+    result_df = transformed.to_pandas()
+
+    # Known categories should encode correctly
+    assert result_df["X"].iloc[0].tolist() == [1, 0]  # cat
+    assert result_df["X"].iloc[2].tolist() == [0, 1]  # dog
+
+    # Unknown category should encode as all zeros
+    assert result_df["X"].iloc[1].tolist() == [0, 0]  # fish (unknown)
+
+
+def test_multi_hot_encoder_drop_first():
+    """Test MultiHotEncoder with drop='first' parameter."""
+    import pandas as pd
+
+    import ray
+
+    df = pd.DataFrame(
+        {
+            "genre": [
+                ["action", "comedy"],
+                ["drama", "action"],
+                ["comedy"],
+            ]
+        }
+    )
+    ds = ray.data.from_pandas(df)
+
+    encoder = MultiHotEncoder(columns=["genre"], drop="first")
+    encoder.fit(ds)
+
+    # With 3 categories (action, comedy, drama) and drop='first',
+    # 'action' should be dropped, leaving 'comedy' and 'drama'
+    assert encoder.stats_["unique_values(genre)"] == {
+        "action": 0,
+        "comedy": 1,
+        "drama": 2,
+    }
+
+    transformed = encoder.transform(ds)
+    result_df = transformed.to_pandas()
+
+    # Each row should have 2 features (dropped 'action')
+    assert all(len(x) == 2 for x in result_df["genre"])
+
+    # Verify encoding: action dropped, comedy=idx0, drama=idx1
+    assert result_df["genre"].iloc[0] == [1, 0]  # action+comedy -> comedy only
+    assert result_df["genre"].iloc[1] == [0, 1]  # drama+action -> drama only
+    assert result_df["genre"].iloc[2] == [1, 0]  # comedy only
+
+
+def test_multi_hot_encoder_drop_if_binary():
+    """Test MultiHotEncoder with drop='if_binary' parameter."""
+    import pandas as pd
+
+    import ray
+
+    # Test with binary categories
+    df_binary = pd.DataFrame({"X": [["a"], ["b"], ["a", "b"]]})
+    ds_binary = ray.data.from_pandas(df_binary)
+
+    encoder = MultiHotEncoder(columns=["X"], drop="if_binary")
+    encoder.fit(ds_binary)
+
+    transformed = encoder.transform(ds_binary)
+    result_df = transformed.to_pandas()
+
+    # With 2 categories and drop='if_binary', should drop first (leaving 1 feature)
+    assert all(len(x) == 1 for x in result_df["X"])
+
+    # Test with non-binary categories
+    df_multi = pd.DataFrame({"X": [["a"], ["b"], ["c"], ["a", "b"]]})
+    ds_multi = ray.data.from_pandas(df_multi)
+
+    encoder_multi = MultiHotEncoder(columns=["X"], drop="if_binary")
+    encoder_multi.fit(ds_multi)
+
+    transformed_multi = encoder_multi.transform(ds_multi)
+    result_multi = transformed_multi.to_pandas()
+
+    # With 3 categories and drop='if_binary', should NOT drop (all 3 features)
+    assert all(len(x) == 3 for x in result_multi["X"])
+
+
 if __name__ == "__main__":
     import sys
 
