@@ -55,6 +55,10 @@ APT_PKGS=(
     netbase
     openssh-client
     gnupg
+    build-essential
+    pkg-config
+    libssl-dev
+    curl
 )
 
 apt-get install -y "${APT_PKGS[@]}"
@@ -62,6 +66,10 @@ apt-get install -y "${APT_PKGS[@]}"
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
+
+# Install Rust using rustup
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+echo 'export PATH=$HOME/.cargo/bin:$PATH' >> /home/ray/.bashrc
 
 EOF
 
@@ -84,6 +92,8 @@ if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
     ARCH="x86_64"
 elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
     ARCH="aarch64"
+elif [[ "${HOSTTYPE}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    ARCH="ppc64le"
 else
     echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
     exit 1
