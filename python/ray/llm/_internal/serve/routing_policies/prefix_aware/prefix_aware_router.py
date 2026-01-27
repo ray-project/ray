@@ -33,6 +33,9 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 
+#: Actor name prefix for LLM prefix tree actors
+LLM_PREFIX_TREE_ACTOR_NAME_PREFIX = "LlmPrefixTreeActor"
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -106,7 +109,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             # in multi-deployment scenarios (e.g., PD disaggregation with DP)
             deployment_name = self._deployment_id.name if self._deployment_id else None
             app_name = self._deployment_id.app_name if self._deployment_id else None
-            actor_name = "LlmPrefixTreeActor"
+            actor_name = LLM_PREFIX_TREE_ACTOR_NAME_PREFIX
             actor_namespace_components = [SERVE_NAMESPACE]
 
             if app_name:
