@@ -322,6 +322,34 @@ async def test_submit_job_rejects_browsers(
 
 
 @pytest.mark.asyncio
+async def test_delete_job_rejects_browsers(job_sdk_client, monkeypatch):
+    """Test that DELETE job requests from browsers are rejected."""
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    agent_client, head_client = job_sdk_client
+
+    # First, submit a job using the normal client
+    runtime_env = RuntimeEnv().to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": "echo hello"},
+        JobSubmitRequest,
+    )
+    submit_result = await agent_client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    # Now try to delete the job using browser-like headers
+    agent_address = agent_client._agent_address
+    browser_client = JobAgentSubmissionBrowserClient(agent_address)
+
+    with pytest.raises(RuntimeError) as exc:
+        _ = await browser_client.delete_job_internal(job_id)
+
+    assert "status code 405" in str(exc.value)
+
+    await browser_client.close()
+
+
+@pytest.mark.asyncio
 async def test_timeout(job_sdk_client):
     agent_client, head_client = job_sdk_client
 

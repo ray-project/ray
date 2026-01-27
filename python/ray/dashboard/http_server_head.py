@@ -282,28 +282,34 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    def get_browsers_no_post_put_middleware(self, whitelisted_paths: Set[str]):
-        """Create middleware that blocks POST/PUT requests from browsers.
+    def get_browser_safe_methods_middleware(self, browser_allowed_paths: Set[str]):
+        """Create middleware that only allows safe HTTP methods from browsers.
+
+        This middleware blocks mutating requests (POST, PUT, DELETE, PATCH, etc.)
+        from browser traffic to prevent DNS rebinding and CSRF attacks. Only
+        safe methods (GET, HEAD, OPTIONS) are allowed by default.
 
         Args:
-            whitelisted_paths: Set of paths that are allowed to accept POST/PUT
-                              from browsers (e.g., {"/api/authenticate"})
+            browser_allowed_paths: Set of paths that are allowed to accept
+                any HTTP method from browsers (e.g., {"/api/authenticate"})
 
         Returns:
             An aiohttp middleware function
         """
+        # Safe methods that browsers are allowed to use (read-only operations)
+        browser_safe_methods = {hdrs.METH_GET, hdrs.METH_HEAD, hdrs.METH_OPTIONS}
 
         @aiohttp.web.middleware
-        async def browsers_no_post_put_middleware(request, handler):
-            # Allow whitelisted paths
-            if request.path in whitelisted_paths:
+        async def browser_safe_methods_middleware(request, handler):
+            # Allow whitelisted paths to bypass the check
+            if request.path in browser_allowed_paths:
                 return await handler(request)
 
             if (
                 # Deny mutating requests from browsers.
                 # See `is_browser_request` for details of the check.
                 dashboard_optional_utils.is_browser_request(request)
-                and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+                and request.method not in browser_safe_methods
             ):
                 return aiohttp.web.Response(
                     status=405, text="Method Not Allowed for browser traffic."
@@ -311,7 +317,7 @@ class HttpServerDashboardHead:
 
             return await handler(request)
 
-        return browsers_no_post_put_middleware
+        return browser_safe_methods_middleware
 
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
@@ -379,9 +385,9 @@ class HttpServerDashboardHead:
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
 
-        # Paths that are allowed to accept POST/PUT requests from browsers
-        browser_post_put_allowed_paths = {
-            "/api/authenticate",  # Token authentication endpoint
+        # Paths that are allowed to accept any HTTP method from browsers
+        browser_allowed_paths = {
+            "/api/authenticate",  # Token authentication endpoint (uses POST)
         }
 
         # Http server should be initialized after all modules loaded.
@@ -395,9 +401,7 @@ class HttpServerDashboardHead:
                     aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
-                self.get_browsers_no_post_put_middleware(
-                    browser_post_put_allowed_paths
-                ),
+                self.get_browser_safe_methods_middleware(browser_allowed_paths),
                 self.cache_control_static_middleware,
             ],
         )

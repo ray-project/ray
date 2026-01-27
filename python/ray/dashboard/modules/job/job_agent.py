@@ -108,6 +108,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         )
 
     @routes.delete("/api/job_agent/jobs/{job_or_submission_id}")
+    @optional_utils.deny_browser_requests()
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
