@@ -14,6 +14,8 @@
 
 #include "ray/observability/ray_placement_group_lifecycle_event.h"
 
+#include "ray/util/macros.h"
+
 namespace ray {
 namespace observability {
 
@@ -87,6 +89,7 @@ RayPlacementGroupLifecycleEvent::ConvertState(
     return rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING;
   default:
     RAY_LOG(FATAL) << "Unknown placement group state: " << state;
+    UNREACHABLE;
   }
 }
 
@@ -110,6 +113,7 @@ RayPlacementGroupLifecycleEvent::ConvertSchedulingState(
     return rpc::events::PlacementGroupLifecycleEvent::FINISHED;
   default:
     RAY_LOG(FATAL) << "Unknown scheduling state: " << state;
+    UNREACHABLE;
   }
 }
 
