@@ -12,10 +12,15 @@ if TYPE_CHECKING:
 
 
 class ReorderingBundleQueue(BaseBundleQueue):
-    """A queue that iterates over the bundles in the key order rather than
-    insertion order.
+    """A queue that iterates over the bundles in the order of provided "keys" rather than
+    insertion order (for bundles inserted with the same key, insertion order is used)
 
-    For bundles inserted with the same key, insertion order is used.
+    User of this queue has to adhere to following invariants of this queue:
+
+    1. (!) Used keys have to be a *contiguous* range of `[0, N]`
+
+    Failure to follow this requirement might result in this queue getting
+    irreversibly stuck.
     """
 
     def __init__(self):
@@ -24,7 +29,6 @@ class ReorderingBundleQueue(BaseBundleQueue):
         self._inner: DefaultDict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_index: int = 0
         self._finalized_keys: Set[int] = set()
-        self._finished: bool = False
 
     def _move_to_next_key(self):
         """Move the output index to the next task.
@@ -35,11 +39,7 @@ class ReorderingBundleQueue(BaseBundleQueue):
         assert len(self._inner[self._current_index]) == 0
         assert self._current_index in self._finalized_keys
 
-        if self._current_index < len(self._inner) - 1:
-            self._current_index += 1
-        else:
-            self._current_index = -1
-            self._finished = True
+        self._current_index += 1
 
     @override
     def _add_inner(self, bundle: RefBundle, key: int) -> None:
