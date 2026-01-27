@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet_rpc_client/raylet_pxi_client.h"
+#include "ray/raylet_rpc_client/raylet_client_with_io_context.h"
 
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 
+#include <future>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
+#include "ray/common/status.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 
 using ray::rpc::NodeManagerService;
@@ -69,28 +73,47 @@ class InProcessServer {
 
 }  // namespace
 
-TEST(RayletPXIClientTest, SuccessPath) {
+TEST(RayletClientWithIoContextTest, SuccessPath) {
   InProcessServer server(/*reply_error=*/false);
-  ray::rpc::RayletPXIClient client("127.0.0.1", server.port());
+  ray::rpc::RayletClientWithIoContext client("127.0.0.1", server.port());
 
   std::map<std::string, double> req{{"CPU", 4.0}, {"memory", 100.0}};
-  auto res = client.ResizeLocalResourceInstances(req);
+  using Result = std::pair<ray::Status, std::optional<std::map<std::string, double>>>;
+  auto promise = std::make_shared<std::promise<Result>>();
+  client.AsyncResizeLocalResourceInstances(
+      req,
+      [promise](const ray::Status &status,
+                const std::optional<std::map<std::string, double>> &total_resources) {
+        promise->set_value(Result{status, total_resources});
+      },
+      /*timeout_ms*/ 1000);
 
-  EXPECT_EQ(res.status_code, 0);
-  ASSERT_EQ(res.total_resources.size(), 2U);
-  EXPECT_DOUBLE_EQ(res.total_resources["CPU"], 4.0);
-  EXPECT_DOUBLE_EQ(res.total_resources["memory"], 100.0);
+  auto res = promise->get_future().get();
+  EXPECT_TRUE(res.first.ok());
+  ASSERT_TRUE(res.second.has_value());
+  ASSERT_EQ(res.second->size(), 2U);
+  EXPECT_DOUBLE_EQ(res.second->at("CPU"), 4.0);
+  EXPECT_DOUBLE_EQ(res.second->at("memory"), 100.0);
 }
 
-TEST(RayletPXIClientTest, ErrorPath) {
+TEST(RayletClientWithIoContextTest, ErrorPath) {
   InProcessServer server(/*reply_error=*/true);
-  ray::rpc::RayletPXIClient client("127.0.0.1", server.port());
+  ray::rpc::RayletClientWithIoContext client("127.0.0.1", server.port());
 
   std::map<std::string, double> req{{"CPU", 1.0}};
-  auto res = client.ResizeLocalResourceInstances(req);
+  using Result = std::pair<ray::Status, std::optional<std::map<std::string, double>>>;
+  auto promise = std::make_shared<std::promise<Result>>();
+  client.AsyncResizeLocalResourceInstances(
+      req,
+      [promise](const ray::Status &status,
+                const std::optional<std::map<std::string, double>> &total_resources) {
+        promise->set_value(Result{status, total_resources});
+      },
+      /*timeout_ms*/ 1000);
 
-  EXPECT_NE(res.status_code, 0);
-  EXPECT_TRUE(res.message.find("INVALID_ARGUMENT") != std::string::npos ||
-              !res.message.empty());
-  EXPECT_TRUE(res.total_resources.empty());
+  auto res = promise->get_future().get();
+  EXPECT_FALSE(res.first.ok());
+  EXPECT_TRUE(res.first.ToString().find("INVALID_ARGUMENT") != std::string::npos ||
+              !res.first.message().empty());
+  EXPECT_FALSE(res.second.has_value());
 }

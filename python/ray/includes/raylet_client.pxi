@@ -27,61 +27,30 @@ cdef class RayletRPCError(Exception):
         super().__init__(f"Raylet RPC error {self.code}: {self.message}")
 
 
-cdef extern from "ray/raylet_rpc_client/raylet_pxi_client.h" namespace "ray::rpc" nogil:
-    cdef cppclass CResizeResult "ray::rpc::RayletPXIClient::ResizeResult":
-        int status_code
-        c_string message
-        c_map[c_string, double] total_resources
-
-    cdef cppclass CRayletPXIClient "ray::rpc::RayletPXIClient":
-        CRayletPXIClient(const c_string &host, int port)
-        CResizeResult ResizeLocalResourceInstances(
-            const c_map[c_string, double] &resources)
-
-
-cdef class RayletPXIClient:
-    cdef:
-        shared_ptr[CRayletPXIClient] inner
-
-    @staticmethod
-    def create(host: str, port: int) -> "RayletPXIClient":
-        cdef c_string c_host = host.encode()
-        cdef shared_ptr[CRayletPXIClient] p = shared_ptr[CRayletPXIClient](
-            new CRayletPXIClient(c_host, port)
-        )
-        cdef RayletPXIClient obj = RayletPXIClient()
-        obj.inner = p
-        return obj
-
-    def resize_local_resource_instances(self, resources: dict) -> dict:
-        cdef c_map[c_string, double] c_resources
-        # Convert Python dict[str, float] to std::map<string,double>
-        for k, v in resources.items():
-            c_resources[k.encode()] = float(v)
-
-        cdef CRayletPXIClient.CResizeResult res
-        with nogil:
-            res = self.inner.get().ResizeLocalResourceInstances(c_resources)
-
-        # On error, raise Python exception with code + message
-        if res.status_code != 0:
-            raise RayletRPCError(int(res.status_code), (<bytes>res.message).decode())
-
-        py_total = {}
-        cdef c_map[c_string, double] totals = res.total_resources
-        cdef c_map[c_string, double].iterator it = totals.begin()
-        while it != totals.end():
-            py_total[(<bytes>dereference(it).first).decode()] = dereference(it).second
-            postincrement(it)
-
-        return py_total
-
 cdef convert_optional_vector_int32(
         CRayStatus status, optional[c_vector[int32_t]] vec) with gil:
     try:
         check_status_timeout_as_rpc_error(status)
         assert vec.has_value()
         return move(vec.value()), None
+    except Exception as e:
+        return None, e
+
+
+cdef convert_optional_map_string_double(
+        CRayStatus status, optional[c_map[c_string, double]] totals) with gil:
+    cdef c_map[c_string, double] values
+    cdef c_map[c_string, double].iterator it
+    try:
+        check_status_timeout_as_rpc_error(status)
+        assert totals.has_value()
+        py_total = {}
+        values = totals.value()
+        it = values.begin()
+        while it != values.end():
+            py_total[(<bytes>dereference(it).first).decode()] = dereference(it).second
+            postincrement(it)
+        return py_total, None
     except Exception as e:
         return None, e
 
@@ -123,6 +92,28 @@ cdef class RayletClient:
             self.inner.get().GetAgentPIDs(
                 OptionalItemPyCallback[c_vector[int32_t]](
                     &convert_optional_vector_int32,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout)
+        return asyncio.wrap_future(fut)
+
+    def async_resize_local_resource_instances(
+            self, resources: dict, timeout_ms: int = 1000) -> Future[dict]:
+        """Resize local resource instances on the raylet."""
+        cdef:
+            fut = incremented_fut()
+            int32_t timeout = <int32_t>timeout_ms
+            c_map[c_string, double] c_resources
+        # Convert Python dict[str, float] to std::map<string,double>
+        for k, v in resources.items():
+            c_resources[k.encode()] = float(v)
+
+        assert self.inner.get() is not NULL
+        with nogil:
+            self.inner.get().AsyncResizeLocalResourceInstances(
+                c_resources,
+                OptionalItemPyCallback[c_map[c_string, double]](
+                    &convert_optional_map_string_double,
                     assign_and_decrement_fut,
                     fut),
                 timeout)

@@ -523,6 +523,23 @@ void RayletClient::GetAgentPIDs(
                             timeout_ms);
 }
 
+void RayletClient::ResizeLocalResourceInstances(
+    const std::map<std::string, double> &resources,
+    const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback,
+    int64_t timeout_ms) {
+  rpc::ResizeLocalResourceInstancesRequest request;
+  for (const auto &kv : resources) {
+    (*request.mutable_resources())[kv.first] = kv.second;
+  }
+
+  INVOKE_RPC_CALL(NodeManagerService,
+                  ResizeLocalResourceInstances,
+                  request,
+                  callback,
+                  grpc_client_,
+                  timeout_ms);
+}
+
 void RayletClient::KillLocalActor(
     const rpc::KillLocalActorRequest &request,
     const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) {

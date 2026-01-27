@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import jsonschema
 
-from ray._raylet import GcsClient, NodeID, RayletPXIClient
+from ray._raylet import GcsClient, NodeID, RayletClient
 from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_HEAD,
     KUBERAY_KIND_WORKER,
@@ -397,8 +397,14 @@ def _resize_raylet_resources(
 ) -> Dict[str, float]:
     # Update Raylet's local view so scheduling decisions are consistent with
     # the pod's resources when K8s accepts the resize.
-    raylet_client = RayletPXIClient.create(host, port)
-    return raylet_client.resize_local_resource_instances({"CPU": cpu, "memory": memory})
+    raylet_client = RayletClient(host, port)
+
+    async def _do_resize() -> Dict[str, float]:
+        return await raylet_client.async_resize_local_resource_instances(
+            {"CPU": cpu, "memory": memory}
+        )
+
+    return asyncio.run(_do_resize())
 
 
 def _get_ippr_status_from_pod(

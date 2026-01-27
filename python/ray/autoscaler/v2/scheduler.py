@@ -1615,7 +1615,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 ippr_candidates,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, ippr_candidates, resource_request_source
+                requests_to_sched,
+                ippr_candidates,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities(),
             )
             if best_node is None:
                 # No ippr nodes can schedule any more requests.

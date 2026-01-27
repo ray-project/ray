@@ -4,7 +4,7 @@ import sys
 import time
 import unittest
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -405,7 +405,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert isinstance(parsed["resized-at"], int)
 
     @patch(
-        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletPXIClient"
+        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"
     )
     def test_do_ippr_requests_downsize(self, mock_raylet_client_cls):
         rc = _make_ray_cluster_with_ippr(
@@ -440,16 +440,20 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         self.gcs.async_get_all_node_info = _fake_async_get_all_node_info
         mock_raylet_client = MagicMock()
-        mock_raylet_client.resize_local_resource_instances.return_value = {
-            "CPU": 1.5,
-            "memory": 2.5 * Gi,
-        }
-        mock_raylet_client_cls.create.return_value = mock_raylet_client
+        mock_raylet_client.async_resize_local_resource_instances = AsyncMock(
+            return_value={
+                "CPU": 1.5,
+                "memory": 2.5 * Gi,
+            }
+        )
+        mock_raylet_client_cls.return_value = mock_raylet_client
 
         self.provider.do_ippr_requests([st])
 
-        assert mock_raylet_client.resize_local_resource_instances.call_count == 1
-        sent_req = mock_raylet_client.resize_local_resource_instances.call_args[0][0]
+        assert mock_raylet_client.async_resize_local_resource_instances.call_count == 1
+        sent_req = mock_raylet_client.async_resize_local_resource_instances.call_args[
+            0
+        ][0]
         assert sent_req == {"CPU": 1.0, "memory": 2 * Gi}
 
         patch_ops = self.k8s.get_patches("pods/ray-worker-1/resize")
@@ -461,7 +465,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert mem_requests["value"] == 2.5 * 1024 * 1024 * 1024
 
     @patch(
-        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletPXIClient"
+        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"
     )
     def test_sync_with_raylets(self, mock_raylet_client_cls):
         # Pretend a resize finished and current == desired → should sync with raylet
@@ -494,7 +498,10 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         self.gcs.async_get_all_node_info = _fake_async_get_all_node_info
         mock_raylet_client = MagicMock()
-        mock_raylet_client_cls.create.return_value = mock_raylet_client
+        mock_raylet_client.async_resize_local_resource_instances = AsyncMock(
+            return_value={"CPU": 2.0, "memory": 4 * Gi}
+        )
+        mock_raylet_client_cls.return_value = mock_raylet_client
         # Populate provider's statuses from pod
         self.provider.sync_ippr_status_from_pods([pod])
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
@@ -503,8 +510,10 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         self.provider.sync_with_raylets()
 
-        assert mock_raylet_client.resize_local_resource_instances.call_count == 1
-        sent_req = mock_raylet_client.resize_local_resource_instances.call_args[0][0]
+        assert mock_raylet_client.async_resize_local_resource_instances.call_count == 1
+        sent_req = mock_raylet_client.async_resize_local_resource_instances.call_args[
+            0
+        ][0]
         assert sent_req == {"CPU": 2.0, "memory": 4 * Gi}
 
         ann_payload = self.k8s.get_patches("pods/ray-worker-1")
@@ -765,7 +774,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert st.desired_memory == 4 * Gi
 
     @patch(
-        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletPXIClient"
+        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"
     )
     def test_do_ippr_requests_downsize_error_skips_patch(self, mock_raylet_client_cls):
         # Setup specs and pod
@@ -799,10 +808,10 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         self.gcs.async_get_all_node_info = _fake_async_get_all_node_info
         mock_raylet_client = MagicMock()
-        mock_raylet_client.resize_local_resource_instances.side_effect = RuntimeError(
-            "rpc fail"
+        mock_raylet_client.async_resize_local_resource_instances = AsyncMock(
+            side_effect=RuntimeError("rpc fail")
         )
-        mock_raylet_client_cls.create.return_value = mock_raylet_client
+        mock_raylet_client_cls.return_value = mock_raylet_client
 
         self.provider.do_ippr_requests([st])
 
@@ -811,7 +820,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
             _ = self.k8s.get_patches("pods/ray-worker-1/resize")
 
     @patch(
-        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletPXIClient"
+        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"
     )
     def test_do_ippr_requests_memory_limit_not_below_spec_limit(
         self, mock_raylet_client_cls
@@ -848,11 +857,13 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         self.gcs.async_get_all_node_info = _fake_async_get_all_node_info
         mock_raylet_client = MagicMock()
-        mock_raylet_client.resize_local_resource_instances.return_value = {
-            "CPU": 2.0,
-            "memory": 2 * Gi,
-        }
-        mock_raylet_client_cls.create.return_value = mock_raylet_client
+        mock_raylet_client.async_resize_local_resource_instances = AsyncMock(
+            return_value={
+                "CPU": 2.0,
+                "memory": 2 * Gi,
+            }
+        )
+        mock_raylet_client_cls.return_value = mock_raylet_client
 
         self.provider.do_ippr_requests([st])
 
@@ -860,8 +871,10 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         mem_limits = next(p for p in patch_ops if p["path"].endswith("limits/memory"))
         # Limit must not drop below spec limit (8Gi)
         assert mem_limits["value"] == 8 * 1024 * 1024 * 1024
-        assert mock_raylet_client.resize_local_resource_instances.call_count == 1
-        sent_req = mock_raylet_client.resize_local_resource_instances.call_args[0][0]
+        assert mock_raylet_client.async_resize_local_resource_instances.call_count == 1
+        sent_req = mock_raylet_client.async_resize_local_resource_instances.call_args[
+            0
+        ][0]
         assert sent_req == {"CPU": 2.0, "memory": 2 * Gi}
 
     def test_sync_with_raylets_missing_raylet_address_noop(self):
