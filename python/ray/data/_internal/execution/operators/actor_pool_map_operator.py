@@ -688,15 +688,13 @@ class _MapWorker:
                         udf_instance.__ray_shutdown__()
                     except Exception:
                         # Log but don't fail - we want to continue cleanup
-                        import logging
-
                         logging.getLogger(__name__).exception(
                             f"Error calling __ray_shutdown__ on {udf_instance}"
                         )
 
-        # `_map_actor_context` is a global variable that references the UDF object.
-        # Delete it to trigger `UDF.__del__`.
-        del ray.data._map_actor_context
+            # `_map_actor_context` is a global variable that references the UDF object.
+            # Delete it to trigger `UDF.__del__`.
+            del ray.data._map_actor_context
         ray.data._map_actor_context = None
 
 
