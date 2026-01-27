@@ -73,11 +73,9 @@ class TorchConfig(BackendConfig):
 def _is_backend_nccl(backend: str) -> bool:
     # Check containment because comma separated lists of backends like cpu:gloo,cuda:nccl are supported.
     return backend == "nccl" or any(
-        [
-            item.split(":")[1] == "nccl"
-            for item in backend.split(",")
-            if item.startswith("cuda:")
-        ]
+        item.split(":")[1] == "nccl"
+        for item in backend.split(",")
+        if item.startswith("cuda:")
     )
 
 
