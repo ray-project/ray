@@ -16,6 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
@@ -35,7 +36,6 @@ from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 RANDOM_SEED = 123

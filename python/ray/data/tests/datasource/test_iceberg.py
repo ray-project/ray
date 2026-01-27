@@ -25,12 +25,12 @@ from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
     get_operator_types as _get_operator_types,
     plan_has_operator as _has_operator_type,
 )
-from ray.data.util.arrow_utils import get_pyarrow_version
 
 _CATALOG_NAME = "ray_catalog"
 _DB_NAME = "ray_db"

@@ -12,6 +12,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
 )
+from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
@@ -20,7 +21,6 @@ from ray.data.datasource.filename_provider import (
     _DefaultFilenameProvider,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data.util.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:

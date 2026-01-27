@@ -31,7 +31,10 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
-from ray.data.util.arrow_utils import _check_pyarrow_version, get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import (
+    _check_pyarrow_version,
+    get_pyarrow_version,
+)
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX

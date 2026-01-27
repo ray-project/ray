@@ -26,6 +26,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -39,7 +40,6 @@ from ray.data.block import (
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.expressions import Expr
-from ray.data.util.arrow_utils import get_pyarrow_version
 
 try:
     import pyarrow

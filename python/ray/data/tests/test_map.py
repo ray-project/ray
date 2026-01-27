@@ -24,12 +24,12 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 

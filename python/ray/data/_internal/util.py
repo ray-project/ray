@@ -37,9 +37,6 @@ import pyarrow.fs
 import ray
 from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
-from ray.data.util.arrow_utils import (
-    _check_pyarrow_version as arrow_utils_check_pyarrow_version,
-)
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -127,7 +124,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    arrow_utils_check_pyarrow_version()
+    ray.data.util.arrow_utils_check_pyarrow_version()
 
 
 def _autodetect_parallelism(

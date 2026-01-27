@@ -79,6 +79,7 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -100,7 +101,6 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

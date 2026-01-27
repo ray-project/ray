@@ -26,7 +26,7 @@ from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
-from ray.data.util.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])

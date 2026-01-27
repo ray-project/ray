@@ -29,6 +29,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -36,7 +37,6 @@ from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 

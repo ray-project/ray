@@ -35,6 +35,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -58,7 +59,6 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
 from ray.data.expressions import BinaryExpr, Expr, Operation
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:

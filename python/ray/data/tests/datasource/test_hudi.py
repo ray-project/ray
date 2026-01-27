@@ -6,13 +6,13 @@ from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 MIN_PYARROW_VERSION_FOR_HUDI = parse_version("11.0.0")
