@@ -1215,7 +1215,10 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ObjectID &object_id,
     const rpc::Address &borrower_addr) {
   absl::MutexLock lock(&mutex_);
+  // Merge in any new borrowers that the previous borrower learned of.
+  MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
+  // Erase the previous borrower.
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // Note: Object reference already cleaned up.
@@ -1239,10 +1242,6 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     return;
   }
 
-  // Merge in any new borrowers that the previous borrower learned of.
-  MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
-
-  // Erase the previous borrower.
   DeleteReferenceInternal(it, nullptr);
 }
 
