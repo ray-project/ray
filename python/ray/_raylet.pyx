@@ -2693,7 +2693,7 @@ cdef class CoreWorker:
                   WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        if worker_type in == ray.SCRIPT_MODE:
+        if worker_type == ray.SCRIPT_MODE:
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
         elif worker_type == ray.WORKER_MODE:
