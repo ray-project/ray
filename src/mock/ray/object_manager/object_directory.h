@@ -37,6 +37,11 @@ class MockObjectDirectory : public IObjectDirectory {
               (override));
 
   MOCK_METHOD(void,
+              RefreshObjectLocationSubscription,
+              (const ObjectID &object_id),
+              (override));
+
+  MOCK_METHOD(void,
               ReportObjectAdded,
               (const ObjectID &object_id,
                const NodeID &node_id,

@@ -45,6 +45,7 @@ class PullManagerTestWithCapacity {
             [this](const ObjectID &object_id, rpc::ErrorType) {
               timed_out_objects_.insert(object_id);
             },
+            [this](const ObjectID &object_id) { refreshed_objects_.insert(object_id); },
             [this](const ObjectID &,
                    int64_t size,
                    const std::string &,
@@ -70,8 +71,8 @@ class PullManagerTestWithCapacity {
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
     ASSERT_TRUE(pull_manager_.pinned_objects_.empty());
     ASSERT_EQ(pull_manager_.pinned_objects_size_, 0);
-    // Most tests should not timeout any pull requests.
     ASSERT_TRUE(timed_out_objects_.empty());
+    ASSERT_TRUE(refreshed_objects_.empty());
   }
 
   int NumPinnedObjects() { return pull_manager_.pinned_objects_.size(); }
@@ -99,6 +100,7 @@ class PullManagerTestWithCapacity {
   absl::flat_hash_map<ObjectID, int> num_abort_calls_;
   absl::flat_hash_map<ObjectID, std::string> spilled_url_;
   std::unordered_set<ObjectID> timed_out_objects_;
+  std::unordered_set<ObjectID> refreshed_objects_;
 };
 
 class PullManagerTest : public PullManagerTestWithCapacity,
@@ -1231,6 +1233,60 @@ TEST_P(PullManagerTest, TestTimeOut) {
   pull_manager_.Tick();
   ASSERT_TRUE(timed_out_objects_.count(oids[0]));
   timed_out_objects_.clear();
+  RAY_UNUSED(pull_manager_.CancelPull(req_id));
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestRefreshSubscriptionWhenLocationNeverReceived) {
+  // Test that subscriptions are refreshed when OnLocationChange is never called
+  // (simulating a hung pubsub subscription), and eventually fail after max refreshes.
+  BundlePriority prio = GetParam();
+  auto refs = CreateObjectRefs(1);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
+
+  // OnLocationChange is never called - simulating a hung subscription.
+  // The object should NOT be active since we don't have size info.
+  ASSERT_FALSE(pull_manager_.IsObjectActive(oids[0]));
+
+  // First timeout: should refresh, not fail.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_TRUE(refreshed_objects_.count(oids[0]));
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+  refreshed_objects_.clear();
+
+  // Second timeout: should refresh again.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_TRUE(refreshed_objects_.count(oids[0]));
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+  refreshed_objects_.clear();
+
+  // Third timeout: should refresh one more time.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_TRUE(refreshed_objects_.count(oids[0]));
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+  refreshed_objects_.clear();
+
+  // Fourth timeout: should fail after max refreshes (3).
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_FALSE(refreshed_objects_.count(oids[0]));
+  ASSERT_TRUE(timed_out_objects_.count(oids[0]));
+  timed_out_objects_.clear();
+
+  // Subsequent ticks should NOT trigger repeated failures.
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_FALSE(refreshed_objects_.count(oids[0]));
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+
   RAY_UNUSED(pull_manager_.CancelPull(req_id));
 
   AssertNoLeaks();
