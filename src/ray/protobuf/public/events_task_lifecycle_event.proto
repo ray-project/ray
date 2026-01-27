@@ -33,6 +33,21 @@ message TaskLifecycleEvent {
     google.protobuf.Timestamp timestamp = 2;
   }
 
+  message TaskLogInfo {
+    // stdout log file absolute path.
+    string stdout_file = 1;
+    // stderr log file absolute path.
+    string stderr_file = 2;
+    // Start offset of stdout when task starts.
+    int64 stdout_start = 3;
+    // End offset of stdout when task finishes.
+    int64 stdout_end = 4;
+    // Start offset of stderr when task starts.
+    int64 stderr_start = 5;
+    // End offset of stderr when task finishes.
+    int64 stderr_end = 6;
+  }
+
   repeated StateTransition state_transitions = 3;
   RayErrorInfo ray_error_info = 4;
 
@@ -46,4 +61,6 @@ message TaskLifecycleEvent {
   optional bool is_debugger_paused = 9;
   // Actor task repr name, if applicable.
   optional string actor_repr_name = 10;
+  // Task log file information.
+  TaskLogInfo task_log_info = 11;
 }

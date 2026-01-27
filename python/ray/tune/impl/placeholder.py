@@ -15,7 +15,7 @@ def create_resolvers_map():
 
 def _id_hash(path_tuple):
     """Compute a hash for the specific placeholder based on its path."""
-    return hashlib.sha1(str(path_tuple).encode("utf-8")).hexdigest()[:ID_HASH_LENGTH]
+    return hashlib.sha256(str(path_tuple).encode("utf-8")).hexdigest()[:ID_HASH_LENGTH]
 
 
 class _FunctionResolver:

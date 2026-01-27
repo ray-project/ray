@@ -2,6 +2,7 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
+
 import asyncio
 import collections
 import functools
@@ -11,7 +12,8 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Callable, Union
+from types import ModuleType
+from typing import Callable, List, Optional, Set, Union
 
 from aiohttp.web import Request, Response
 
@@ -159,23 +161,51 @@ def is_browser_request(req: Request) -> bool:
     )
 
 
-def deny_browser_requests() -> Callable:
-    """Reject any requests that appear to be made by a browser."""
+def get_browser_request_middleware(
+    aiohttp_module: ModuleType,
+    allowed_methods: Optional[Set[str]] = None,
+    allowed_paths: Optional[List[str]] = None,
+):
+    """Create middleware that restricts browser access to specified HTTP methods.
 
-    def decorator_factory(f: Callable) -> Callable:
-        @functools.wraps(f)
-        async def decorator(self, req: Request):
-            if is_browser_request(req):
-                return Response(
-                    text="Browser requests not allowed",
-                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
+    This middleware blocks browser requests to prevent DNS rebinding and CSRF
+    attacks. Only explicitly allowed methods are permitted from browsers.
+
+    Args:
+        aiohttp_module: The aiohttp module to use
+        allowed_methods: Set of HTTP methods browsers are allowed to use.
+        allowed_paths: List of paths that bypass the method check entirely,
+            allowing any method from browsers.
+
+    Returns:
+        An aiohttp middleware function
+    """
+    allowed_methods = allowed_methods or set()
+
+    @aiohttp_module.web.middleware
+    async def browser_request_middleware(request, handler):
+        if not is_browser_request(request):
+            return await handler(request)
+
+        # Allow whitelisted paths to bypass the check
+        if allowed_paths and request.path in allowed_paths:
+            return await handler(request)
+
+        if request.method not in allowed_methods:
+            # 403 if no methods allowed (all browsers blocked)
+            # 405 if some methods allowed but not this one
+            if allowed_methods:
+                return aiohttp_module.web.Response(
+                    status=405, text="Method Not Allowed for browser traffic."
+                )
+            else:
+                return aiohttp_module.web.Response(
+                    status=403, text="Browser requests not allowed."
                 )
 
-            return await f(self, req)
+        return await handler(request)
 
-        return decorator
-
-    return decorator_factory
+    return browser_request_middleware
 
 
 def init_ray_and_catch_exceptions() -> Callable:

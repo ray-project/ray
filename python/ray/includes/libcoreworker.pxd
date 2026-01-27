@@ -213,7 +213,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()
-        void SetActorReprName(const c_string &repr_name)
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
@@ -396,6 +395,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
+            c_string *actor_repr_name,
             c_string *application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
