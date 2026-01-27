@@ -29,6 +29,7 @@ class ImageClassificationConfig(TaskConfig):
     class ImageFormat(enum.Enum):
         JPEG = "jpeg"
         PARQUET = "parquet"
+        S3_URL = "s3_url"
 
     image_classification_local_dataset: bool = False
     image_classification_data_format: ImageFormat = ImageFormat.PARQUET
