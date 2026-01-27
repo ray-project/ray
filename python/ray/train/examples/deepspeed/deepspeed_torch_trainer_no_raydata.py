@@ -37,7 +37,6 @@ def train_func(config):
 
     # Prepare PyTorch Data Loaders
     # ====================================================
-    # TODO: load from s3 instead of hub
     hf_datasets = load_dataset("nyu-mll/glue", "mrpc")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
