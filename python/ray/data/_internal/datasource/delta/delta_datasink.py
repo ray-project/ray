@@ -508,9 +508,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         try:
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
-        if self._table_existed_at_start:
+            if self._table_existed_at_start:
                 # Table existed at start - handle based on mode
-            if self.mode == SaveMode.IGNORE:
+                if self.mode == SaveMode.IGNORE:
                 self._cleanup_written_files(all_file_actions)
                 return
             if existing_table is None and self.mode == SaveMode.OVERWRITE:
