@@ -15,7 +15,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block

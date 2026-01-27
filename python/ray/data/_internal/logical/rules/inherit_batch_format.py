@@ -1,5 +1,4 @@
-from collections import deque
-from typing import Iterable
+import copy
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import AbstractAllToAll, MapBatches
@@ -20,26 +19,21 @@ class InheritBatchFormatRule(Rule):
         return new_plan
 
     def _apply(self, op: LogicalOperator):
-        # Post-order traversal.
-        nodes: Iterable[LogicalOperator] = deque()
-        for node in op.post_order_iter():
-            nodes.appendleft(node)
+        def transform(node: LogicalOperator) -> LogicalOperator:
+            if not isinstance(node, AbstractAllToAll):
+                return node
 
-        while len(nodes) > 0:
-            current_op = nodes.pop()
+            # traversal up the DAG until we find MapBatches with batch_format
+            # or we reach to source op and do nothing
+            upstream_op = node.input_dependencies[0]
+            while upstream_op.input_dependencies:
+                if isinstance(upstream_op, MapBatches) and upstream_op._batch_format:
+                    new_op = copy.copy(node)
+                    new_op._batch_format = upstream_op._batch_format
+                    new_op._output_dependencies = []
+                    return new_op
+                upstream_op = upstream_op.input_dependencies[0]
 
-            if isinstance(current_op, AbstractAllToAll):
-                # traversal up the DAG until we find MapBatches with batch_format
-                # or we reach to source op and do nothing
-                upstream_op = current_op.input_dependencies[0]
-                while upstream_op.input_dependencies:
-                    if (
-                        isinstance(upstream_op, MapBatches)
-                        and upstream_op._batch_format
-                    ):
-                        current_op._batch_format = upstream_op._batch_format
-                        break
-                    upstream_op = upstream_op.input_dependencies[0]
+            return node
 
-        # just return the default op
-        return op
+        return op._apply_transform(transform)
