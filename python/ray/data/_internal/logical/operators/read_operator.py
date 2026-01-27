@@ -18,6 +18,10 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader
 from ray.data.expressions import Expr
 
+__all__ = [
+    "Read",
+]
+
 
 class Read(
     AbstractMap,

@@ -369,6 +369,45 @@ def test_report_validation_fn_error():
     assert len(result.best_checkpoints) == 2
 
 
+def test_report_validation_fn_success_after_retry():
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    counter = Counter.remote()
+
+    def validation_fn(checkpoint):
+        if ray.get(counter.increment.remote()) < 2:
+            raise ValueError("validation failed")
+        return {"score": 100}
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(
+                    ray_remote_kwargs={
+                        "max_retries": 1,
+                        "retry_exceptions": [ValueError],
+                    },
+                ),
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        validation_config=ValidationConfig(fn=validation_fn),
+    )
+    result = trainer.fit()
+    assert result.best_checkpoints[0][1] == {"score": 100}
+
+
 def test_report_checkpoint_upload_fn(tmp_path):
     def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
         full_checkpoint_path = (
