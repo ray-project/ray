@@ -114,6 +114,7 @@ class DeviceMeshConfig:
 
         if len(self.axis_order) != len(set(self.axis_order)):
             from collections import Counter
+
             duplicates = {k for k, v in Counter(self.axis_order).items() if v > 1}
             raise ValueError(
                 f"Duplicate axes in axis_order: {duplicates}. "
@@ -121,8 +122,8 @@ class DeviceMeshConfig:
             )
 
     @cached_property
-    def _other_dims_product(self) -> int:
-        """Product of all parallel dimensions except dp.replicate."""
+    def _fixed_dims_product(self) -> int:
+        """Product of all fixed parallel dimensions (excludes dp.replicate which can be 'auto')."""
         return self.tp * self.pp * self.cp * self.ep * self.dp.shard
 
     def validate_world_size(self, world_size: int) -> None:
@@ -134,16 +135,16 @@ class DeviceMeshConfig:
         Raises:
             ValueError: If world_size doesn't match the expected total from config.
         """
-        other_dims = self._other_dims_product
+        fixed_dims = self._fixed_dims_product
 
         if self.dp.replicate == "auto":
-            if world_size % other_dims != 0:
+            if world_size % fixed_dims != 0:
                 raise ValueError(
                     f"world_size ({world_size}) must be divisible by "
-                    f"tp*pp*cp*ep*dp.shard ({other_dims})"
+                    f"tp*pp*cp*ep*dp.shard ({fixed_dims})"
                 )
         else:
-            expected = other_dims * self.dp.replicate
+            expected = fixed_dims * self.dp.replicate
             if world_size != expected:
                 raise ValueError(
                     f"world_size ({world_size}) must equal "
@@ -164,7 +165,7 @@ class DeviceMeshConfig:
         if self.dp.replicate != "auto":
             return self.dp.replicate
 
-        return world_size // self._other_dims_product
+        return world_size // self._fixed_dims_product
 
     def get_axis_size(self, axis: Axis, world_size: int) -> int:
         """Get the size of a given axis.
