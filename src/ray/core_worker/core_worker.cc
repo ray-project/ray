@@ -381,7 +381,8 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_5,
                                   std::placeholders::_6,
                                   std::placeholders::_7,
-                                  std::placeholders::_8);
+                                  std::placeholders::_8,
+                                  std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
           RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
@@ -2802,6 +2803,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
+    std::string *actor_repr_name,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
@@ -2850,19 +2852,18 @@ Status CoreWorker::ExecuteTask(
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-  // Modify the worker's per function counters.
-  std::string actor_repr_name;
-  {
-    absl::MutexLock lock(&mutex_);
-    actor_repr_name = actor_repr_name_;
-  }
   if (!options_.is_local_mode) {
+    // Modify the worker's per-function counters.
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
-    const auto update =
-        (task_spec.IsActorTask() && !actor_repr_name.empty())
-            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
-            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    worker::TaskStatusEvent::TaskStateUpdate update;
+    {
+      absl::MutexLock lock(&mutex_);
+      update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+                   ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+                   : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    }
+
     RAY_UNUSED(
         task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
                                                           task_spec.JobId(),
@@ -2875,6 +2876,7 @@ Status CoreWorker::ExecuteTask(
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
+
   {
     absl::MutexLock lock(&mutex_);
     running_tasks_.emplace(task_spec.TaskId(), task_spec);
@@ -2954,6 +2956,7 @@ Status CoreWorker::ExecuteTask(
       streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      actor_repr_name,
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
@@ -3004,6 +3007,12 @@ Status CoreWorker::ExecuteTask(
     canceled_tasks_.erase(task_spec.TaskId());
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
+    }
+
+    // Cache the returned actor repr name as an instance variable.
+    // This is currently only used for exporting task events from the actor.
+    if (!actor_repr_name->empty()) {
+      actor_repr_name_ = *actor_repr_name;
     }
   }
 
@@ -3304,6 +3313,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error = false;
+  std::string actor_repr_name;
   std::string application_error;
   // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
@@ -3315,6 +3325,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
+                         &actor_repr_name,
                          &application_error));
   SetActorId(old_id);
   return returned_refs;
@@ -4524,14 +4535,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  RAY_CHECK(task_receiver_ != nullptr);
-  task_receiver_->SetActorReprName(repr_name);
-
-  absl::MutexLock lock(&mutex_);
-  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {
