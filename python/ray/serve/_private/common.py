@@ -738,9 +738,6 @@ class gRPCStreamingRequest:
     # The streaming type (stream_unary or stream_stream)
     streaming_type: str
 
-    # The first request message (optional, for convenience)
-    first_request_proto: Optional[Any] = None
-
 
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
