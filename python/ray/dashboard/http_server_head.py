@@ -8,7 +8,7 @@ import posixpath
 import sys
 import time
 from math import floor
-from typing import List, Set
+from typing import List
 
 from packaging.version import Version
 
@@ -282,43 +282,6 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    def get_browser_safe_methods_middleware(self, browser_allowed_paths: Set[str]):
-        """Create middleware that only allows safe HTTP methods from browsers.
-
-        This middleware blocks mutating requests (POST, PUT, DELETE, PATCH, etc.)
-        from browser traffic to prevent DNS rebinding and CSRF attacks. Only
-        safe methods (GET, HEAD, OPTIONS) are allowed by default.
-
-        Args:
-            browser_allowed_paths: Set of paths that are allowed to accept
-                any HTTP method from browsers (e.g., {"/api/authenticate"})
-
-        Returns:
-            An aiohttp middleware function
-        """
-        # Safe methods that browsers are allowed to use (read-only operations)
-        browser_safe_methods = {hdrs.METH_GET, hdrs.METH_HEAD, hdrs.METH_OPTIONS}
-
-        @aiohttp.web.middleware
-        async def browser_safe_methods_middleware(request, handler):
-            # Allow whitelisted paths to bypass the check
-            if request.path in browser_allowed_paths:
-                return await handler(request)
-
-            if (
-                # Deny mutating requests from browsers.
-                # See `is_browser_request` for details of the check.
-                dashboard_optional_utils.is_browser_request(request)
-                and request.method not in browser_safe_methods
-            ):
-                return aiohttp.web.Response(
-                    status=405, text="Method Not Allowed for browser traffic."
-                )
-
-            return await handler(request)
-
-        return browser_safe_methods_middleware
-
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
@@ -385,11 +348,6 @@ class HttpServerDashboardHead:
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
 
-        # Paths that are allowed to accept any HTTP method from browsers
-        browser_allowed_paths = {
-            "/api/authenticate",  # Token authentication endpoint (uses POST)
-        }
-
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
 
@@ -401,7 +359,11 @@ class HttpServerDashboardHead:
                     aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
-                self.get_browser_safe_methods_middleware(browser_allowed_paths),
+                dashboard_optional_utils.get_browser_request_middleware(
+                    aiohttp,
+                    allowed_methods={"GET", "HEAD", "OPTIONS"},
+                    allowed_paths=["/api/authenticate"],
+                ),
                 self.cache_control_static_middleware,
             ],
         )

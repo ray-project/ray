@@ -172,8 +172,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -318,7 +317,7 @@ async def test_submit_job_rejects_browsers(
     with pytest.raises(RuntimeError) as exc:
         _ = await agent_client.submit_job_internal(request)
 
-    assert "status code 405" in str(exc.value)
+    assert "status code 403" in str(exc.value)
 
 
 @pytest.mark.asyncio
@@ -344,7 +343,7 @@ async def test_delete_job_rejects_browsers(job_sdk_client, monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         _ = await browser_client.delete_job_internal(job_id)
 
-    assert "status code 405" in str(exc.value)
+    assert "status code 403" in str(exc.value)
 
     await browser_client.close()
 
@@ -637,7 +636,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     import subprocess
 
     dashboard_agent_port = get_current_unused_port()
-    cmd = "ray start --head " f"--dashboard-agent-listen-port {dashboard_agent_port}"
+    cmd = f"ray start --head --dashboard-agent-listen-port {dashboard_agent_port}"
     subprocess.check_output(cmd, shell=True)
 
     try:
