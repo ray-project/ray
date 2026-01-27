@@ -2398,7 +2398,6 @@ def _modify_class(cls):
             return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
-            worker = ray._private.worker.global_worker
             ray.actor.exit_actor()
 
     Class.__module__ = cls.__module__
