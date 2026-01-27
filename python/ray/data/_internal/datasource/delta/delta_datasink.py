@@ -508,12 +508,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         try:
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
-        if self._table_existed_at_start:
+            if self._table_existed_at_start:
                 # Table existed at start - handle based on mode
-            if self.mode == SaveMode.IGNORE:
-                self._cleanup_written_files(all_file_actions)
-                return
-            if existing_table is None and self.mode == SaveMode.OVERWRITE:
+                if self.mode == SaveMode.IGNORE:
+                    self._cleanup_written_files(all_file_actions)
+                    return
+                if existing_table is None and self.mode == SaveMode.OVERWRITE:
                     # Table was deleted, create new one
                     create_table_with_files(
                         self.table_uri,
@@ -525,14 +525,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         self.write_kwargs,
                         self.filesystem,
                     )
-            elif existing_table is not None:
+                elif existing_table is not None:
                     # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
-                self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+                else:
+                    raise ValueError(
+                        f"Delta table was deleted at {self.table_uri} after write started."
+                    )
             else:
-                raise ValueError(
-                    f"Delta table was deleted at {self.table_uri} after write started."
-                )
-        else:
                 # Table didn't exist at start - create new table
                 create_table_with_files(
                     self.table_uri,
