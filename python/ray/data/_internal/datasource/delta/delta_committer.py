@@ -155,13 +155,12 @@ def commit_to_existing_table(
         # Missing columns are OK (partial writes)
 
     validate_partition_columns_match_existing(existing_table, partition_cols)
-    transaction_mode = "overwrite" if mode == "overwrite" else "append"
-    # Use Delta schema directly for create_write_transaction
-    delta_schema = existing_table.schema()
+
+    # Commit files atomically using Delta Lake write transaction
     existing_table.create_write_transaction(
         actions=file_actions,
-        mode=transaction_mode,
-        schema=delta_schema,
+        mode="overwrite" if mode == "overwrite" else "append",
+        schema=existing_table.schema(),
         partition_by=partition_cols or None,
         commit_properties=write_kwargs.get("commit_properties"),
         post_commithook_properties=write_kwargs.get("post_commithook_properties"),
