@@ -787,7 +787,18 @@ def start(
         system_reserved_memory=system_reserved_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -810,7 +821,7 @@ def start(
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -834,6 +845,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -857,7 +869,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
