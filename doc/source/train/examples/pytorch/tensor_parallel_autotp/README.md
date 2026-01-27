@@ -73,6 +73,38 @@ Device Mesh (2x2):
 - **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
 - **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
 
+## Why DeepSpeed AutoTP?
+
+This tutorial uses [DeepSpeed AutoTP](https://github.com/deepspeedai/DeepSpeed/blob/master/blogs/huggingface-tp/README.md) for tensor parallelism, which provides two key benefits:
+
+1. **Automatic partitioning**: For supported models, AutoTP automatically identifies which parameters should be partitioned and in which dimensions. You don't need to manually define partitioning patterns. Most popular models including Llama and Qwen series are already supported out of the box.
+
+2. **Efficient combination with ZeRO**: DeepSpeed has a series of memory optimization techniques called ZeRO stage 1, 2, and 3, which drastically reduces the memory usage of data prallelism. AutoTP integrates seamlessly with DeepSpeed's ZeRO (stage 1 and 2). This combination allows you to scale to larger models while maintaining high training throughput.
+
+## When to Use Tensor Parallelism vs ZeRO stage 3
+
+DeepSpeed ZeRO stage 3 partitions model parameters across GPUs, but they have different communication patterns and overhead characteristics.
+
+**Communication patterns:**
+
+- **ZeRO Stage 3**: Gathers partitioned parameters via all-gather before each layer's computation. The communication volume is proportional to the model size (M × 2 bytes for bfloat16 with M parameters).
+- **Tensor Parallelism**: Uses all-reduce on activations (intermediate data) after each layer. The communication volume depends on: layers × hidden_size × seq_length × batch_size × 2 (dtype) × 2 (attention + FFN).
+
+**Key trade-offs:**
+
+- **TP benefits from high-bandwidth interconnects**: With NVLink or similar high-speed connections, TP's frequent but small communications complete quickly, enabling efficient layer-by-layer parallelism.
+- **ZeRO Stage 3's overhead is proportional to model size**, which can become a bottleneck for very large models even when communication overlaps with computation.
+- **TP is more efficient for large models with moderate batch sizes**, since TP's communication volume depends on activation size rather than model size. For very large models, activation-based communication can be significantly smaller than parameter-based communication.
+
+**Recommended configuration:**
+
+Given these trade-offs, a typical configuration is:
+
+- **Use TP for intra-node parallelism**: Leverage high-speed interconnects like NVLink within a node where latency is low and bandwidth is high.
+- **Use ZeRO for inter-node parallelism**: Inter-node communication has higher latency, but ZeRO's ability to overlap communication with computation makes it more suitable for this setting.
+
+This is why we combine TP with ZeRO in this tutorial—TP handles the fast GPU-to-GPU communication within a node, while ZeRO handles the data parallel synchronization that can span across nodes.
+
 ## 1. Package and environment setup
 
 Install the required dependencies:
