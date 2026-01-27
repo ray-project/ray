@@ -490,6 +490,8 @@ class Framework(ExampleEnum):
 
     AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
+    JAX = "JAX"
+    FLAX = "Flax"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
     ACCELERATE = "Accelerate"
