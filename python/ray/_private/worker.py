@@ -1796,7 +1796,9 @@ def init(
         _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
 
     if local_mode:
-        raise RuntimeError("`local_mode` is no longer supported. For debugging consider using the Ray distributed debugger.")
+        raise RuntimeError(
+            "`local_mode` is no longer supported. For debugging consider using the Ray distributed debugger."
+        )
 
     global _global_node
 
@@ -1834,7 +1836,7 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            driver_mode=driver_mode,
+            driver_mode=SCRIPT_MODE,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -1975,7 +1977,7 @@ def init(
     connect(
         _global_node,
         _global_node.session_name,
-        mode=driver_mode,
+        mode=SCRIPT_MODE,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,

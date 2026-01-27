@@ -6,7 +6,6 @@ import pyarrow as pa
 import pytest
 from clickhouse_connect.driver.summary import QuerySummary
 
-import ray
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
     ClickHouseTableSettings,
